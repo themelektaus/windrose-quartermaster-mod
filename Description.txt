@@ -40,7 +40,11 @@ Built on top of the structural work from [url=https://www.nexusmods.com/windrose
 
 [size=4][b]Source code[/b][/size]
 
-The full build pipeline (PowerShell scripts, UE4SS Lua dumper, vanilla snapshot) is open source on GitHub: [url=https://github.com/themelektaus/Stack-Size]github.com/themelektaus/Stack-Size[/url]. Clone it if you want to build your own variant (e.g. a custom multiplier), inspect what exactly gets changed per item, or port the workflow to a different mod.
+The full build pipeline (PowerShell scripts, UE4SS Lua dumper, vanilla snapshot) is open source on GitHub:
+
+[size=4]👉 [url=https://github.com/themelektaus/windrose-size-stack-mod]https://github.com/themelektaus/windrose-size-stack-mod[/url][/size]
+
+Clone it if you want to build your own variant (e.g. a custom multiplier), inspect what exactly gets changed per item, or port the workflow to a different mod.
 
 
 [size=4][b]Shout outs[/b][/size]
