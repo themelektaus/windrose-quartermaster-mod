@@ -38,6 +38,11 @@ Built on top of the structural work from [url=https://www.nexusmods.com/windrose
 [/list]
 
 
+[size=4][b]Source code[/b][/size]
+
+The full build pipeline (PowerShell scripts, UE4SS Lua dumper, vanilla snapshot) is open source on GitHub: [url=https://github.com/themelektaus/Stack-Size]github.com/themelektaus/Stack-Size[/url]. Clone it if you want to build your own variant (e.g. a custom multiplier), inspect what exactly gets changed per item, or port the workflow to a different mod.
+
+
 [size=4][b]Shout outs[/b][/size]
 
 Huge thanks to the author of [url=https://www.nexusmods.com/windrose/mods/26]Max Stack Sizes by Synthlight[/url] - their pak is used as the structural template, and without it this mod wouldn't exist in this form. The Windrose [code]R5BLInventoryItem[/code] data assets aren't shipped as files inside the pak (they're created at runtime from C++ defaults), so reverse-engineering the right JSON shape from scratch would have been a huge detour. Mod #26 already had it nailed.

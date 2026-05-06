@@ -14,7 +14,7 @@ a vanilla snapshot. The end product is `_P.pak` files that you copy into the
 | **`repak.exe`** ([trumank/repak](https://github.com/trumank/repak/releases)) | Pack/unpack paks | yes |
 | **Windrose game or server** | Deploy target | yes, if you want to test |
 | **UE4SS** on the server | Only for vanilla re-dump after game updates | optional |
-| An existing mod as a template (e.g. `Stack_Size_Changes_x04_P.pak`, [Nexus #26](https://www.nexusmods.com/windrose/mods/26)) | Structural source for `-FromPak` / `Build-AllStackVariations` | optional |
+| An existing mod as a template (e.g. `Stack_Size_Changes_x04_P.pak`, [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)) | Structural source for `-FromPak` / `Build-AllStackVariations` | optional |
 
 > Note: The repo already includes a complete vanilla snapshot
 > (`Sources/Vanilla/`, ~1268 JSONs). You do **not** need to regenerate it

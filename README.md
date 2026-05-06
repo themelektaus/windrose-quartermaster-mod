@@ -5,7 +5,7 @@ Multiplies (or replaces) `MaxCountInSlot` for every stackable vanilla item
 and packs the result into `.pak` files that go into the `~mods` folder.
 
 The structural source is the reference mod
-[Max Stack Sizes (Nexus #26)](https://www.nexusmods.com/windrose/mods/26).
+[Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26).
 Vanilla values come from a snapshot of the game's defaults
 (see `Sources\Vanilla\` in the repo).
 
