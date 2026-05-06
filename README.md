@@ -6,9 +6,8 @@ and packs the result into `.pak` files that go into the `~mods` folder.
 
 Vanilla values come from a snapshot of the game's defaults
 (see `Sources\Vanilla\` in the repo). Soft-object fields (mesh paths, texture
-paths, FText keys) come from `reference-fields.json`, originally extracted
-from [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)
-and now shipped with the repo -- so no external mod is needed to build.
+paths, FText keys) come from `reference-fields.json`, which is shipped with
+the repo -- so no external mod is needed to build.
 
 For more details (workflow for custom mods, vanilla re-dump, troubleshooting)
 see [`DETAILS.md`](./DETAILS.md).

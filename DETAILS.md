@@ -14,7 +14,7 @@ a vanilla snapshot. The end product is `_P.pak` files that you copy into the
 | **`repak.exe`** ([trumank/repak](https://github.com/trumank/repak/releases)) | Pack/unpack paks | yes |
 | **Windrose game or server** | Deploy target | yes, if you want to test |
 | **UE4SS** on the server | Only for vanilla re-dump after game updates | optional |
-| An existing mod as a template (e.g. `Stack_Size_Changes_x04_P.pak`, [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)) | Structural source for `-FromPak` (only for custom mods, not needed for the standard stack-size build) | optional |
+| An existing pak as a template | Structural source for `-FromPak` (only for custom mods, not needed for the standard stack-size build) | optional |
 
 > Note: The repo already includes a complete vanilla snapshot
 > (`Sources/Vanilla/`, ~1268 JSONs). You do **not** need to regenerate it
@@ -104,9 +104,9 @@ Copy-Item .\Builds\MyAmmoMod_P.pak `
 **Alternative init modes:**
 
 ```powershell
-# From an existing mod as template (full schema with mesh paths)
+# From an existing pak as template (full schema with mesh paths)
 .\Build-WindroseMod.ps1 -Action Init `
-    -Source .\Sources\MyMod -FromPak 'E:\Windrose\Mods\...\Stack_Size_Changes_x04_P.pak'
+    -Source .\Sources\MyMod -FromPak 'C:\Path\To\Some_Mod_P.pak'
 
 # Only specific categories from vanilla
 .\Build-WindroseMod.ps1 -Action Init `
@@ -134,7 +134,7 @@ Output: `.\Builds\StackSize_<name>_P.pak`. Per variant:
 - Reuse the existing `Sources\StackSize_<name>\` folder (or `-FromPak <path>`
   to (re)initialise it from a reference pak)
 - `Apply-StackMultiplier` with `-VanillaSource .\Sources\Vanilla` (multiplies
-  the vanilla value, not the stack-mod value)
+  the vanilla value, not whatever value is currently in the source folder)
 - `Build` into the `Builds\` directory
 
 You still have to copy the paks **manually** into the respective `~mods`
@@ -167,9 +167,9 @@ Only needed after game patches that change item values.
 
 > Known limitation: UE4SS on this build does not expose `TSoftObjectPtr`
 > from Lua. `ItemMesh` fields in the vanilla dump are therefore `"None"`.
-> Irrelevant for stack-size mods because we get the structural source from
-> `-FromPak` of an existing mod. If you want brand-new items from scratch,
-> you need a different mesh-path source.
+> Irrelevant for stack-size mods because soft-object fields come from
+> `reference-fields.json` (shipped with the repo). If you want brand-new
+> items from scratch, you need a different mesh-path source.
 
 ---
 
@@ -203,7 +203,7 @@ Modding\
 | `repak.exe` not found | `Tools.RepakExe` in `config.psd1` wrong / empty | Correct the path |
 | `config.psd1` missing -> warning, falls back to example | Normal on first run | `Copy-Item config.example.psd1 config.psd1` |
 | `R5LogJsonConverter: Error` in the game log | JSON schema not loadable (e.g. `[{}]` arrays, number enums) | Initialise the mod from `-FromPak` of a working mod instead of a raw vanilla dump |
-| `missing static mesh` -> server crash on loot spawn | `ItemMesh: "None"` in vanilla dump | Initialise the source from `-FromPak` -- the Stack-mod reference has correct mesh paths |
+| `missing static mesh` -> server crash on loot spawn | `ItemMesh: "None"` in vanilla dump | Build via `Build-AllStackVariations.ps1`; mesh paths come from `reference-fields.json` which is shipped in the repo |
 | `_INIT.txt` ends up in the pak | Should not happen (removed via temp stash) | Pull the build script again |
 | Encoding issues (`???` characters) in JSONs | `Get-Content` without UTF-8 (PS 5.1 default) | Fixed: scripts read via `[System.IO.File]::ReadAllText(..., UTF8)` |
 
