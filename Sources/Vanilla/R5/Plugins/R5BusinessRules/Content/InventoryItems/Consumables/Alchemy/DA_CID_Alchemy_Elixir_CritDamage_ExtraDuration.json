@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.0099999997764825821,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Elixir.CritDamage.ExtraDuration"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/CritDamage/DA_Consumable_Elixir_CritDamage_ExtraDuration_AbilityData",
+				"AssetName": "DA_Consumable_Elixir_CritDamage_ExtraDuration_AbilityData"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Infused Elixir of Concentration",
+		"ItemDescription": "Желтоватый светящийся настой с соленым привкусом. Уже после первого глотка на окружающих начинают мерещиться пятна, будто подсказывая, куда им надо вмазать.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Elixir_CritDamage_ExtraDuration_Duration",
+				"CurveLevel": 1,
+				"DisplayType": 5,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases Critical Damage by {1}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 6,
+		"VanityText": "Плод омерзительных религиозных практик давно погибшего племени",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

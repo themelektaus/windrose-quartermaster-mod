@@ -1,0 +1,68 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 1,
+		"ItemTag": {
+			"TagName": "EquipData.Tool.Pickaxe.T03"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Weapon.MainHand"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.Equipment"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 1,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Pickaxe_T03_Reliable/BP_Wpn_MainHand_Pickaxe_T03_Reliable.BP_Wpn_MainHand_Pickaxe_T03_Reliable_C",
+			"ItemConfig": "None",
+			"ItemLevel": 1,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Болотная кирка",
+		"ItemDescription": "Болотная кирка, разрушит даже самую прочную породу в два счета",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_T03",
+			"CurveLevel": 1,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 7,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

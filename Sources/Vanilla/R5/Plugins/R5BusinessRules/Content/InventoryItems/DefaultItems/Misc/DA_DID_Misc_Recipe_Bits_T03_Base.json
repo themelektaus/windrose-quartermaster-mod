@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.Recipe.Bits.T03.Base"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Recipe"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Plans: Clay and Logs. Base set.",
+		"ItemDescription": "Learning this plan unlocks: \r\nBasic Wathered Clay and Logs building elements\r\n- Log Foundation (1 bit)\r\n- Log Floor (2 bits)\r\n- Clay and Log Walls (6 bits)\r\n- Triangle Clay Walls 45° (2 bits)\r\n- Reed Roof 26° (1 bit)\r\n- Reed Roof Ridge 26° (1 bit)\r\n- Weathered Log Stairs (2 bits)\r\n- Weathered Window (2 bit)\r\n- Weathered Door (2 bit)\r\n- Weathered Log Pillars (1 bits)\r\n- Weathered Horizontal Beams (1 bits)\r\n\r\nPart of the Lost Tribe building set.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

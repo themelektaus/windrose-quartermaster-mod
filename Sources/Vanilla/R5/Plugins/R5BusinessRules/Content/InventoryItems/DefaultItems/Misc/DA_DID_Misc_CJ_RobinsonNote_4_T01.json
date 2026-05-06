@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Misc.RobinsonNote.04.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Обрывки дневника",
+		"ItemDescription": "Сто пятый день после кораблекрушения\r\n\r\nНет, сто пятый был две недели назад. Или три? Не помню. Запутался.\r\n\r\nБрэм и Митчелл все-таки меня оставили. Бросили. Уплыли. Да, они уплыли. Уплы-ы-ыли. Я остался. И их вещи остались. Там... Я закопал. Спрятал до их возвращения. Они же вернутся за мной? Вернутся. Обязательно.\r\n\r\nИз руин ушел. Там стало еще страшнее. Совсем страшно. Теперь даже днем слышу их голоса. Как из могилы. Гулкие. Сейчас они придут. Я чувствую. Где мой оберег? Мне нужны обереги. Больше оборегов. Они защитят...",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

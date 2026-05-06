@@ -1,0 +1,86 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 1,
+		"ItemTag": {
+			"TagName": "EquipData.Ship.CrewPower.Blank.Base"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Ship.Equipment.CrewPower"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [
+			{}
+		],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 1,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Boarding Party Gear",
+		"ItemDescription": "Outfitting reserved for close work. Better gear means better-armed boarders — and fewer chances left to the enemy once the clash starts.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 1,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "ColdBarrels_Delay",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "None",
+				"RowName": "ColdBarrels_Bonus",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 21,
+		"VanityText": "Gentlemen, once aboard - leave nothing standing.\r\n- Black Bart",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 6,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

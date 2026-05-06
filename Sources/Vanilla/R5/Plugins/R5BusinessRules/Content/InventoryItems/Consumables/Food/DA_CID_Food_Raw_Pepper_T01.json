@@ -1,0 +1,68 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 50,
+		"Weight": 0.0099999997764825821,
+		"ItemTag": {
+			"TagName": "ConsData.Food.Raw.Pepper.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Food"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Food"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 0,
+		"bKeepInInventoryOnDeath": false,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Raw_Pepper_T01",
+				"AssetName": "DA_ConsumableAbilityData_Food_Raw_Pepper_T01"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Кайенский перец",
+		"ItemDescription": "Крупные хрустящие перцы, которые используют в качестве приправы в различных рецептах. С ними вкус блюд становится богаче и острее. Главное -- знать меру.\r\n\r\nУвеличивает максимальное ХП\r\nДействует {0} минут",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 5,
+		"VanityText": "Жжется как яд морской ведьмы.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0.10000000149011612,
+		"ItemTag": {
+			"TagName": "ConsData.SeaTrade.TradeGoods.LimeT02"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Lootable"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.LootContainer"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 1,
+		"bKeepInInventoryOnDeath": false,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
+				"AssetName": "DA_ConsumableAbilityData_LootContainer"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "/R5BusinessRules/LootTables/ConsumableContainer/TradeGoods/DA_LT_TradeGoods_LimeT02",
+				"AssetName": "DA_LT_TradeGoods_LimeT02"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "NOT USED  Limes",
+		"ItemDescription": "Ящик с надежно упакованным товаром для удобной транспортировки по морю. Можно продать за пиастры.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "Кто влезет внутрь – останется без доли!\r\n— нацарапано гвоздем",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

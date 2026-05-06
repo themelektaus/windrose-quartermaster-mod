@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.20000000298023224,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Elixir.MeleeDamage"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/MeleeDamage/DA_Consumable_Elixir_MeleeDamage_Default_AbilityData",
+				"AssetName": "DA_Consumable_Elixir_MeleeDamage_Default_AbilityData"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Эликсир Твердой руки",
+		"ItemDescription": "Оранжевый эликсир с густым осадком на дне бутылки, практически без вкуса и запаха. Выпив его - тело наливается силой, челюсть сводит, говорить становится трудно — зато саблей махать самое то.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Elixir_MeleeDamage_Default_Duration",
+				"CurveLevel": 1,
+				"DisplayType": 5,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases Melee Damage by {1}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 6,
+		"VanityText": "В ближнем бою побеждает не тот, кто быстрее, а тот, кто не передумал.\r\n— доктор Гален Скелтон",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

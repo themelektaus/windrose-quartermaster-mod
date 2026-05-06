@@ -1,0 +1,84 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "EquipData.Ship.CombatOrders.CombatRepairs"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Ship.Equipment.CombatOrders"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.MovableEquipment"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Naval Tactics II: No Quarter",
+		"ItemDescription": "A privateer adaptation of Spanish Armada naval practice, favoring close action and decisive endings. The margin notes that ships sent down swiftly spare one’s crew the cost of prolonged prize-taking fights.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "50",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "None",
+				"RowName": "30",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 20,
+		"VanityText": "A living crew is worth more than any prize.\r\n- Samuel Bellamy",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 6,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

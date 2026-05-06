@@ -1,0 +1,85 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.RecipePaperUnlock.Armor.Flibustier.Base.Feet"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Recipe"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Рецепт брони: Сапоги скитальца",
+		"ItemDescription": "Этот костюм сшитый из грубой ткани не про защиту — он про темп. В нём легко двигаться и орудовать клинком.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 1,
+			"Stat": 10
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Flibustier_SetEffect_AttackStaminaCons",
+				"CurveLevel": 0,
+				"DisplayType": 2,
+				"bInverseValue": true
+			}
+		],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [
+			{},
+			{
+				"Name": "Костюм Скитальца",
+				"Description": "Attacks consume {0} less Stamina.",
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Flibustier"
+				},
+				"ActivationCount": 2
+			}
+		],
+		"Category": 2,
+		"VanityText": "Изучите чертеж что бы получить возможность создавать предмет",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

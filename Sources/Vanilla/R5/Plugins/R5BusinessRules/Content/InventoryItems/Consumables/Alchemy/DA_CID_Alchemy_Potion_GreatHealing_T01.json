@@ -1,0 +1,70 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.20000000298023224,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Potion.GreatHealing.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Potion/DA_ConsumableAbilityData_Potion_Healing_Great",
+				"AssetName": "DA_ConsumableAbilityData_Potion_Healing_Great"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Великая микстура лечения",
+		"ItemDescription": "Восстанавливает силы и залечивает даже самые глубокие раны.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 15,
+		"VanityText": "Говорят, эта микстура вытаскивает моряков прямо из рундука Дейви Джонса.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

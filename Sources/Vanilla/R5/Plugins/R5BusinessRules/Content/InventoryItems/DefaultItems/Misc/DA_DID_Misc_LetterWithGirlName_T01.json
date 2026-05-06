@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.LetterWithGirlName.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Письмо Майкла Гарди",
+		"ItemDescription": "Дорогая Летти!\r\n\r\nКлянусь тебе, я скоро вернусь. Никто из Детей Ковчега до нас не доберется. Мне удалось уйти от них незамеченным и связаться с человеком губернатора. Он обещал помочь нам, если я расскажу все о главе секты и его темных делишках. У нас даже появятся деньги, Летти!\r\n\r\nДождись меня на Тортуге, дорогая. Мы уедем в Бостон и начнем новую жизнь, откроем лавку и забудем об этом кошмаре.\r\n\r\nНу вот. Меня зовет капитан – хочет, чтобы я скрылся в каюте, так как на горизонте показался какой-то корабль. Наверное, это люди губернатора.\r\n\r\nОсталось совсем чуть-чуть, Летти.\r\n\r\nЛюблю тебя! Твой Майкл Гарди",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

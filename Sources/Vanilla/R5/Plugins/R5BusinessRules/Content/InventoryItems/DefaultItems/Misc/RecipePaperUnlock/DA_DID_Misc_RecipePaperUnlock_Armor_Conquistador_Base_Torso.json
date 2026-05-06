@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.RecipePaperUnlock.Armor.Conquistador.Base.Torso"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Recipe"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Чертеж брони: Кираса конкистадора",
+		"ItemDescription": "Этот надежный металлический доспех когда-то позволил испанцам завоевать Новый Свет благодаря своей прочности.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 1,
+			"Stat": 10
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [
+			{},
+			{
+				"Name": "Латы Конкистадора",
+				"Description": "Increases Damage Resistance by {0}.",
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Conquistador"
+				},
+				"ActivationCount": 2
+			}
+		],
+		"Category": 2,
+		"VanityText": "Изучите чертеж что бы получить возможность создавать предмет",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

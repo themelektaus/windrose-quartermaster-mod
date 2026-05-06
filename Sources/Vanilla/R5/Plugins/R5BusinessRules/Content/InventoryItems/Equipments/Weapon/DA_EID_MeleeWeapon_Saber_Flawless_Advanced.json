@@ -1,0 +1,88 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "EquipData.MeleeWeapon.Saber.Flawless.Advanced"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Weapon.MainHand"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.Equipment"
+		},
+		"Attributes": [
+			{}
+		],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Flawless_Advanced/BP_Wpn_MainHand_Saber_Flawless_Advanced.BP_Wpn_MainHand_Saber_Flawless_Advanced_C",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Бритва",
+		"ItemDescription": "Пираты Нассау предпочитают быстрое и жестокое оружие. Эта сабля безупречно заточена и закалена в сражениях.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 0,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Saber_Flawless_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": 21
+			}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Saber_Flawless_WpnCritChanceAdd",
+				"CurveLevel": 0,
+				"DisplayType": 2,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases base Critical Hit Chance by {0}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 8,
+		"VanityText": "Какие еще финты? Лезвием по горлу – и концы в воду.\r\n— Израэль Хендс",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 6,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

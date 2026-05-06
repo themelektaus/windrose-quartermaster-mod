@@ -1,0 +1,70 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.10000000149011612,
+		"ItemTag": {
+			"TagName": "ConsData.Food.Drink.CocoPeanut.T02"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Food"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Food"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Drink_CocoPeanut_T02",
+				"AssetName": "DA_ConsumableAbilityData_Food_Drink_CocoPeanut_T02"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Освежающий напиток с орехами",
+		"ItemDescription": "Этот целебный напиток сочетает в себе кокосовое молоко, мякоть алоэ и хрустящие жареные орехи.\r\n\r\nУвеличивает максимальное ХП\r\nДействует {0} минут",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [
+			{}
+		],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 5,
+		"VanityText": "Орехи в соке? Несусветная ересь!\r\n— святой отец Игнасио",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

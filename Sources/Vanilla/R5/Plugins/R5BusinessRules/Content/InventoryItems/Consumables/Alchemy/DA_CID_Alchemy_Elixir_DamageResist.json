@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.20000000298023224,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Elixir.DamageResist"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/DamageResist/DA_Consumable_Elixir_DamageResist_Default_AbilityData",
+				"AssetName": "DA_Consumable_Elixir_DamageResist_Default_AbilityData"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Эликсир Притупления боли",
+		"ItemDescription": "Холодный желеобразный настой с ужасным запахом дикого козла. Достаточно понюхать и сразу чувствуешь как немеют пальцы на ногах. Алхимики до сих пор спорят, стоит ли его вообще пить.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Elixir_DamageResist_Default_Duration",
+				"CurveLevel": 1,
+				"DisplayType": 5,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases Damage Resistance by {1}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 6,
+		"VanityText": "Боль напоминает о том, что мы живы. Вот когда ничего не болит, тогда можно паниковать.\r\n— доктор Гален Скелтон",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

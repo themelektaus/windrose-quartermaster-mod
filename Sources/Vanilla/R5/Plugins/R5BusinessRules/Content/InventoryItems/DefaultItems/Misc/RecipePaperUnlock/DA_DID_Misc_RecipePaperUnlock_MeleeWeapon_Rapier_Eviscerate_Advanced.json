@@ -1,0 +1,93 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.RecipePaperUnlock.MeleeWeapon.Rapier.Eviscerate.Advanced"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Recipe"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Чертеж оружия: Рапира опустошения",
+		"ItemDescription": "Чумная древесина оплетает тонкими побегами грубый металл. Кажется, что ветви, словно живые, ждут возможности впиться в плоть врагов.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_T01",
+			"CurveLevel": 1,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Rapier_Eviscerate_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": 16
+			}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Rapier_Eviscerate_StackLimitCount_UI",
+				"CurveLevel": 0,
+				"DisplayType": 4,
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "None",
+				"RowName": "Rapier_Eviscerate_StackCountToActivateAbility",
+				"CurveLevel": 0,
+				"DisplayType": 4,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Light Attacks apply up to {0} Plague marks. Heavy Attacks consume all accumulated marks, dealing bonus Damage for each."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "Изучите чертеж что бы получить возможность создавать предмет",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

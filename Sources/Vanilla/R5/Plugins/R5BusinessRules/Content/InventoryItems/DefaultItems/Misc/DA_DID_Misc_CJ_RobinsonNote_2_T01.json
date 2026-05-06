@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Misc.RobinsonNote.02.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Обрывки дневника",
+		"ItemDescription": "Восьмой день после кораблекрушения\r\n\r\nЯ предупреждал, что это место проклято. Стоило немного обжиться, как мне стали сниться кошмары. Чудится, будто мои друзья умирают, тела их покрываются древесной корой, и ветви прорастают из плоти. Просыпаюсь от собственных криков. Страшно. Не хочу больше ложиться спать.\r\n\r\nВырезал обереги для Брэма и Митчелла, но они рассмеялись и кинули их в грязь.\r\n\r\nВчера слышал, как эти двое шептались про лодку. Они хотят меня бросить.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

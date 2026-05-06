@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 2,
+		"ItemTag": {
+			"TagName": "ConsData.Misc.Fish.Large.GiantMackerel"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Fish"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.LootContainer"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": false,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
+				"AssetName": "DA_ConsumableAbilityData_LootContainer"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "/R5BusinessRules/LootTables/Fishing/Butchering/DA_LT_Butchering_LargeFish",
+				"AssetName": "DA_LT_Butchering_LargeFish"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Гигантская скумбрия",
+		"ItemDescription": "Гигант среди рыб, ее зеленая чешуя сверкает как изумруд. Говорят, один такой улов может прокормить целую команду!\r\n\r\nCought in deep waters.\r\n\r\nCan be processed into Fish Fillet.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "One fish to feed them all.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

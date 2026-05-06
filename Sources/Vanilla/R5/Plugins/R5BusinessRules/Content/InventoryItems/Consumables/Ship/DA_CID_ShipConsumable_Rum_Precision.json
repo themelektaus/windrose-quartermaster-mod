@@ -1,0 +1,84 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Ship.Rum.Precision"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Ship"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Ship"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_RumPrecision",
+				"AssetName": "DA_ConsumableAbilityData_Ship_RumPrecision"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Deadeye Grog",
+		"ItemDescription": "A sharp blend of rum, madeira, and strong coffee. Clears the head, steadies the eye, and keeps the sights true when it matters most.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "15",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "None",
+				"RowName": "30",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 1,
+		"VanityText": "One glass steadies the eye. Two explain the miss.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

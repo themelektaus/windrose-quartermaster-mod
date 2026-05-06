@@ -1,0 +1,68 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0.80000001192092896,
+		"ItemTag": {
+			"TagName": "EquipData.Tool.Pickaxe.T00"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Weapon.MainHand"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.Equipment"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 1,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Pickaxe_T00_Stone/BP_Wpn_MainHand_Pickaxe_T00_Stone.BP_Wpn_MainHand_Pickaxe_T00_Stone_C",
+			"ItemConfig": "None",
+			"ItemLevel": 1,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Каменная кирка",
+		"ItemDescription": "Долбит? Долбит!\r\nДелается на верстаке",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_T01",
+			"CurveLevel": 1,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 7,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

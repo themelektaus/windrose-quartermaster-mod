@@ -1,0 +1,87 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 1,
+		"ItemTag": {
+			"TagName": "EquipData.Armor.Mercenary.Base.Legs"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Armor.Legs"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.MovableEquipment"
+		},
+		"Attributes": [
+			{}
+		],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Mercenary/Legs/BP_Armor_Mercenary_Legs.BP_Armor_Mercenary_Legs_C",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Штаны стрелка",
+		"ItemDescription": "Стрелки Тортуги предпочитают костюмы из легкой ткани. В них проще передвигаться по пересеченной местности и стрелять по подвижным мишеням.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 0,
+			"Stat": 10
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Mercenary_SetEffect_MovementStaminaCons",
+				"CurveLevel": 0,
+				"DisplayType": 2,
+				"bInverseValue": true
+			}
+		],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [
+			{},
+			{
+				"Name": "Экипировка Стрелка",
+				"Description": "Sprinting, Jump, and Dash consume {0} less Stamina.",
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Mercenary"
+				},
+				"ActivationCount": 2
+			}
+		],
+		"Category": 11,
+		"VanityText": "Сначала стреляй, потом – задавай вопросы.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 10,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

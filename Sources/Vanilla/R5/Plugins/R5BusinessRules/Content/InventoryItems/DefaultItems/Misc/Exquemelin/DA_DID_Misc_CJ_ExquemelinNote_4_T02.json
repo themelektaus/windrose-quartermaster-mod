@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Misc.ExquemelinNote.04.T02"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "\"Базилика\" Хендс",
+		"ItemDescription": "Пираты что-то ищут в руинах. Я спрятался за камнями, чтобы подслушать и уловил имя Израэля Хендса. Едва не выдал себя.\r\n\r\nНа Тортуге о нем ходит много слухов. Говорят, родился Хендс в большой семье торговца в Бристоле. Отцовское дело унаследовали старшие братья – ему же, как в сказке, достался кот в мешке.\r\n \r\nИ будто этого было мало, чуть ли не каждый вечер его отец заливал за воротник и поколачивал жену вместе с младшим сыном.\r\n \r\nВ один из вечеров, когда папаша очередной раз хорошенько принял на грудь, случился с ним несчастный случай: упал он с лестницы и ударился головой... раз десять и ребра переломал. Видимо, лестница была большая и длинная.\r\n \r\nА Хендс решил взять судьбу в свои руки и сбежать – поглядеть на сказочный Новый Свет. В порту он попал на небольшой каперский корабль, где познакомился с Эдвардом Тичем. Позднее, не задумываясь, Хендс вместе с ним пошел служить к Хорниголду в бытность того пиратом.\r\n \r\nГоворят, именно у Хорниголда Хендс получил прозвище \"Базилика\". То ли за любовь к церквям, то ли – к монашкам.\r\n\r\nНе знаю, чего люди Хендса ищут, но лучше мне убраться подальше – с волками и то безопаснее.\r\n\r\nЛишние вещи опять придется бросить под корягой с красной тряпкой…\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

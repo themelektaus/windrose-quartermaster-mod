@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.0099999997764825821,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Elixir.GlobalDamage.ExtraDuration"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/GlobalDamage/DA_Consumable_Elixir_GlobalDamage_ExtraDuration_AbilityData",
+				"AssetName": "DA_Consumable_Elixir_GlobalDamage_ExtraDuration_AbilityData"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Infused Elixir of Cruelty",
+		"ItemDescription": "Густой фиолетовый эликсир с резким пряным ароматом. Пробуждает жестокость, делая каждый удар тяжелее и беспощаднее.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Elixir_GlobalDamage_ExtraDuration_Duration",
+				"CurveLevel": 1,
+				"DisplayType": 5,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases Damage by {1}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 6,
+		"VanityText": "Жестокость — не порок.\r\n— Эдвард \"Черная Борода\" Тич",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

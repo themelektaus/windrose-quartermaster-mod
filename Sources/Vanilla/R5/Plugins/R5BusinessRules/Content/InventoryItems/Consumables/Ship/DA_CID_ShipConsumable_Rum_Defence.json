@@ -1,0 +1,84 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Ship.Rum.Defence"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Ship"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Ship"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_RumDefence",
+				"AssetName": "DA_ConsumableAbilityData_Ship_RumDefence"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Hard Grog",
+		"ItemDescription": "A fortified ration of grog, blended with brandy and lime. Issued to help the crew withstand hardship, scurvy and remain at their posts under fire.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "15",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "None",
+				"RowName": "30",
+				"CurveLevel": 1,
+				"DisplayType": 4,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 1,
+		"VanityText": "For heavy weather.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.PaperCopeOfClayTablet.01.T03"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Первая фреска",
+		"ItemDescription": "Двенадцать зим сменилось со Дня Великой Печали, но мой бог не вернулся.\r\n\r\nМы жертвуем жар своей крови и возносим молитвы. Они остаются без ответа.\r\n\r\nНикого из нас пока не коснулась зараза, но я чувствую ее в воде, в земле, шепоте трав под ногами. Однажды она доберется сюда.\r\n\r\nНаш народ в горном городе живет так, словно ничего не случилось. Они возводят храмы Повелителю Смерти и слушают тишину. Они хотят забыть.\r\n\r\nПоэтому мы должны помнить.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

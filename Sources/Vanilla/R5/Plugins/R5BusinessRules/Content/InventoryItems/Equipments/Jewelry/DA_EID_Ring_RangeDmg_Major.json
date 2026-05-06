@@ -1,0 +1,70 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "EquipData.Ring.RangeDmg.Major"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Jewelry.Ring"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.MovableEquipment"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Jewelry/Rings/RangeDmg/BP_Jewelry_Ring_RangeDmg.BP_Jewelry_Ring_RangeDmg_C",
+			"ItemConfig": "None",
+			"ItemLevel": 3,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Большое кольцо стрелка",
+		"ItemDescription": "Мушкетеры верили, что такое кольцо приносит удачу. Якобы с ним можно попасть белке в глаз... Жаль, на этих островах белки не водятся.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 12,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

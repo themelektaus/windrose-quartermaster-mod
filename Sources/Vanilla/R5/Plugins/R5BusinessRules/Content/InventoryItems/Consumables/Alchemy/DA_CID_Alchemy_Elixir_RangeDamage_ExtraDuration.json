@@ -1,0 +1,78 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0.0099999997764825821,
+		"ItemTag": {
+			"TagName": "ConsData.Alchemy.Elixir.RangeDamage.ExtraDuration"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Consumable.Activate.Elixir"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 4,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/RangeDamage/DA_Consumable_Elixir_RangeDamage_ExtraDuration_AbilityData",
+				"AssetName": "DA_Consumable_Elixir_RangeDamage_ExtraDuration_AbilityData"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Infused Elixir of Precision",
+		"ItemDescription": "Мутная зеленая настойка на волчьих клыках. Считается, что если после бурной ночи, перед сном положить под язык клык собаки, то на утро не будут трястись руки. Буканьеры архипелага развили эту идею и придумали такой эликсир в надежде сэкономить на пулях.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Elixir_RangeDamage_ExtraDuration_Duration",
+				"CurveLevel": 1,
+				"DisplayType": 5,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			"",
+			"Increases Ranged Damage by {1}."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 6,
+		"VanityText": "Если промахнулся – значит, это была не цель, а приманка!\r\n— Марсель Буше, буканьер",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

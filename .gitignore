@@ -1,0 +1,30 @@
+# User-spezifische Konfiguration (Pfade, lokale Tools).
+# Template ist config.example.psd1.
+config.psd1
+
+# Build-Output (regenerierbar via Build-WindroseMod.ps1 / Build-AllStackVariations.ps1).
+Builds/
+
+# Build-Artefakte aus Init/Apply (regenerierbar via Build-AllStackVariations.ps1).
+# Sources/Vanilla/ wird absichtlich getrackt -- Snapshot des Spiels, nur per
+# UE4SS-Lua-Mod regenerierbar.
+Sources/StackSize_*/
+
+# Historische Sackgassen und Debug-Artefakte. Nicht repo-relevant.
+Archive/
+
+# Build-Metadaten (von Build-WindroseMod.ps1 -Action Init geschrieben).
+_INIT.txt
+
+# UE4SS-Mod-Output (vom VanillaItemDumper zur Laufzeit befuellt).
+ue4ss-mods/VanillaItemDumper/Dumps/
+
+# Windows-Kram.
+Thumbs.db
+desktop.ini
+
+# Editor-Artefakte.
+.vscode/
+.idea/
+*.swp
+*~

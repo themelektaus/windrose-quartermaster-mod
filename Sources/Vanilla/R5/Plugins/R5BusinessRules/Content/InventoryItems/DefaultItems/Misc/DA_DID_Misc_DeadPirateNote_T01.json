@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 10,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "InvItemData.Misc.DeadPirateNote.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
+				"AssetName": "DA_ConsumableAbilityData_LootContainer"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Размытый листок с зарисовкой острова",
+		"ItemDescription": "Сраная погода! Из-за нее я тут накрепко застрял. Ну ничего. Главное, что сундук закопан. Иш чего эти бездельники захотели – добычу поровну поделить! Шиш им, а не поровну! Пускай теперь мое золото вечно сторожат.\r\n\r\nКак дождь уймется, доберусь до Тортуги и новую команду найму. Или землю куплю, чтобы сразу с домом и слугами. Аптекаря еще отблагодарить надо – хорошее он мне средство присоветовал. Действенное.\r\n\r\nЗолото пускай полежит – подождет, пока придумаю для Берегового Братства слезливую историю. Как на нас испанцы напали. Или англичане – один черт!\r\n\r\nТолько бы ветер унялся, а то он так завывает и пальмы гнет, что чудится уже... всякое. Если б сам своих не прибил, подумал бы, что они живые.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

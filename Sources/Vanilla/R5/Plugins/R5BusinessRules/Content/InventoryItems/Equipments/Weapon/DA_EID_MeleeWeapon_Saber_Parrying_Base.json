@@ -1,0 +1,87 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "EquipData.MeleeWeapon.Saber.Parrying.Base"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Weapon.MainHand"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.Equipment"
+		},
+		"Attributes": [
+			{}
+		],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 2,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Parrying_Base/BP_Wpn_MainHand_Saber_Parrying_Base.BP_Wpn_MainHand_Saber_Parrying_Base_C",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Дуэльная сабля",
+		"ItemDescription": "Лезвие этой сабли отливает синеватым оттенком, будто его закалили в ледяных водах северных морей.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 0,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Saber_Parrying_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": 21
+			}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Saber_Parrying_MeleeDamageModPerStack",
+				"CurveLevel": 0,
+				"DisplayType": 2,
+				"bInverseValue": false
+			}
+		],
+		"EffectsDescriptions": [
+			""
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 8,
+		"VanityText": "Когда-нибудь я буду побежден. Но не тобой и не сегодня.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 6,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

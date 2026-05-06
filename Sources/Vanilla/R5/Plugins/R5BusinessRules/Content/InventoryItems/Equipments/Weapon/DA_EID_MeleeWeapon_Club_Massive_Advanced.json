@@ -1,0 +1,81 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 1,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "EquipData.MeleeWeapon.Club.Massive.Advanced"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Weapon.MainHand"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "GAS.Ability.Item.Equipment"
+		},
+		"Attributes": [
+			{}
+		],
+		"ItemMesh": "None",
+		"ItemClass": 3,
+		"Rarity": 3,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Club_Massive_Advanced/BP_Wpn_MainHand_Club_Massive_Advanced.BP_Wpn_MainHand_Club_Massive_Advanced_C",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Костолом",
+		"ItemDescription": "Тяжёлый пернач, способный проломить любую броню, а заодно и кости. На рукояти выгравированы череп и берцовая кость, рядом с ними — череда зарубок. Похоже, кто-то вёл счёт.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "power_craftable",
+			"CurveLevel": 0,
+			"Stat": 2
+		},
+		"StatCurveSecondaryStatsData": [
+			{},
+			{
+				"CurveTable": "None",
+				"RowName": "Club_Massive_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": 6
+			}
+		],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [
+			{}
+		],
+		"EffectsDescriptions": [
+			"",
+			"The more Stamina you have, the more Damage the weapon deals."
+		],
+		"SetEffectsDescriptions": [],
+		"Category": 8,
+		"VanityText": "Всегда оправдывает свое название.",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 6,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

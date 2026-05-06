@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ConsData.Misc.ExquemelinNote.06.T03"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Потревоженный покой",
+		"ItemDescription": "Я повидал достаточно сумасшедших на своем веку, чтобы сказать, что человек, поведавший мне свою историю, безумцем не был.\r\n\r\nБосой оборванец в грязном тряпье, он вымаливал трясущимися руками подаяния у входа в трактир, бормоча под нос несуразицу. Взяв у подавальщицы бутылку рома и два стакана, я наполнил один и предложил его оборванцу. Он опрокинул в себя ром как воду и попросил еще. Я снова налил. И стал слушать...\r\n\r\nИх было десять. Тех, кто решился искать сокровища среди древних могил на Болотах. Остальные испугались слухов о проклятии. И правильно сделали. Девятеро остались там навсегда.\r\n\r\nОни действительно нашли золото в руинах, радовались как дети и до заката таскали драгоценные камни из каменных сундуков. Заночевать решили на Болотах.\r\n\r\nА ночью деревья зашевелились.\r\n\r\nИз болота поднялся огромный кусок земли с переплетенными корнями. Из его нутра свисали человеческие конечности. Одним махом древесной руки он прихлопнул сразу двоих, еще трое от ужаса бросились в топь. Пятеро со всех ног побежали в сторону берега и остановились, когда позади стих грохот. В то же мгновение сотни острых деревянных шипов, вырвавшись из-под земли, прошили их тела.\r\n\r\nТолько один сумел вырвать свою раненую руку из смертельной хватки. Он бежал и бежал, пока не рухнул на песок от усталости...\r\n\r\nСегодня я переночую под крышей древних руин. Мои вещи пускай хранятся снаружи – в сундуке под деревом с красной тряпкой им безопаснее.\r\n\r\nЯ не забирал отсюда сокровища мертвецов, поэтому, смею надеяться, стражи этого места меня не тронут, даже если они являются всего лишь плодом воображения больного разума.\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}

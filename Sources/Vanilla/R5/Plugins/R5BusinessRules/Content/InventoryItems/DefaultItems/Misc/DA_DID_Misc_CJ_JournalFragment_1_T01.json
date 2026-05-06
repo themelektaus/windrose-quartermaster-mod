@@ -1,0 +1,66 @@
+{
+	"$type": "R5BLInventoryItem",
+	"InventoryItemGppData": {
+		"MaxCountInSlot": 20,
+		"Weight": 0,
+		"ItemTag": {
+			"TagName": "ItemData.Misc.JournalFragment.01.T01"
+		},
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Quest.Notes"
+		},
+		"ActivationAbilityTag": {
+			"TagName": "None"
+		},
+		"Attributes": [],
+		"ItemMesh": "None",
+		"ItemClass": 1,
+		"Rarity": 4,
+		"bKeepInInventoryOnDeath": true,
+		"AmmoBaseParams": "None",
+		"InventoryEquipment": {
+			"ItemClass": "None",
+			"ItemConfig": "None",
+			"ItemLevel": 0,
+			"SlotCountModifierParams": "None",
+			"ShipItemParams": "None"
+		},
+		"ConsumableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		},
+		"LootTableData": {
+			"AssetPath": {
+				"PackageName": "None",
+				"AssetName": "None"
+			}
+		}
+	},
+	"InventoryItemUIData": {
+		"ItemTexture": "None",
+		"AdditionalIcons": [],
+		"ItemName": "Дневник Марселя Буше",
+		"ItemDescription": "Первые числа марта 17ХХ\r\n\r\nЭкспедиция начиналась неплохо: мы обосновались на острове, заняли три руины. В первой будем ночевать, вторую приспособили под склад, а последнюю укрепили понадежнее на случай неприятностей. Мои дураки зачем-то даже затащили наверх вторые ворота.\r\n\r\nНо не все идет гладко... На траверсе острова Задира приметил три корабля пиратов Черной Бороды.\r\n\r\nЯ приказал своим не показыватся на побережье и охотиться в глубине джунглей.\r\nЗадира Луи вспылил. Он хочет заманить пиратов в ловушку и перестрелять. Глупец! Их как мышей в погребе, а пороха у нас мало.\r\n\r\nЯ пообещал, что лично сдеру с него шкуру и натяну на кабана, если он продолжит подначивать остальных.",
+		"StatCurveMainStatsData": {
+			"CurveTable": "None",
+			"RowName": "",
+			"CurveLevel": 0,
+			"Stat": 0
+		},
+		"StatCurveSecondaryStatsData": [],
+		"StatCurveAdditionalStats": [],
+		"ItemDescriptionData": [],
+		"EffectsDescriptions": [],
+		"SetEffectsDescriptions": [],
+		"Category": 2,
+		"VanityText": "",
+		"QualityLevel": 0,
+		"MaxQualityLevel": 0,
+		"SubDataId": {
+			"TagName": "None"
+		}
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+}
