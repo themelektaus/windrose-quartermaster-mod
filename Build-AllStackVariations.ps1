@@ -28,7 +28,9 @@
 
 .PARAMETER FromPak
     Source pak for the Init step (provides the full JSON schema with mesh
-    paths, string enums, etc.). Default: $cfg.References.StackModX4 (config.psd1).
+    paths, string enums, etc.). Required if you want to (re)build the per-variant
+    Sources from a reference pak; otherwise the existing Sources/<variant>/
+    folders are reused.
 
 .PARAMETER VanillaSource
     Path to the vanilla dump (537 real vanilla MaxCountInSlot values).
@@ -91,7 +93,6 @@ $ErrorActionPreference = 'Stop'
 # --- Load config ----------------------------------------------------------
 $cfg = & (Join-Path $PSScriptRoot '_config.ps1')
 
-if (-not $FromPak)       { $FromPak       = [string]$cfg.References.StackModX4 }
 if (-not $VanillaSource) { $VanillaSource = [string]$cfg.Paths.Vanilla }
 if (-not $SrcRoot)       { $SrcRoot       = [string]$cfg.Paths.Sources }
 if (-not $OutDir)        { $OutDir        = [string]$cfg.Paths.Builds }
@@ -106,10 +107,13 @@ $ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildScript  = Join-Path $ScriptRoot 'Build-WindroseMod.ps1'
 $ApplyScript  = Join-Path $ScriptRoot 'Apply-StackMultiplier.ps1'
 
-foreach ($p in @($BuildScript, $ApplyScript, $FromPak, $VanillaSource)) {
+foreach ($p in @($BuildScript, $ApplyScript, $VanillaSource)) {
     if (-not (Test-Path -LiteralPath $p)) {
         throw "Path not found: $p"
     }
+}
+if ($FromPak -and -not (Test-Path -LiteralPath $FromPak)) {
+    throw "Path not found: $FromPak"
 }
 
 if (-not (Test-Path -LiteralPath $OutDir)) {
@@ -142,7 +146,7 @@ function Resolve-Variant($name) {
 
 Write-Step "Build All Stack Variations"
 Write-OK "Variants     : $($Variants -join ', ')"
-Write-OK "FromPak      : $FromPak"
+Write-OK "FromPak      : $(if ($FromPak) { $FromPak } else { '<none -- reusing existing src folders>' })"
 Write-OK "VanillaSource: $VanillaSource"
 Write-OK "SrcRoot      : $SrcRoot"
 Write-OK "OutDir       : $OutDir"
@@ -174,17 +178,25 @@ foreach ($vname in $Variants) {
     }
 
     try {
-        # 1. Init
-        Write-Step "Init from FromPak -> $srcPath"
-        $initArgs = @{
-            Action = 'Init'
-            Source = $srcPath
-            FromPak = $FromPak
+        # 1. Init (only when -FromPak was supplied; otherwise reuse existing src)
+        if ($FromPak) {
+            Write-Step "Init from FromPak -> $srcPath"
+            $initArgs = @{
+                Action = 'Init'
+                Source = $srcPath
+                FromPak = $FromPak
+            }
+            if ($Force) { $initArgs.Force = $true }
+            if ($DryRun) { $initArgs.DryRun = $true }
+            & $BuildScript @initArgs
+            if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Init failed (exit $LASTEXITCODE)" }
         }
-        if ($Force) { $initArgs.Force = $true }
-        if ($DryRun) { $initArgs.DryRun = $true }
-        & $BuildScript @initArgs
-        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Init failed (exit $LASTEXITCODE)" }
+        elseif (-not (Test-Path -LiteralPath $srcPath)) {
+            throw "Source folder missing and no -FromPak supplied: $srcPath"
+        }
+        else {
+            Write-OK "Reusing existing src (no -FromPak): $srcPath"
+        }
 
         if ($DryRun) {
             # In DryRun nothing was unpacked after Init -> Apply/Build would

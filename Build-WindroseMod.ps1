@@ -91,8 +91,8 @@
     .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyMod -Categories Ammo,Consumables
 
 .EXAMPLE
-    # New mod source from an existing pak (as template, path from config)
-    .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyMod -FromPak $cfg.References.StackModX4
+    # New mod source from an existing pak (as template)
+    .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyMod -FromPak 'C:\path\to\some_P.pak'
 #>
 
 [CmdletBinding()]

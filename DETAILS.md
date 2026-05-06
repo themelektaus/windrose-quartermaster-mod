@@ -14,7 +14,7 @@ a vanilla snapshot. The end product is `_P.pak` files that you copy into the
 | **`repak.exe`** ([trumank/repak](https://github.com/trumank/repak/releases)) | Pack/unpack paks | yes |
 | **Windrose game or server** | Deploy target | yes, if you want to test |
 | **UE4SS** on the server | Only for vanilla re-dump after game updates | optional |
-| An existing mod as a template (e.g. `Stack_Size_Changes_x04_P.pak`, [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)) | Structural source for `-FromPak` / `Build-AllStackVariations` | optional |
+| An existing mod as a template (e.g. `Stack_Size_Changes_x04_P.pak`, [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)) | Structural source for `-FromPak` (only for custom mods, not needed for the standard stack-size build) | optional |
 
 > Note: The repo already includes a complete vanilla snapshot
 > (`Sources/Vanilla/`, ~1268 JSONs). You do **not** need to regenerate it
@@ -33,7 +33,7 @@ cd E:\Windrose\Modding
 Copy-Item .\config.example.psd1 .\config.psd1
 ```
 
-Then open **`config.psd1`** in an editor and set at least this path:
+Then open **`config.psd1`** in an editor and set this path:
 
 ```powershell
 Tools = @{
@@ -41,20 +41,13 @@ Tools = @{
 }
 ```
 
-Optional, if you want to use `Build-AllStackVariations.ps1`:
+That's all that's required. `Build-AllStackVariations.ps1` reuses the
+per-variant `Sources\StackSize_*\` folders that are produced from the
+vanilla snapshot + `reference-fields.json` -- no external pak needed.
 
-```powershell
-References = @{
-    StackModX4 = 'E:\Windrose\Mods\Max Stack Sizes\R5\Content\Paks\~mods\Stack_Size_Changes_x04_P.pak'
-}
-```
-
-> The Stack mod reference comes from Nexus:
-> <https://www.nexusmods.com/windrose/mods/26>
-> ("Max Stack Sizes -- 999/9999/999999 or Multipliers x2-10/x100"). The x4
-> variant is used as the structural source because it brings correct
-> `ItemMesh` paths and a JSON schema accepted by the game -- our own vanilla
-> dump cannot do that due to UE4SS limits (`TSoftObjectPtr`).
+If you want to author a brand-new mod from an existing pak as a template,
+pass `-FromPak <path>` explicitly to `Build-WindroseMod.ps1 -Action Init`
+(see Workflow A below).
 
 You can leave `Paths` empty -- all paths are then resolved relative to the
 modding root:
@@ -139,7 +132,8 @@ The master script builds multipliers x2..x10, x100 and absolute values
 ```
 
 Output: `.\Builds\StackSize_<name>_P.pak`. Per variant:
-- `Init` from `$cfg.References.StackModX4` (structural source with correct mesh paths)
+- Reuse the existing `Sources\StackSize_<name>\` folder (or `-FromPak <path>`
+  to (re)initialise it from a reference pak)
 - `Apply-StackMultiplier` with `-VanillaSource .\Sources\Vanilla` (multiplies
   the vanilla value, not the stack-mod value)
 - `Build` into the `Builds\` directory

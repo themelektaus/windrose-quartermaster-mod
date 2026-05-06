@@ -37,7 +37,7 @@ else {
 }
 
 # Ensure required sections exist
-foreach ($k in 'Paths','Tools','Pak','References') {
+foreach ($k in 'Paths','Tools','Pak') {
     if (-not $cfg.ContainsKey($k)) { $cfg[$k] = @{} }
 }
 

@@ -50,9 +50,4 @@
         MountPoint = '../../../'
         Version    = 'V8B'
     }
-
-    # Reference mods (for Build-WindroseMod.ps1 -Action Init -FromPak).
-    References = @{
-        StackModX4 = 'C:\Windrose\Mods\Stack_Size_Changes_x04_P.pak'
-    }
 }

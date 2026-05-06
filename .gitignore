@@ -13,11 +13,19 @@ Sources/StackSize_*/
 # Historical dead-ends and debug artefacts. Not repo-relevant.
 Archive/
 
+# UE4SS source + toolchain for building C++ mods. Large (~500 MB), regenerable.
+.tooling/
+
 # Build metadata (written by Build-WindroseMod.ps1 -Action Init).
 _INIT.txt
 
 # UE4SS mod output (populated by VanillaItemDumper at runtime).
 ue4ss-mods/VanillaItemDumper/Dumps/
+
+# Maintainer-only tool: regenerates reference-fields.json from a local copy of
+# the reference mod. End users never need this -- they consume the committed
+# reference-fields.json directly.
+Extract-ReferenceData.ps1
 
 # Windows cruft.
 Thumbs.db
@@ -28,3 +36,5 @@ desktop.ini
 .idea/
 *.swp
 *~
+
+/Testserver/

@@ -40,12 +40,10 @@ local PATH_SEPARATOR  = "___"  -- on-disk encoding of "/"
 local LOG_TAG         = "[VanillaItemDumper]"
 
 -- Test/diagnostic constraints. Set MAX_DUMPS = 0 for a full run.
--- During soft-path resolver iteration we limit the dump to a tiny subset so
--- the log stays readable and we can iterate fast (no full server start needed
--- to walk all 1268 items). NAME_FILTER is matched as a Lua pattern against
--- the object's GetFullName() result.
-local MAX_DUMPS       = 3
-local NAME_FILTER     = "FiberPlant"   -- "" = no filter
+-- NAME_FILTER is matched as a substring against the object's GetFullName()
+-- result -- "" disables filtering.
+local MAX_DUMPS       = 0
+local NAME_FILTER     = ""
 
 -- UE4SS' embedded Lua print() does NOT append a newline, so consecutive
 -- print() calls (and the timestamps the host prepends to each line) end up
@@ -177,6 +175,36 @@ local walkPropertyValue       -- forward decl (recursive)
 local walkStructProperties    -- forward decl (UObject / UClass-based)
 local walkStructValue         -- forward decl (UScriptStruct-based)
 
+-- ---------------------------------------------------------------------------
+-- Empty TSoftObjectPtr<X> struct collapse
+-- ---------------------------------------------------------------------------
+--
+-- An unset TSoftObjectPtr<...> StructProperty walks to a JSON object of the
+-- form:
+--   { "AssetPath": { "PackageName": "None", "AssetName": "None" } }
+-- The Stack-mod reference (and the R5 JSON loader's preferred form) collapse
+-- this to the literal string "None":
+--   "ConsumableData": "None"
+-- Behaviour was verified via PropReflectProbe v5 Block 4 -- both PackageName
+-- and AssetName always come back as the FName "None" for unset soft pointers.
+-- We only collapse when the entire structure matches that shape; populated
+-- soft pointers (which we can't see anyway, see _softProbeBudget note) would
+-- not collapse.
+local function isAllNoneSoftStruct(out)
+    if type(out) ~= "table" or out.__kind ~= "obj" then return false end
+    if #out._order ~= 1 then return false end
+    if out._order[1] ~= "AssetPath" then return false end
+    local ap = out._values.AssetPath
+    if type(ap) ~= "table" or ap.__kind ~= "obj" then return false end
+    local pn = ap._values.PackageName
+    local an = ap._values.AssetName
+    if pn ~= "None" or an ~= "None" then return false end
+    -- SubPathString may or may not be present -- if it is, must be empty/None.
+    local sub = ap._values.SubPathString
+    if sub ~= nil and sub ~= "" and sub ~= "None" then return false end
+    return true
+end
+
 -- Strip the "<ClassName> " prefix UE prepends to GetFullName().
 -- "Texture2D /Game/UI/HUD/Foo.Foo" -> "/Game/UI/HUD/Foo.Foo"
 local function stripFullName(full)
@@ -228,10 +256,14 @@ end
 -- matching the format produced by FSoftObjectPath::ToString() when the asset
 -- IS loaded.
 
-local _softProbeBudget   = 30  -- bumped from 5 -- last run blew through it before
-                                -- a single field appeared in any log line
+-- Soft-path probing is now silenced (set to 0). PropReflectProbe v3-v5 verified
+-- that no UE4SS Lua method can read the asset path of a TSoftObjectPtr CDO
+-- without crashing -- ItemMesh/ItemTexture/AmmoBaseParams will always come back
+-- as "None" from this dumper, and the merge step in Apply-StackMultiplier.ps1
+-- pulls them from the Stack-Size reference mod (only canonical workaround).
+local _softProbeBudget   = 0
 local _softSuccessLogged = 0
-local MAX_SUCCESS_LOG    = 3
+local MAX_SUCCESS_LOG    = 0
 
 -- Convert a value that *might* be an FName (userdata) or a plain string into
 -- a Lua string, or nil if we can't.
@@ -724,6 +756,24 @@ walkPropertyValue = function(val, ptype, prop)
         return nil
     end
     local t = type(val)
+
+    -- IMPORTANT: enum properties surface as raw numbers from v[pname] -- if we
+    -- early-return on number we never reach the EnumProperty resolver below.
+    -- Resolve enum-typed numerics here before the primitive shortcut.
+    if t == "number" and (ptype == "EnumProperty" or ptype == "ByteProperty") and prop then
+        local enum
+        pcall(function() enum = prop:GetEnum() end)
+        if enum and enum:IsValid() then
+            local fullName
+            pcall(function() fullName = enum:GetNameByValue(val):ToString() end)
+            if type(fullName) == "string" and fullName ~= "" then
+                local short = fullName:match("::(.+)$")
+                return short or fullName
+            end
+        end
+        -- ByteProperty without an attached enum is just a raw byte; fall through.
+    end
+
     if t == "boolean" or t == "number" or t == "string" then
         return val
     end
@@ -741,13 +791,18 @@ walkPropertyValue = function(val, ptype, prop)
                 pcall(function() scriptStruct = prop.Struct end)
             end
         end
+        local result
         if scriptStruct and scriptStruct:IsValid() then
-            return walkStructValue(val, scriptStruct)
+            result = walkStructValue(val, scriptStruct)
+        else
+            -- Fallback: try the UObject-style walker (might match if the value
+            -- happens to be wrapped as a UObject in this UE4SS build).
+            result = walkStructProperties(val) or json.obj()
         end
-        -- Fallback: try the UObject-style walker (might match if the value
-        -- happens to be wrapped as a UObject in this UE4SS build).
-        local s = walkStructProperties(val)
-        return s or json.obj()
+        -- Collapse unset TSoftObjectPtr<X> structs to the string "None"
+        -- (matches Stack-mod reference shape -- see isAllNoneSoftStruct).
+        if isAllNoneSoftStruct(result) then return "None" end
+        return result
 
     elseif ptype == "ObjectProperty" or ptype == "WeakObjectProperty" then
         if not isLiveUd(val) then
@@ -814,8 +869,25 @@ walkPropertyValue = function(val, ptype, prop)
         return walkArray(val, prop)
 
     elseif ptype == "ByteProperty" or ptype == "EnumProperty" then
-        -- Best-effort: if userdata, try ToString (works for FName-style
-        -- enum values UE4SS hands back); else stringify.
+        -- PropReflectProbe v3 Block 1 verified the canonical pattern:
+        --     prop:GetEnum():GetNameByValue(rawNumeric):ToString()
+        -- yields the fully-qualified enum name, e.g.
+        --     "ER5BLInventoryItemClass::Default"
+        -- Stack-mod reference shortens to the value-only suffix ("Default"),
+        -- which the R5 JSON loader accepts identically.
+        if prop and type(val) == "number" then
+            local enum
+            pcall(function() enum = prop:GetEnum() end)
+            if enum and enum:IsValid() then
+                local fullName
+                pcall(function() fullName = enum:GetNameByValue(val):ToString() end)
+                if type(fullName) == "string" and fullName ~= "" then
+                    local short = fullName:match("::(.+)$")
+                    return short or fullName
+                end
+            end
+        end
+        -- Fallback for FName-shaped enum userdata (rare on this build).
         if t == "userdata" then
             local s
             pcall(function() s = val:ToString() end)
@@ -877,6 +949,19 @@ local function dumpItem(obj)
             json.set(payload, key, tree._values[key])
         end
     end
+
+    -- AssetBundleData: PrimaryDataAsset's bundle index. PropReflectProbe v5
+    -- Block 3 verified that this property is NOT exposed via UE4SS's class
+    -- reflection on this build (ForEachProperty walks every superclass and
+    -- never encounters it). The Stack-mod reference always emits an empty
+    -- bundle list ("Bundles": []) for inventory items, so we hard-code that
+    -- shape. If we ever discover an inventory item with non-empty bundles
+    -- this would need revisiting -- but since the reference itself stripped
+    -- it to empty, the R5 loader clearly accepts that as the canonical CDO
+    -- value.
+    local assetBundleData = json.obj()
+    json.set(assetBundleData, "Bundles", json.arr())
+    json.set(payload, "AssetBundleData", assetBundleData)
 
     -- Mirror the NativeClass footer the Stack-mod JSONs end with. We compute
     -- it from the live class so it stays correct even if the engine moves

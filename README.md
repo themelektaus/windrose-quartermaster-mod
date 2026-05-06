@@ -4,10 +4,11 @@ PowerShell pipeline for building stack-size paks for [Windrose](https://www.nexu
 Multiplies (or replaces) `MaxCountInSlot` for every stackable vanilla item
 and packs the result into `.pak` files that go into the `~mods` folder.
 
-The structural source is the reference mod
-[Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26).
 Vanilla values come from a snapshot of the game's defaults
-(see `Sources\Vanilla\` in the repo).
+(see `Sources\Vanilla\` in the repo). Soft-object fields (mesh paths, texture
+paths, FText keys) come from `reference-fields.json`, originally extracted
+from [Max Stack Sizes by Synthlight](https://www.nexusmods.com/windrose/mods/26)
+and now shipped with the repo -- so no external mod is needed to build.
 
 For more details (workflow for custom mods, vanilla re-dump, troubleshooting)
 see [`DETAILS.md`](./DETAILS.md).
@@ -21,12 +22,9 @@ see [`DETAILS.md`](./DETAILS.md).
 Copy-Item config.example.psd1 config.psd1
 ```
 
-Set two paths in `config.psd1`:
+Set one path in `config.psd1`:
 
 - `Tools.RepakExe` -- path to your `repak.exe`
-- `References.StackModX4` -- path to `Stack_Size_Changes_x04_P.pak` (used as
-  the structural source). Source:
-  <https://www.nexusmods.com/windrose/mods/26>
 
 ## Build all variations at once
 
