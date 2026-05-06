@@ -38,7 +38,6 @@ Output: 11 paks in `Builds\`:
 StackSize_x2_P.pak    StackSize_x3_P.pak    StackSize_x4_P.pak
 StackSize_x5_P.pak    StackSize_x6_P.pak    StackSize_x7_P.pak
 StackSize_x8_P.pak    StackSize_x9_P.pak    StackSize_x10_P.pak
-StackSize_x100_P.pak
 StackSize_999_P.pak   StackSize_9999_P.pak
 ```
 

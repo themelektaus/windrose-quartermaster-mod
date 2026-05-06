@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds all stack-size variants (multipliers x2..x100 + absolute
+    Builds all stack-size variants (multipliers x2..x10 + absolute
     999..9999) into the Builds folder.
 
 .DESCRIPTION
@@ -22,7 +22,7 @@
 
 .PARAMETER Variants
     List of variants to build. Default: all 11.
-    Allowed names: x2, x3, x4, x5, x6, x7, x8, x9, x10, x100, 999, 9999
+    Allowed names: x2, x3, x4, x5, x6, x7, x8, x9, x10, 999, 9999
     (x4 is intentionally NOT excluded by default; it matches the currently
     deployed pak. Pass it explicitly if you want to rebuild it.)
 
@@ -59,7 +59,7 @@
 
 .EXAMPLE
     # Only selected variants, overwrite existing
-    .\Build-AllStackVariations.ps1 -Variants x10,x100,9999 -Force
+    .\Build-AllStackVariations.ps1 -Variants x4,x10,9999 -Force
 
 .EXAMPLE
     # Build all, then clean up src folders
@@ -68,10 +68,7 @@
 
 [CmdletBinding()]
 param(
-    [string[]]$Variants = @(
-        'x2','x3','x4','x5','x6','x7','x8','x9','x10','x100',
-        '999','9999'
-    ),
+    [string[]]$Variants = @('x2','x3','x4','x5','x6','x7','x8','x9','x10','999','9999'),
 
     [string]$FromPak,
 

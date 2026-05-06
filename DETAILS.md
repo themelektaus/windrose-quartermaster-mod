@@ -117,15 +117,14 @@ Copy-Item .\Builds\MyAmmoMod_P.pak `
 
 ## 5. Workflow B -- Build all stack variations
 
-The master script builds multipliers x2..x10, x100 and absolute values
-999..9999 in one go:
+The master script builds multipliers x2..x10 and absolute values 999..9999 in one go:
 
 ```powershell
 # All 11 variations
 .\Build-AllStackVariations.ps1 -Force
 
 # Only selected ones
-.\Build-AllStackVariations.ps1 -Variants x10,x100,9999 -Force
+.\Build-AllStackVariations.ps1 -Variants x4,x10,9999 -Force
 
 # Clean up source folders after build
 .\Build-AllStackVariations.ps1 -CleanSources -Force

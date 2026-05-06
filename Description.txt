@@ -1,6 +1,6 @@
 [size=4][b]Description[/b][/size]
 
-Increases the maximum stack size (MaxCountInSlot) of every stackable vanilla item in Windrose. Pick one of 11 variants - multipliers from x2 up to x100, or absolute caps at 999 or 9999. Weapons, armor and other non-stackable items are left untouched, so the only thing that changes is how many of a stackable item fit into a single inventory slot.
+Increases the maximum stack size (MaxCountInSlot) of every stackable vanilla item in Windrose. Pick one of 11 variants - multipliers from x2 up to x10, or absolute caps at 999 or 9999. Weapons, armor and other non-stackable items are left untouched, so the only thing that changes is how many of a stackable item fit into a single inventory slot.
 
 Built on top of the structural work from [url=https://www.nexusmods.com/windrose/mods/26]Max Stack Sizes by Synthlight[/url] - multiplier values are recalculated against an actual vanilla snapshot, so a "x4" pak really gives you 4x the vanilla stack size, regardless of what other stack mods may have shipped before.
 
@@ -21,7 +21,7 @@ Built on top of the structural work from [url=https://www.nexusmods.com/windrose
 [size=4][b]Main features[/b][/size]
 
 [list]
-[*][b]Multiplier variants[/b] - x2, x3, x4, x5, x6, x7, x8, x9, x10, x100
+[*][b]Multiplier variants[/b] - x2, x3, x4, x5, x6, x7, x8, x9, x10
 [*][b]Absolute variants[/b] - 999, 9999 (every stackable item gets the same hard cap)
 [*][b]527 items affected[/b] - ammo, consumables, resources, ship cargo, etc.
 [*][b]Vanilla-safe[/b] - weapons, armor, tools and any other inventory entry with a vanilla stack size of 1 stay vanilla
