@@ -1,65 +1,66 @@
 <#
 .SYNOPSIS
-    Baut alle Stack-Size-Varianten (Multiplier x2..x100 + Absolute 999..999999)
-    in den Builds-Ordner.
+    Builds all stack-size variants (multipliers x2..x100 + absolute
+    999..999999) into the Builds folder.
 
 .DESCRIPTION
-    Ruft pro Variante:
-        1. Build-WindroseMod.ps1 -Action Init (aus Stack-Mod-x4-Pak als Strukturquelle)
-        2. Apply-StackMultiplier.ps1 (mit -VanillaSource, multipliziert vanilla*N
-           oder setzt absoluten Wert)
-        3. Build-WindroseMod.ps1 (Build)
+    For each variant:
+        1. Build-WindroseMod.ps1 -Action Init (from the Stack-mod x4 pak as
+           structural source)
+        2. Apply-StackMultiplier.ps1 (with -VanillaSource, multiplies
+           vanilla*N or sets an absolute value)
+        3. Build-WindroseMod.ps1 (build)
 
-    Die fertigen .pak-Dateien landen in <OutDir> und muessen anschliessend
-    selbst in den ~mods-Ordner des Servers/Clients kopiert werden.
+    The finished .pak files end up in <OutDir> and must be copied into the
+    server/client ~mods folder yourself.
 
     Output: <OutDir>\StackSize_<name>_P.pak
 
-    Quellordner werden in Sources\StackSize_<name>\ erzeugt und stehen lassen
-    (per default), damit du reinschauen/diffen kannst. Mit -CleanSources
-    werden sie nach erfolgreichem Build geloescht.
+    Source folders are created at Sources\StackSize_<name>\ and kept (by
+    default) so you can inspect/diff them. Use -CleanSources to delete them
+    after a successful build.
 
 .PARAMETER Variants
-    Liste der zu bauenden Varianten. Default: alle 13.
-    Erlaubte Namen: x2, x3, x4, x5, x6, x7, x8, x9, x10, x100, 999, 9999, 99999, 999999
-    (x4 ist absichtlich nicht dabei, weil das das aktuell auf Nockalmeer
-    laufende Pak ist - falls du es trotzdem willst, explizit angeben.)
+    List of variants to build. Default: all 13.
+    Allowed names: x2, x3, x4, x5, x6, x7, x8, x9, x10, x100, 999, 9999, 99999, 999999
+    (x4 is intentionally NOT excluded by default; it matches the currently
+    deployed pak. Pass it explicitly if you want to rebuild it.)
 
 .PARAMETER FromPak
-    Quell-Pak fuer den Init-Schritt (liefert das volle JSON-Schema mit
-    Mesh-Pfaden, String-Enums etc.). Default: $cfg.References.StackModX4 (config.psd1).
+    Source pak for the Init step (provides the full JSON schema with mesh
+    paths, string enums, etc.). Default: $cfg.References.StackModX4 (config.psd1).
 
 .PARAMETER VanillaSource
-    Pfad zum Vanilla-Dump (537 echte Vanilla-MaxCountInSlot-Werte).
+    Path to the vanilla dump (537 real vanilla MaxCountInSlot values).
     Default: $cfg.Paths.Vanilla (config.psd1).
 
 .PARAMETER SrcRoot
-    Wo die Per-Variante-Source-Ordner abgelegt werden.
+    Where the per-variant source folders are placed.
     Default: $cfg.Paths.Sources (config.psd1).
 
 .PARAMETER OutDir
-    Wo die fertigen .pak-Dateien landen.
+    Where the finished .pak files end up.
     Default: $cfg.Paths.Builds (config.psd1).
 
 .PARAMETER Force
-    Vorhandene src-Ordner und Builds ueberschreiben.
+    Overwrite existing src folders and builds.
 
 .PARAMETER CleanSources
-    Nach erfolgreichem Build den src-Ordner der Variante loeschen.
+    Delete the variant's src folder after a successful build.
 
 .PARAMETER DryRun
-    Nur zeigen, was passieren wuerde.
+    Only show what would happen.
 
 .EXAMPLE
-    # Alle 13 Variationen bauen
+    # Build all 13 variants
     .\Build-AllStackVariations.ps1
 
 .EXAMPLE
-    # Nur ausgewaehlte Variationen, vorhandene ueberschreiben
+    # Only selected variants, overwrite existing
     .\Build-AllStackVariations.ps1 -Variants x10,x100,999999 -Force
 
 .EXAMPLE
-    # Alle bauen, src-Ordner danach aufraeumen
+    # Build all, then clean up src folders
     .\Build-AllStackVariations.ps1 -CleanSources -Force
 #>
 
@@ -87,7 +88,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Config laden ---------------------------------------------------------
+# --- Load config ----------------------------------------------------------
 $cfg = & (Join-Path $PSScriptRoot '_config.ps1')
 
 if (-not $FromPak)       { $FromPak       = [string]$cfg.References.StackModX4 }
@@ -100,14 +101,14 @@ function Write-OK($msg)    { Write-Host "    [OK] $msg"     -ForegroundColor Gre
 function Write-Warn2($msg) { Write-Host "    [!]  $msg"     -ForegroundColor Yellow }
 function Write-Err2($msg)  { Write-Host "    [X]  $msg"     -ForegroundColor Red }
 
-# Pfade verifizieren
+# Verify paths
 $ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildScript  = Join-Path $ScriptRoot 'Build-WindroseMod.ps1'
 $ApplyScript  = Join-Path $ScriptRoot 'Apply-StackMultiplier.ps1'
 
 foreach ($p in @($BuildScript, $ApplyScript, $FromPak, $VanillaSource)) {
     if (-not (Test-Path -LiteralPath $p)) {
-        throw "Pfad nicht gefunden: $p"
+        throw "Path not found: $p"
     }
 }
 
@@ -118,7 +119,7 @@ if (-not (Test-Path -LiteralPath $SrcRoot)) {
     if (-not $DryRun) { New-Item -ItemType Directory -Path $SrcRoot -Force | Out-Null }
 }
 
-# Variante-Spec ableiten: Multiplier oder Absolute?
+# Derive variant spec: multiplier or absolute?
 function Resolve-Variant($name) {
     if ($name -match '^x(\d+)$') {
         return [pscustomobject]@{
@@ -136,7 +137,7 @@ function Resolve-Variant($name) {
             Absolute   = [int]$matches[1]
         }
     }
-    throw "Unbekannte Variante: $name (erlaubt: 'xN' oder 'N')"
+    throw "Unknown variant: $name (allowed: 'xN' or 'N')"
 }
 
 Write-Step "Build All Stack Variations"
@@ -145,9 +146,9 @@ Write-OK "FromPak      : $FromPak"
 Write-OK "VanillaSource: $VanillaSource"
 Write-OK "SrcRoot      : $SrcRoot"
 Write-OK "OutDir       : $OutDir"
-if ($Force)        { Write-OK "Force        : ja (vorhandene werden ueberschrieben)" }
-if ($CleanSources) { Write-OK "CleanSources : ja (src-Ordner werden nach Build geloescht)" }
-if ($DryRun)       { Write-Warn2 "DryRun aktiv -> es passiert nichts" }
+if ($Force)        { Write-OK "Force        : yes (existing builds will be overwritten)" }
+if ($CleanSources) { Write-OK "CleanSources : yes (src folders deleted after build)" }
+if ($DryRun)       { Write-Warn2 "DryRun active -> nothing happens" }
 Write-Host ""
 
 $results = @()
@@ -165,16 +166,16 @@ foreach ($vname in $Variants) {
     Write-Host "================================================================" -ForegroundColor DarkCyan
     Write-Step "[$idx/$total] $modName  ($($v.Mode))"
 
-    # Skip wenn Pak schon da und kein -Force
+    # Skip when pak already exists and -Force was not given
     if ((Test-Path -LiteralPath $pakPath) -and -not $Force) {
-        Write-Warn2 "Pak existiert bereits, skip (mit -Force ueberschreiben): $pakPath"
+        Write-Warn2 "Pak already exists, skipping (use -Force to overwrite): $pakPath"
         $results += [pscustomobject]@{ Name = $modName; Status = 'skipped'; Path = $pakPath }
         continue
     }
 
     try {
         # 1. Init
-        Write-Step "Init aus FromPak -> $srcPath"
+        Write-Step "Init from FromPak -> $srcPath"
         $initArgs = @{
             Action = 'Init'
             Source = $srcPath
@@ -186,22 +187,22 @@ foreach ($vname in $Variants) {
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Init failed (exit $LASTEXITCODE)" }
 
         if ($DryRun) {
-            # Im DryRun ist nach Init nichts entpackt -> Apply/Build wuerden auf
-            # leerem/nicht existentem Pfad fehlschlagen. Simulation ende hier.
-            Write-Warn2 "DryRun: Apply/Pack uebersprungen (kein src vorhanden)"
+            # In DryRun nothing was unpacked after Init -> Apply/Build would
+            # fail on an empty/non-existent path. End the simulation here.
+            Write-Warn2 "DryRun: skipping Apply/Pack (no src present)"
             $results += [pscustomobject]@{ Name = $modName; Status = 'ok (dryrun)'; Path = $pakPath }
             continue
         }
 
         # 2. Apply
-        Write-Step "Apply $($v.Mode) auf $srcPath"
+        Write-Step "Apply $($v.Mode) on $srcPath"
         $applyArgs = @{
             Source        = $srcPath
             VanillaSource = $VanillaSource
         }
         if ($v.Mode -eq 'Multiplier') {
             $applyArgs.Multiplier = $v.Multiplier
-            $applyArgs.Cap        = 0   # kein Cap - User will ja explizit hohe Werte
+            $applyArgs.Cap        = 0   # no cap - user explicitly wants high values
         } else {
             $applyArgs.AbsoluteValue = $v.Absolute
         }
@@ -223,21 +224,21 @@ foreach ($vname in $Variants) {
 
         # 4. Optional cleanup
         if ($CleanSources -and -not $DryRun) {
-            Write-Step "CleanSources: loesche $srcPath"
+            Write-Step "CleanSources: deleting $srcPath"
             Remove-Item -LiteralPath $srcPath -Recurse -Force
         }
 
         $results += [pscustomobject]@{ Name = $modName; Status = 'ok'; Path = $pakPath }
-        Write-OK "$modName fertig"
+        Write-OK "$modName done"
     }
     catch {
-        Write-Err2 "FEHLER bei $($modName): $_"
+        Write-Err2 "ERROR on $($modName): $_"
         $results += [pscustomobject]@{ Name = $modName; Status = "error: $_"; Path = $pakPath }
     }
 }
 
 Write-Host ""
-Write-Step "Zusammenfassung"
+Write-Step "Summary"
 $results | ForEach-Object {
     $color = switch -Wildcard ($_.Status) {
         'ok'         { 'Green' }
@@ -254,5 +255,5 @@ $errCount  = ($results | Where-Object Status -like 'error*').Count
 Write-Host ""
 Write-OK "OK: $okCount  Skipped: $skipCount  Errors: $errCount"
 if ($DryRun) {
-    Write-Warn2 "DryRun aktiv -> nichts wurde wirklich geschrieben"
+    Write-Warn2 "DryRun active -> nothing was actually written"
 }

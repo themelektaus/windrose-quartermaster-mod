@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-    Laedt die Windrose-Modding-Config aus config.psd1 (mit Fallback auf
-    config.example.psd1) und gibt das Hashtable zurueck.
+    Loads the Windrose modding config from config.psd1 (with fallback to
+    config.example.psd1) and returns the hashtable.
 
 .DESCRIPTION
-    Wird von allen Modding-Skripten dot-sourced bzw. aufgerufen:
+    Dot-sourced or invoked by every modding script:
         $cfg = & "$PSScriptRoot\_config.ps1"
         $RepakExe = $cfg.Tools.RepakExe
 
-    Sucht primaer nach `config.psd1` neben dem Skript. Falls nicht vorhanden,
-    wird `config.example.psd1` verwendet (mit Warnung) -- das ist nur fuer
-    DryRun/Help nuetzlich; richtige Builds brauchen eine echte config.psd1.
+    Looks primarily for `config.psd1` next to the script. If missing, falls
+    back to `config.example.psd1` (with a warning) -- that's only useful for
+    DryRun/help; real builds need an actual config.psd1.
 
-    Validiert, dass die Pflicht-Sektionen vorhanden sind, fuellt fehlende
-    Path-Defaults aus dem Modding-Root (= Skript-Verzeichnis) auf und loest
-    relative Path-Eintraege gegen das Modding-Root auf.
+    Validates that the required sections are present, fills in missing path
+    defaults from the modding root (= script directory), and resolves
+    relative path entries against the modding root.
 #>
 [CmdletBinding()]
 param()
@@ -29,21 +29,21 @@ if (Test-Path -LiteralPath $cfgPath) {
     $cfg = Import-PowerShellDataFile -LiteralPath $cfgPath
 }
 elseif (Test-Path -LiteralPath $examplePath) {
-    Write-Warning "config.psd1 nicht gefunden -- nutze config.example.psd1 als Fallback. Kopiere und passe an: cp config.example.psd1 config.psd1"
+    Write-Warning "config.psd1 not found -- falling back to config.example.psd1. Copy and adjust: cp config.example.psd1 config.psd1"
     $cfg = Import-PowerShellDataFile -LiteralPath $examplePath
 }
 else {
-    throw "Weder config.psd1 noch config.example.psd1 in $ScriptDir gefunden."
+    throw "Neither config.psd1 nor config.example.psd1 found in $ScriptDir."
 }
 
-# Pflicht-Sektionen sicherstellen
+# Ensure required sections exist
 foreach ($k in 'Paths','Tools','Pak','References') {
     if (-not $cfg.ContainsKey($k)) { $cfg[$k] = @{} }
 }
 
-# Default-Pfade relativ zum Modding-Root (= ScriptDir) ableiten.
-# Wenn in config.psd1 ein eigener Wert steht, wird dieser respektiert;
-# relative Pfade werden gegen ScriptDir aufgeloest, absolute bleiben absolut.
+# Derive default paths relative to the modding root (= ScriptDir).
+# If config.psd1 has a custom value it is honoured; relative paths are
+# resolved against ScriptDir, absolute paths stay absolute.
 $pathDefaults = [ordered]@{
     Sources = 'Sources'
     Vanilla = 'Sources\Vanilla'
@@ -57,11 +57,11 @@ foreach ($k in $pathDefaults.Keys) {
         $cfg.Paths[$k] = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir $pathDefaults[$k]))
     }
     elseif (-not [System.IO.Path]::IsPathRooted($val)) {
-        # Relativer Pfad in der Config -> gegen ScriptDir aufloesen
+        # Relative path in the config -> resolve against ScriptDir
         $cfg.Paths[$k] = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir $val))
     }
     else {
-        # Bereits absolut
+        # Already absolute
         $cfg.Paths[$k] = [System.IO.Path]::GetFullPath($val)
     }
 }

@@ -1,67 +1,67 @@
 <#
 .SYNOPSIS
-    Multipliziert MaxCountInSlot in allen JSONs eines Mod-Source-Ordners
-    und loescht Files, die nicht stackbar sind (Stack <= 1) oder kein
-    MaxCountInSlot-Feld haben.
+    Multiplies MaxCountInSlot in every JSON of a mod source folder and
+    deletes files that are not stackable (Stack <= 1) or have no
+    MaxCountInSlot field.
 
 .DESCRIPTION
-    Walker fuer Windrose-Stack-Mods.
+    Walker for Windrose stack mods.
 
-    Pro JSON:
-      - liest "MaxCountInSlot": <n>
-      - n <= 1                -> Datei loeschen (bleibt Vanilla)
-      - n >  1 (oder == 0)    -> n * Multiplier (ge-cap-t auf -Cap)
-                                und JSON neu schreiben (Tabs/Reihenfolge bleiben)
+    Per JSON:
+      - reads "MaxCountInSlot": <n>
+      - n <= 1                -> delete file (stays vanilla)
+      - n >  1 (or == 0)      -> n * Multiplier (capped at -Cap)
+                                 and rewrite the JSON (tabs/order preserved)
 
-    Schreibt eine kompakte Statistik am Ende.
+    Writes a compact summary at the end.
 
 .PARAMETER Source
-    Pflicht. Pfad zum Mod-Source-Ordner (in dem die JSONs liegen).
+    Required. Path to the mod source folder containing the JSONs.
 
 .PARAMETER Multiplier
-    Faktor fuer MaxCountInSlot. Default: 4.
+    Factor for MaxCountInSlot. Default: 4.
 
 .PARAMETER Cap
-    Maximalwert. Default: 39996 (Stack-Mod x4 nutzt diesen als Cap).
-    Setze 0 fuer "kein Cap".
+    Maximum value. Default: 39996 (the Stack-mod x4 uses this as a cap).
+    Set 0 for "no cap".
 
 .PARAMETER KeepUnchanged
-    Schalter. Falls gesetzt, werden Files mit Stack <= 1 nicht geloescht,
-    sondern unveraendert behalten. Default: Files werden geloescht.
+    Switch. If set, files with Stack <= 1 are kept unchanged instead of
+    being deleted. Default: files are deleted.
 
 .PARAMETER ExcludePath
-    Liste von Pfad-Substrings (Wildcards erlaubt). Files, deren relativer
-    Pfad eines dieser Muster enthaelt, werden komplett ignoriert (geloescht
-    bzw. uebersprungen, je nach -KeepUnchanged).
-    Default: '*\Tests\*' (Dev-Test-Items rauswerfen)
+    List of path substrings (wildcards allowed). Files whose relative
+    path matches any of these patterns are ignored entirely (deleted or
+    skipped, depending on -KeepUnchanged).
+    Default: '*\Tests\*' (drop dev/test items)
 
 .PARAMETER Minimal
-    Schalter. Ersetzt das gesamte JSON durch ein Minimal-Schema, das nur
-    "$type", "InventoryItemGppData.MaxCountInSlot" und "NativeClass" enthaelt.
-    Vermeidet Loader-Fehler durch problematische Vanilla-Dump-Felder
-    (Enum-Zahlen, leere Default-Structs in Arrays etc.) und vertraut auf
-    Property-Override im R5BL-Loader.
+    Switch. Replaces the entire JSON with a minimal schema containing only
+    "$type", "InventoryItemGppData.MaxCountInSlot" and "NativeClass".
+    Avoids loader errors caused by problematic vanilla-dump fields (number
+    enums, empty default structs in arrays, etc.) and relies on property
+    overrides in the R5BL loader.
 
 .PARAMETER VanillaSource
-    Optionaler Pfad zu einem zweiten Source-Tree mit den Vanilla-JSONs
-    (z.B. .\Sources\Vanilla). Wenn gesetzt, wird der Multiplier auf den Vanilla-
-    Wert angewendet (statt auf den Source-Wert). Nuetzlich, wenn -Source
-    bereits modifizierte Werte enthaelt (z.B. aus -FromPak einer fremden
-    Stack-Mod) und du echte Vanilla*Multiplier-Werte willst.
+    Optional path to a second source tree containing the vanilla JSONs
+    (e.g. .\Sources\Vanilla). When set, the multiplier is applied to the
+    vanilla value instead of the source value. Useful when -Source already
+    contains modified values (e.g. from -FromPak of someone else's stack
+    mod) and you want true vanilla*multiplier values.
 
-    Lookup: gleicher relativer Pfad in -VanillaSource. Fehlende Vanilla-
-    Counterparts werden geloggt und uebersprungen.
+    Lookup: same relative path inside -VanillaSource. Missing vanilla
+    counterparts are logged and skipped.
 
 .PARAMETER AbsoluteValue
-    Optionaler Festwert. Wenn gesetzt (>0), wird MaxCountInSlot fuer alle
-    stackbaren Items (Vanilla-Stack > 1) auf diesen Wert gesetzt, statt zu
-    multiplizieren. -Multiplier wird dann ignoriert. -Cap wird ebenfalls
-    nicht mehr angewendet, weil der Wert ja direkt vorgegeben ist.
+    Optional fixed value. When set (>0), MaxCountInSlot is set to this
+    value for every stackable item (vanilla stack > 1) instead of being
+    multiplied. -Multiplier is then ignored. -Cap is also no longer
+    applied because the value is given directly.
 
-    Use case: flache "alle Stacks = 999" Mods.
+    Use case: flat "all stacks = 999" mods.
 
 .PARAMETER DryRun
-    Nur zeigen, was passieren wuerde, nichts schreiben/loeschen.
+    Only show what would happen, do not write/delete anything.
 
 .EXAMPLE
     .\Apply-StackMultiplier.ps1 -Source .\Sources\StackSize_x4 -Multiplier 4
@@ -102,23 +102,23 @@ function Write-OK($msg)    { Write-Host "    [OK] $msg"     -ForegroundColor Gre
 function Write-Warn2($msg) { Write-Host "    [!]  $msg"     -ForegroundColor Yellow }
 
 if ($Multiplier -lt 1) {
-    throw "Multiplier muss >= 1 sein (war: $Multiplier)"
+    throw "Multiplier must be >= 1 (was: $Multiplier)"
 }
 if ($AbsoluteValue -lt 0) {
-    throw "AbsoluteValue darf nicht negativ sein (war: $AbsoluteValue)"
+    throw "AbsoluteValue must not be negative (was: $AbsoluteValue)"
 }
 $IsAbsolute = ($AbsoluteValue -gt 0)
 
 $SourceFull = (Resolve-Path -LiteralPath $Source).Path
 if (-not (Test-Path -LiteralPath $SourceFull -PathType Container)) {
-    throw "Source ist kein Ordner: $SourceFull"
+    throw "Source is not a folder: $SourceFull"
 }
 
 $VanillaSourceFull = $null
 if ($VanillaSource) {
     $VanillaSourceFull = (Resolve-Path -LiteralPath $VanillaSource).Path
     if (-not (Test-Path -LiteralPath $VanillaSourceFull -PathType Container)) {
-        throw "VanillaSource ist kein Ordner: $VanillaSourceFull"
+        throw "VanillaSource is not a folder: $VanillaSourceFull"
     }
 }
 
@@ -129,17 +129,17 @@ if ($VanillaSourceFull) {
     Write-OK "Mode       : Vanilla-merge (multiplier applied to vanilla values)"
 }
 if ($IsAbsolute) {
-    Write-OK "AbsoluteVal: $AbsoluteValue (Multiplier/Cap ignoriert)"
+    Write-OK "AbsoluteVal: $AbsoluteValue (Multiplier/Cap ignored)"
 } else {
     Write-OK "Multiplier : x$Multiplier"
     if ($Cap -gt 0) { Write-OK "Cap        : $Cap" } else { Write-OK "Cap        : (none)" }
 }
 if ($KeepUnchanged) { Write-OK "Cleanup    : keep unchanged files" } else { Write-OK "Cleanup    : delete unchanged files (Stack<=1)" }
 if ($Minimal)       { Write-OK "Schema     : minimal (Type+MaxCountInSlot+NativeClass only)" } else { Write-OK "Schema     : full (preserve all original fields)" }
-if ($DryRun) { Write-Warn2 "DryRun aktiv -> nichts wird geschrieben/geloescht" }
+if ($DryRun) { Write-Warn2 "DryRun active -> nothing will be written/deleted" }
 
 $files = Get-ChildItem -LiteralPath $SourceFull -Recurse -File -Filter '*.json'
-Write-OK "Gefunden   : $($files.Count) JSON-Datei(en)"
+Write-OK "Found      : $($files.Count) JSON file(s)"
 if ($ExcludePath -and $ExcludePath.Count -gt 0) {
     Write-OK ("ExcludePath: {0}" -f ($ExcludePath -join ', '))
 }
@@ -153,7 +153,7 @@ $excluded  = 0
 $noVanilla = 0
 
 foreach ($f in $files) {
-    # ExcludePath-Pruefung (gegen relativen Pfad)
+    # ExcludePath check (against relative path)
     $rel = $f.FullName.Substring($SourceFull.Length).TrimStart('\')
     $isExcluded = $false
     foreach ($pat in $ExcludePath) {
@@ -171,21 +171,21 @@ foreach ($f in $files) {
         continue
     }
 
-    # UTF-8 explizit, sonst frisst Windows PowerShell 5.1 Default-ANSI alle
-    # Nicht-ASCII-Zeichen (z.B. kyrillische Item-Namen) und schreibt sie als
-    # Mojibake zurueck.
+    # Read explicitly as UTF-8, otherwise Windows PowerShell 5.1's default
+    # ANSI codepage will mangle non-ASCII characters (e.g. Cyrillic item
+    # names) and re-write them as mojibake.
     $content = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
 
     if ($content -match '("MaxCountInSlot"\s*:\s*)(\d+)') {
         $sourceVal = [int]$matches[2]
 
-        # Vanilla-Merge: Basis-Wert kommt aus VanillaSource, nicht aus Source
+        # Vanilla merge: base value comes from VanillaSource, not from Source
         if ($VanillaSourceFull) {
             $vanillaPath = Join-Path $VanillaSourceFull $rel
             if (-not (Test-Path -LiteralPath $vanillaPath)) {
-                # Kein Vanilla-Counterpart -> File ist Stack-Mod-spezifisch
-                # (z.B. Items, die der Stack-Mod-Autor bewusst stackbar gemacht hat).
-                # Wir loeschen es, weil wir keine echte Vanilla-Basis haben.
+                # No vanilla counterpart -> file is stack-mod-specific
+                # (e.g. items the stack-mod author deliberately made stackable).
+                # Delete it because we have no real vanilla baseline.
                 if (-not $DryRun) {
                     Remove-Item -LiteralPath $f.FullName -Force
                 }
@@ -196,7 +196,7 @@ foreach ($f in $files) {
             if ($vanillaContent -match '"MaxCountInSlot"\s*:\s*(\d+)') {
                 $oldVal = [int]$matches[1]
             } else {
-                # Vanilla hat kein MaxCountInSlot -> nicht modifizierbar
+                # Vanilla has no MaxCountInSlot -> not modifiable
                 if (-not $DryRun) {
                     Remove-Item -LiteralPath $f.FullName -Force
                 }
@@ -208,7 +208,7 @@ foreach ($f in $files) {
         }
 
         if ($oldVal -le 1) {
-            # Nicht stackbar -> loeschen oder behalten
+            # Not stackable -> delete or keep
             if ($KeepUnchanged) {
                 $kept++
             } else {
@@ -231,24 +231,24 @@ foreach ($f in $files) {
         }
 
         if ($newVal -eq $sourceVal -and -not $Minimal) {
-            # Source hat schon den richtigen Wert (z.B. wenn FromPak schon x4 war)
+            # Source already has the correct value (e.g. when FromPak was already x4)
             $kept++
             continue
         }
 
         if ($Minimal) {
-            # NativeClass aus Original uebernehmen (Default falls nicht gefunden)
+            # Carry over NativeClass from the original (default if not found)
             $nativeClass = "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
             if ($content -match '"NativeClass"\s*:\s*"([^"]+)"') {
                 $nativeClass = $matches[1]
             }
-            # $type aus Original uebernehmen (Default R5BLInventoryItem)
+            # Carry over $type from the original (default R5BLInventoryItem)
             $typeName = 'R5BLInventoryItem'
             if ($content -match '"\$type"\s*:\s*"([^"]+)"') {
                 $typeName = $matches[1]
             }
 
-            # Minimal-JSON mit Tabs (Stack-Mod-Style), CRLF damit es zum Original passt
+            # Minimal JSON with tabs (Stack-mod style), CRLF to match the original
             $newContent = @"
 {
 `t"`$type": "$typeName",
@@ -263,18 +263,18 @@ foreach ($f in $files) {
                 $content,
                 '("MaxCountInSlot"\s*:\s*)\d+',
                 { param($m) $m.Groups[1].Value + $newVal.ToString() },
-                1   # nur ersten Match ersetzen
+                1   # only replace the first match
             )
         }
 
         if (-not $DryRun) {
-            # UTF-8 ohne BOM, LF-Zeilenenden bleiben so wie sie sind
+            # UTF-8 without BOM, LF line endings stay as they are
             $utf8 = New-Object System.Text.UTF8Encoding($false)
             [System.IO.File]::WriteAllText($f.FullName, $newContent, $utf8)
         }
         $modified++
     } else {
-        # Kein MaxCountInSlot-Feld -> loeschen (passt nicht ins Schema)
+        # No MaxCountInSlot field -> delete (doesn't fit the schema)
         if ($KeepUnchanged) {
             $kept++
         } else {
@@ -286,9 +286,10 @@ foreach ($f in $files) {
     }
 }
 
-# Leere Verzeichnisse aufraeumen
+# Clean up empty directories
 if (-not $DryRun -and -not $KeepUnchanged) {
-    # Mehrfach durchlaufen, weil leere Parents erst nach dem Kind-Loeschen leer werden
+    # Loop multiple times because empty parents only become empty after
+    # their children are deleted.
     for ($i = 0; $i -lt 10; $i++) {
         $emptyDirs = Get-ChildItem -LiteralPath $SourceFull -Recurse -Directory |
             Where-Object { @(Get-ChildItem -LiteralPath $_.FullName -Force).Count -eq 0 }
@@ -298,22 +299,22 @@ if (-not $DryRun -and -not $KeepUnchanged) {
 }
 
 Write-Host ""
-Write-Step "Fertig"
-Write-OK ("Modifiziert        : {0}" -f $modified)
+Write-Step "Done"
+Write-OK ("Modified           : {0}" -f $modified)
 if ($capped -gt 0) {
-    Write-OK ("  davon ge-cap-t   : {0} (auf {1})" -f $capped, $Cap)
+    Write-OK ("  of which capped  : {0} (to {1})" -f $capped, $Cap)
 }
 if ($KeepUnchanged) {
-    Write-OK ("Unveraendert       : {0}" -f $kept)
+    Write-OK ("Unchanged          : {0}" -f $kept)
 } else {
-    Write-OK ("Geloescht (Stack=1): {0}" -f $deleted)
-    Write-OK ("Geloescht (no MCS) : {0}" -f $skipped)
-    Write-OK ("Geloescht (excl.)  : {0}" -f $excluded)
+    Write-OK ("Deleted (Stack=1)  : {0}" -f $deleted)
+    Write-OK ("Deleted (no MCS)   : {0}" -f $skipped)
+    Write-OK ("Deleted (excl.)    : {0}" -f $excluded)
     if ($VanillaSourceFull) {
-        Write-OK ("Geloescht (no van.): {0}" -f $noVanilla)
+        Write-OK ("Deleted (no van.)  : {0}" -f $noVanilla)
     }
-    Write-OK ("Behalten unveraend.: {0}" -f $kept)
+    Write-OK ("Kept unchanged     : {0}" -f $kept)
 }
 if ($DryRun) {
-    Write-Warn2 "DryRun aktiv -> nichts wurde wirklich geschrieben/geloescht"
+    Write-Warn2 "DryRun active -> nothing was actually written/deleted"
 }

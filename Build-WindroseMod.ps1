@@ -1,80 +1,80 @@
 <#
 .SYNOPSIS
-    Baut aus einem Quell-Ordner ein _P.pak fuer Windrose. Kann optional
-    eine neue Mod-Source aus dem Vanilla-Snapshot oder einem existierenden
-    Pak initialisieren.
+    Builds a _P.pak for Windrose from a source folder. Can optionally
+    initialise a new mod source from the vanilla snapshot or from an
+    existing pak.
 
 .DESCRIPTION
-    Zwei Modi via -Action:
+    Two modes via -Action:
 
-      -Action Build  (Default): Wrapper um repak.exe. Erwartet einen Quell-Ordner,
-        dessen Inhalt im Spiel "ueber" den Original-Dateien gemountet wird. Der
-        Pak-Name endet immer auf "_P" (Patch-Marker), damit das Spiel ihn als
-        Override laedt. Das fertige Pak landet in -OutDir und wird NICHT
-        automatisch installiert -- kopiere es selbst in den jeweiligen
-        ~mods-Ordner (Server oder Client).
+      -Action Build  (default): Wrapper around repak.exe. Expects a source
+        folder whose contents will be mounted "over" the original files in
+        the game. The pak name always ends in "_P" (patch marker) so the
+        game loads it as an override. The finished pak lands in -OutDir and
+        is NOT installed automatically -- copy it yourself into the
+        respective ~mods folder (server or client).
 
-      -Action Init: Erzeugt einen neuen Mod-Quell-Ordner indem Files aus
-        Sources\Vanilla\ (Default) oder einem existierenden .pak (-FromPak)
-        kopiert/entpackt werden. Optional gefiltert via -Filter (Glob auf Filename)
-        oder -Categories (Liste von InventoryItems-Unterordnern).
+      -Action Init: Creates a new mod source folder by copying/unpacking
+        files from Sources\Vanilla\ (default) or from an existing .pak
+        (-FromPak). Optionally filtered via -Filter (filename glob) or
+        -Categories (list of InventoryItems sub-folders).
 
-    Typische Ordnerstruktur unterhalb von -Source (fuer Build):
+    Typical folder structure beneath -Source (for Build):
         R5\Plugins\R5BusinessRules\Content\InventoryItems\Ammo\*.json
         R5\Plugins\R5BusinessRules\Content\InventoryItems\Consumables\...
 
-    Default Mount-Point ist `../../../` (passt zu allen bisher untersuchten
-    Windrose-Mods, z.B. Stack_Size_Changes_x04_P.pak). Siehe config.psd1
-    fuer Details.
+    Default mount point is `../../../` (matches every Windrose mod
+    examined so far, e.g. Stack_Size_Changes_x04_P.pak). See config.psd1
+    for details.
 
 .PARAMETER Action
-    Build (Default) baut ein .pak. Init initialisiert einen Mod-Quell-Ordner.
+    Build (default) builds a .pak. Init initialises a mod source folder.
 
 .PARAMETER Source
-    Pflicht. Build: Pfad zum Quell-Ordner mit den Mod-Dateien.
-    Init:  Pfad zum NEUEN Quell-Ordner (wird erzeugt, muss leer/nicht-existent sein
-    oder -Force gesetzt).
+    Required. Build: path to the source folder with the mod files.
+    Init:  path to the NEW source folder (will be created; must be
+    empty/non-existent or -Force given).
 
 .PARAMETER Name
-    [Build] Basisname des Paks (ohne Endung). "_P" wird automatisch angehaengt,
-    falls noch nicht vorhanden. Default: Name des Quell-Ordners.
+    [Build] Base name of the pak (without extension). "_P" is appended
+    automatically if not already present. Default: name of the source folder.
 
 .PARAMETER OutDir
-    [Build] Wohin das Pak geschrieben wird. Default: $cfg.Paths.Builds (config.psd1).
+    [Build] Where the pak is written. Default: $cfg.Paths.Builds (config.psd1).
 
 .PARAMETER MountPoint
-    [Build] Mount-Point im Pak. Default: $cfg.Pak.MountPoint ('../../../').
+    [Build] Mount point inside the pak. Default: $cfg.Pak.MountPoint ('../../../').
 
 .PARAMETER Version
-    [Build] Pak-Format-Version. Default: $cfg.Pak.Version ('V8B').
+    [Build] Pak format version. Default: $cfg.Pak.Version ('V8B').
 
 .PARAMETER RepakExe
-    Pfad zu repak.exe. Default: $cfg.Tools.RepakExe.
-    Wird auch fuer -Action Init -FromPak benoetigt.
+    Path to repak.exe. Default: $cfg.Tools.RepakExe.
+    Also required for -Action Init -FromPak.
 
 .PARAMETER VanillaDir
-    [Init] Quell-Ordner mit dem Vanilla-Snapshot.
-    Default: $cfg.Paths.Vanilla (= Output von Dump-WindroseVanilla.ps1).
+    [Init] Source folder with the vanilla snapshot.
+    Default: $cfg.Paths.Vanilla (= output of Dump-WindroseVanilla.ps1).
 
 .PARAMETER FromPak
-    [Init] Statt aus VanillaDir wird aus diesem .pak entpackt (z.B. eine bestehende
-    Mod als Template). Schliesst -VanillaDir aus.
+    [Init] Instead of unpacking from VanillaDir, unpack from this .pak (e.g.
+    an existing mod as a template). Mutually exclusive with -VanillaDir.
 
 .PARAMETER Filter
-    [Init] Glob-Pattern (eines oder mehrere) zum Filtern auf Filename-Ebene,
-    z.B. '*Cannonball*'. Mehrere Pattern werden ODER-verknuepft.
+    [Init] Glob pattern (one or more) to filter on the filename level,
+    e.g. '*Cannonball*'. Multiple patterns are OR-combined.
 
 .PARAMETER Categories
-    [Init] Liste von InventoryItems-Unterordnern (z.B. Ammo,Consumables).
-    Wenn gesetzt, werden nur Dateien unter R5\...\InventoryItems\<Cat>\... uebernommen.
+    [Init] List of InventoryItems sub-folders (e.g. Ammo,Consumables).
+    If set, only files under R5\...\InventoryItems\<Cat>\... are kept.
 
 .PARAMETER Force
-    Build: Ueberschreibt eine vorhandene Output-Datei ohne Rueckfrage.
-    Init:  Erlaubt das Schreiben in einen nicht-leeren Ziel-Ordner (mergt; vorhandene
-    Dateien werden ueberschrieben).
+    Build: Overwrites an existing output file without asking.
+    Init:  Allows writing into a non-empty target folder (merges; existing
+    files are overwritten).
 
 .PARAMETER DryRun
-    Zeigt nur was passieren wuerde, ohne zu packen, zu entpacken oder zu kopieren.
+    Only show what would happen, without packing, unpacking, or copying.
 
 .EXAMPLE
     .\Build-WindroseMod.ps1 -Source .\Sources\MyStackMod -Name MyStackMod
@@ -83,15 +83,15 @@
     .\Build-WindroseMod.ps1 -Source .\Sources\MyStackMod -Force
 
 .EXAMPLE
-    # Neue Mod-Source aus Vanilla, nur Cannonball-Items
+    # New mod source from vanilla, only Cannonball items
     .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyAmmoMod -Filter '*Cannonball*'
 
 .EXAMPLE
-    # Neue Mod-Source aus Vanilla, nur Ammo + Consumables
+    # New mod source from vanilla, only Ammo + Consumables
     .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyMod -Categories Ammo,Consumables
 
 .EXAMPLE
-    # Neue Mod-Source aus existierendem Pak (als Template, Pfad aus Config)
+    # New mod source from an existing pak (as template, path from config)
     .\Build-WindroseMod.ps1 -Action Init -Source .\Sources\MyMod -FromPak $cfg.References.StackModX4
 #>
 
@@ -107,8 +107,8 @@ param(
 
     [string]$OutDir,
 
-    # Defaults aus config.psd1 (Tools.RepakExe, Pak.MountPoint, Pak.Version).
-    # Explizit gesetzte Parameter haben Vorrang.
+    # Defaults from config.psd1 (Tools.RepakExe, Pak.MountPoint, Pak.Version).
+    # Explicitly set parameters take precedence.
     [string]$MountPoint,
 
     [ValidateSet('V0','V1','V2','V3','V4','V5','V6','V7','V8A','V8B','V9','V10','V11','')]
@@ -116,7 +116,7 @@ param(
 
     [string]$RepakExe,
 
-    # --- Init-Parameter ---
+    # --- Init parameters ---
     [string]$VanillaDir,
 
     [string]$FromPak,
@@ -132,10 +132,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Config laden ---------------------------------------------------------
+# --- Load config ----------------------------------------------------------
 $cfg = & (Join-Path $PSScriptRoot '_config.ps1')
 
-# Defaults aus Config nachziehen, wenn nicht explizit gesetzt
+# Pull in defaults from config when not explicitly set
 if (-not $MountPoint) { $MountPoint = [string]$cfg.Pak.MountPoint }
 if (-not $Version)    { $Version    = [string]$cfg.Pak.Version }
 if (-not $RepakExe)   { $RepakExe   = [string]$cfg.Tools.RepakExe }
@@ -149,14 +149,14 @@ function Write-Err2($msg)  { Write-Host "    [X]  $msg"     -ForegroundColor Red
 #  ACTION: Init
 # =========================================================================
 if ($Action -eq 'Init') {
-    Write-Step 'Init: Mod-Quellordner anlegen'
+    Write-Step 'Init: create mod source folder'
 
-    # --- Param-Validierung -----------------------------------------------
+    # --- Param validation ------------------------------------------------
     if ($FromPak -and $VanillaDir) {
-        throw '-FromPak und -VanillaDir koennen nicht gleichzeitig gesetzt werden.'
+        throw '-FromPak and -VanillaDir cannot be set at the same time.'
     }
 
-    # Default VanillaDir aus Config
+    # Default VanillaDir from config
     if (-not $FromPak -and (-not $VanillaDir -or $VanillaDir.Trim() -eq '')) {
         $VanillaDir = [string]$cfg.Paths.Vanilla
         if (-not $VanillaDir) {
@@ -164,49 +164,49 @@ if ($Action -eq 'Init') {
         }
     }
 
-    # Ziel-Ordner-Pfad normalisieren
+    # Normalise target folder path
     $TargetFull = $Source
     if (-not [System.IO.Path]::IsPathRooted($TargetFull)) {
         $TargetFull = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $TargetFull))
     } else {
         $TargetFull = [System.IO.Path]::GetFullPath($TargetFull)
     }
-    Write-OK "Ziel: $TargetFull"
+    Write-OK "Target: $TargetFull"
 
     if (Test-Path -LiteralPath $TargetFull -PathType Leaf) {
-        throw "Ziel existiert als Datei (nicht als Ordner): $TargetFull"
+        throw "Target exists as a file (not a folder): $TargetFull"
     }
 
     if (Test-Path -LiteralPath $TargetFull -PathType Container) {
         $existingCount = (Get-ChildItem -LiteralPath $TargetFull -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
         if ($existingCount -gt 0 -and -not $Force) {
-            throw "Ziel-Ordner ist nicht leer ($existingCount Dateien): $TargetFull  (mit -Force mergen)"
+            throw "Target folder is not empty ($existingCount files): $TargetFull  (use -Force to merge)"
         }
         if ($existingCount -gt 0) {
-            Write-Warn2 "Ziel-Ordner enthaelt bereits $existingCount Datei(en) -> wird gemergt (-Force)"
+            Write-Warn2 "Target folder already contains $existingCount file(s) -> merging (-Force)"
         }
     }
 
-    # --- Quelle vorbereiten ----------------------------------------------
+    # --- Prepare source --------------------------------------------------
     $tempUnpackDir = $null
     $sourceRoot    = $null
     $sourceLabel   = $null
 
     if ($FromPak) {
         if (-not (Test-Path -LiteralPath $FromPak -PathType Leaf)) {
-            throw "FromPak nicht gefunden: $FromPak"
+            throw "FromPak not found: $FromPak"
         }
         if (-not (Test-Path -LiteralPath $RepakExe)) {
-            throw "repak.exe wird fuer -FromPak benoetigt, nicht gefunden: $RepakExe"
+            throw "repak.exe is required for -FromPak, not found: $RepakExe"
         }
         $sourceLabel = "FromPak: $FromPak"
         Write-OK $sourceLabel
 
-        # In Temp entpacken, dann selektiv kopieren
+        # Unpack into temp, then copy selectively
         $tempUnpackDir = Join-Path ([System.IO.Path]::GetTempPath()) ("WindroseModInit_" + [System.Guid]::NewGuid().ToString('N'))
         if ($DryRun) {
-            Write-Warn2 "DryRun -> wuerde nach Temp entpacken: $tempUnpackDir"
-            # Im DryRun koennen wir die Dateiliste nicht kennen -> Dummy-Anzeige
+            Write-Warn2 "DryRun -> would unpack into temp: $tempUnpackDir"
+            # In DryRun we can't know the file list -> dummy display
             $sourceRoot = $null
         } else {
             New-Item -ItemType Directory -Path $tempUnpackDir -Force | Out-Null
@@ -214,14 +214,14 @@ if ($Action -eq 'Init') {
             Write-Host "    repak $($unpackArgs -join ' ')" -ForegroundColor DarkGray
             & $RepakExe @unpackArgs
             if ($LASTEXITCODE -ne 0) {
-                throw "repak unpack fehlgeschlagen (exit $LASTEXITCODE)"
+                throw "repak unpack failed (exit $LASTEXITCODE)"
             }
             $sourceRoot = $tempUnpackDir
         }
     }
     else {
         if (-not (Test-Path -LiteralPath $VanillaDir -PathType Container)) {
-            throw "VanillaDir nicht gefunden: $VanillaDir  (zuerst Dump-WindroseVanilla.ps1 ausfuehren?)"
+            throw "VanillaDir not found: $VanillaDir  (run Dump-WindroseVanilla.ps1 first?)"
         }
         $VanillaDir = (Resolve-Path -LiteralPath $VanillaDir).Path
         $sourceLabel = "VanillaDir: $VanillaDir"
@@ -229,19 +229,19 @@ if ($Action -eq 'Init') {
         $sourceRoot = $VanillaDir
     }
 
-    # --- Filter-Logik bauen ----------------------------------------------
-    # Categories -> wir matchen auf den relativen Pfad-Segmenten
+    # --- Build filter logic ----------------------------------------------
+    # Categories -> matched against relative path segments
     $categorySet = $null
     if ($Categories -and $Categories.Count -gt 0) {
         $categorySet = @{}
         foreach ($c in $Categories) {
             if ($c -and $c.Trim() -ne '') { $categorySet[$c.Trim()] = $true }
         }
-        Write-OK "Kategorien-Filter: $($categorySet.Keys -join ', ')"
+        Write-OK "Category filter: $($categorySet.Keys -join ', ')"
     }
 
     if ($Filter -and $Filter.Count -gt 0) {
-        Write-OK "Filename-Filter: $($Filter -join ', ')"
+        Write-OK "Filename filter: $($Filter -join ', ')"
     }
 
     function Test-MatchesFilters {
@@ -250,7 +250,7 @@ if ($Action -eq 'Init') {
             [string]$FileName
         )
 
-        # Filename-Filter (ODER-verknuepft)
+        # Filename filter (OR-combined)
         if ($script:Filter -and $script:Filter.Count -gt 0) {
             $matched = $false
             foreach ($pat in $script:Filter) {
@@ -259,14 +259,14 @@ if ($Action -eq 'Init') {
             if (-not $matched) { return $false }
         }
 
-        # Kategorien-Filter (nur fuer Pfade die InventoryItems\<Cat>\ haben)
+        # Category filter (only for paths under InventoryItems\<Cat>\)
         if ($script:categorySet) {
-            # erwarteter Pfad: R5\Plugins\R5BusinessRules\Content\InventoryItems\<Cat>\...
+            # expected path: R5\Plugins\R5BusinessRules\Content\InventoryItems\<Cat>\...
             if ($RelativePath -match '(?i)\\InventoryItems\\([^\\]+)\\') {
                 $cat = $matches[1]
                 if (-not $script:categorySet.ContainsKey($cat)) { return $false }
             } else {
-                # Pfad nicht unter InventoryItems\<Cat> -> bei aktivem Categorie-Filter ausschliessen
+                # Path not under InventoryItems\<Cat> -> exclude when category filter active
                 return $false
             }
         }
@@ -274,16 +274,16 @@ if ($Action -eq 'Init') {
         return $true
     }
 
-    # --- Datei-Liste sammeln ---------------------------------------------
+    # --- Collect file list -----------------------------------------------
     $filesToCopy = @()
     if (-not $DryRun -or $sourceRoot) {
         if ($sourceRoot) {
-            Write-Host "    Scanne $sourceRoot ..." -ForegroundColor DarkGray
+            Write-Host "    Scanning $sourceRoot ..." -ForegroundColor DarkGray
             $allFiles = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -ErrorAction SilentlyContinue
             foreach ($f in $allFiles) {
-                # _manifest.json (von VanillaItemDumper) auslassen
+                # Skip _manifest.json (from VanillaItemDumper)
                 if ($f.Name -eq '_manifest.json') { continue }
-                # _INIT.txt o.ae. nicht weiterreichen
+                # Don't pass _INIT.txt etc. through
                 if ($f.Name -eq '_INIT.txt') { continue }
 
                 $rel = $f.FullName.Substring($sourceRoot.Length).TrimStart('\','/')
@@ -301,34 +301,34 @@ if ($Action -eq 'Init') {
         if ($tempUnpackDir -and (Test-Path -LiteralPath $tempUnpackDir)) {
             Remove-Item -LiteralPath $tempUnpackDir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        throw 'Keine Dateien zum Kopieren gefunden (Filter zu restriktiv?).'
+        throw 'No files to copy (filter too restrictive?).'
     }
 
-    Write-OK ("Gefiltert: {0} Datei(en) werden uebernommen" -f $filesToCopy.Count)
+    Write-OK ("Filtered: {0} file(s) will be taken over" -f $filesToCopy.Count)
 
-    # --- Vorschau (DryRun oder generell ein paar Beispiele) ---------------
+    # --- Preview (DryRun or just a few examples) -------------------------
     $sampleN = [Math]::Min(5, $filesToCopy.Count)
     if ($sampleN -gt 0) {
-        Write-Host '    Beispiele:' -ForegroundColor DarkGray
+        Write-Host '    Examples:' -ForegroundColor DarkGray
         for ($i = 0; $i -lt $sampleN; $i++) {
             Write-Host ("      {0}" -f $filesToCopy[$i].Rel) -ForegroundColor DarkGray
         }
         if ($filesToCopy.Count -gt $sampleN) {
-            Write-Host ("      ... ({0} weitere)" -f ($filesToCopy.Count - $sampleN)) -ForegroundColor DarkGray
+            Write-Host ("      ... ({0} more)" -f ($filesToCopy.Count - $sampleN)) -ForegroundColor DarkGray
         }
     }
 
     if ($DryRun) {
-        Write-Warn2 'DryRun -> kein Kopieren ausgefuehrt'
+        Write-Warn2 'DryRun -> no copy performed'
         if ($tempUnpackDir -and (Test-Path -LiteralPath $tempUnpackDir)) {
             Remove-Item -LiteralPath $tempUnpackDir -Recurse -Force -ErrorAction SilentlyContinue
         }
         Write-Host ''
-        Write-Step 'Init: Fertig (DryRun)'
+        Write-Step 'Init: done (DryRun)'
         return
     }
 
-    # --- Ziel-Ordner anlegen + kopieren ----------------------------------
+    # --- Create target folder + copy -------------------------------------
     if (-not (Test-Path -LiteralPath $TargetFull)) {
         New-Item -ItemType Directory -Path $TargetFull -Force | Out-Null
     }
@@ -343,9 +343,9 @@ if ($Action -eq 'Init') {
         Copy-Item -LiteralPath $entry.Source -Destination $destPath -Force
         $copied++
     }
-    Write-OK "$copied Datei(en) kopiert nach $TargetFull"
+    Write-OK "$copied file(s) copied to $TargetFull"
 
-    # --- _INIT.txt Marker schreiben --------------------------------------
+    # --- Write _INIT.txt marker ------------------------------------------
     $initInfo = @"
 # Windrose Mod Source -- initialized by Build-WindroseMod.ps1
 date     : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
@@ -354,52 +354,52 @@ filter   : $(if ($Filter)     { $Filter     -join ', ' } else { '(none)' })
 category : $(if ($Categories) { $Categories -join ', ' } else { '(none)' })
 files    : $copied
 
-Hinweis:
-  - Dieser Ordner enthaelt eine Kopie der Quell-JSONs als Ausgangspunkt
-    fuer eine eigene Mod. Editiere die Werte und baue dann mit
-        .\Build-WindroseMod.ps1 -Source <DIESER ORDNER>
-    Das fertige _P.pak musst du selbst in den ~mods-Ordner deines Servers
-    bzw. Spiel-Clients kopieren.
-  - Wenn du nur einzelne Items modifizierst, loesche die unveraenderten
-    JSONs aus diesem Ordner -- alles was nicht im _P.pak liegt, behaelt
-    seinen Vanilla-Wert.
+Notes:
+  - This folder contains a copy of the source JSONs as a starting point
+    for your own mod. Edit the values, then build with
+        .\Build-WindroseMod.ps1 -Source <THIS FOLDER>
+    You have to copy the resulting _P.pak into the ~mods folder of your
+    server or game client yourself.
+  - If you only modify a few items, delete the unchanged JSONs from this
+    folder -- anything not in the _P.pak keeps its vanilla value.
 "@
     Set-Content -LiteralPath (Join-Path $TargetFull '_INIT.txt') -Value $initInfo -Encoding UTF8
-    Write-OK '_INIT.txt geschrieben'
+    Write-OK '_INIT.txt written'
 
-    # --- Cleanup ----------------------------------------------------------
+    # --- Cleanup ---------------------------------------------------------
     if ($tempUnpackDir -and (Test-Path -LiteralPath $tempUnpackDir)) {
         Remove-Item -LiteralPath $tempUnpackDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-OK 'Temp-Unpack-Verzeichnis geloescht'
+        Write-OK 'Temp unpack directory deleted'
     }
 
     Write-Host ''
-    Write-Step 'Init: Fertig'
-    Write-OK "Mod-Source: $TargetFull"
-    Write-OK "Naechster Schritt: Werte in $TargetFull editieren, dann"
+    Write-Step 'Init: done'
+    Write-OK "Mod source: $TargetFull"
+    Write-OK "Next step: edit values in $TargetFull, then"
     Write-Host ("    .\Build-WindroseMod.ps1 -Source `"$TargetFull`"") -ForegroundColor DarkGray
     return
 }
 
 # =========================================================================
-#  ACTION: Build (Default)
+#  ACTION: Build (default)
 # =========================================================================
 
-# --- 1) Validierung -------------------------------------------------------
-Write-Step 'Pruefe Voraussetzungen'
+# --- 1) Validation --------------------------------------------------------
+Write-Step 'Checking prerequisites'
 
 if (-not (Test-Path -LiteralPath $RepakExe)) {
-    throw "repak.exe nicht gefunden: $RepakExe"
+    throw "repak.exe not found: $RepakExe"
 }
 Write-OK "repak.exe: $RepakExe"
 
 $SourceFull = (Resolve-Path -LiteralPath $Source).Path
 if (-not (Test-Path -LiteralPath $SourceFull -PathType Container)) {
-    throw "Source ist kein Ordner: $SourceFull"
+    throw "Source is not a folder: $SourceFull"
 }
 
-# Meta-Files, die im Quell-Ordner liegen koennen (z.B. _INIT.txt von -Action Init),
-# aber nicht ins finale Pak gehoeren. Werden vor dem Pack temporaer weggemoved.
+# Meta files that may live in the source folder (e.g. _INIT.txt from -Action
+# Init) but should NOT be packed into the final pak. Temporarily moved
+# aside before packing.
 $IgnoredMetaFiles = @('_INIT.txt')
 
 $allFiles  = Get-ChildItem -LiteralPath $SourceFull -Recurse -File
@@ -407,21 +407,21 @@ $payload   = $allFiles | Where-Object { $IgnoredMetaFiles -notcontains $_.Name }
 $fileCount = ($payload | Measure-Object).Count
 $skipped   = ($allFiles | Measure-Object).Count - $fileCount
 if ($fileCount -eq 0) {
-    throw "Source-Ordner ist leer (oder enthaelt nur Meta-Files): $SourceFull"
+    throw "Source folder is empty (or contains only meta files): $SourceFull"
 }
 if ($skipped -gt 0) {
-    Write-OK "Source: $SourceFull ($fileCount Pak-Dateien, $skipped Meta-File(s) ignoriert)"
+    Write-OK "Source: $SourceFull ($fileCount pak files, $skipped meta file(s) ignored)"
 } else {
-    Write-OK "Source: $SourceFull ($fileCount Dateien)"
+    Write-OK "Source: $SourceFull ($fileCount files)"
 }
 
 if (-not $Name -or $Name.Trim() -eq '') {
     $Name = Split-Path -Leaf $SourceFull
 }
-# Sicherstellen, dass Name auf "_P" endet (Patch-Marker)
+# Ensure the name ends with "_P" (patch marker)
 if ($Name -notmatch '_P$') {
     $Name = $Name + '_P'
-    Write-Warn2 "Name endet nicht auf _P -> automatisch zu '$Name' korrigiert"
+    Write-Warn2 "Name doesn't end in _P -> auto-corrected to '$Name'"
 }
 
 if (-not $OutDir -or $OutDir.Trim() -eq '') {
@@ -437,7 +437,7 @@ $resolved = Resolve-Path -LiteralPath $OutDir -ErrorAction SilentlyContinue
 if ($resolved) {
     $OutDir = $resolved.Path
 } else {
-    # Im DryRun existiert der Ordner ggf. noch nicht -> Pfad selbst normalisieren
+    # In DryRun the folder may not exist yet -> normalise the path manually
     $OutDir = [System.IO.Path]::GetFullPath($OutDir)
 }
 
@@ -445,11 +445,11 @@ $OutPak = Join-Path $OutDir ($Name + '.pak')
 Write-OK "Output: $OutPak"
 
 if ((Test-Path -LiteralPath $OutPak) -and -not $Force -and -not $DryRun) {
-    throw "Output existiert bereits: $OutPak  (mit -Force ueberschreiben)"
+    throw "Output already exists: $OutPak  (use -Force to overwrite)"
 }
 
-# --- 2) Pak bauen ---------------------------------------------------------
-Write-Step 'Baue .pak'
+# --- 2) Build pak ---------------------------------------------------------
+Write-Step 'Building .pak'
 
 $packArgs = @(
     'pack',
@@ -462,10 +462,10 @@ $packArgs = @(
 Write-Host "    repak $($packArgs -join ' ')" -ForegroundColor DarkGray
 
 if ($DryRun) {
-    Write-Warn2 'DryRun -> kein Pack ausgefuehrt'
+    Write-Warn2 'DryRun -> no pack performed'
 } else {
-    # Meta-Files temporaer ins User-Temp wegmoven (NICHT im Source-Ordner,
-    # sonst packt repak die Backup-Datei mit ein!)
+    # Move meta files temporarily into the user temp dir (NOT inside the
+    # source folder, otherwise repak would pack the backup file as well!)
     $metaBackups   = @()
     $metaStashRoot = $null
     $metaList = foreach ($metaName in $IgnoredMetaFiles) {
@@ -479,18 +479,18 @@ if ($DryRun) {
             $tmpPath = Join-Path $metaStashRoot (Split-Path -Leaf $metaPath)
             Move-Item -LiteralPath $metaPath -Destination $tmpPath -Force
             $metaBackups += [pscustomobject]@{ Orig = $metaPath; Tmp = $tmpPath }
-            Write-Host "    (meta '$(Split-Path -Leaf $metaPath)' temporaer ausgeblendet)" -ForegroundColor DarkGray
+            Write-Host "    (meta '$(Split-Path -Leaf $metaPath)' temporarily hidden)" -ForegroundColor DarkGray
         }
     }
 
     try {
         & $RepakExe @packArgs
-        if ($LASTEXITCODE -ne 0) { throw "repak pack fehlgeschlagen (exit $LASTEXITCODE)" }
+        if ($LASTEXITCODE -ne 0) { throw "repak pack failed (exit $LASTEXITCODE)" }
         if (-not (Test-Path -LiteralPath $OutPak)) {
-            throw "Pak wurde nicht erzeugt: $OutPak"
+            throw "Pak was not created: $OutPak"
         }
         $sizeKB = [math]::Round((Get-Item -LiteralPath $OutPak).Length / 1KB, 1)
-        Write-OK ("Pak gebaut: {0}  ({1} KB)" -f $OutPak, $sizeKB)
+        Write-OK ("Pak built: {0}  ({1} KB)" -f $OutPak, $sizeKB)
     } finally {
         foreach ($b in $metaBackups) {
             if (Test-Path -LiteralPath $b.Tmp -PathType Leaf) {
@@ -503,23 +503,23 @@ if ($DryRun) {
     }
 }
 
-# --- 3) Optional: Verify --------------------------------------------------
+# --- 3) Optional: verify --------------------------------------------------
 if (-not $DryRun) {
-    Write-Step 'Verifiziere Pak'
+    Write-Step 'Verifying pak'
     $info = & $RepakExe info $OutPak 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Err2 'repak info fehlgeschlagen'
+        Write-Err2 'repak info failed'
         $info | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
     } else {
         $info | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
     }
 }
 
-# --- 4) Zusammenfassung ---------------------------------------------------
+# --- 4) Summary -----------------------------------------------------------
 Write-Host ''
-Write-Step 'Fertig'
+Write-Step 'Done'
 Write-OK "Pak: $OutPak"
 Write-Host ''
-Write-Host '    Naechster Schritt: Pak in den ~mods-Ordner deines Servers/Clients kopieren, z.B.' -ForegroundColor DarkGray
-Write-Host ("    Copy-Item `"$OutPak`" '<PFAD>\R5\Content\Paks\~mods\' -Force") -ForegroundColor DarkGray
-if ($DryRun) { Write-Warn2 'DryRun aktiv -> nichts wurde wirklich geschrieben' }
+Write-Host '    Next step: copy the pak into your server/client ~mods folder, e.g.' -ForegroundColor DarkGray
+Write-Host ("    Copy-Item `"$OutPak`" '<PATH>\R5\Content\Paks\~mods\' -Force") -ForegroundColor DarkGray
+if ($DryRun) { Write-Warn2 'DryRun active -> nothing was actually written' }

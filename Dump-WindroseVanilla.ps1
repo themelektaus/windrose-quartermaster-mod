@@ -1,65 +1,65 @@
 <#
 .SYNOPSIS
-    Reorganisiert die flachen JSON-Dumps des UE4SS-Mods `VanillaItemDumper`
-    in einen Verzeichnisbaum, der direkt als Mod-Source verwendet werden kann.
+    Reorganises the flat JSON dumps produced by the UE4SS mod
+    `VanillaItemDumper` into a directory tree that can be used directly
+    as a mod source.
 
 .DESCRIPTION
-    Der UE4SS-Lua-Mod kann zur Laufzeit keine Verzeichnisse anlegen
-    (os.execute / io.popen deadlocken in der Embedding-Variante), deshalb
-    schreibt er seine Dumps *flach* nebeneinander und kodiert den
-    urspruenglichen Pfad ueber den Trenner `___`:
+    The UE4SS Lua mod cannot create directories at runtime
+    (os.execute / io.popen deadlock in this embedding), so it writes its
+    dumps *flat*, side-by-side, encoding the original path via the
+    separator `___`:
 
         R5___Plugins___R5BusinessRules___Content___InventoryItems___Ammo___DA_AID_X.json
 
-    Dieses Script dreht das wieder um:
+    This script reverses that:
 
         R5\Plugins\R5BusinessRules\Content\InventoryItems\Ammo\DA_AID_X.json
 
-    und legt das Ergebnis unter -OutDir ab. Damit hast du eine saubere
-    Vanilla-Snapshot-Quelle, gegen die du eigene Mods diffen oder die du
-    direkt als Source fuer `Build-WindroseMod.ps1` nutzen kannst.
+    and places the result under -OutDir. That gives you a clean vanilla
+    snapshot source that you can diff your own mods against, or use
+    directly as a source for `Build-WindroseMod.ps1`.
 
 .PARAMETER DumpsDir
-    Quell-Ordner mit den flachen `R5___*.json`-Dumps. Default: $cfg.Paths.Dumps
-    (config.psd1) -- praktisch, wenn du den Dump-Ordner aus dem laufenden
-    Server-Slot dort hin kopierst / symlinkst, bevor du das Script startest.
+    Source folder with the flat `R5___*.json` dumps. Default: $cfg.Paths.Dumps
+    (config.psd1) -- handy when you copy/symlink the dump folder from the
+    running server slot before invoking the script.
 
 .PARAMETER OutDir
-    Ziel-Ordner fuer den rekonstruierten Tree. Default: $cfg.Paths.Vanilla
-    (config.psd1, normalerweise Sources\Vanilla).
+    Target folder for the reconstructed tree. Default: $cfg.Paths.Vanilla
+    (config.psd1, normally Sources\Vanilla).
 
 .PARAMETER Clean
-    Loescht den Inhalt von -OutDir komplett, bevor der neue Tree geschrieben wird.
-    Sinnvoll, wenn du sicherstellen willst, dass keine veralteten Files
-    aus einem aelteren Dump-Run hinten ueberbleiben.
+    Deletes the contents of -OutDir before writing the new tree.
+    Useful to make sure no stale files from an older dump run remain.
 
 .PARAMETER Force
-    Ueberschreibt einzelne bereits vorhandene Ziel-Dateien ohne Rueckfrage.
-    Ohne -Force wird das Script abbrechen, sobald die erste Datei kollidiert.
+    Overwrites individual existing target files without asking.
+    Without -Force the script aborts as soon as the first file collides.
 
 .PARAMETER Filter
-    Optionaler Wildcard-Filter auf den rekonstruierten Tree-Pfad
-    (z.B. `*Ammo*` oder `R5\Plugins\*Cannonball*`). Nur passende Dateien
-    werden uebernommen. Hilft, wenn du gezielt nur einen Bereich willst.
+    Optional wildcard filter applied to the reconstructed tree path
+    (e.g. `*Ammo*` or `R5\Plugins\*Cannonball*`). Only matching files are
+    taken over. Useful when you only want a specific area.
 
 .PARAMETER PathSeparator
-    Trenner, mit dem der Lua-Mod Pfade kodiert. Wird normalerweise aus
-    `_manifest.json` gelesen; nur setzen, wenn das Manifest fehlt.
+    Separator the Lua mod uses to encode paths. Normally read from
+    `_manifest.json`; only set this if the manifest is missing.
 
 .PARAMETER DryRun
-    Zeigt nur, was passieren wuerde, ohne zu schreiben.
+    Only show what would happen, do not write anything.
 
 .EXAMPLE
     .\Dump-WindroseVanilla.ps1
-    # Default (aus config.psd1): $cfg.Paths.Dumps -> $cfg.Paths.Vanilla
+    # Default (from config.psd1): $cfg.Paths.Dumps -> $cfg.Paths.Vanilla
 
 .EXAMPLE
     .\Dump-WindroseVanilla.ps1 -Clean -Force
-    # OutDir vorher leeren und alles neu schreiben
+    # Empty OutDir first, then write everything fresh
 
 .EXAMPLE
     .\Dump-WindroseVanilla.ps1 -Filter '*Cannonball*' -OutDir .\Sources\CannonOnly
-    # Nur Cannonball-Items in einen separaten Ordner reorganisieren
+    # Reorganise only Cannonball items into a separate folder
 #>
 
 [CmdletBinding()]
@@ -81,7 +81,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Config laden ---------------------------------------------------------
+# --- Load config ----------------------------------------------------------
 $cfg = & (Join-Path $PSScriptRoot '_config.ps1')
 if (-not $DumpsDir) { $DumpsDir = [string]$cfg.Paths.Dumps }
 
@@ -90,11 +90,11 @@ function Write-OK($msg)    { Write-Host "    [OK] $msg"     -ForegroundColor Gre
 function Write-Warn2($msg) { Write-Host "    [!]  $msg"     -ForegroundColor Yellow }
 function Write-Err2($msg)  { Write-Host "    [X]  $msg"     -ForegroundColor Red }
 
-# --- 1) Validierung -------------------------------------------------------
-Write-Step 'Pruefe Voraussetzungen'
+# --- 1) Validation --------------------------------------------------------
+Write-Step 'Checking prerequisites'
 
 if (-not (Test-Path -LiteralPath $DumpsDir -PathType Container)) {
-    throw "DumpsDir existiert nicht: $DumpsDir"
+    throw "DumpsDir does not exist: $DumpsDir"
 }
 $DumpsDir = (Resolve-Path -LiteralPath $DumpsDir).Path
 Write-OK "DumpsDir: $DumpsDir"
@@ -105,7 +105,7 @@ if (-not $OutDir -or $OutDir.Trim() -eq '') {
         $OutDir = Join-Path $PSScriptRoot 'Sources\Vanilla'
     }
 }
-# Ziel-Ordner ggf. anlegen, dann normalisieren
+# Create target folder if missing, then normalise
 if (-not (Test-Path -LiteralPath $OutDir)) {
     if (-not $DryRun) {
         New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
@@ -116,7 +116,7 @@ if ($resolved) { $OutDir = $resolved.Path }
 else           { $OutDir = [System.IO.Path]::GetFullPath($OutDir) }
 Write-OK "OutDir:   $OutDir"
 
-# --- 2) Manifest lesen (optional, informativ) -----------------------------
+# --- 2) Read manifest (optional, informational) ---------------------------
 $ManifestPath = Join-Path $DumpsDir '_manifest.json'
 $Manifest = $null
 if (Test-Path -LiteralPath $ManifestPath) {
@@ -132,37 +132,37 @@ if (Test-Path -LiteralPath $ManifestPath) {
             $PathSeparator = [string]$Manifest.path_separator
         }
     } catch {
-        Write-Warn2 "Manifest konnte nicht gelesen werden: $($_.Exception.Message)"
+        Write-Warn2 "Manifest could not be read: $($_.Exception.Message)"
     }
 } else {
-    Write-Warn2 "_manifest.json fehlt -> rein dateibasiert weiter"
+    Write-Warn2 "_manifest.json missing -> proceeding purely file-based"
 }
 if (-not $PathSeparator -or $PathSeparator -eq '') {
     $PathSeparator = '___'
-    Write-Warn2 "PathSeparator nicht aus Manifest -> Default '$PathSeparator'"
+    Write-Warn2 "PathSeparator not from manifest -> default '$PathSeparator'"
 }
 Write-OK "PathSeparator: '$PathSeparator'"
 
-# --- 3) Quell-Files einsammeln --------------------------------------------
-Write-Step 'Sammle Quell-Dateien'
+# --- 3) Collect source files ---------------------------------------------
+Write-Step 'Collecting source files'
 
-# Nur *.json mit dem Tree-Praefix; das Manifest und etwaige Probe-Files
-# werden bewusst ignoriert. Das Praefix ist alles bis zum ersten Separator
-# im ersten Sample -- wir erwarten "R5", aber falls jemand die Struktur
-# erweitert, wird das hier mitgenommen.
+# Only *.json files with the tree prefix; the manifest and any probe files
+# are deliberately ignored. The prefix is everything up to the first
+# separator in the first sample -- we expect "R5", but if someone extends
+# the structure it will be picked up here.
 $allJson = Get-ChildItem -LiteralPath $DumpsDir -File -Filter '*.json'
 $flat = @($allJson | Where-Object { $_.Name -like ("*" + $PathSeparator + "*") })
 
 if ($flat.Count -eq 0) {
-    throw "Keine flachen Dump-Files mit Separator '$PathSeparator' in $DumpsDir gefunden."
+    throw "No flat dump files with separator '$PathSeparator' found in $DumpsDir."
 }
-Write-OK ("{0} flache Dump-Files gefunden ({1} JSON-Files insgesamt)" -f $flat.Count, $allJson.Count)
+Write-OK ("{0} flat dump files found ({1} JSON files in total)" -f $flat.Count, $allJson.Count)
 
-# --- 4) Tree-Pfad ableiten ------------------------------------------------
+# --- 4) Derive tree path --------------------------------------------------
 function ConvertTo-TreePath {
     param([string]$FlatBase, [string]$Sep)
-    # Ersetzt den kodierten Separator durch echte Verzeichnis-Trenner.
-    # Wir nutzen "\" weil das Script Windows-spezifisch ist.
+    # Replace the encoded separator with real directory separators.
+    # We use "\" because the script is Windows-specific.
     return ($FlatBase -replace [regex]::Escape($Sep), '\')
 }
 
@@ -183,35 +183,35 @@ foreach ($f in $flat) {
 }
 
 if ($Filter) {
-    Write-OK ("{0} Files passen zum Filter '{1}'" -f $plan.Count, $Filter)
+    Write-OK ("{0} files match filter '{1}'" -f $plan.Count, $Filter)
 }
 if ($plan.Count -eq 0) {
-    throw 'Nach Filterung sind keine Files mehr uebrig.'
+    throw 'No files left after filtering.'
 }
 
-# --- 5) Kollisionen / Clean ----------------------------------------------
+# --- 5) Collisions / Clean -----------------------------------------------
 if ($Clean) {
-    Write-Step 'Clean: leere OutDir-Inhalt'
+    Write-Step 'Clean: emptying OutDir contents'
     if (-not $DryRun) {
         Get-ChildItem -LiteralPath $OutDir -Force -ErrorAction SilentlyContinue |
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Write-OK 'OutDir geleert'
+        Write-OK 'OutDir emptied'
     } else {
-        Write-Warn2 'DryRun -> OutDir bleibt unveraendert'
+        Write-Warn2 'DryRun -> OutDir left unchanged'
     }
 }
 
 if (-not $Clean -and -not $Force) {
     $collisions = @($plan | Where-Object { Test-Path -LiteralPath $_.Dest })
     if ($collisions.Count -gt 0) {
-        Write-Err2 ("{0} Ziel-Dateien existieren bereits, Beispiel: {1}" -f `
+        Write-Err2 ("{0} target files already exist, example: {1}" -f `
             $collisions.Count, $collisions[0].Dest)
-        throw 'Abbruch: Kollisionen gefunden. Mit -Force ueberschreiben oder -Clean vorher leeren.'
+        throw 'Aborted: collisions found. Use -Force to overwrite, or -Clean to wipe first.'
     }
 }
 
-# --- 6) Schreiben ---------------------------------------------------------
-Write-Step 'Reorganisiere Files'
+# --- 6) Write -------------------------------------------------------------
+Write-Step 'Reorganising files'
 
 $writeCount = 0
 $skipCount  = 0
@@ -238,11 +238,11 @@ foreach ($p in $plan) {
 }
 
 # --- 7) Stats -------------------------------------------------------------
-Write-Step 'Statistik'
+Write-Step 'Statistics'
 
-# Top-Level-Kategorie unter ...\InventoryItems\<KAT>\... bestimmen, falls
-# der Pfad das Pattern hat. Sonst nehmen wir das vorletzte Segment vor dem
-# Filenamen, damit wir trotzdem etwas Zaehlbares haben.
+# Determine the top-level category under ...\InventoryItems\<CAT>\... if
+# the path matches the pattern. Otherwise we fall back to the segment
+# right before the filename so we still have something to count.
 $byCategory = @{}
 foreach ($p in $plan) {
     $segs = $p.Rel -split '\\'
@@ -260,10 +260,10 @@ $byCategory.GetEnumerator() | Sort-Object Name | ForEach-Object {
     Write-Host ("    {0,-25} {1,6}" -f $_.Key, $_.Value) -ForegroundColor DarkGray
 }
 
-# --- 8) Zusammenfassung ---------------------------------------------------
+# --- 8) Summary -----------------------------------------------------------
 Write-Host ''
-Write-Step 'Fertig'
-Write-OK ("{0} Files geschrieben" -f $writeCount)
-Write-OK ("Ziel: {0}" -f $OutDir)
-if ($Filter)      { Write-OK ("Filter aktiv: {0}" -f $Filter) }
-if ($DryRun)      { Write-Warn2 'DryRun aktiv -> nichts wurde wirklich geschrieben' }
+Write-Step 'Done'
+Write-OK ("{0} files written" -f $writeCount)
+Write-OK ("Target: {0}" -f $OutDir)
+if ($Filter)      { Write-OK ("Filter active: {0}" -f $Filter) }
+if ($DryRun)      { Write-Warn2 'DryRun active -> nothing was actually written' }
