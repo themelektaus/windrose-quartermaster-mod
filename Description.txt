@@ -1,0 +1,43 @@
+[size=4][b]Description[/b][/size]
+
+Increases the maximum stack size (MaxCountInSlot) of every stackable vanilla item in Windrose. Pick one of 13 variants - multipliers from x2 up to x100, or absolute caps at 999 / 9999 / 99999 / 999999. Weapons, armor and other non-stackable items are left untouched, so the only thing that changes is how many of a stackable item fit into a single inventory slot.
+
+Built on top of the structural work from [url=https://www.nexusmods.com/windrose/mods/26]Max Stack Sizes by Synthlight[/url] - multiplier values are recalculated against an actual vanilla snapshot, so a "x4" pak really gives you 4x the vanilla stack size, regardless of what other stack mods may have shipped before.
+
+
+[size=4][b]Installation instructions[/b][/size]
+
+[list]
+[*][b]1. [/b]Pick exactly [b]one[/b] of the StackSize_*.pak files (e.g. [i]StackSize_x4_P.pak[/i]).
+[*][b]2. [/b]Copy it into your [code]~mods[/code] folder:
+  [b]Client:[/b] [code]<Steam>\steamapps\common\Windrose\R5\Content\Paks\~mods\[/code]
+
+  [b]Server:[/b] [code]<Server-Root>\R5\Content\Paks\~mods\[/code]
+[*][b]3. [/b]If you previously installed another StackSize_*.pak, [b]remove it first[/b]. Only one variant should ever live in [code] ~mods [/code] at a time.
+[*][b]4. [/b]Launch the game (or restart the server). New stack limits apply immediately - existing inventories are not affected retroactively, but new picks-up and crafted items will stack up to the new limit.
+[/list]
+
+
+[size=4][b]Main features[/b][/size]
+
+[list]
+[*][b]Multiplier variants[/b] - x2, x3, x4, x5, x6, x7, x8, x9, x10, x100
+[*][b]Absolute variants[/b] - 999, 9999, 99999, 999999 (every stackable item gets the same hard cap)
+[*][b]527 items affected[/b] - ammo, consumables, resources, ship cargo, etc.
+[*][b]Vanilla-safe[/b] - weapons, armor, tools and any other inventory entry with a vanilla stack size of 1 stay vanilla
+[*][b]Server + client compatible[/b] - works in singleplayer, on dedicated servers, and on co-op sessions (drop the same pak on both sides)
+[*][b]Clean JSON schema[/b] - no [code]R5LogJsonConverter[/code] errors in the log, no startup crashes from missing item meshes
+[/list]
+
+
+[size=4][b]Requirements[/b][/size]
+
+[list]
+[*][b]Windrose[/b] (any version that supports the [code]~mods[/code] pak loading convention)
+[*]No additional mods, no UE4SS framework needed - this is a pure data pak
+[/list]
+
+
+[size=4][b]Shout outs[/b][/size]
+
+Huge thanks to the author of [url=https://www.nexusmods.com/windrose/mods/26]Max Stack Sizes by Synthlight[/url] - their pak is used as the structural template, and without it this mod wouldn't exist in this form. The Windrose [code]R5BLInventoryItem[/code] data assets aren't shipped as files inside the pak (they're created at runtime from C++ defaults), so reverse-engineering the right JSON shape from scratch would have been a huge detour. Mod #26 already had it nailed.

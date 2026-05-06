@@ -1,4 +1,4 @@
-# Windrose Modding -- StackSize Mods
+# Windrose Stack Size Mod
 
 PowerShell pipeline for building stack-size paks for [Windrose](https://www.nexusmods.com/windrose).
 Multiplies (or replaces) `MaxCountInSlot` for every stackable vanilla item

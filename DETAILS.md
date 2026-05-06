@@ -1,4 +1,4 @@
-# Windrose Modding -- Details
+# Windrose Stack Size Mod -- Details
 
 Pipeline for building JSON-based Windrose mods (item stack sizes etc.) from
 a vanilla snapshot. The end product is `_P.pak` files that you copy into the

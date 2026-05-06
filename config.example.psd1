@@ -1,5 +1,5 @@
 <#
-    Windrose Modding Configuration (example)
+    Windrose Stack Size Mod -- Configuration (example)
 
     Copy this file to `config.psd1` and adjust the paths to your system.
     `config.psd1` is listed in .gitignore so your user-specific paths don't
