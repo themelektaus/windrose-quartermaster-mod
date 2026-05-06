@@ -32,7 +32,7 @@ Set one path in `config.psd1`:
 .\Build-AllStackVariations.ps1
 ```
 
-Output: 13 paks in `Builds\`:
+Output: 11 paks in `Builds\`:
 
 ```
 StackSize_x2_P.pak    StackSize_x3_P.pak    StackSize_x4_P.pak
@@ -40,7 +40,6 @@ StackSize_x5_P.pak    StackSize_x6_P.pak    StackSize_x7_P.pak
 StackSize_x8_P.pak    StackSize_x9_P.pak    StackSize_x10_P.pak
 StackSize_x100_P.pak
 StackSize_999_P.pak   StackSize_9999_P.pak
-StackSize_99999_P.pak StackSize_999999_P.pak
 ```
 
 ## Build individual variations
