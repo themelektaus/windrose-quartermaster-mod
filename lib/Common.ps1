@@ -5,6 +5,11 @@
 #                                                       auto-downloads pinned
 #                                                       v0.2.3 with SHA256 verify
 #                                                       on first use)
+#   Get-WindroseVanillaPak                             (locates the game's
+#                                                       pakchunk0 by reading
+#                                                       the Steam install via
+#                                                       registry +
+#                                                       libraryfolders.vdf)
 #   Resolve-FullPath                                   (Resolve-Path with
 #                                                       fallback for paths
 #                                                       that don't exist yet)
@@ -54,7 +59,7 @@ function Get-WindroseConfig {
         throw "Neither config.psd1 nor config.example.psd1 found in $ModRoot."
     }
 
-    foreach ($k in 'Paths','Pak','Game') {
+    foreach ($k in 'Paths','Pak') {
         if (-not $cfg.ContainsKey($k)) { $cfg[$k] = @{} }
     }
 
@@ -190,4 +195,84 @@ function Get-RepakExe {
     }
 
     return $repakExe
+}
+
+# --- Vanilla pak auto-detection -----------------------------------------
+
+# Pak filenames we accept, in priority order. Steam installs ship the
+# Windows variant; dedicated server installs ship the WindowsServer one.
+# Either contains the encrypted InventoryItems JSONs we need.
+$script:WindroseVanillaPakNames = @(
+    'pakchunk0-Windows.pak',
+    'pakchunk0-WindowsServer.pak'
+)
+
+# Reads the Steam install path from the registry. Tries the per-user
+# (HKCU) hive first because that's where Steam writes when launched
+# normally, and falls back to the machine-wide 32-bit hive (HKLM\WOW6432Node)
+# that the Steam installer creates.
+function Get-SteamInstallPath {
+    $hkcu = Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name 'SteamPath' -ErrorAction SilentlyContinue
+    if ($hkcu -and $hkcu.SteamPath) {
+        return ([string]$hkcu.SteamPath).Replace('/', '\')
+    }
+    $hklm = Get-ItemProperty -Path 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam' -Name 'InstallPath' -ErrorAction SilentlyContinue
+    if ($hklm -and $hklm.InstallPath) {
+        return ([string]$hklm.InstallPath).Replace('/', '\')
+    }
+    return $null
+}
+
+# Parses Steam's libraryfolders.vdf and returns every library root path.
+# We only care about the "path" entries; full VDF parsing isn't needed.
+function Get-SteamLibraryPaths {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$SteamPath)
+
+    $libs = @($SteamPath)
+    $vdf  = Join-Path $SteamPath 'steamapps\libraryfolders.vdf'
+    if (-not (Test-Path -LiteralPath $vdf)) { return $libs }
+
+    foreach ($line in Get-Content -LiteralPath $vdf) {
+        if ($line -match '^\s*"path"\s*"([^"]+)"') {
+            $p = $matches[1] -replace '\\\\', '\'
+            if ($libs -notcontains $p) { $libs += $p }
+        }
+    }
+    return $libs
+}
+
+# Returns the absolute path to the Windrose vanilla pak. Resolution order:
+#   1. <SteamLibrary>\steamapps\common\Windrose\R5\Content\Paks\<paknames>
+#      across every library listed in libraryfolders.vdf
+# Throws a descriptive error when nothing is found so the user knows where
+# to point -VanillaPak manually.
+function Get-WindroseVanillaPak {
+    [CmdletBinding()]
+    param()
+
+    $steam = Get-SteamInstallPath
+    if (-not $steam) {
+        throw "Could not locate the Steam install (no SteamPath in HKCU and no InstallPath in HKLM\WOW6432Node\Valve\Steam). Pass -VanillaPak <path> to override, e.g. <ServerDir>\R5\Content\Paks\pakchunk0-WindowsServer.pak."
+    }
+
+    $libs = Get-SteamLibraryPaths -SteamPath $steam
+    foreach ($lib in $libs) {
+        $paksDir = Join-Path $lib 'steamapps\common\Windrose\R5\Content\Paks'
+        if (-not (Test-Path -LiteralPath $paksDir -PathType Container)) { continue }
+        foreach ($name in $script:WindroseVanillaPakNames) {
+            $candidate = Join-Path $paksDir $name
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
+    $searched = ($libs | ForEach-Object { Join-Path $_ 'steamapps\common\Windrose\R5\Content\Paks' }) -join "`n  "
+    throw @"
+Could not find a Windrose vanilla pak under any Steam library.
+Searched:
+  $searched
+Pass -VanillaPak <path> to point at a pak directly, e.g. a dedicated-server install.
+"@
 }

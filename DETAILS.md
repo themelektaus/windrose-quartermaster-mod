@@ -15,10 +15,15 @@ server or client.
 | **Internet access (one-time)** | Auto-download `repak.exe` v0.2.3 from [trumank/repak](https://github.com/trumank/repak/releases) on first use. Cached in `lib\bin\`. | yes (first run only) |
 | **Windrose game or server install** | Source for the vanilla pak | yes |
 
-The vanilla item JSONs are extracted on demand from
-`pakchunk0-WindowsServer.pak` (server install) or `pakchunk0-Windows.pak`
-(Steam client). The pak is AES-encrypted; the public game key is hardcoded
-in `Dump-WindroseVanilla.ps1` and is identical to the one used by every
+The Steam install of Windrose is auto-detected via the Windows registry
+(`HKCU\Software\Valve\Steam\SteamPath` /
+`HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath`) and Steam's
+`libraryfolders.vdf`, so `pakchunk0-Windows.pak` is found without any
+configuration. Dedicated-server installs (where `pakchunk0-WindowsServer.pak`
+lives outside Steam) are supported via `-VanillaPak <path>`.
+
+The pak is AES-encrypted; the public game key is hardcoded in
+`Dump-WindroseVanilla.ps1` and is identical to the one used by every
 other Windrose modding tool (e.g. WindrosePlus).
 
 ---
@@ -30,40 +35,38 @@ other Windrose modding tool (e.g. WindrosePlus).
 git clone <repo-url> 'E:\Windrose\Mods\Stack Size'
 cd 'E:\Windrose\Mods\Stack Size'
 
-# 2. Create your own config from the template
-Copy-Item .\config.example.psd1 .\config.psd1
+# 2. Extract the vanilla snapshot
+.\Dump-WindroseVanilla.ps1
 ```
 
-Then open **`config.psd1`** in an editor and set the path to the vanilla pak:
+That's it -- both moving parts the pipeline depends on are auto-resolved:
+
+- **Vanilla pak**: located by reading the Steam install path from the
+  registry, then walking every Steam library listed in
+  `libraryfolders.vdf` for a Windrose install. Override with
+  `-VanillaPak <path>` if your pak lives elsewhere (typical case: a
+  dedicated server install at `<Server>\R5\Content\Paks\pakchunk0-WindowsServer.pak`).
+- **`repak.exe`**: downloaded on first use (pinned v0.2.3 from
+  trumank/repak, SHA256-verified) and cached in `lib\bin\`. Override
+  with `-RepakExe <path>` for a system-wide install.
+
+Config is **optional** -- only needed if you want non-default build paths
+(e.g. keep `Builds\` outside the repo). If so:
 
 ```powershell
-Game = @{
-    VanillaPak = 'E:\Windrose\Server\<YourServer>\R5\Content\Paks\pakchunk0-WindowsServer.pak'
-    # Or for the Steam client:
-    # VanillaPak = 'C:\Games\steamapps\common\Windrose\R5\Content\Paks\pakchunk0-Windows.pak'
-}
+Copy-Item .\config.example.psd1 .\config.psd1
+# then edit Paths.* in config.psd1
 ```
 
-`repak.exe` is **not** configured here -- it's downloaded automatically on
-first use (pinned v0.2.3, SHA256-verified) and cached in `lib\bin\`. To
-override (e.g. system-wide install), pass `-RepakExe <path>` to any script.
-
-You can leave `Paths` empty -- all paths are then resolved relative to the
-modding root:
+Without a config, all paths resolve relative to the modding root:
 
 ```
 .\Sources                 (mod sources, including Sources\Vanilla\)
 .\Builds                  (finished .pak files)
 ```
 
-Finally extract the vanilla snapshot once:
-
-```powershell
-.\Dump-WindroseVanilla.ps1
-```
-
-This unpacks ~1097 `R5BLInventoryItem` JSONs into `Sources\Vanilla\`. Re-run
-with `-Clean -Force` after a game patch that changed item values.
+The dump unpacks ~1097 `R5BLInventoryItem` JSONs into `Sources\Vanilla\`.
+Re-run with `-Clean -Force` after a game patch that changed item values.
 
 ---
 
@@ -156,7 +159,7 @@ repak --aes-key <public-game-key> unpack `
     -i 'R5/Plugins/R5BusinessRules/Content/InventoryItems' `
     -o .\Sources\Vanilla `
     -f `
-    <Game.VanillaPak>
+    <auto-detected pakchunk0-Windows.pak from the Steam install>
 ```
 
 Total runtime is well under a second; the include filter restricts the
@@ -173,7 +176,7 @@ Stack Size\
 +-- Apply-StackMultiplier.ps1      Multiply / set MaxCountInSlot (thin wrapper)
 +-- Build-WindroseMod.ps1          Pak the source folder into a _P.pak (thin wrapper)
 +-- lib\
-|   +-- Common.ps1                 Shared helpers (logging, config, paths, Get-RepakExe)
+|   +-- Common.ps1                 Shared helpers (logging, config, paths, Get-RepakExe, Get-WindroseVanillaPak)
 |   +-- Apply.ps1                  Invoke-StackMultiplierApply
 |   +-- Pack.ps1                   Invoke-WindroseModPack
 |   +-- Dump.ps1                   Invoke-WindroseVanillaDump
@@ -194,8 +197,10 @@ Stack Size\
 |---|---|---|
 | `SHA256 mismatch for repak_cli-*.zip` | Download corrupted, or trumank rotated the pinned release | Delete `lib\bin\` and retry. If it persists, check `lib\Common.ps1` for the pinned `WindroseRepakVersion` |
 | `Invoke-WebRequest: ... could not establish trust relationship` | TLS/proxy/AV blocking GitHub-Releases | Open the release URL in a browser, drop `repak.exe` manually into `lib\bin\` |
-| `VanillaPak not found` | `Game.VanillaPak` in `config.psd1` wrong / empty | Set it to your `pakchunk0-*.pak` |
-| `config.psd1` missing -> warning, falls back to example | Normal on first run | `Copy-Item config.example.psd1 config.psd1` |
+| `Could not find a Windrose vanilla pak under any Steam library` | Windrose isn't installed on this machine via Steam, or it's installed in a non-standard location Steam doesn't track | Pass `-VanillaPak <path>` to point at a `pakchunk0-WindowsServer.pak` (server) or `pakchunk0-Windows.pak` (client) directly |
+| `Could not locate the Steam install` | Steam not installed, or registry keys missing/corrupt | Pass `-VanillaPak <path>` directly |
+| `VanillaPak not found: <your path>` | Explicit `-VanillaPak` argument points at a non-existent file | Fix the path |
+| `config.psd1` missing -> warning, falls back to example | Normal -- only relevant if you want to override default paths | Optionally `Copy-Item config.example.psd1 config.psd1` |
 | `repak unpack` reports "encrypted but no key was provided" | Wrong AES key | The script uses the public Windrose key; if a future patch changes it, update the constant in `Dump-WindroseVanilla.ps1` |
 | `R5LogJsonConverter: Error` in the game log | JSON schema not loadable | Re-run `Dump-WindroseVanilla.ps1 -Clean -Force` to refresh the snapshot, then rebuild |
 | Encoding issues (`???` characters) in JSONs | `Get-Content` without UTF-8 (PS 5.1 default) | Already handled: scripts read via `[System.IO.File]::ReadAllText(..., UTF8)` |

@@ -15,25 +15,29 @@ For more details (workflow for custom mods, troubleshooting) see
 
 ## One-time setup
 
-```powershell
-# Create config
-Copy-Item config.example.psd1 config.psd1
-```
+No config required for the default workflow:
 
-Set one path in `config.psd1`:
+- the **Steam install** of Windrose is auto-detected via the Windows
+  registry and `libraryfolders.vdf`, and `pakchunk0-Windows.pak` is read
+  from there;
+- `repak.exe` is downloaded automatically (pinned v0.2.3 from
+  trumank/repak, SHA256-verified) and cached in `lib\bin\`.
 
-- `Game.VanillaPak`   -- path to `pakchunk0-WindowsServer.pak` (server) or
-                         `pakchunk0-Windows.pak` (client)
-
-`repak.exe` is downloaded automatically (pinned v0.2.3 from trumank/repak,
-SHA256-verified) on first use and cached in `lib\bin\`. No manual install
-required.
-
-Then extract the vanilla snapshot once:
+Extract the vanilla snapshot once:
 
 ```powershell
 .\Dump-WindroseVanilla.ps1
 ```
+
+If your pak lives outside any Steam library (e.g. a dedicated server),
+pass `-VanillaPak <path>` once:
+
+```powershell
+.\Dump-WindroseVanilla.ps1 -VanillaPak 'E:\...\pakchunk0-WindowsServer.pak'
+```
+
+For overriding the build paths (`Sources\`, `Builds\`), copy
+`config.example.psd1` to `config.psd1` and adjust the `Paths` section.
 
 ## Build all variations at once
 

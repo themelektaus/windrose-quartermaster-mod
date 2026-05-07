@@ -22,7 +22,10 @@
 .PARAMETER VanillaPak
     Path to the game pak (`pakchunk0-WindowsServer.pak` for the dedicated
     server, or `pakchunk0-Windows.pak` from the game client).
-    Default: $cfg.Game.VanillaPak (config.psd1).
+    Default: auto-detected by reading the Steam install path from the
+    Windows registry and walking every Steam library listed in
+    libraryfolders.vdf for a Windrose install. Override only if your pak
+    lives somewhere Steam doesn't know about (e.g. a dedicated server).
 
 .PARAMETER OutDir
     Target directory for the extracted tree. Default: $cfg.Paths.Vanilla
@@ -45,15 +48,15 @@
 
 .EXAMPLE
     .\Dump-WindroseVanilla.ps1
-    # Default paths from config.psd1: extract into Sources\Vanilla\.
+    # Auto-detects the Steam install of Windrose; extract into Sources\Vanilla\.
 
 .EXAMPLE
     .\Dump-WindroseVanilla.ps1 -Clean -Force
     # Wipe Sources\Vanilla\ first, then unpack everything fresh.
 
 .EXAMPLE
-    .\Dump-WindroseVanilla.ps1 -VanillaPak 'C:\Games\Windrose\R5\Content\Paks\pakchunk0-Windows.pak'
-    # Use the client pak instead of the server pak.
+    .\Dump-WindroseVanilla.ps1 -VanillaPak 'E:\Windrose\Server\Nockalmeer\R5\Content\Paks\pakchunk0-WindowsServer.pak'
+    # Point at a dedicated-server pak instead of the auto-detected Steam install.
 #>
 
 [CmdletBinding()]
@@ -78,22 +81,17 @@ $ErrorActionPreference = 'Stop'
 
 $cfg = Get-WindroseConfig -ModRoot $PSScriptRoot
 
-$vp = Use-Default $VanillaPak ([string]$cfg.Game.VanillaPak)
-$od = Use-Default $OutDir     ([string]$cfg.Paths.Vanilla)
+$od = Use-Default $OutDir ([string]$cfg.Paths.Vanilla)
 
-if (-not $vp) {
-    throw "VanillaPak is not set. Configure Game.VanillaPak in config.psd1 or pass -VanillaPak."
-}
-
-# RepakExe is left empty when not provided -- the library auto-resolves it
-# via Get-RepakExe (lazy download to lib\bin\ on first use).
+# VanillaPak and RepakExe are left empty when not provided -- the library
+# auto-resolves them (Steam install lookup / lib\bin\repak.exe download).
 $dumpArgs = @{
-    VanillaPak = $vp
-    OutDir     = $od
-    Clean      = $Clean
-    Force      = $Force
-    DryRun     = $DryRun
+    OutDir = $od
+    Clean  = $Clean
+    Force  = $Force
+    DryRun = $DryRun
 }
-if ($RepakExe -and $RepakExe.Trim() -ne '') { $dumpArgs.RepakExe = $RepakExe }
+if ($VanillaPak -and $VanillaPak.Trim() -ne '') { $dumpArgs.VanillaPak = $VanillaPak }
+if ($RepakExe   -and $RepakExe.Trim()   -ne '') { $dumpArgs.RepakExe   = $RepakExe   }
 
 Invoke-WindroseVanillaDump @dumpArgs

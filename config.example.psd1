@@ -27,21 +27,6 @@
         # Builds  = 'Builds'
     }
 
-    # Game source (used by Dump-WindroseVanilla.ps1).
-    #
-    # VanillaPak
-    #     Path to the game's main pak file -- contains the encrypted vanilla
-    #     InventoryItem JSONs that the build pipeline uses as its source of
-    #     truth. Either the dedicated server pak or the game-client pak
-    #     works:
-    #         <Server>\R5\Content\Paks\pakchunk0-WindowsServer.pak
-    #         <Steam>\common\Windrose\R5\Content\Paks\pakchunk0-Windows.pak
-    #     The pak is AES-encrypted; the public game key is hardcoded in
-    #     Dump-WindroseVanilla.ps1 (it is not a secret).
-    Game = @{
-        VanillaPak = 'C:\Games\Windrose\R5\Content\Paks\pakchunk0-Windows.pak'
-    }
-
     # Pak format (Windrose default, normally do NOT change).
     #
     # MountPoint

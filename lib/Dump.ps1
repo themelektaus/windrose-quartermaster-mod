@@ -15,7 +15,7 @@ $script:WindroseInventoryItemsPath = 'R5/Plugins/R5BusinessRules/Content/Invento
 function Invoke-WindroseVanillaDump {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$VanillaPak,
+        [string]$VanillaPak,
         [Parameter(Mandatory)][string]$OutDir,
         [string]$RepakExe,
         [switch]$Clean,
@@ -25,10 +25,20 @@ function Invoke-WindroseVanillaDump {
 
     Write-Step 'Checking prerequisites'
 
-    if (-not (Test-Path -LiteralPath $VanillaPak -PathType Leaf)) {
+    # Auto-resolve VanillaPak via Steam registry + libraryfolders.vdf when
+    # not supplied. DryRun stays offline-/IO-light (registry probe only,
+    # no failure if Windrose is missing).
+    if (-not $VanillaPak -or $VanillaPak.Trim() -eq '') {
+        if ($DryRun) {
+            $VanillaPak = '<auto>'
+        } else {
+            $VanillaPak = Get-WindroseVanillaPak
+        }
+    } elseif (-not (Test-Path -LiteralPath $VanillaPak -PathType Leaf)) {
         throw "VanillaPak not found: $VanillaPak"
+    } else {
+        $VanillaPak = (Resolve-Path -LiteralPath $VanillaPak).Path
     }
-    $VanillaPak = (Resolve-Path -LiteralPath $VanillaPak).Path
     Write-OK "VanillaPak: $VanillaPak"
 
     # Auto-resolve repak.exe (downloads to lib\bin\ on first use). Skipped
