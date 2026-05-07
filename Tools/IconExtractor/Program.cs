@@ -1,23 +1,48 @@
 // IconExtractor: extracts UI icons (UTexture2D) from a Windrose game install
-// using CUE4Parse to read the AES-encrypted UE5 IoStore containers.
+// using CUE4Parse to read the AES-encrypted UE5 IoStore containers, plus
+// optionally the localized title + description for each item by walking
+// every shipped culture's .locres files.
 //
 // Invoked by the Stack Size mod's Extract-Icons.ps1. The PowerShell wrapper
 // already collected the InventoryItem JSONs from Sources/Vanilla/, parsed
-// the ItemTexture paths, and now hands us the list of asset paths to
-// extract. We turn each one into a PNG and write it to OutDir.
+// the ItemTexture paths and the FText (TableId/Key) references for
+// ItemName/ItemDescription, and now hands us the list of asset paths +
+// localization keys to extract.
 //
 // Args:
 //   --paks-dir <path>    Folder that contains the game's pakchunk0*.pak/.ucas/.utoc. (required)
 //   --aes-key  <hex>     AES key for the encrypted IoStore containers. (required)
-//   --manifest <path>    JSON file: [{"itemId":"...","texturePath":"/Game/..."}...]. (required)
+//   --manifest <path>    JSON array; each entry:
+//                          itemId        (required)
+//                          texturePath   (required, "/Game/...")
+//                          nameTable     (optional, FText TableId for ItemName)
+//                          nameKey       (optional, FText Key for ItemName)
+//                          descTable     (optional, FText TableId for ItemDescription)
+//                          descKey       (optional, FText Key for ItemDescription)
 //   --out-dir  <path>    Where the PNGs land. Created if missing. (required)
 //   --usmap    <path>    UE5 mappings file (.usmap) for unversioned property layouts.
 //                        Without it CUE4Parse cannot deserialize UTexture2D properties
 //                        on Windrose builds. Generate via UE4SS Ctrl+Num6 (DumpUSMAP). (required)
 //   --game-version <id>  Optional, defaults to UE5_6. One of CUE4Parse's EGame names.
+//   --no-meta            Skip metadata extraction (only PNGs).
 //
 // Output:
-//   <OutDir>/<itemId>.png  per successfully extracted item.
+//   <OutDir>/<itemId>.png   per successfully extracted item.
+//   <OutDir>/<itemId>.json  per item that has at least one resolved
+//                           localized field; format:
+//                             { "<culture>": {
+//                                  "name":        "...",
+//                                  "description": "...",
+//                                  "vanityText":  "...",                   (optional)
+//                                  "effects":     ["...", "..."],           (optional)
+//                                  "setEffects":  [{ "name": "...",         (optional)
+//                                                    "description": "...",
+//                                                    "setEffectTag": "...",
+//                                                    "activationCount": 2 }]
+//                              } }
+//                           Optional fields are omitted when empty. Only
+//                           cultures with at least one non-empty field are
+//                           written.
 //
 // Exit codes:
 //   0  success (everything written, even if some items were skipped).
@@ -39,7 +64,38 @@ namespace WindroseIconExtractor;
 
 internal static class Program
 {
-    private record ManifestEntry(string ItemId, string TexturePath);
+    // Optional localization fields: when present, the extractor resolves the
+    // FText (TableId/Key) -> localized string for every culture shipped in
+    // the pak and writes <itemId>.json next to the PNG.
+    private sealed class ManifestEntry
+    {
+        public string ItemId { get; set; } = string.Empty;
+        public string TexturePath { get; set; } = string.Empty;
+        public string? NameTable { get; set; }
+        public string? NameKey { get; set; }
+        public string? DescTable { get; set; }
+        public string? DescKey { get; set; }
+        public string? VanityTable { get; set; }
+        public string? VanityKey { get; set; }
+        public List<EffectRef>? Effects { get; set; }
+        public List<SetEffectRef>? SetEffects { get; set; }
+    }
+
+    private sealed class EffectRef
+    {
+        public string? Table { get; set; }
+        public string? Key { get; set; }
+    }
+
+    private sealed class SetEffectRef
+    {
+        public string? NameTable { get; set; }
+        public string? NameKey { get; set; }
+        public string? DescTable { get; set; }
+        public string? DescKey { get; set; }
+        public string? SetEffectTag { get; set; }
+        public int ActivationCount { get; set; }
+    }
 
     private static int Main(string[] args)
     {
@@ -196,7 +252,177 @@ internal static class Program
             for (int i = 0; i < show; i++) Console.WriteLine($"     {failures[i]}");
             if (failures.Count > show) Console.WriteLine($"     ... and {failures.Count - show} more");
         }
+
+        if (!a.NoMeta)
+        {
+            ExtractMetadata(provider, manifest, a.OutDir);
+        }
+
         return 0;
+    }
+
+    // For each shipped culture, swap the provider's localization dictionary
+    // and resolve every FText (TableId/Key) reference per manifest entry --
+    // name, description, vanityText, effects[], setEffects[].
+    // We accumulate results in memory and write one <itemId>.json per item
+    // at the end, so each item gets a single file with all locales merged
+    // (instead of one file per locale).
+    private static void ExtractMetadata(DefaultFileProvider provider, List<ManifestEntry> manifest, string outDir)
+    {
+        // Filter to entries that carry at least one localizable reference.
+        var withMeta = manifest.Where(HasAnyLocalization).ToList();
+        if (withMeta.Count == 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("[!]  Metadata: no manifest entries carry localization keys -- skipped");
+            return;
+        }
+
+        var cultures = provider.Internationalization.AvailableCultures;
+        if (cultures.Count == 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("[!]  Metadata: no cultures discovered (DefaultGame.ini parse miss?) -- skipped");
+            return;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"[..] Metadata: resolving {withMeta.Count} items across {cultures.Count} cultures: {string.Join(", ", cultures)}");
+
+        // itemId -> culture -> bag of resolved fields
+        var perItem = new Dictionary<string, SortedDictionary<string, LocalizedBag>>(withMeta.Count);
+
+        foreach (var culture in cultures)
+        {
+            try
+            {
+                provider.ChangeCulture(culture);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"     {culture}: ChangeCulture failed ({ex.GetType().Name}: {ex.Message}) -- skipping");
+                continue;
+            }
+
+            int hits = 0;
+            foreach (var entry in withMeta)
+            {
+                var bag = ResolveBag(provider, entry);
+                if (bag.IsEmpty) continue;
+
+                if (!perItem.TryGetValue(entry.ItemId, out var byCulture))
+                {
+                    byCulture = new SortedDictionary<string, LocalizedBag>(StringComparer.Ordinal);
+                    perItem[entry.ItemId] = byCulture;
+                }
+                byCulture[culture] = bag;
+                hits++;
+            }
+            Console.WriteLine($"     {culture}: {hits} item(s) had at least one localized field");
+        }
+
+        // Write one JSON per item. Optional fields are omitted when empty,
+        // so a banana stays { name, description } and a weapon gets
+        // { name, description, vanityText, effects } etc.
+        var jsonOpts = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+
+        int written = 0;
+        foreach (var (itemId, byCulture) in perItem)
+        {
+            var shaped = new Dictionary<string, Dictionary<string, object>>(StringComparer.Ordinal);
+            foreach (var (culture, bag) in byCulture)
+            {
+                var dict = new Dictionary<string, object>(StringComparer.Ordinal);
+                if (bag.Name.Length > 0) dict["name"] = bag.Name;
+                if (bag.Description.Length > 0) dict["description"] = bag.Description;
+                if (bag.VanityText.Length > 0) dict["vanityText"] = bag.VanityText;
+                if (bag.Effects is { Count: > 0 }) dict["effects"] = bag.Effects;
+                if (bag.SetEffects is { Count: > 0 }) dict["setEffects"] = bag.SetEffects;
+                shaped[culture] = dict;
+            }
+
+            var outPath = Path.Combine(outDir, $"{SafeFileName(itemId)}.json");
+            File.WriteAllText(outPath, JsonSerializer.Serialize(shaped, jsonOpts));
+            written++;
+        }
+        Console.WriteLine($"[OK] Metadata: wrote {written} JSON sidecar(s) to {outDir}");
+    }
+
+    private static bool HasAnyLocalization(ManifestEntry e)
+    {
+        if (!string.IsNullOrEmpty(e.NameTable) && !string.IsNullOrEmpty(e.NameKey)) return true;
+        if (!string.IsNullOrEmpty(e.DescTable) && !string.IsNullOrEmpty(e.DescKey)) return true;
+        if (!string.IsNullOrEmpty(e.VanityTable) && !string.IsNullOrEmpty(e.VanityKey)) return true;
+        if (e.Effects is { Count: > 0 }) return true;
+        if (e.SetEffects is { Count: > 0 }) return true;
+        return false;
+    }
+
+    // Resolve every FText reference for a single item under the *current*
+    // culture (caller must have invoked ChangeCulture).
+    private static LocalizedBag ResolveBag(DefaultFileProvider provider, ManifestEntry e)
+    {
+        string name   = LookupOrEmpty(provider, e.NameTable,   e.NameKey);
+        string desc   = LookupOrEmpty(provider, e.DescTable,   e.DescKey);
+        string vanity = LookupOrEmpty(provider, e.VanityTable, e.VanityKey);
+
+        List<string>? effects = null;
+        if (e.Effects is { Count: > 0 })
+        {
+            foreach (var er in e.Effects)
+            {
+                var v = LookupOrEmpty(provider, er.Table, er.Key);
+                if (v.Length == 0) continue;
+                effects ??= new List<string>(e.Effects.Count);
+                effects.Add(v);
+            }
+        }
+
+        List<Dictionary<string, object>>? setEffects = null;
+        if (e.SetEffects is { Count: > 0 })
+        {
+            foreach (var s in e.SetEffects)
+            {
+                string sn = LookupOrEmpty(provider, s.NameTable, s.NameKey);
+                string sd = LookupOrEmpty(provider, s.DescTable, s.DescKey);
+                if (sn.Length == 0 && sd.Length == 0) continue;
+
+                var entry = new Dictionary<string, object>(StringComparer.Ordinal);
+                if (sn.Length > 0) entry["name"] = sn;
+                if (sd.Length > 0) entry["description"] = sd;
+                if (!string.IsNullOrEmpty(s.SetEffectTag)) entry["setEffectTag"] = s.SetEffectTag;
+                if (s.ActivationCount > 0) entry["activationCount"] = s.ActivationCount;
+                setEffects ??= new List<Dictionary<string, object>>(e.SetEffects.Count);
+                setEffects.Add(entry);
+            }
+        }
+
+        return new LocalizedBag(name, desc, vanity, effects, setEffects);
+    }
+
+    private static string LookupOrEmpty(DefaultFileProvider provider, string? table, string? key)
+    {
+        if (string.IsNullOrEmpty(table) || string.IsNullOrEmpty(key)) return string.Empty;
+        return provider.Internationalization.SafeGet(table, key, string.Empty) ?? string.Empty;
+    }
+
+    private readonly record struct LocalizedBag(
+        string Name,
+        string Description,
+        string VanityText,
+        List<string>? Effects,
+        List<Dictionary<string, object>>? SetEffects)
+    {
+        public bool IsEmpty =>
+            Name.Length == 0 &&
+            Description.Length == 0 &&
+            VanityText.Length == 0 &&
+            (Effects is null || Effects.Count == 0) &&
+            (SetEffects is null || SetEffects.Count == 0);
     }
 
     // UE5 IoStore (.utoc/.ucas) usually uses Oodle compression. Windrose ships
@@ -296,12 +522,14 @@ internal static class Program
         string ManifestPath,
         string OutDir,
         string UsmapPath,
-        string GameVersion);
+        string GameVersion,
+        bool NoMeta);
 
     private static ParsedArgs ParseArgs(string[] args)
     {
         string? paks = null, key = null, manifest = null, outDir = null, usmap = null;
         string version = "UE5_6";
+        bool noMeta = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -318,6 +546,7 @@ internal static class Program
                 case "--out-dir":  outDir = Need("--out-dir"); break;
                 case "--usmap":    usmap  = Need("--usmap"); break;
                 case "--game-version": version = Need("--game-version"); break;
+                case "--no-meta":  noMeta = true; break;
                 default: throw new ArgumentException($"Unknown argument: {args[i]}");
             }
         }
@@ -330,6 +559,6 @@ internal static class Program
         if (!Directory.Exists(paks))             throw new ArgumentException($"--paks-dir does not exist: {paks}");
         if (!File.Exists(usmap))                 throw new ArgumentException($"--usmap file not found: {usmap}");
 
-        return new ParsedArgs(paks, key, manifest, outDir, usmap, version);
+        return new ParsedArgs(paks, key, manifest, outDir, usmap, version, noMeta);
     }
 }
