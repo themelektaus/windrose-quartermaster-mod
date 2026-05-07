@@ -5,8 +5,9 @@
     `config.psd1` is listed in .gitignore so your user-specific paths don't
     get accidentally committed.
 
-    The config is loaded by `_config.ps1`. Each script uses it as the default
-    for its parameters; explicitly passed parameters take precedence.
+    The config is loaded by `lib\Common.ps1::Get-WindroseConfig`. Each script
+    uses it as the default for its parameters; explicitly passed parameters
+    take precedence.
 #>
 @{
     # Build paths.
@@ -24,11 +25,6 @@
         # Sources = 'Sources'
         # Vanilla = 'Sources\Vanilla'
         # Builds  = 'Builds'
-    }
-
-    # Tool paths (user-specific).
-    Tools = @{
-        RepakExe = 'C:\Tools\repak\repak.exe'
     }
 
     # Game source (used by Dump-WindroseVanilla.ps1).

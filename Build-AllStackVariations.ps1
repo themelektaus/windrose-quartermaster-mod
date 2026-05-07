@@ -7,9 +7,8 @@
     For each variant:
         1. Copy Sources\Vanilla\ -> Sources\StackSize_<v>\ (skip if already
            there; use -Force to overwrite)
-        2. Apply-StackMultiplier.ps1 (multiplies vanilla*N or sets an
-           absolute value, deletes non-stackable items)
-        3. Build-WindroseMod.ps1 (pack)
+        2. Apply stack multiplier (or absolute value)
+        3. Pack -> .pak in <OutDir>
 
     The finished .pak files end up in <OutDir> and must be copied into the
     server/client ~mods folder yourself.
@@ -78,28 +77,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Load config ----------------------------------------------------------
-$cfg = & (Join-Path $PSScriptRoot '_config.ps1')
+. (Join-Path $PSScriptRoot 'lib\Common.ps1')
+. (Join-Path $PSScriptRoot 'lib\Apply.ps1')
+. (Join-Path $PSScriptRoot 'lib\Pack.ps1')
 
-if (-not $VanillaSource) { $VanillaSource = [string]$cfg.Paths.Vanilla }
-if (-not $SrcRoot)       { $SrcRoot       = [string]$cfg.Paths.Sources }
-if (-not $OutDir)        { $OutDir        = [string]$cfg.Paths.Builds }
+$cfg = Get-WindroseConfig -ModRoot $PSScriptRoot
 
-function Write-Step($msg)  { Write-Host "==> $msg"          -ForegroundColor Cyan }
-function Write-OK($msg)    { Write-Host "    [OK] $msg"     -ForegroundColor Green }
-function Write-Warn2($msg) { Write-Host "    [!]  $msg"     -ForegroundColor Yellow }
-function Write-Err2($msg)  { Write-Host "    [X]  $msg"     -ForegroundColor Red }
-
-# Verify paths
-$ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BuildScript  = Join-Path $ScriptRoot 'Build-WindroseMod.ps1'
-$ApplyScript  = Join-Path $ScriptRoot 'Apply-StackMultiplier.ps1'
-
-foreach ($p in @($BuildScript, $ApplyScript)) {
-    if (-not (Test-Path -LiteralPath $p)) {
-        throw "Path not found: $p"
-    }
-}
+$VanillaSource = Use-Default $VanillaSource ([string]$cfg.Paths.Vanilla)
+$SrcRoot       = Use-Default $SrcRoot       ([string]$cfg.Paths.Sources)
+$OutDir        = Use-Default $OutDir        ([string]$cfg.Paths.Builds)
+$MountPoint    = [string]$cfg.Pak.MountPoint
+$Version       = [string]$cfg.Pak.Version
 
 if (-not (Test-Path -LiteralPath $VanillaSource -PathType Container)) {
     throw @"
@@ -111,34 +99,26 @@ the game pak.
 }
 $VanillaSource = (Resolve-Path -LiteralPath $VanillaSource).Path
 
-if (-not (Test-Path -LiteralPath $OutDir)) {
-    if (-not $DryRun) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
-}
-if (-not (Test-Path -LiteralPath $SrcRoot)) {
-    if (-not $DryRun) { New-Item -ItemType Directory -Path $SrcRoot -Force | Out-Null }
-}
+Initialize-Directory -Path $OutDir  -DryRun:$DryRun
+Initialize-Directory -Path $SrcRoot -DryRun:$DryRun
 
-# Derive variant spec: multiplier or absolute?
-function Resolve-Variant($name) {
+# --- Variant spec parser -------------------------------------------------
+function Resolve-Variant {
+    param([string]$name)
     if ($name -match '^x(\d+)$') {
         return [pscustomobject]@{
-            Name       = $name
-            Mode       = 'Multiplier'
-            Multiplier = [int]$matches[1]
-            Absolute   = 0
+            Name = $name; Mode = 'Multiplier'; Multiplier = [int]$matches[1]; Absolute = 0
         }
     }
     if ($name -match '^(\d+)$') {
         return [pscustomobject]@{
-            Name       = $name
-            Mode       = 'Absolute'
-            Multiplier = 0
-            Absolute   = [int]$matches[1]
+            Name = $name; Mode = 'Absolute'; Multiplier = 0; Absolute = [int]$matches[1]
         }
     }
     throw "Unknown variant: $name (allowed: 'xN' or 'N')"
 }
 
+# --- Header --------------------------------------------------------------
 Write-Step "Build All Stack Variations"
 Write-OK "Variants     : $($Variants -join ', ')"
 Write-OK "VanillaSource: $VanillaSource"
@@ -149,6 +129,7 @@ if ($CleanSources) { Write-OK "CleanSources : yes (src folders deleted after bui
 if ($DryRun)       { Write-Warn2 "DryRun active -> nothing happens" }
 Write-Host ""
 
+# --- Per-variant loop ----------------------------------------------------
 $results = @()
 $idx = 0
 $total = $Variants.Count
@@ -156,15 +137,14 @@ $total = $Variants.Count
 foreach ($vname in $Variants) {
     $idx++
     $v = Resolve-Variant $vname
-    $modName  = "StackSize_$($v.Name)"
-    $srcPath  = Join-Path $SrcRoot $modName
-    $pakName  = "${modName}_P.pak"
-    $pakPath  = Join-Path $OutDir $pakName
+    $modName = "StackSize_$($v.Name)"
+    $srcPath = Join-Path $SrcRoot $modName
+    $pakName = "${modName}_P.pak"
+    $pakPath = Join-Path $OutDir $pakName
 
     Write-Host "================================================================" -ForegroundColor DarkCyan
     Write-Step "[$idx/$total] $modName  ($($v.Mode))"
 
-    # Skip when pak already exists and -Force was not given
     if ((Test-Path -LiteralPath $pakPath) -and -not $Force) {
         Write-Warn2 "Pak already exists, skipping (use -Force to overwrite): $pakPath"
         $results += [pscustomobject]@{ Name = $modName; Status = 'skipped'; Path = $pakPath }
@@ -181,7 +161,7 @@ foreach ($vname in $Variants) {
                 Remove-Item -LiteralPath $srcPath -Recurse -Force
                 Write-OK "Removed existing src (Force): $srcPath"
             }
-            $srcExists = $DryRun  # in DryRun pretend it's still there for the next branch
+            $srcExists = $DryRun  # in DryRun pretend it's still there
         }
         if (-not $srcExists) {
             Write-Step "Copy Vanilla -> $srcPath"
@@ -198,30 +178,23 @@ foreach ($vname in $Variants) {
             continue
         }
 
-        # 2. Apply
+        # 2. Apply -- direct library call, no sub-process
         Write-Step "Apply $($v.Mode) on $srcPath"
-        $applyArgs = @{
-            Source = $srcPath
-        }
         if ($v.Mode -eq 'Multiplier') {
-            $applyArgs.Multiplier = $v.Multiplier
-            $applyArgs.Cap        = 0   # no cap - user explicitly wants high values
+            Invoke-StackMultiplierApply -Source $srcPath -Multiplier $v.Multiplier -Cap 0 | Out-Null
         } else {
-            $applyArgs.AbsoluteValue = $v.Absolute
+            Invoke-StackMultiplierApply -Source $srcPath -AbsoluteValue $v.Absolute | Out-Null
         }
-        & $ApplyScript @applyArgs
-        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Apply failed (exit $LASTEXITCODE)" }
 
-        # 3. Build
+        # 3. Pack -- direct library call (auto-downloads repak.exe on first use)
         Write-Step "Pack $srcPath -> $pakPath"
-        $buildArgs = @{
-            Source = $srcPath
-            Name   = $modName
-            OutDir = $OutDir
-        }
-        if ($Force) { $buildArgs.Force = $true }
-        & $BuildScript @buildArgs
-        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
+        Invoke-WindroseModPack `
+            -Source     $srcPath `
+            -Name       $modName `
+            -OutDir     $OutDir `
+            -MountPoint $MountPoint `
+            -Version    $Version `
+            -Force:$Force | Out-Null
 
         # 4. Optional cleanup
         if ($CleanSources) {
@@ -238,21 +211,24 @@ foreach ($vname in $Variants) {
     }
 }
 
+# --- Summary -------------------------------------------------------------
 Write-Host ""
 Write-Step "Summary"
 $results | ForEach-Object {
     $color = switch -Wildcard ($_.Status) {
-        'ok'         { 'Green' }
-        'skipped'    { 'Yellow' }
-        'error*'     { 'Red' }
-        default      { 'Gray' }
+        'ok'      { 'Green' }
+        'skipped' { 'Yellow' }
+        'error*'  { 'Red' }
+        default   { 'Gray' }
     }
     Write-Host ("    {0,-22} {1}" -f $_.Name, $_.Status) -ForegroundColor $color
 }
 
-$okCount   = ($results | Where-Object Status -eq 'ok').Count
-$skipCount = ($results | Where-Object Status -eq 'skipped').Count
-$errCount  = ($results | Where-Object Status -like 'error*').Count
+# @(...) wraps to enforce an array even when only one result matches
+# (PS 5.1: a single-object pipeline doesn't have a usable .Count).
+$okCount   = @($results | Where-Object Status -eq 'ok').Count
+$skipCount = @($results | Where-Object Status -eq 'skipped').Count
+$errCount  = @($results | Where-Object Status -like 'error*').Count
 Write-Host ""
 Write-OK "OK: $okCount  Skipped: $skipCount  Errors: $errCount"
 if ($DryRun) {

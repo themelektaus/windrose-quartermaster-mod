@@ -20,11 +20,14 @@ For more details (workflow for custom mods, troubleshooting) see
 Copy-Item config.example.psd1 config.psd1
 ```
 
-Set two paths in `config.psd1`:
+Set one path in `config.psd1`:
 
-- `Tools.RepakExe`    -- path to your `repak.exe`
 - `Game.VanillaPak`   -- path to `pakchunk0-WindowsServer.pak` (server) or
                          `pakchunk0-Windows.pak` (client)
+
+`repak.exe` is downloaded automatically (pinned v0.2.3 from trumank/repak,
+SHA256-verified) on first use and cached in `lib\bin\`. No manual install
+required.
 
 Then extract the vanilla snapshot once:
 

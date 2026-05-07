@@ -12,7 +12,7 @@ server or client.
 | What | Why | Required? |
 |---|---|---|
 | **Windows PowerShell 5.1** (or PS7) | Run scripts | yes |
-| **`repak.exe`** ([trumank/repak](https://github.com/trumank/repak/releases)) | Pack/unpack paks | yes |
+| **Internet access (one-time)** | Auto-download `repak.exe` v0.2.3 from [trumank/repak](https://github.com/trumank/repak/releases) on first use. Cached in `lib\bin\`. | yes (first run only) |
 | **Windrose game or server install** | Source for the vanilla pak | yes |
 
 The vanilla item JSONs are extracted on demand from
@@ -34,19 +34,19 @@ cd 'E:\Windrose\Mods\Stack Size'
 Copy-Item .\config.example.psd1 .\config.psd1
 ```
 
-Then open **`config.psd1`** in an editor and set these two paths:
+Then open **`config.psd1`** in an editor and set the path to the vanilla pak:
 
 ```powershell
-Tools = @{
-    RepakExe = 'C:\Path\To\Your\repak.exe'
-}
-
 Game = @{
     VanillaPak = 'E:\Windrose\Server\<YourServer>\R5\Content\Paks\pakchunk0-WindowsServer.pak'
     # Or for the Steam client:
     # VanillaPak = 'C:\Games\steamapps\common\Windrose\R5\Content\Paks\pakchunk0-Windows.pak'
 }
 ```
+
+`repak.exe` is **not** configured here -- it's downloaded automatically on
+first use (pinned v0.2.3, SHA256-verified) and cached in `lib\bin\`. To
+override (e.g. system-wide install), pass `-RepakExe <path>` to any script.
 
 You can leave `Paths` empty -- all paths are then resolved relative to the
 modding root:
@@ -168,11 +168,16 @@ unpack to ~1097 InventoryItem JSONs out of ~13800 total entries in the pak.
 
 ```
 Stack Size\
-+-- Build-WindroseMod.ps1          Pak the source folder into a _P.pak
-+-- Apply-StackMultiplier.ps1      Multiply / set MaxCountInSlot
 +-- Build-AllStackVariations.ps1   Master: all stack variations
 +-- Dump-WindroseVanilla.ps1       Extract vanilla JSONs from the game pak
-+-- _config.ps1                    Config loader (dot-sourced by all scripts)
++-- Apply-StackMultiplier.ps1      Multiply / set MaxCountInSlot (thin wrapper)
++-- Build-WindroseMod.ps1          Pak the source folder into a _P.pak (thin wrapper)
++-- lib\
+|   +-- Common.ps1                 Shared helpers (logging, config, paths, Get-RepakExe)
+|   +-- Apply.ps1                  Invoke-StackMultiplierApply
+|   +-- Pack.ps1                   Invoke-WindroseModPack
+|   +-- Dump.ps1                   Invoke-WindroseVanillaDump
+|   +-- bin\                       Auto-downloaded repak.exe (NOT in Git)
 +-- config.example.psd1            Config template (in Git)
 +-- config.psd1                    Your own config (NOT in Git)
 +-- Sources\
@@ -187,7 +192,8 @@ Stack Size\
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `repak.exe not found` | `Tools.RepakExe` in `config.psd1` wrong / empty | Correct the path |
+| `SHA256 mismatch for repak_cli-*.zip` | Download corrupted, or trumank rotated the pinned release | Delete `lib\bin\` and retry. If it persists, check `lib\Common.ps1` for the pinned `WindroseRepakVersion` |
+| `Invoke-WebRequest: ... could not establish trust relationship` | TLS/proxy/AV blocking GitHub-Releases | Open the release URL in a browser, drop `repak.exe` manually into `lib\bin\` |
 | `VanillaPak not found` | `Game.VanillaPak` in `config.psd1` wrong / empty | Set it to your `pakchunk0-*.pak` |
 | `config.psd1` missing -> warning, falls back to example | Normal on first run | `Copy-Item config.example.psd1 config.psd1` |
 | `repak unpack` reports "encrypted but no key was provided" | Wrong AES key | The script uses the public Windrose key; if a future patch changes it, update the constant in `Dump-WindroseVanilla.ps1` |
