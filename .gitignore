@@ -6,5 +6,7 @@
 /Testserver/
 /WindrosePlus/
 /Tools/IconExtractor/**/
+/GUI/bin/
+/GUI/obj/
 desktop.ini
 Thumbs.db
