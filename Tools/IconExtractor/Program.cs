@@ -13,12 +13,22 @@
 //   --paks-dir <path>    Folder that contains the game's pakchunk0*.pak/.ucas/.utoc. (required)
 //   --aes-key  <hex>     AES key for the encrypted IoStore containers. (required)
 //   --manifest <path>    JSON array; each entry:
-//                          itemId        (required)
-//                          texturePath   (required, "/Game/...")
-//                          nameTable     (optional, FText TableId for ItemName)
-//                          nameKey       (optional, FText Key for ItemName)
-//                          descTable     (optional, FText TableId for ItemDescription)
-//                          descKey       (optional, FText Key for ItemDescription)
+//                          itemId            (required)
+//                          texturePath       (required, "/Game/...")
+//                          nameTable / nameKey         (optional, FText for ItemName)
+//                          descTable / descKey         (optional, FText for ItemDescription)
+//                          vanityTable / vanityKey     (optional, FText for VanityText)
+//                          effects[]                   (optional, list of FText refs)
+//                          setEffects[]                (optional, list of set-effect entries)
+//                          descriptionData[]           (optional, curve refs that back the
+//                                                       {0}, {1}, ... placeholders in
+//                                                       description / effects / setEffects).
+//                                                       Each entry:
+//                                                         curveTable, rowName, curveLevel,
+//                                                         displayType (RatioToPercent /
+//                                                         ValueToPercent / SecondsAsMinutes /
+//                                                         ValueAsValue / None),
+//                                                         inverse (1 - value when true).
 //   --out-dir  <path>    Where the PNGs land. Created if missing. (required)
 //   --usmap    <path>    UE5 mappings file (.usmap) for unversioned property layouts.
 //                        Without it CUE4Parse cannot deserialize UTexture2D properties
@@ -49,13 +59,19 @@
 //   2  argument error (bad CLI args, missing files).
 //   3  CUE4Parse provider initialization failed (wrong key / wrong game ver).
 
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider;
+using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Objects.Core.Misc;
+using CUE4Parse.UE4.Objects.Engine.Curves;
+using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.Textures.BC;
@@ -79,6 +95,7 @@ internal static class Program
         public string? VanityKey { get; set; }
         public List<EffectRef>? Effects { get; set; }
         public List<SetEffectRef>? SetEffects { get; set; }
+        public List<CurveRef>? DescriptionData { get; set; }
     }
 
     private sealed class EffectRef
@@ -95,6 +112,18 @@ internal static class Program
         public string? DescKey { get; set; }
         public string? SetEffectTag { get; set; }
         public int ActivationCount { get; set; }
+    }
+
+    // Curve-table reference that backs a {0}/{1}/... placeholder in the
+    // localized description / effects / set-effects strings. The field names
+    // mirror the JSON shape produced by Library/Icons.ps1.
+    private sealed class CurveRef
+    {
+        public string? CurveTable { get; set; }
+        public string? RowName { get; set; }
+        public int CurveLevel { get; set; }
+        public string? DisplayType { get; set; }
+        public bool Inverse { get; set; }
     }
 
     private static int Main(string[] args)
@@ -289,6 +318,32 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine($"[..] Metadata: resolving {withMeta.Count} items across {cultures.Count} cultures: {string.Join(", ", cultures)}");
 
+        // Curve refs are culture-independent (they always produce the same
+        // numeric string), so resolve them once per item up front.
+        // itemId -> values[] (one entry per descriptionData[] index, null
+        // means "lookup failed -- leave the {N} literal in place").
+        CurveResolver.Verbose = Environment.GetEnvironmentVariable("ICONEXTRACTOR_DEBUG_CURVES") == "1";
+        var curveResolver = new CurveResolver(provider);
+        var resolvedCurves = new Dictionary<string, string?[]>(StringComparer.Ordinal);
+        int curveItems = 0, curveOk = 0, curveMiss = 0;
+        foreach (var entry in withMeta)
+        {
+            if (entry.DescriptionData is not { Count: > 0 }) continue;
+            curveItems++;
+            var arr = new string?[entry.DescriptionData.Count];
+            for (int i = 0; i < entry.DescriptionData.Count; i++)
+            {
+                var s = curveResolver.Resolve(entry.DescriptionData[i]);
+                arr[i] = s;
+                if (s is null) curveMiss++; else curveOk++;
+            }
+            resolvedCurves[entry.ItemId] = arr;
+        }
+        if (curveItems > 0)
+        {
+            Console.WriteLine($"     Curve placeholders: resolved {curveOk}, missed {curveMiss} across {curveItems} item(s)");
+        }
+
         // itemId -> culture -> bag of resolved fields
         var perItem = new Dictionary<string, SortedDictionary<string, LocalizedBag>>(withMeta.Count);
 
@@ -307,7 +362,8 @@ internal static class Program
             int hits = 0;
             foreach (var entry in withMeta)
             {
-                var bag = ResolveBag(provider, entry);
+                resolvedCurves.TryGetValue(entry.ItemId, out var values);
+                var bag = ResolveBag(provider, entry, values);
                 if (bag.IsEmpty) continue;
 
                 if (!perItem.TryGetValue(entry.ItemId, out var byCulture))
@@ -363,11 +419,13 @@ internal static class Program
     }
 
     // Resolve every FText reference for a single item under the *current*
-    // culture (caller must have invoked ChangeCulture).
-    private static LocalizedBag ResolveBag(DefaultFileProvider provider, ManifestEntry e)
+    // culture (caller must have invoked ChangeCulture). Placeholder values
+    // (when present) substitute {0}/{1}/... in description / effects /
+    // setEffects[].description; unresolved placeholders stay literal.
+    private static LocalizedBag ResolveBag(DefaultFileProvider provider, ManifestEntry e, string?[]? values)
     {
         string name   = LookupOrEmpty(provider, e.NameTable,   e.NameKey);
-        string desc   = LookupOrEmpty(provider, e.DescTable,   e.DescKey);
+        string desc   = SubstitutePlaceholders(LookupOrEmpty(provider, e.DescTable, e.DescKey), values);
         string vanity = LookupOrEmpty(provider, e.VanityTable, e.VanityKey);
 
         List<string>? effects = null;
@@ -378,7 +436,7 @@ internal static class Program
                 var v = LookupOrEmpty(provider, er.Table, er.Key);
                 if (v.Length == 0) continue;
                 effects ??= new List<string>(e.Effects.Count);
-                effects.Add(v);
+                effects.Add(SubstitutePlaceholders(v, values));
             }
         }
 
@@ -388,7 +446,7 @@ internal static class Program
             foreach (var s in e.SetEffects)
             {
                 string sn = LookupOrEmpty(provider, s.NameTable, s.NameKey);
-                string sd = LookupOrEmpty(provider, s.DescTable, s.DescKey);
+                string sd = SubstitutePlaceholders(LookupOrEmpty(provider, s.DescTable, s.DescKey), values);
                 if (sn.Length == 0 && sd.Length == 0) continue;
 
                 var entry = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -408,6 +466,150 @@ internal static class Program
     {
         if (string.IsNullOrEmpty(table) || string.IsNullOrEmpty(key)) return string.Empty;
         return provider.Internationalization.SafeGet(table, key, string.Empty) ?? string.Empty;
+    }
+
+    // Replace every {N} in `text` with values[N], leaving the literal {N} in
+    // place when the index is out of range or the lookup failed.
+    private static readonly Regex PlaceholderRegex = new(@"\{(\d+)\}", RegexOptions.Compiled);
+    private static string SubstitutePlaceholders(string text, string?[]? values)
+    {
+        if (string.IsNullOrEmpty(text) || values is null || values.Length == 0) return text;
+        if (text.IndexOf('{') < 0) return text;
+        return PlaceholderRegex.Replace(text, m =>
+        {
+            if (int.TryParse(m.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idx)
+                && idx >= 0 && idx < values.Length)
+            {
+                var v = values[idx];
+                if (!string.IsNullOrEmpty(v)) return v;
+            }
+            return m.Value;
+        });
+    }
+
+    // Loads UCurveTables on demand and evaluates a CurveRef to a display
+    // string ("5", "5%", "5.5%" -- per the DisplayType formatter).
+    // The provider is shared with the rest of the run, so cached assets are
+    // reused. Misses (table not found, row not found) cache as null and the
+    // caller leaves the {N} placeholder literal.
+    private sealed class CurveResolver
+    {
+        // Per-table cache: original UCurveTable + a string-keyed RowMap mirror.
+        // The mirror is needed because UCurveTable.TryFindCurve hashes by
+        // FName.Index when keys were loaded from a binary package, so
+        // RowMap.TryGetValue(new FName(textRowName)) misses even when the
+        // text matches. We rebuild a case-insensitive string map once per
+        // table and look up by string instead.
+        private sealed class CachedTable
+        {
+            public UCurveTable Table;
+            public Dictionary<string, FStructFallback> ByName;
+            public CachedTable(UCurveTable t, Dictionary<string, FStructFallback> map) { Table = t; ByName = map; }
+        }
+
+        private readonly DefaultFileProvider _provider;
+        private readonly Dictionary<string, CachedTable?> _cache = new(StringComparer.OrdinalIgnoreCase);
+
+        public CurveResolver(DefaultFileProvider provider) { _provider = provider; }
+
+        public static bool Verbose = false;
+
+        public string? Resolve(CurveRef r)
+        {
+            if (r is null || string.IsNullOrEmpty(r.CurveTable) || string.IsNullOrEmpty(r.RowName))
+                return null;
+
+            var cached = LoadTable(r.CurveTable);
+            if (cached is null) return null;
+
+            if (!cached.ByName.TryGetValue(r.RowName, out var rowStruct))
+            {
+                if (Verbose) Console.WriteLine($"     [curve-miss] row '{r.RowName}' not in {r.CurveTable}");
+                return null;
+            }
+
+            FRealCurve? curve = cached.Table.CurveTableMode switch
+            {
+                ECurveTableMode.SimpleCurves => new FSimpleCurve(rowStruct),
+                ECurveTableMode.RichCurves   => new FRichCurve(rowStruct),
+                _                            => null,
+            };
+            if (curve is null) return null;
+
+            float value;
+            try { value = curve.Eval(r.CurveLevel); }
+            catch (Exception ex)
+            {
+                if (Verbose) Console.WriteLine($"     [curve-eval] {r.RowName} @{r.CurveLevel}: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+
+            // bInverseValue flips the sign for display. The Windrose data
+            // convention stores damage/stamina-reduction curves as negative
+            // multipliers (e.g. -0.2 for "20% less"); inverting to +0.2
+            // gives the human-friendly "20%" the description text expects.
+            float displayed = r.Inverse ? -value : value;
+            return Format(displayed, r.DisplayType);
+        }
+
+        private CachedTable? LoadTable(string assetPath)
+        {
+            if (_cache.TryGetValue(assetPath, out var existing)) return existing;
+            CachedTable? built = null;
+            string? path = null;
+            try
+            {
+                path = NormalizeAssetPath(assetPath);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var t = _provider.LoadPackageObject<UCurveTable>(path);
+                    if (t?.RowMap is not null)
+                    {
+                        var byName = new Dictionary<string, FStructFallback>(t.RowMap.Count, StringComparer.OrdinalIgnoreCase);
+                        foreach (var kvp in t.RowMap)
+                        {
+                            // Last write wins on duplicate text keys -- in practice
+                            // RowMap is text-unique, this is just defensive.
+                            byName[kvp.Key.Text] = kvp.Value;
+                        }
+                        built = new CachedTable(t, byName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (Verbose) Console.WriteLine($"     [curve-load] {path ?? assetPath}: {ex.GetType().Name}: {ex.Message}");
+                built = null;
+            }
+            _cache[assetPath] = built;
+            return built;
+        }
+
+        private static string Format(float v, string? displayType)
+        {
+            // DisplayTypes seen in Sources/Vanilla (counts in parens):
+            //   RatioToPercent (288): 0.05 -> "5%"
+            //   ValueAsValue   (217): 5.0  -> "5"
+            //   SecondsAsMinutes (62): 300 -> "5"
+            //   ValueToPercent  (24): 5    -> "5%"
+            //   None            (1):  fallback to ValueAsValue
+            return displayType switch
+            {
+                "RatioToPercent"   => FormatNumber(v * 100f) + "%",
+                "ValueToPercent"   => FormatNumber(v) + "%",
+                "SecondsAsMinutes" => FormatNumber(v / 60f),
+                _                  => FormatNumber(v),
+            };
+        }
+
+        private static string FormatNumber(float v)
+        {
+            // Round to 2 decimals max, drop trailing zeros: 5.0 -> "5",
+            // 5.50 -> "5.5", 5.123 -> "5.12". Invariant culture so "%"-style
+            // strings stay locale-neutral (Eng. dot vs. continental comma).
+            var rounded = (float)Math.Round(v, 2);
+            return rounded.ToString("0.##", CultureInfo.InvariantCulture);
+        }
     }
 
     private readonly record struct LocalizedBag(

@@ -11,14 +11,18 @@
 #        - InventoryItemUIData.EffectsDescriptions[]  list of FText
 #        - InventoryItemUIData.SetEffectsDescriptions[]  list of structs with
 #          nested Name/Description FText + ActivationCount + SetEffectTag.
+#        - InventoryItemUIData.ItemDescriptionData[]  list of curve refs that
+#          back the {0}, {1}, ... placeholders in the description / effects /
+#          set-effects strings. Each entry: { CurveTable, RowName, CurveLevel,
+#          DisplayType, bInverseValue }.
 #   2. Build a manifest [{itemId, texturePath, nameTable/Key, descTable/Key,
-#      vanityTable/Key, effects[], setEffects[]}, ...] and write it to a temp
-#      file.
+#      vanityTable/Key, effects[], setEffects[], descriptionData[]}, ...] and
+#      write it to a temp file.
 #   3. Hand the manifest to the C# IconExtractor (auto-built when missing),
 #      together with the AES key, paks dir, and .usmap.
 #   4. PNGs land under <OutDir>\<itemId>.png. Localized title/description
 #      sidecars land under <OutDir>\<itemId>.json (one per item, with all
-#      shipped cultures merged).
+#      shipped cultures merged; {N} placeholders resolved via the curve refs).
 
 if ($script:__WindroseIconsLoaded) { return }
 $script:__WindroseIconsLoaded = $true
@@ -124,6 +128,7 @@ Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs.
     $withVanity = 0
     $withEffects = 0
     $withSetEffects = 0
+    $withCurveData = 0
 
     # Helpers (closures capturing nothing -> safe to inline).
     function Test-FTextRef ($node) {
@@ -160,6 +165,7 @@ Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs.
         $vanityTable = $null; $vanityKey = $null
         $effects    = New-Object System.Collections.Generic.List[object]
         $setEffects = New-Object System.Collections.Generic.List[object]
+        $descData   = New-Object System.Collections.Generic.List[object]
 
         if ($ui) {
             if (Test-FTextRef $ui.ItemName) {
@@ -186,6 +192,32 @@ Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs.
                     }
                 }
             }
+            # ItemDescriptionData: shared placeholder source for {0}, {1}, ...
+            # in description / effects / setEffects[].description. Curve refs
+            # are resolved by the C# side (UCurveTable.Eval at CurveLevel).
+            if ($ui.PSObject.Properties.Name -contains 'ItemDescriptionData' -and $ui.ItemDescriptionData) {
+                foreach ($d in $ui.ItemDescriptionData) {
+                    if ($null -eq $d) { continue }
+                    $ct = [string]$d.CurveTable
+                    $rn = [string]$d.RowName
+                    if (-not $ct -or $ct -eq 'None' -or $ct.Trim() -eq '') { continue }
+                    if (-not $rn -or $rn.Trim() -eq '') { continue }
+                    $lvl = 0
+                    if ($d.PSObject.Properties.Name -contains 'CurveLevel') { $lvl = [int]$d.CurveLevel }
+                    $dt = ''
+                    if ($d.PSObject.Properties.Name -contains 'DisplayType') { $dt = [string]$d.DisplayType }
+                    $inv = $false
+                    if ($d.PSObject.Properties.Name -contains 'bInverseValue') { $inv = [bool]$d.bInverseValue }
+                    $descData.Add([pscustomobject]@{
+                        curveTable  = $ct
+                        rowName     = $rn
+                        curveLevel  = $lvl
+                        displayType = $dt
+                        inverse     = $inv
+                    }) | Out-Null
+                }
+            }
+
             # SetEffectsDescriptions: array of structs with nested Name/Description
             # FText + ActivationCount + SetEffectTag. Only ~70 items have entries.
             if ($ui.PSObject.Properties.Name -contains 'SetEffectsDescriptions' -and $ui.SetEffectsDescriptions) {
@@ -225,23 +257,25 @@ Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs.
         if ($vanityTable -and $vanityKey) { $withVanity++ }
         if ($effects.Count -gt 0) { $withEffects++ }
         if ($setEffects.Count -gt 0) { $withSetEffects++ }
+        if ($descData.Count -gt 0) { $withCurveData++ }
 
         # itemId = JSON filename without extension (matches DA_CID_*/DA_EID_* etc).
         $entries.Add([pscustomobject]@{
-            itemId      = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-            texturePath = $tex
-            nameTable   = $nameTable
-            nameKey     = $nameKey
-            descTable   = $descTable
-            descKey     = $descKey
-            vanityTable = $vanityTable
-            vanityKey   = $vanityKey
-            effects     = $effects.ToArray()
-            setEffects  = $setEffects.ToArray()
+            itemId          = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            texturePath     = $tex
+            nameTable       = $nameTable
+            nameKey         = $nameKey
+            descTable       = $descTable
+            descKey         = $descKey
+            vanityTable     = $vanityTable
+            vanityKey       = $vanityKey
+            effects         = $effects.ToArray()
+            setEffects      = $setEffects.ToArray()
+            descriptionData = $descData.ToArray()
         }) | Out-Null
     }
     Write-OK ("Manifest entries: {0} (skipped {1} JSONs without ItemTexture)" -f $entries.Count, $skipped)
-    Write-OK ("Localization keys: {0} name, {1} vanity, {2} effects, {3} set-effects" -f $withName, $withVanity, $withEffects, $withSetEffects)
+    Write-OK ("Localization keys: {0} name, {1} vanity, {2} effects, {3} set-effects, {4} curve-data" -f $withName, $withVanity, $withEffects, $withSetEffects, $withCurveData)
 
     if ($entries.Count -eq 0) {
         throw "No InventoryItemUIData.ItemTexture paths found under $Source"
@@ -249,7 +283,7 @@ Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs.
 
     # --- Invoke IconExtractor --------------------------------------------
     $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) ("windrose-icons-" + [guid]::NewGuid().ToString('N') + ".json")
-    $manifestJson = ConvertTo-Json -InputObject $entries.ToArray() -Depth 4 -Compress
+    $manifestJson = ConvertTo-Json -InputObject $entries.ToArray() -Depth 5 -Compress
     Set-Content -LiteralPath $manifestPath -Value $manifestJson -Encoding UTF8
 
     Write-Step 'Running IconExtractor'
