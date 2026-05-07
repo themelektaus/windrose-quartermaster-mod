@@ -13,9 +13,9 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -23,62 +23,73 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Guns/Cannons/DA_Ship_CombatOrders_CombatRepairs.DA_Ship_CombatOrders_CombatRepairs"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_NavalTacticsChapter_02.T_ItemIcon_NavalTacticsChapter_02",
 		"AdditionalIcons": [],
-		"ItemName": "Naval Tactics II: No Quarter",
-		"ItemDescription": "A privateer adaptation of Spanish Armada naval practice, favoring close action and decisive endings. The margin notes that ships sent down swiftly spare one’s crew the cost of prolonged prize-taking fights.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_CombatRepairs_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_CombatRepairs_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "50",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "30",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "10",
+				"CurveLevel": 1,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ship_CombatOrders_CombatRepairs_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 20,
-		"VanityText": "A living crew is worth more than any prize.\r\n- Samuel Bellamy",
+		"Category": "ShipCombatOrder",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_CombatRepairs_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

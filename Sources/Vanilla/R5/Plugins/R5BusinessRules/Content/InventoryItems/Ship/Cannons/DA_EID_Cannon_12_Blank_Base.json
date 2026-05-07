@@ -13,11 +13,17 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,64 +31,71 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Guns/Cannons/DA_Cannon_12.DA_Cannon_12"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Ship_Gun_12_Pounder.T_ItemIcon_Ship_Gun_12_Pounder",
 		"AdditionalIcons": [],
-		"ItemName": "12-Pounders",
-		"ItemDescription": "Reliable cannons suited to a wide range of naval engagements.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Cannon_12_Blank_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Cannon_12_Blank_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T01",
 			"CurveLevel": 1,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
 				"CurveTable": "None",
 				"RowName": "A",
 				"CurveLevel": 0,
-				"Stat": 25
+				"Stat": "ShipFireRangeRANK"
 			},
 			{
 				"CurveTable": "None",
 				"RowName": "B",
 				"CurveLevel": 0,
-				"Stat": 26
+				"Stat": "ShipFireAccuracyRANK"
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "Base_Damage_12",
 				"CurveLevel": 1,
-				"Stat": 27
+				"Stat": "ShipCannonDamage"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "11",
+				"CurveLevel": 1,
+				"Stat": "ShipCannonReloadTime"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 17,
-		"VanityText": "Beat to quarters!",
+		"Category": "ShipWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Cannon_12_Blank_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

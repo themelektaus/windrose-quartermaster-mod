@@ -12,67 +12,77 @@
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Consumable.Activate.Bandage"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 1,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Consumables/SM_Consumables_T01_BandageHealing_01.SM_Consumables_T01_BandageHealing_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
 			"ItemClass": "None",
 			"ItemConfig": "None",
 			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"SlotCountModifierParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Bandage/DA_ConsumableAbilityData_Bandages_T01",
-				"AssetName": "DA_ConsumableAbilityData_Bandages_T01"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Bandage/DA_ConsumableAbilityData_Bandages_T01.DA_ConsumableAbilityData_Bandages_T01",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T01_BandageHealing_01.T_ItemIcon_Consumables_T01_BandageHealing_01",
 		"AdditionalIcons": [],
-		"ItemName": "Бинт",
-		"ItemDescription": "Грубый лоскут материи, пропитанный морской водой.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Bandages_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Bandages_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Alchemy_GE_Values.CT_Alchemy_GE_Values",
 				"RowName": "Alchemy_Bandages_T01_TotalHealthResotre",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Alchemy_GE_Values.CT_Alchemy_GE_Values",
+				"RowName": "Alchemy_Bandages_T01_Duration",
+				"CurveLevel": 1,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Restores {0} Health over time."
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Bandages_T01_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Bandages_T01_Effect2"
+			}
 		],
-		"SetEffectsDescriptions": [],
-		"Category": 15,
-		"VanityText": "Эта тряпка поможет вам не истечь кровью. Оцените мои усилия и постарайтесь не умереть хотя бы до следующего порта. \r\n— доктор Гален Скелтон",
+		"Category": "Medicine",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Bandages_T01_VanityText"
+		},
 		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

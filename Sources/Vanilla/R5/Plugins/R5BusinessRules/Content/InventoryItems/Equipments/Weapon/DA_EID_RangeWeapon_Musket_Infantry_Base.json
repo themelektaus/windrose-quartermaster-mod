@@ -13,67 +13,86 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponRange_Musket/Drop/SM_Drop_WeaponRange_Musket_Infantry.SM_Drop_WeaponRange_Musket_Infantry",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Infantry_Base/BP_Wpn_TwoHand_Musket_Infantry_Base.BP_Wpn_TwoHand_Musket_Infantry_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Infantry_Base/BP_Wpn_TwoHand_Musket_Infantry_Base.BP_Wpn_TwoHand_Musket_Infantry_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_TwoHands.DA_EquipmentType_Wpn_TwoHands",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponRange_Musket_Infantry.T_ItemIcon_WeaponRange_Musket_Infantry",
 		"AdditionalIcons": [],
-		"ItemName": "Пехотный мушкет",
-		"ItemDescription": "Мушкет французского пехотного каре: создан для быстрой стрельбы в строю, а не для дуэльных перестрелок. Двигайся, целься и отвечай штыком каждому, кто подберется близко.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Musket_Infantry_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Musket_Infantry_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Musket_Infantry_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 16
+				"Stat": "Pierce"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "B",
+				"CurveLevel": 0,
+				"Stat": "Agility"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [
-			"",
-			"Allows you to perform a special bayonet attack with [F]."
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_RangeWeapon_Musket_Infantry_Base_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_RangeWeapon_Musket_Infantry_Base_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 9,
-		"VanityText": "\"Примкнуть штыки!\" – последняя фраза, которую хочет услышать любой вражеский пехотинец.",
+		"Category": "RangeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Musket_Infantry_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

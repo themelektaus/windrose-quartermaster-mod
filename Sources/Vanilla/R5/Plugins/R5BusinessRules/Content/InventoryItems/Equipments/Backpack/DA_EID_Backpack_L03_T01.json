@@ -13,54 +13,53 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Backpack/Backpack_Simple_L03_T01/BP_Backpack_Simple_L03_T01.BP_Backpack_Simple_L03_T01_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Backpack/Backpack_Simple_L03_T01/BP_Backpack_Simple_L03_T01.BP_Backpack_Simple_L03_T01_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Backpack/DA_EquipmentType_Backpack.DA_EquipmentType_Backpack",
 			"ItemLevel": 3,
-			"SlotCountModifierParams": "None",
+			"SlotCountModifierParams": "/Game/Gameplay/ItemsLogic/Backpack/Backpack_Simple_L03_T01/DA_Backpack_SlotCountModifierParams__L03_T01.DA_Backpack_SlotCountModifierParams__L03_T01",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Craft_BackPack_L03_T01.T_ItemIcon_Craft_BackPack_L03_T01",
 		"AdditionalIcons": [],
-		"ItemName": "Рюкзак Квартирмейстера",
-		"ItemDescription": "Бездонный, словно морская пучина!",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Backpack_L03_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Backpack_L03_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 16,
+		"Category": "Backpack",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

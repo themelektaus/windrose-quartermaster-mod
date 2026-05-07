@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Ship"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_Tortuga_LootCrate_01.SM_Loot_Tortuga_LootCrate_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,21 +25,11 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_Heal_Duration",
-				"AssetName": "DA_ConsumableAbilityData_Ship_Heal_Duration"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_Heal_Duration.DA_ConsumableAbilityData_Ship_Heal_Duration",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T03_IcacoCurstRum_01.T_ItemIcon_Consumables_T03_IcacoCurstRum_01",
 		"AdditionalIcons": [],
 		"ItemName": "TestShip_Heal_Duration",
 		"ItemDescription": "TestShip_Heal_Duration",
@@ -47,20 +37,23 @@
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 1,
+		"Category": "Default",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

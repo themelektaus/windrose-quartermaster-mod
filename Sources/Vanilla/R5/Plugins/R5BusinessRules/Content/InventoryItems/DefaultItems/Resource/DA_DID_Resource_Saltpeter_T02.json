@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 0,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Craft/SM_Craft_T02_Saltpeter_01.SM_Craft_T02_Saltpeter_01",
+		"ItemClass": "Default",
+		"Rarity": "Common",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Craft_T02_Saltpeter_01.T_ItemIcon_Craft_T02_Saltpeter_01",
 		"AdditionalIcons": [],
-		"ItemName": "NOT USED Gunpowder ingredient",
-		"ItemDescription": "NOT USED Gunpowder ingredient description",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_Saltpeter_T02_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_Saltpeter_T02_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 3,
+		"Category": "Resource",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -1,8 +1,9 @@
 # Windrose Stack Size Mod -- Details
 
 Pipeline for building JSON-based Windrose mods (item stack sizes etc.) from
-a vanilla snapshot. The end product is `_P.pak` files that you copy into the
-`~mods` folder of your server or client.
+a vanilla snapshot extracted directly out of the game's main pak. The end
+product is `_P.pak` files that you copy into the `~mods` folder of your
+server or client.
 
 ---
 
@@ -12,13 +13,13 @@ a vanilla snapshot. The end product is `_P.pak` files that you copy into the
 |---|---|---|
 | **Windows PowerShell 5.1** (or PS7) | Run scripts | yes |
 | **`repak.exe`** ([trumank/repak](https://github.com/trumank/repak/releases)) | Pack/unpack paks | yes |
-| **Windrose game or server** | Deploy target | yes, if you want to test |
-| **UE4SS** on the server | Only for vanilla re-dump after game updates | optional |
-| An existing pak as a template | Structural source for `-FromPak` (only for custom mods, not needed for the standard stack-size build) | optional |
+| **Windrose game or server install** | Source for the vanilla pak | yes |
 
-> Note: The repo already includes a complete vanilla snapshot
-> (`Sources/Vanilla/`, ~1268 JSONs). You do **not** need to regenerate it
-> yourself unless a game patch has changed item values.
+The vanilla item JSONs are extracted on demand from
+`pakchunk0-WindowsServer.pak` (server install) or `pakchunk0-Windows.pak`
+(Steam client). The pak is AES-encrypted; the public game key is hardcoded
+in `Dump-WindroseVanilla.ps1` and is identical to the one used by every
+other Windrose modding tool (e.g. WindrosePlus).
 
 ---
 
@@ -26,28 +27,26 @@ a vanilla snapshot. The end product is `_P.pak` files that you copy into the
 
 ```powershell
 # 1. Clone the repo (example)
-git clone <repo-url> E:\Windrose\Modding
-cd E:\Windrose\Modding
+git clone <repo-url> 'E:\Windrose\Mods\Stack Size'
+cd 'E:\Windrose\Mods\Stack Size'
 
 # 2. Create your own config from the template
 Copy-Item .\config.example.psd1 .\config.psd1
 ```
 
-Then open **`config.psd1`** in an editor and set this path:
+Then open **`config.psd1`** in an editor and set these two paths:
 
 ```powershell
 Tools = @{
     RepakExe = 'C:\Path\To\Your\repak.exe'
 }
+
+Game = @{
+    VanillaPak = 'E:\Windrose\Server\<YourServer>\R5\Content\Paks\pakchunk0-WindowsServer.pak'
+    # Or for the Steam client:
+    # VanillaPak = 'C:\Games\steamapps\common\Windrose\R5\Content\Paks\pakchunk0-Windows.pak'
+}
 ```
-
-That's all that's required. `Build-AllStackVariations.ps1` reuses the
-per-variant `Sources\StackSize_*\` folders that are produced from the
-vanilla snapshot + `reference-fields.json` -- no external pak needed.
-
-If you want to author a brand-new mod from an existing pak as a template,
-pass `-FromPak <path>` explicitly to `Build-WindroseMod.ps1 -Action Init`
-(see Workflow A below).
 
 You can leave `Paths` empty -- all paths are then resolved relative to the
 modding root:
@@ -55,8 +54,16 @@ modding root:
 ```
 .\Sources                 (mod sources, including Sources\Vanilla\)
 .\Builds                  (finished .pak files)
-.\ue4ss-mods\VanillaItemDumper\Dumps   (Lua mod output)
 ```
+
+Finally extract the vanilla snapshot once:
+
+```powershell
+.\Dump-WindroseVanilla.ps1
+```
+
+This unpacks ~1097 `R5BLInventoryItem` JSONs into `Sources\Vanilla\`. Re-run
+with `-Clean -Force` after a game patch that changed item values.
 
 ---
 
@@ -65,53 +72,45 @@ modding root:
 DryRuns without side effects -- they should all succeed without errors:
 
 ```powershell
-# Init dry run: reads from Sources\Vanilla\, lists 3 Cannonball files
-.\Build-WindroseMod.ps1 -Action Init -Source .\Sources\__Smoke -Filter '*Cannonball*' -DryRun
-
 # Multiplier dry run against vanilla: shows statistics (~520 modified)
 .\Apply-StackMultiplier.ps1 -Source .\Sources\Vanilla -Multiplier 4 -DryRun
 
 # Master dry run: shows planned variant builds
 .\Build-AllStackVariations.ps1 -Variants x10 -DryRun
+
+# Vanilla extract dry run: prints the planned repak invocation
+.\Dump-WindroseVanilla.ps1 -DryRun
 ```
 
 If that passes, the pipeline is ready to use.
 
 ---
 
-## 4. Workflow A -- Build a single mod
+## 4. Workflow A -- Build a single custom mod
 
 ```powershell
-# 1. Initialise a new source from vanilla (e.g. only Cannonball items)
-.\Build-WindroseMod.ps1 -Action Init `
-    -Source .\Sources\MyAmmoMod -Filter '*Cannonball*'
+# 1. Copy the vanilla snapshot to a working folder
+Copy-Item .\Sources\Vanilla .\Sources\MyMod -Recurse
 
-# 2. Edit values in the JSONs under .\Sources\MyAmmoMod\R5\...
-#    (e.g. tweak MaxCountInSlot)
+# 2. Trim it down (e.g. only Cannonball items) and/or edit MaxCountInSlot
+#    by hand, or run Apply-StackMultiplier with -ExcludePath to drop everything
+#    you don't care about.
 
 # 3. Build the pak
-.\Build-WindroseMod.ps1 -Source .\Sources\MyAmmoMod -Force
-# -> .\Builds\MyAmmoMod_P.pak
+.\Build-WindroseMod.ps1 -Source .\Sources\MyMod -Force
+# -> .\Builds\MyMod_P.pak
 
 # 4. Copy into the game yourself
-Copy-Item .\Builds\MyAmmoMod_P.pak `
-    'E:\Windrose\Server\Nockalmeer\R5\Content\Paks\~mods\' -Force
+Copy-Item .\Builds\MyMod_P.pak `
+    'E:\Windrose\Server\<YourServer>\R5\Content\Paks\~mods\' -Force
 # or for the Steam client:
-Copy-Item .\Builds\MyAmmoMod_P.pak `
+Copy-Item .\Builds\MyMod_P.pak `
     'E:\Games\steamapps\common\Windrose\R5\Content\Paks\~mods\' -Force
 ```
 
-**Alternative init modes:**
-
-```powershell
-# From an existing pak as template (full schema with mesh paths)
-.\Build-WindroseMod.ps1 -Action Init `
-    -Source .\Sources\MyMod -FromPak 'C:\Path\To\Some_Mod_P.pak'
-
-# Only specific categories from vanilla
-.\Build-WindroseMod.ps1 -Action Init `
-    -Source .\Sources\MyConsumableMod -Categories Consumables
-```
+Anything you delete from the source folder before packing simply stays
+vanilla. Anything you leave in becomes part of the override. There is no
+"init" step -- the vanilla source is the template.
 
 ---
 
@@ -131,10 +130,9 @@ The master script builds multipliers x2..x10 and absolute values 999..9999 in on
 ```
 
 Output: `.\Builds\StackSize_<name>_P.pak`. Per variant:
-- Reuse the existing `Sources\StackSize_<name>\` folder (or `-FromPak <path>`
-  to (re)initialise it from a reference pak)
-- `Apply-StackMultiplier` with `-VanillaSource .\Sources\Vanilla` (multiplies
-  the vanilla value, not whatever value is currently in the source folder)
+- Copy `Sources\Vanilla\` to `Sources\StackSize_<name>\`
+- `Apply-StackMultiplier` (multiplies the vanilla MaxCountInSlot value or
+  sets an absolute value, deletes non-stackable items)
 - `Build` into the `Builds\` directory
 
 You still have to copy the paks **manually** into the respective `~mods`
@@ -142,56 +140,45 @@ folders.
 
 ---
 
-## 6. Workflow C -- Regenerate vanilla snapshot (rare)
+## 6. Workflow C -- Regenerate the vanilla snapshot
 
-Only needed after game patches that change item values.
+Only needed after game patches that change item values, or when first
+cloning the repo if `Sources\Vanilla\` is missing.
 
-1. Copy the Lua mod onto the server:
-   ```
-   Source: .\ue4ss-mods\VanillaItemDumper\
-   Target: <Server>\R5\Binaries\Win64\ue4ss\Mods\VanillaItemDumper\
-   ```
-2. Start the server -- the Lua mod writes JSONs into
-   `<Server>\R5\Binaries\Win64\ue4ss\Mods\VanillaItemDumper\Dumps\`.
-   Success in the UE4SS log: `[VanillaItemDumper] done: 1268 dumped, 0 failed`
-3. Mirror the dumps into the modding directory:
-   ```powershell
-   robocopy '<Server>\R5\Binaries\Win64\ue4ss\Mods\VanillaItemDumper\Dumps' `
-            '.\ue4ss-mods\VanillaItemDumper\Dumps' /MIR
-   ```
-4. Reconstruct the tree (flat -> directory tree):
-   ```powershell
-   .\Dump-WindroseVanilla.ps1 -Clean -Force
-   ```
-   -> overwrites `Sources\Vanilla\`.
+```powershell
+.\Dump-WindroseVanilla.ps1 -Clean -Force
+```
 
-> Known limitation: UE4SS on this build does not expose `TSoftObjectPtr`
-> from Lua. `ItemMesh` fields in the vanilla dump are therefore `"None"`.
-> Irrelevant for stack-size mods because soft-object fields come from
-> `reference-fields.json` (shipped with the repo). If you want brand-new
-> items from scratch, you need a different mesh-path source.
+Behind the scenes this calls:
+
+```
+repak --aes-key <public-game-key> unpack `
+    -i 'R5/Plugins/R5BusinessRules/Content/InventoryItems' `
+    -o .\Sources\Vanilla `
+    -f `
+    <Game.VanillaPak>
+```
+
+Total runtime is well under a second; the include filter restricts the
+unpack to ~1097 InventoryItem JSONs out of ~13800 total entries in the pak.
 
 ---
 
 ## 7. Repo layout
 
 ```
-Modding\
-+-- Build-WindroseMod.ps1          Pipeline: Init + Build + Pack
+Stack Size\
++-- Build-WindroseMod.ps1          Pak the source folder into a _P.pak
 +-- Apply-StackMultiplier.ps1      Multiply / set MaxCountInSlot
 +-- Build-AllStackVariations.ps1   Master: all stack variations
-+-- Dump-WindroseVanilla.ps1       Vanilla dump reorganiser (flat -> tree)
++-- Dump-WindroseVanilla.ps1       Extract vanilla JSONs from the game pak
 +-- _config.ps1                    Config loader (dot-sourced by all scripts)
 +-- config.example.psd1            Config template (in Git)
 +-- config.psd1                    Your own config (NOT in Git)
 +-- Sources\
-|   +-- Vanilla\                   1268 vanilla JSONs (in Git, snapshot)
+|   +-- Vanilla\                   ~1097 vanilla JSONs (in Git, snapshot)
 |   +-- StackSize_*\               Build artefacts (NOT in Git)
 +-- Builds\                        Finished .pak files (NOT in Git)
-+-- ue4ss-mods\
-    +-- VanillaItemDumper\         Lua mod source for UE4SS
-        +-- Scripts\               main.lua + json.lua
-        +-- Dumps\                 Runtime output (NOT in Git)
 ```
 
 ---
@@ -200,12 +187,12 @@ Modding\
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `repak.exe` not found | `Tools.RepakExe` in `config.psd1` wrong / empty | Correct the path |
+| `repak.exe not found` | `Tools.RepakExe` in `config.psd1` wrong / empty | Correct the path |
+| `VanillaPak not found` | `Game.VanillaPak` in `config.psd1` wrong / empty | Set it to your `pakchunk0-*.pak` |
 | `config.psd1` missing -> warning, falls back to example | Normal on first run | `Copy-Item config.example.psd1 config.psd1` |
-| `R5LogJsonConverter: Error` in the game log | JSON schema not loadable (e.g. `[{}]` arrays, number enums) | Initialise the mod from `-FromPak` of a working mod instead of a raw vanilla dump |
-| `missing static mesh` -> server crash on loot spawn | `ItemMesh: "None"` in vanilla dump | Build via `Build-AllStackVariations.ps1`; mesh paths come from `reference-fields.json` which is shipped in the repo |
-| `_INIT.txt` ends up in the pak | Should not happen (removed via temp stash) | Pull the build script again |
-| Encoding issues (`???` characters) in JSONs | `Get-Content` without UTF-8 (PS 5.1 default) | Fixed: scripts read via `[System.IO.File]::ReadAllText(..., UTF8)` |
+| `repak unpack` reports "encrypted but no key was provided" | Wrong AES key | The script uses the public Windrose key; if a future patch changes it, update the constant in `Dump-WindroseVanilla.ps1` |
+| `R5LogJsonConverter: Error` in the game log | JSON schema not loadable | Re-run `Dump-WindroseVanilla.ps1 -Clean -Force` to refresh the snapshot, then rebuild |
+| Encoding issues (`???` characters) in JSONs | `Get-Content` without UTF-8 (PS 5.1 default) | Already handled: scripts read via `[System.IO.File]::ReadAllText(..., UTF8)` |
 
 ---
 
@@ -216,5 +203,4 @@ Modding\
 - **No `.uasset` mods.** The pipeline targets JSON-based R5BusinessRules
   mods. Mesh / material / animation mods need different tools (FModel,
   UAssetGUI, repak unpack/repack -- not part of this repo).
-- **No mappings dump.** `DumpUSMAP()` is not included in the repo -- not
-  needed for R5BusinessRules JSONs.
+- **No mappings dump.** `DumpUSMAP()` is not needed for R5BusinessRules JSONs.

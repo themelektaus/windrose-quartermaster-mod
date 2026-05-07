@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "История жреца, часть третья",
-		"ItemDescription": "Владыка мертвых Ицельтек рассмеялся, услышав просьбу своего жреца: ступив единожды, никто больше не покидал его владений.\r\n\r\nНо жрец долго служил своему богу, и Ицельтек сжалился. Он отпустил их из своих чертогов, открыв перед ними путь домой.\r\n\r\nСчастливый отец вышел на поверхность, дочь следовала за ним по пятам. Когда внезапно за спиной он услышал хруст костей.\r\n\r\nЖрец обернулся и узрел, как его дочь превращается в огромного крокодила. Он застыл от ужаса, и широкая пасть заглотила его целиком.\r\n\r\nНовый страж встал у врат во владения бога мертвых, чей смех еще долго слышился среди топей.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_JokesOfTheGods_3_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_JokesOfTheGods_3_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

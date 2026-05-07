@@ -13,66 +13,82 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponRange_Pistol/Drop/SM_Drop_WeaponRange_Pistol_DrakesDoom.SM_Drop_WeaponRange_Pistol_DrakesDoom",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_DrakesDoom_Base/BP_Wpn_OffHand_Pistol_DrakesDoom_Base.BP_Wpn_OffHand_Pistol_DrakesDoom_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_DrakesDoom_Base/BP_Wpn_OffHand_Pistol_DrakesDoom_Base.BP_Wpn_OffHand_Pistol_DrakesDoom_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_OffHand.DA_EquipmentType_Wpn_OffHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponRange_Pistol_DrakesDoom.T_ItemIcon_WeaponRange_Pistol_DrakesDoom",
 		"AdditionalIcons": [],
-		"ItemName": "Двуствольный пистолет Дрейка",
-		"ItemDescription": "Изящный пистолет с гравировкой на стволах. На верхнем стволе красуется надпись \"Голова\", на нижнем – \"Глаза\".",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_DrakesDoom_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_DrakesDoom_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Pistol_DrakesDoom_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 16
+				"Stat": "Pierce"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "C",
+				"CurveLevel": 0,
+				"Stat": "Precision"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_RangeWeapon_Pistol_DrakesDoom_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 9,
-		"VanityText": "Говорят, что последняя мысль жертв этого оружия: \"Да как так-то?!\"",
+		"Category": "RangeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_DrakesDoom_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

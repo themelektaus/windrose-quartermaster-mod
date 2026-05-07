@@ -13,68 +13,101 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Conquistador/Meshes/Drops/SM_Drop_Armor_Conquistador_02_Torso.SM_Drop_Armor_Conquistador_02_Torso",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Conquistador/Torso/BP_Armor_Conquistador_Torso_Base.BP_Armor_Conquistador_Torso_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Conquistador/Torso/BP_Armor_Conquistador_Torso_Base.BP_Armor_Conquistador_Torso_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Torso.DA_EquipmentType_Armor_Torso",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Conquistador_Torso.T_ItemIcon_Armor_Conquistador_Torso",
 		"AdditionalIcons": [],
-		"ItemName": "Кираса конкистадора",
-		"ItemDescription": "Этот надежный металлический доспех когда-то позволил испанцам завоевать Новый Свет благодаря своей прочности.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Conquistador_Base_Torso_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Conquistador_Base_Torso_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
+				"RowName": "Conquistador_SetEffect_DmgResist",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [
-			{},
 			{
-				"Name": "Латы Конкистадора",
-				"Description": "Increases Damage Resistance by {0}.",
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Conquistador_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Conquistador_Base_SetEffect1"
+				},
 				"SetEffectTag": {
 					"TagName": "EquipData.Armor.Conquistador"
 				},
 				"ActivationCount": 2
+			},
+			{
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Conquistador_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Conquistador_Base_SetEffect2"
+				},
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Conquistador"
+				},
+				"ActivationCount": 4
 			}
 		],
-		"Category": 11,
-		"VanityText": "Они ступали по чужим землям с мечом в руках и жаждой золота в сердце.",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Conquistador_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

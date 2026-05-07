@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 3,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Default",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,44 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_TradeCraft_Alcohol_Madeira.T_ItemIcon_TradeCraft_Alcohol_Madeira",
 		"AdditionalIcons": [],
-		"ItemName": "Мадейра",
-		"ItemDescription": "Креплёное вино, поставляемое с острова Мадейра под португальским флагом. Выдерживает жару и долгие переходы, за что высоко ценится офицерами, купцами и корабельными мастерами.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_TradeCraft_Alcohol_Officer_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_TradeCraft_Alcohol_Officer_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 3,
-		"VanityText": "Improved by the journey.",
+		"Category": "Resource",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "DID_TradeCraft_Alcohol_Officer_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

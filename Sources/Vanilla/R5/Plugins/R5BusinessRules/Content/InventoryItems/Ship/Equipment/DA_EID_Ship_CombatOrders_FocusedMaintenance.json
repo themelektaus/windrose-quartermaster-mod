@@ -13,9 +13,9 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -23,62 +23,73 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Guns/Cannons/DA_Ship_CombatOrders_FocusedMaintenance.DA_Ship_CombatOrders_FocusedMaintenance"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_NavalTacticsChapter_04.T_ItemIcon_NavalTacticsChapter_04",
 		"AdditionalIcons": [],
-		"ItemName": "Naval Tactics IV: Shipshape",
-		"ItemDescription": "A well known Royal Navy doctrine holding that a well-kept ship preserves herself. Constant attention to order, repair, and routine is said to spare both hull and crew when battle finally comes.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_FocusedMaintenance_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_FocusedMaintenance_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "3",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "3",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "ColdBarrels_Advanced_Weakspot",
+				"CurveLevel": 1,
+				"DisplayType": "ValueToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ship_CombatOrders_FocusedMaintenance_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 20,
-		"VanityText": "This ship expects that every man will do his duty.",
+		"Category": "ShipCombatOrder",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_FocusedMaintenance_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

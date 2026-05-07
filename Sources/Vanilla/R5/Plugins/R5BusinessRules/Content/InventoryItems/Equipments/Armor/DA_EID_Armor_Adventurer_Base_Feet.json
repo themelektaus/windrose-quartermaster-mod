@@ -13,56 +13,64 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Flibustier/Meshes/Drops/SM_Drop_Armor_Flibustier_Adventurer_Feet_Long.SM_Drop_Armor_Flibustier_Adventurer_Feet_Long",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Adventurer/Feet/BP_Armor_Adventurer_Feet.BP_Armor_Adventurer_Feet_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Adventurer/Feet/BP_Armor_Adventurer_Feet.BP_Armor_Adventurer_Feet_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Boots.DA_EquipmentType_Armor_Boots",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Adventurer_Feets.T_ItemIcon_Armor_Adventurer_Feets",
 		"AdditionalIcons": [],
-		"ItemName": "Сапоги выжившего",
-		"ItemDescription": "Сделанный на скроую руку наряд, в котором удобно рубить заросли в джунглях и избегать кабаньих клыков.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Adventurer_Base_Feet_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Adventurer_Base_Feet_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 11,
-		"VanityText": "Отправляясь туда, где небо встречается с морем, мы каждый раз даем начало новой легенде.\r\n— Эксквемелин, путешественник",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Adventurer_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

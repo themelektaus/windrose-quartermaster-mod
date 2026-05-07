@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteRecipe_01.SM_LootT01_NoteRecipe_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T01_LeavesSetRecipe_01.T_ItemIcon_Loot_T01_LeavesSetRecipe_01",
 		"AdditionalIcons": [],
-		"ItemName": "Plans: Leaf Roofs and Triangular Walls",
-		"ItemDescription": "Learning this plan unlocks:\r\n- Leaf Roofs 26° (2 bits)\r\n- Leaf Roof Ridge 26° (2 bits)\r\n- Leaf Roof Corners 26° (2 bits)\r\n- Leaf Roof Ridge 45° (1 bit)\r\n- Triangular Leaf Roof 45° (2 bits)\r\n- Triangular Leaf Corner Roof 45° (2 bits)\r\n- Triangular Walls 26° (6 bits)\r\n- Triangular Walls 64° (6 bits)\r\n- Canopies decorations (2 bits)\r\n\r\nPart of the Jungle Survivor building set.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_Recipe_Bits_T01_TriangleWallRoof26and64_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_Recipe_Bits_T01_TriangleWallRoof26and64_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

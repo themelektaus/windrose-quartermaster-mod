@@ -13,66 +13,82 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/Weapon_Strange/Drop/SM_Drop_SaberFish_01.SM_Drop_SaberFish_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Club_Fish_Base/BP_Wpn_MainHand_Club_Fish_Base.BP_Wpn_MainHand_Club_Fish_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Club_Fish_Base/BP_Wpn_MainHand_Club_Fish_Base.BP_Wpn_MainHand_Club_Fish_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Weapon_SaberFish_01.T_ItemIcon_Weapon_SaberFish_01",
 		"AdditionalIcons": [],
-		"ItemName": "Сокрушитель",
-		"ItemDescription": "Настоящая рыба-меч. Просто этот вид мало известен.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Club_Fish_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Club_Fish_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Club_Fish_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 6
+				"Stat": "Crude"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "A",
+				"CurveLevel": 0,
+				"Stat": "Strength"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Club_Fish_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 8,
-		"VanityText": "Один только запах сваливает с ног.",
+		"Category": "MeleeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Club_Fish_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 3,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteRecipe_01.SM_LootT01_NoteRecipe_01",
+		"ItemClass": "Default",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,69 +25,88 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T01_FoodRecipe_02.T_ItemIcon_Loot_T01_FoodRecipe_02",
 		"AdditionalIcons": [],
-		"ItemName": "Чертеж оружия: Дуэльный палаш",
-		"ItemDescription": "Лезвие этой сабли отливает синеватым оттенком, будто его закалили в ледяных водах северных морей.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_RecipePaperUnlock_MeleeWeapon_Saber_Parrying_Advanced_Name"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Parrying_Advanced_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T01",
 			"CurveLevel": 1,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Parrying_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 21
+				"Stat": "Slash"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "A",
+				"CurveLevel": 0,
+				"Stat": "Agility"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Parrying_MeleeDamageModPerStack",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Parrying_StackLimitCount_UI",
 				"CurveLevel": 0,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Saber_Parrying_WpnCritChanceAdd",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Each successful Perfect Block applies Retaliation effect increasing your Damage by {0}. Stacks up to {1} times. Taking Damage removes the effect."
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Parrying_Advanced_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Parrying_Advanced_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "Изучите чертеж что бы получить возможность создавать предмет",
+		"Category": "Misc",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_RecipePaperUnlock_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

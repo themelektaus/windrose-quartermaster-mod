@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT03_GoldAmulet_01.SM_LootT03_GoldAmulet_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,44 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BrokenFamilyAmulet_T01.T_ItemIcon_Loot_Misc_BrokenFamilyAmulet_T01",
 		"AdditionalIcons": [],
-		"ItemName": "Разбитый фамильный медальон",
-		"ItemDescription": "Камень в медальоне треснул, золотая оправа покрылась темными пятнами.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_BrokenFamilyAmulet_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_BrokenFamilyAmulet_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "Если выходишь в море, будь готов потерять руку, ногу и даже жизнь. Но никогда, слышишь, никогда не расставайся с этой вещью.\r\n\r\n— Отец",
+		"Category": "Misc",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_FamilyAmulet_T01_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

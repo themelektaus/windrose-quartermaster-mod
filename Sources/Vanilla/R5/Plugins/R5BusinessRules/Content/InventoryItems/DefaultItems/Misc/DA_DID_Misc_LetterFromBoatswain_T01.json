@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_Letter01_T1.T_ItemIcon_Loot_Misc_Letter01_T1",
 		"AdditionalIcons": [],
-		"ItemName": "Письмо Франсуа Арно",
-		"ItemDescription": "Месье Тич,\r\n\r\nящики с порохом уже должны достигнуть лагеря месье Хендса в Предгорьях. Карту с самым вероятным маршрутом корабля, на котором перевозят артефакт, я приложу к этому письму.\r\n\r\nПрошу вас, постарайтесь обойтись без лишних жертв. В конце концов, это не военный корабль. Команда и так почти не окажет сопротивления.\r\n\r\nЯ выполнил условия нашей сделки. Очередь за вами.\r\n\r\nФрансуа Арно",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_LetterFromBoatswain_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_LetterFromBoatswain_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

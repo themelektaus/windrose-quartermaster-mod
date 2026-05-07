@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "Вторая фреска",
-		"ItemDescription": "Двенадцать раз по двенадцать зим сменилось со Дня Великой Печали. Я все еще хожу по земле.\r\n\r\nГорный город пустеет. Мой народ бежит от прошлого, как ягуар от факела.\r\n\r\nВ прошлую луну, потревоженный проклятием, из гробницы поднялся Юкном. Нам с трудом удалось вернуть ему покой. Там, где он пал, земля покрылась скверной.\r\n\r\nДва моих стража обагрили в его крови свои копья: один из них стал сильнее, другой – поддался порче.\r\n\r\nМы напуганы, но мы не отчаялись. Само проклятие может стать ответом на наши мольбы.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_PaperCopyOfClayTablet_02_T03_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_PaperCopyOfClayTablet_02_T03_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

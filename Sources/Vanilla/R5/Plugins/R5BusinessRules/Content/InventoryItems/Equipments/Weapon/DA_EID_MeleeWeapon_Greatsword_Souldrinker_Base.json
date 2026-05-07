@@ -13,68 +13,90 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponMelee_GreatSword/Drop/SM_Drop_WeaponMelee_GreatSword_Souldrinker.SM_Drop_WeaponMelee_GreatSword_Souldrinker",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Greatsword_Souldrinker_Base/BP_Wpn_TwoHand_Greatsword_Souldrinker_Base.BP_Wpn_TwoHand_Greatsword_Souldrinker_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Greatsword_Souldrinker_Base/BP_Wpn_TwoHand_Greatsword_Souldrinker_Base.BP_Wpn_TwoHand_Greatsword_Souldrinker_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_TwoHands.DA_EquipmentType_Wpn_TwoHands",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponMelee_GreatSword_Souldrinker.T_ItemIcon_WeaponMelee_GreatSword_Souldrinker",
 		"AdditionalIcons": [],
-		"ItemName": "Пожиратель душ",
-		"ItemDescription": "Говорят, когда-то этим мечом владел Призрачный Капитан. Это лезвие такое же темное, как воды, которые однажды поглотят его нового владельца.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Greatsword_Souldrinker_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Greatsword_Souldrinker_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Greatsword_Souldrinker_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 21
+				"Stat": "Slash"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "C",
+				"CurveLevel": 0,
+				"Stat": "Agility"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Greatsword_Souldrinker_AbilityCooldown",
+				"CurveLevel": 0,
+				"DisplayType": "SecondsAsMinutes",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Greatsword_Souldrinker_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 8,
-		"VanityText": "Если взмахнуть клинком, можно услышать, как на свист ветра откликаются морские глубины.",
+		"Category": "MeleeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Greatsword_Souldrinker_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

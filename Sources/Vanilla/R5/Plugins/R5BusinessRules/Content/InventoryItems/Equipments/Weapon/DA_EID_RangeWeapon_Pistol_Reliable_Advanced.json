@@ -13,76 +13,101 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 3,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponRange_Pistol/Drop/SM_Drop_WeaponRange_Pistol_Reliable.SM_Drop_WeaponRange_Pistol_Reliable",
+		"ItemClass": "Equipment",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Reliable_Advanced/BP_Wpn_OffHand_Pistol_Reliable_Advanced.BP_Wpn_OffHand_Pistol_Reliable_Advanced_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Reliable_Advanced/BP_Wpn_OffHand_Pistol_Reliable_Advanced.BP_Wpn_OffHand_Pistol_Reliable_Advanced_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_OffHand.DA_EquipmentType_Wpn_OffHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponRange_Pistol_Reliable.T_ItemIcon_WeaponRange_Pistol_Reliable",
 		"AdditionalIcons": [],
-		"ItemName": "Надежный пистоль",
-		"ItemDescription": "Простой, добротный пистоль, который всегда застает врагов врасплох.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_Reliable_Advanced_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_Reliable_Advanced_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Pistol_Reliable_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 16
+				"Stat": "Pierce"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "S",
+				"CurveLevel": 0,
+				"Stat": "Precision"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Pistol_Reliable_ShotCount_UI",
 				"CurveLevel": 0,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Pistol_Reliable_DamageForOutlawAdd_UI",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Can fire {0} shots without reloading."
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_RangeWeapon_Pistol_Reliable_Advanced_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_RangeWeapon_Pistol_Reliable_Advanced_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 9,
-		"VanityText": "Пистоль – это серьезный аргумент в споре. А если у тебя их три, то спор ты уже выиграл.\r\n— Долговязый Бен",
+		"Category": "RangeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_RangeWeapon_Pistol_Reliable_Advanced_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

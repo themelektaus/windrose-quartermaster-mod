@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Elixir"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Potions/SM_PotionT02_Heal_01.SM_PotionT02_Heal_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,46 +25,57 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Potion/DA_ConsumableAbilityData_Potion_Healing_Enhanced",
-				"AssetName": "DA_ConsumableAbilityData_Potion_Healing_Enhanced"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Potion/DA_ConsumableAbilityData_Potion_Healing_Enhanced.DA_ConsumableAbilityData_Potion_Healing_Enhanced",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T02_HealingElixir_01.T_ItemIcon_Consumables_T02_HealingElixir_01",
 		"AdditionalIcons": [],
-		"ItemName": "Средняя микстура лечения",
-		"ItemDescription": "Лечит раны и притупляет боль, позволяя продолжить бой с новыми силами.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_EnhancedHealing_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_EnhancedHealing_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Alchemy_GE_Values.CT_Alchemy_GE_Values",
+				"RowName": "Alchemy_Potion_Healing_Enhanced_HealthRestoreRatio",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Potion_EnhancedHealing_T01_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 15,
-		"VanityText": "When death is looming, you have to use any means available. Just don't think about what it's made of.",
+		"Category": "Medicine",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_EnhancedHealing_T01_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -1,66 +1,46 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 20,
-		"Weight": 0,
+		"ItemClass": "Default",
 		"ItemTag": {
 			"TagName": "ConsData.Misc.DearHuanitaNote.01.T04"
 		},
+		"ActivationAbilityTag": {
+			"TagName": ""
+		},
+		"MaxCountInSlot": 20,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT02_CultistNoteBlood_01.SM_LootT02_CultistNoteBlood_01",
+		"Rarity": "Legendary",
 		"ItemType": {
 			"TagName": "Inventory.ItemType.Quest.Notes"
 		},
-		"ActivationAbilityTag": {
-			"TagName": "None"
-		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"Weight": 0.0,
 		"bKeepInInventoryOnDeath": true,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "",
+		"AmmoBaseParams": "",
+		"LootTableData": ""
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Записка Хуаните",
-		"ItemDescription": "",
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_CultistNoteBlood_T2.T_ItemIcon_Loot_Misc_CultistNoteBlood_T2",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_AL_DearHuanitaNote_1_T04_ItemName"
+		},
+		"ItemDescription": "",
+		"VanityText": "",
+		"EffectsDescriptions": []
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

@@ -1,68 +1,55 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 10,
-		"Weight": 0.20000000298023224,
+		"Weight": 0.200000002980232,
+		"bKeepInInventoryOnDeath": true,
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Potion/DA_ConsumableAbilityData_Potion_Recall_T01.DA_ConsumableAbilityData_Potion_Recall_T01",
+		"AmmoBaseParams": "",
+		"LootTableData": "",
+		"ItemClass": "Consumable",
 		"ItemTag": {
 			"TagName": "ConsData.Alchemy.Potion.Recall.T01"
-		},
-		"ItemType": {
-			"TagName": "Inventory.ItemType.Consumable.Elixir"
 		},
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Consumable.Activate.Elixir.Recall"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
-		"bKeepInInventoryOnDeath": true,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Potion/DA_ConsumableAbilityData_Potion_Recall_T01",
-				"AssetName": "DA_ConsumableAbilityData_Potion_Recall_T01"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
+		"MaxCountInSlot": 10,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Potions/SM_PotionT03_Heal_01.SM_PotionT03_Heal_01",
+		"Rarity": "Rare",
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Elixir"
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Дорога домой",
-		"ItemDescription": "Легкий напиток со сладковатым вкусом. Жалко только, приготовить его непросто – нужны редкие ингредиенты.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_Recall_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_Recall_T01_ItemDescription"
+		},
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Potion_Recall_T01_VanityText"
+		},
+		"EffectsDescriptions": [
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Potion_Recall_T01_Effect1"
+			}
+		],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [
-			""
-		],
-		"SetEffectsDescriptions": [],
-		"Category": 6,
-		"VanityText": "Мгновенное перемещение из ночного трактира в залитую потом кровать – магия, доступная только самым опытным чародеям Тортуги.",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Alchemy",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T1_Recall_01.T_ItemIcon_Consumables_T1_Recall_01"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

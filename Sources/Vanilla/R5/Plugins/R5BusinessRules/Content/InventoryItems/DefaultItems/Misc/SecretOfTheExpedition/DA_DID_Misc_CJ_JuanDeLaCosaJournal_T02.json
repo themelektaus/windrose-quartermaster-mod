@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_PirateJournal_01.SM_LootT01_PirateJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,21 +25,11 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
 		"ItemName": "Журнал капитана Хуана де ла Косы",
 		"ItemDescription": "Сентябрь 15ХХ года. Карибское море\r\nХристофор приказал высадиться на Болотах, среди древних могильников, чтобы встретиться со жрицей. Меня не волнует, что она служит здешним демонам. Ведьма она или сама дьяволица, если эта женщина поможет справиться с Джонсом и его армией восставших мертвецов, я готов заключить с ней сделку.\r\n\r\nПервые дни октября\r\nСегодня потеряли пятерых, включая Эстебана. Ночью утопленники вылезли из воды, вскарабкались по бортам и убили часовых. Как идти вперед без навигатора...\r\n\r\nСередина октября 15ХХ года\r\nХайме поднял бунт. Он сговорился с Джонсом за нашими спинами. Продал свою шкуру за обещание бессмертия. Дурак. Я отправил его на тот свет выстрелом в сердце. Он поднялся, и пришлось перерезать ему горло, чтобы навсегда уложить в могилу.\r\nМертвецы продолжают нападать, но мы обязаны завершить нашу миссию.\r\n\r\nНоябрь 15ХХ года\r\nНаконец-то удалось найти жрицу. Не знаю, как Ристо вообще на нее наткнулся, но этому плуту всегда везло. К'иин почти не говорила по-испански, но поняла, зачем мы пришли. Она подарила нам медальоны со словами, что они защитят. Но всего один раз. Я бы предпочел прочный доспех и верную шпагу.\r\nСтранная женщина. Выглядит молодо, но в глазах ее притаилась смерть.\r\n\r\nДжонс опять настиг нас. Сейчас проверим, сработают ли хваленые медальоны.",
@@ -47,20 +37,23 @@
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -13,75 +13,108 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Conquistador/Meshes/Drops/SM_Drop_Armor_Conquistador_01_Torso.SM_Drop_Armor_Conquistador_01_Torso",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Pikeman/Torso/BP_Armor_Pikeman_Torso.BP_Armor_Pikeman_Torso_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Pikeman/Torso/BP_Armor_Pikeman_Torso.BP_Armor_Pikeman_Torso_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Torso.DA_EquipmentType_Armor_Torso",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Pikeman_Torso.T_ItemIcon_Armor_Pikeman_Torso",
 		"AdditionalIcons": [],
-		"ItemName": "Кираса пикинера",
-		"ItemDescription": "Доспех пехотинца испанской терции. Пользуется популярностью у буканьеров архипелага из-за идеального баланса между защитой и подвижностью, необходимых для охоты на местных тварей.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Pikeman_Base_Torso_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Pikeman_Base_Torso_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
 				"RowName": "Pikeman_SetEffect_ExtraHP",
 				"CurveLevel": 0,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
+				"RowName": "Pikeman_SetEffect_MeleeDmgBonus",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [
-			{},
 			{
-				"Name": "Доспех Пикинера",
-				"Description": "Increases maximum Health by {0}.",
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Pikeman_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Pikeman_Base_SetEffect1"
+				},
 				"SetEffectTag": {
 					"TagName": "EquipData.Armor.Pikeman"
 				},
 				"ActivationCount": 2
+			},
+			{
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Pikeman_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Pikeman_Base_SetEffect2"
+				},
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Pikeman"
+				},
+				"ActivationCount": 4
 			}
 		],
-		"Category": 11,
-		"VanityText": "Любого противника надо воспринимать серьезно. Даже если это додо.",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Pikeman_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

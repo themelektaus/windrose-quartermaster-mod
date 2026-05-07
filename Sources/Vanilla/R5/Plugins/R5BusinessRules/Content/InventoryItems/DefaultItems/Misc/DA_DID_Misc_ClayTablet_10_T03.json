@@ -1,66 +1,47 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 10,
-		"Weight": 0,
+		"Weight": 0.0,
+		"bKeepInInventoryOnDeath": false,
+		"ConsumableData": "",
+		"AmmoBaseParams": "",
+		"LootTableData": "",
+		"ItemClass": "Default",
 		"ItemTag": {
 			"TagName": "ItemData.Misc.ClayTablet.10.T03"
 		},
+		"ActivationAbilityTag": {
+			"TagName": ""
+		},
+		"MaxCountInSlot": 10,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_T02_SenkamatiClayTablet_01.SM_Loot_T02_SenkamatiClayTablet_01",
+		"Rarity": "Legendary",
 		"ItemType": {
 			"TagName": "Inventory.ItemType.Quest"
-		},
-		"ActivationAbilityTag": {
-			"TagName": "None"
-		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
-		"bKeepInInventoryOnDeath": false,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Технический предмет заглушка",
-		"ItemDescription": "Технический предмет заглушка",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_ClayTablet_10_T03_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_ClayTablet_10_T03_ItemDescription"
+		},
+		"VanityText": "",
+		"EffectsDescriptions": [],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T03_ClayTablet_01.T_ItemIcon_Loot_T03_ClayTablet_01"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

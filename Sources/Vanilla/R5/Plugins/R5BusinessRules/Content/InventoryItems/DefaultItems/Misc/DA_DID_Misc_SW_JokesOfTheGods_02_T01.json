@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "История жреца, часть вторая",
-		"ItemDescription": "Долго бродил жрец по тропам мертвых в поисках дочери. Пока наконец не увидел ее под сенью хлопкового древа, но та не узнала своего отца.\r\n\r\nЧтобы вернуть память девочки, жрец нырнул в глубокий омут за рыбой, которая водилась только в топях Ицельтека.\r\n\r\nПожарив улов на холодном огне, он накормил дочь пресным мясом. И память тут же вернулась к ней.\r\n\r\nОбрадовавшись, жрец взял девочку за руку и повел к трону Ицельтека, чтобы умолять своего бога о милосердии...",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_JokesOfTheGods_2_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_JokesOfTheGods_2_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

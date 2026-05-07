@@ -13,54 +13,53 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Strange/Drops/SM_Drop_ArmorRegular_Strange_Pot_01.SM_Drop_ArmorRegular_Strange_Pot_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Head_SoloPlayer/BP_Armor_SoloPlayer_Head_ClayPot.BP_Armor_SoloPlayer_Head_ClayPot_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Head_SoloPlayer/BP_Armor_SoloPlayer_Head_ClayPot.BP_Armor_SoloPlayer_Head_ClayPot_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Head.DA_EquipmentType_Armor_Head",
 			"ItemLevel": 1,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Craft_T01_ClayPot_01.T_ItemIcon_Craft_T01_ClayPot_01",
 		"AdditionalIcons": [],
-		"ItemName": "Глиняный котелок",
-		"ItemDescription": "Это не шлем – на голову не надевать. Незаменим в алхимии и готовке.\r\nДелается на верстаке",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Resource_ClayPot_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Resource_ClayPot_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 3,
+		"Category": "Resource",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

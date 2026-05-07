@@ -13,77 +13,105 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 3,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponMelee_Saber/Drop/SM_Drop_WeaponMelee_Saber_Corrupted.SM_Drop_WeaponMelee_Saber_Corrupted",
+		"ItemClass": "Equipment",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Corrupted_Advanced/BP_Wpn_MainHand_Saber_Corrupted_Advanced.BP_Wpn_MainHand_Saber_Corrupted_Advanced_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Corrupted_Advanced/BP_Wpn_MainHand_Saber_Corrupted_Advanced.BP_Wpn_MainHand_Saber_Corrupted_Advanced_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponMelee_Saber_Corrupted.T_ItemIcon_WeaponMelee_Saber_Corrupted",
 		"AdditionalIcons": [],
-		"ItemName": "Сабля \"Арборис\"",
-		"ItemDescription": "Клинок этой сабли оплетен кривыми ветвями чумного древа. Ее удары рвут плоть, оставляя ужасные раны, которые заживают годами.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Corrupted_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 6
+				"Stat": "Crude"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "B",
+				"CurveLevel": 0,
+				"Stat": "Strength"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Corrupted_CumulativeDmgToAddEff",
 				"CurveLevel": 0,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Saber_Corrupted_StackLimitCount_UI",
+				"CurveLevel": 0,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Dealing Damage grants you a stack of Plague Echoes effect. At {1} stacks, the special [F] attack becomes available.",
-			"Deals Crude Damage and scales with Strength."
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_Effect2"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_Effect3"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 8,
-		"VanityText": "Легенды гласят, что местный народ убил своего бога, за что был наказан, и исчез с лица земли.\r\n— Джон Доу, картограф и путешественник",
+		"Category": "MeleeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Corrupted_Advanced_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

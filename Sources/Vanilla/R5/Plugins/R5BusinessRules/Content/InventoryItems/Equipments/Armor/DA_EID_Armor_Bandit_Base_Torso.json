@@ -13,75 +13,108 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Bandit/Meshes/Drops/SM_Drop_Armor_Bandit_Torso.SM_Drop_Armor_Bandit_Torso",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Bandit/Torso/BP_Armor_Bandit_Torso.BP_Armor_Bandit_Torso_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Bandit/Torso/BP_Armor_Bandit_Torso.BP_Armor_Bandit_Torso_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Torso.DA_EquipmentType_Armor_Torso",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Bandit_Torso.T_ItemIcon_Armor_Bandit_Torso",
 		"AdditionalIcons": [],
-		"ItemName": "Куртка охотника",
-		"ItemDescription": "Хорошо выделанная толстая кожа выдержит даже укус крокодила. В такой одежде чувствуешь себя увереннее, передвигаясь по болотам.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Bandit_Base_Torso_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Bandit_Base_Torso_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
 				"RowName": "Bandit_SetEffect_HealModifier",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
+				"RowName": "Bandit_SetEffect_DmgResist",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [
-			{},
 			{
-				"Name": "Костюм Охотника",
-				"Description": "Increases effectiveness of all healing by {0}",
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Bandit_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Bandit_Base_SetEffect1"
+				},
 				"SetEffectTag": {
 					"TagName": "EquipData.Armor.Bandit"
 				},
 				"ActivationCount": 2
+			},
+			{
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Bandit_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Bandit_Base_SetEffect2"
+				},
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Bandit"
+				},
+				"ActivationCount": 4
 			}
 		],
-		"Category": 11,
-		"VanityText": "Крокодилы, конечно, страшные. Но люди страшнее.",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Bandit_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

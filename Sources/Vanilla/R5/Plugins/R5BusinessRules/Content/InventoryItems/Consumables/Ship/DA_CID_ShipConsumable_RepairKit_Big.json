@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Ship"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 3,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_Tortuga_LootCrate_01.SM_Loot_Tortuga_LootCrate_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,60 +25,71 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_RepairKitBig",
-				"AssetName": "DA_ConsumableAbilityData_Ship_RepairKitBig"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/ShipConsumables/DA_ConsumableAbilityData_Ship_RepairKitBig.DA_ConsumableAbilityData_Ship_RepairKitBig",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Craft_MasterCombatRepairKit.T_ItemIcon_Craft_MasterCombatRepairKit",
 		"AdditionalIcons": [],
-		"ItemName": "Master Combat Repair Kit",
-		"ItemDescription": "Улучшенный ремонтный набор для работы под огнём. Помимо инструментов и материалов, включает крепкие спирты — для очистки ран и поддержки тех, кому приходится чинить корабль в самый тяжёлый момент.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Ship_RepairKit_Big_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Ship_RepairKit_Big_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "60",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "10",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "ColdBarrels_Advanced_Weakspot",
+				"CurveLevel": 1,
+				"DisplayType": "ValueToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Ship_RepairKit_Big_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 1,
-		"VanityText": "We will make our repairs and carry on.",
+		"Category": "Default",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Ship_RepairKit_Big_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

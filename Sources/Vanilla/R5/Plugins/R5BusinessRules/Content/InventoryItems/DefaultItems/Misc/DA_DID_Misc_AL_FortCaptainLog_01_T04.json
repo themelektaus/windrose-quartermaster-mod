@@ -12,55 +12,51 @@
 		"ActivationAbilityTag": {
 			"TagName": "None"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT03_BritishJournal_01.SM_LootT03_BritishJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
 			"ItemClass": "None",
 			"ItemConfig": "None",
 			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"SlotCountModifierParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
-		"ItemName": "NOT USED Fort Captain's Log",
-		"ItemDescription": "NOT USED May 16XX. Three dead men rose from their graves. Quickly burned them in secret from the residents.\r\n\r\nEarly June 16XX. Reports of the dead rising are increasing. Couldn't keep them quiet. I ordered the fort to be heavily guarded.\r\n\r\nMid-June 16XX. The residents are agitated. It's not a bad time to riot. And here I thought I'd be guarding San-Guardi from pirates. Naive.\r\n\r\nLate June 16XX. Residents revolted. Immediately closed the vault. I kept one key, gave the other two to the lieutenant and the chief of the guard.\r\nIn the morning, the city began to tremble. I wish it wasn't an earthquake...",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_FortCaptainLog_01_T04_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_FortCaptainLog_01_T04_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

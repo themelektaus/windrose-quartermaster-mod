@@ -13,64 +13,77 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 0,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponMelee_Saber/Drop/SM_Drop_WeaponMelee_Saber_Broken.SM_Drop_WeaponMelee_Saber_Broken",
+		"ItemClass": "Equipment",
+		"Rarity": "Common",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Broken_Base/BP_Wpn_MainHand_Saber_Broken_Base.BP_Wpn_MainHand_Saber_Broken_Base_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Broken_Base/BP_Wpn_MainHand_Saber_Broken_Base.BP_Wpn_MainHand_Saber_Broken_Base_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponMelee_Saber_Broken.T_ItemIcon_WeaponMelee_Saber_Broken",
 		"AdditionalIcons": [],
-		"ItemName": "Сломанный клинок",
-		"ItemDescription": "Хотя бы еще острый...",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Broken_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Broken_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_starter",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Broken_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 21
+				"Stat": "Slash"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "C",
+				"CurveLevel": 0,
+				"Stat": "Agility"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 8,
-		"VanityText": "Любая хорошая история начинается с того, что герой все потерял и сидит у разбитого корабля.",
+		"Category": "MeleeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Broken_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

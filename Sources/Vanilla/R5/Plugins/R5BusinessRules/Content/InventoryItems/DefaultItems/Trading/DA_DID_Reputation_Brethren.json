@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_T02_CoinPiastre_01.SM_Loot_T02_CoinPiastre_01",
+		"ItemClass": "Default",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/META/Crafting/Reputation/Assets/Factions/T_FactionIcon_Brethren.T_FactionIcon_Brethren",
 		"AdditionalIcons": [],
-		"ItemName": "Береговое Братство",
-		"ItemDescription": "Some call them pirates. Others call them vagabonds. The truth is, they’re free captains of the Caribbean—bound by their own Code, with no master above them. Turn in Blackbeard insignia to increase your reputation with them.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Reputation_Brethren_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Reputation_Brethren_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

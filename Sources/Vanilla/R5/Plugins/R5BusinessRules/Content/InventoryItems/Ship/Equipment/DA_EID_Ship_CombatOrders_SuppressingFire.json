@@ -13,9 +13,9 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -23,62 +23,73 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Guns/Cannons/DA_Ship_CombatOrders_SuppressingFire.DA_Ship_CombatOrders_SuppressingFire"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_NavalTacticsChapter_05.T_ItemIcon_NavalTacticsChapter_05",
 		"AdditionalIcons": [],
-		"ItemName": "Naval Tactics V: Silence the Guns",
-		"ItemDescription": "A French naval doctrine favoring deliberate fire to disrupt enemy batteries. The margin adds, in a coarse and difficult hand: \"Break the rhythm\"",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_SuppressingFire_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_SuppressingFire_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "30",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "20",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "20",
+				"CurveLevel": 1,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ship_CombatOrders_SuppressingFire_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 20,
-		"VanityText": "Disorder the guns, and the ship follows.",
+		"Category": "ShipCombatOrder",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_CombatOrders_SuppressingFire_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -13,56 +13,60 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/Weapon_Corrupted/Drop/SM_Drop_Axe_Corrupted.SM_Drop_Axe_Corrupted",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Axe1h_T03_Reliable/BP_Wpn_MainHand_Axe1h_T03_Reliable.BP_Wpn_MainHand_Axe1h_T03_Reliable_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Axe1h_T03_Reliable/BP_Wpn_MainHand_Axe1h_T03_Reliable.BP_Wpn_MainHand_Axe1h_T03_Reliable_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 1,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Drop_Axe_Corrupted.T_ItemIcon_Drop_Axe_Corrupted",
 		"AdditionalIcons": [],
-		"ItemName": "Болотный топор",
-		"ItemDescription": "Болотный топор, справится с чем угодно, даже с проклятыми деревьями",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_Axe_T03_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_Axe_T03_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T03",
 			"CurveLevel": 1,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Axe_T03_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": "Crude"
+			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 7,
+		"Category": "Tool",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

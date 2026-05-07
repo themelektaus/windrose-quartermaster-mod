@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Elixir"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Potions/SM_PotionT01_01.SM_PotionT01_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,54 +25,68 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/DamageResist/DA_Consumable_Elixir_DamageResist_Default_AbilityData",
-				"AssetName": "DA_Consumable_Elixir_DamageResist_Default_AbilityData"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Elixir/DamageResist/DA_Consumable_Elixir_DamageResist_Default_AbilityData.DA_Consumable_Elixir_DamageResist_Default_AbilityData",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T1_Fortitude_01.T_ItemIcon_Consumables_T1_Fortitude_01",
 		"AdditionalIcons": [],
-		"ItemName": "Эликсир Притупления боли",
-		"ItemDescription": "Холодный желеобразный настой с ужасным запахом дикого козла. Достаточно понюхать и сразу чувствуешь как немеют пальцы на ногах. Алхимики до сих пор спорят, стоит ли его вообще пить.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Elixir_DamageResist_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Elixir_DamageResist_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Alchemy_GE_Values.CT_Alchemy_GE_Values",
 				"RowName": "Elixir_DamageResist_Default_Duration",
 				"CurveLevel": 1,
-				"DisplayType": 5,
+				"DisplayType": "SecondsAsMinutes",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Alchemy_GE_Values.CT_Alchemy_GE_Values",
+				"RowName": "Elixir_DamageResist_Default_EffectValue",
+				"CurveLevel": 1,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Increases Damage Resistance by {1}."
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Elixir_DamageResist_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "CID_Alchemy_Elixir_DamageResist_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 6,
-		"VanityText": "Боль напоминает о том, что мы живы. Вот когда ничего не болит, тогда можно паниковать.\r\n— доктор Гален Скелтон",
+		"Category": "Alchemy",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Alchemy_Elixir_DamageResist_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

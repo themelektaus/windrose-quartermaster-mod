@@ -13,6 +13,10 @@
       - n >  1 (or == 0)      -> n * Multiplier (capped at -Cap)
                                  and rewrite the JSON (tabs/order preserved)
 
+    The script expects -Source to already contain vanilla values (e.g. a
+    fresh copy of Sources\Vanilla\ produced by Dump-WindroseVanilla.ps1).
+    There is no separate vanilla baseline -- the source IS the baseline.
+
     Writes a compact summary at the end.
 
 .PARAMETER Source
@@ -22,8 +26,8 @@
     Factor for MaxCountInSlot. Default: 4.
 
 .PARAMETER Cap
-    Maximum value. Default: 39996 (the Stack-mod x4 uses this as a cap).
-    Set 0 for "no cap".
+    Maximum value. Default: 0 (no cap). The historical 39996 cap from
+    Mod #26 is no longer applied by default.
 
 .PARAMETER KeepUnchanged
     Switch. If set, files with Stack <= 1 are kept unchanged instead of
@@ -34,23 +38,6 @@
     path matches any of these patterns are ignored entirely (deleted or
     skipped, depending on -KeepUnchanged).
     Default: '*\Tests\*' (drop dev/test items)
-
-.PARAMETER Minimal
-    Switch. Replaces the entire JSON with a minimal schema containing only
-    "$type", "InventoryItemGppData.MaxCountInSlot" and "NativeClass".
-    Avoids loader errors caused by problematic vanilla-dump fields (number
-    enums, empty default structs in arrays, etc.) and relies on property
-    overrides in the R5BL loader.
-
-.PARAMETER VanillaSource
-    Optional path to a second source tree containing the vanilla JSONs
-    (e.g. .\Sources\Vanilla). When set, the multiplier is applied to the
-    vanilla value instead of the source value. Useful when -Source already
-    contains modified values (e.g. from -FromPak of someone else's stack
-    mod) and you want true vanilla*multiplier values.
-
-    Lookup: same relative path inside -VanillaSource. Missing vanilla
-    counterparts are logged and skipped.
 
 .PARAMETER AbsoluteValue
     Optional fixed value. When set (>0), MaxCountInSlot is set to this
@@ -67,10 +54,7 @@
     .\Apply-StackMultiplier.ps1 -Source .\Sources\StackSize_x4 -Multiplier 4
 
 .EXAMPLE
-    .\Apply-StackMultiplier.ps1 -Source .\Sources\Test -Multiplier 10 -DryRun
-
-.EXAMPLE
-    .\Apply-StackMultiplier.ps1 -Source .\Sources\StackSize_999 -VanillaSource .\Sources\Vanilla -AbsoluteValue 999
+    .\Apply-StackMultiplier.ps1 -Source .\Sources\StackSize_999 -AbsoluteValue 999
 #>
 
 [CmdletBinding()]
@@ -80,15 +64,11 @@ param(
 
     [int]$Multiplier = 4,
 
-    [int]$Cap = 39996,
+    [int]$Cap = 0,
 
     [switch]$KeepUnchanged,
 
     [string[]]$ExcludePath = @('*\Tests\*'),
-
-    [switch]$Minimal,
-
-    [string]$VanillaSource,
 
     [int]$AbsoluteValue = 0,
 
@@ -114,20 +94,8 @@ if (-not (Test-Path -LiteralPath $SourceFull -PathType Container)) {
     throw "Source is not a folder: $SourceFull"
 }
 
-$VanillaSourceFull = $null
-if ($VanillaSource) {
-    $VanillaSourceFull = (Resolve-Path -LiteralPath $VanillaSource).Path
-    if (-not (Test-Path -LiteralPath $VanillaSourceFull -PathType Container)) {
-        throw "VanillaSource is not a folder: $VanillaSourceFull"
-    }
-}
-
 Write-Step "Apply Stack Multiplier"
 Write-OK "Source     : $SourceFull"
-if ($VanillaSourceFull) {
-    Write-OK "Vanilla    : $VanillaSourceFull"
-    Write-OK "Mode       : Vanilla-merge (multiplier applied to vanilla values)"
-}
 if ($IsAbsolute) {
     Write-OK "AbsoluteVal: $AbsoluteValue (Multiplier/Cap ignored)"
 } else {
@@ -135,7 +103,6 @@ if ($IsAbsolute) {
     if ($Cap -gt 0) { Write-OK "Cap        : $Cap" } else { Write-OK "Cap        : (none)" }
 }
 if ($KeepUnchanged) { Write-OK "Cleanup    : keep unchanged files" } else { Write-OK "Cleanup    : delete unchanged files (Stack<=1)" }
-if ($Minimal)       { Write-OK "Schema     : minimal (Type+MaxCountInSlot+NativeClass only)" } else { Write-OK "Schema     : full (preserve all original fields)" }
 if ($DryRun) { Write-Warn2 "DryRun active -> nothing will be written/deleted" }
 
 $files = Get-ChildItem -LiteralPath $SourceFull -Recurse -File -Filter '*.json'
@@ -144,13 +111,12 @@ if ($ExcludePath -and $ExcludePath.Count -gt 0) {
     Write-OK ("ExcludePath: {0}" -f ($ExcludePath -join ', '))
 }
 
-$modified  = 0
-$deleted   = 0
-$kept      = 0
-$skipped   = 0
-$capped    = 0
-$excluded  = 0
-$noVanilla = 0
+$modified = 0
+$deleted  = 0
+$kept     = 0
+$skipped  = 0
+$capped   = 0
+$excluded = 0
 
 foreach ($f in $files) {
     # ExcludePath check (against relative path)
@@ -172,40 +138,12 @@ foreach ($f in $files) {
     }
 
     # Read explicitly as UTF-8, otherwise Windows PowerShell 5.1's default
-    # ANSI codepage will mangle non-ASCII characters (e.g. Cyrillic item
-    # names) and re-write them as mojibake.
+    # ANSI codepage will mangle non-ASCII characters and re-write them as
+    # mojibake.
     $content = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
 
     if ($content -match '("MaxCountInSlot"\s*:\s*)(\d+)') {
-        $sourceVal = [int]$matches[2]
-
-        # Vanilla merge: base value comes from VanillaSource, not from Source
-        if ($VanillaSourceFull) {
-            $vanillaPath = Join-Path $VanillaSourceFull $rel
-            if (-not (Test-Path -LiteralPath $vanillaPath)) {
-                # No vanilla counterpart -> file is stack-mod-specific
-                # (e.g. items the stack-mod author deliberately made stackable).
-                # Delete it because we have no real vanilla baseline.
-                if (-not $DryRun) {
-                    Remove-Item -LiteralPath $f.FullName -Force
-                }
-                $noVanilla++
-                continue
-            }
-            $vanillaContent = [System.IO.File]::ReadAllText($vanillaPath, [System.Text.Encoding]::UTF8)
-            if ($vanillaContent -match '"MaxCountInSlot"\s*:\s*(\d+)') {
-                $oldVal = [int]$matches[1]
-            } else {
-                # Vanilla has no MaxCountInSlot -> not modifiable
-                if (-not $DryRun) {
-                    Remove-Item -LiteralPath $f.FullName -Force
-                }
-                $noVanilla++
-                continue
-            }
-        } else {
-            $oldVal = $sourceVal
-        }
+        $oldVal = [int]$matches[2]
 
         if ($oldVal -le 1) {
             # Not stackable -> delete or keep
@@ -230,45 +168,21 @@ foreach ($f in $files) {
             }
         }
 
-        if ($newVal -eq $sourceVal -and -not $Minimal) {
-            # Source already has the correct value (e.g. when FromPak was already x4)
+        if ($newVal -eq $oldVal) {
+            # Nothing to change (e.g. Multiplier=1)
             $kept++
             continue
         }
 
-        if ($Minimal) {
-            # Carry over NativeClass from the original (default if not found)
-            $nativeClass = "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
-            if ($content -match '"NativeClass"\s*:\s*"([^"]+)"') {
-                $nativeClass = $matches[1]
-            }
-            # Carry over $type from the original (default R5BLInventoryItem)
-            $typeName = 'R5BLInventoryItem'
-            if ($content -match '"\$type"\s*:\s*"([^"]+)"') {
-                $typeName = $matches[1]
-            }
-
-            # Minimal JSON with tabs (Stack-mod style), CRLF to match the original
-            $newContent = @"
-{
-`t"`$type": "$typeName",
-`t"InventoryItemGppData": {
-`t`t"MaxCountInSlot": $newVal
-`t},
-`t"NativeClass": "$($nativeClass.Replace('\','\\').Replace('"','\"'))"
-}
-"@
-        } else {
-            $newContent = [regex]::Replace(
-                $content,
-                '("MaxCountInSlot"\s*:\s*)\d+',
-                { param($m) $m.Groups[1].Value + $newVal.ToString() },
-                1   # only replace the first match
-            )
-        }
+        $newContent = [regex]::Replace(
+            $content,
+            '("MaxCountInSlot"\s*:\s*)\d+',
+            { param($m) $m.Groups[1].Value + $newVal.ToString() },
+            1   # only replace the first match
+        )
 
         if (-not $DryRun) {
-            # UTF-8 without BOM, LF line endings stay as they are
+            # UTF-8 without BOM, line endings preserved
             $utf8 = New-Object System.Text.UTF8Encoding($false)
             [System.IO.File]::WriteAllText($f.FullName, $newContent, $utf8)
         }
@@ -310,9 +224,6 @@ if ($KeepUnchanged) {
     Write-OK ("Deleted (Stack=1)  : {0}" -f $deleted)
     Write-OK ("Deleted (no MCS)   : {0}" -f $skipped)
     Write-OK ("Deleted (excl.)    : {0}" -f $excluded)
-    if ($VanillaSourceFull) {
-        Write-OK ("Deleted (no van.)  : {0}" -f $noVanilla)
-    }
     Write-OK ("Kept unchanged     : {0}" -f $kept)
 }
 if ($DryRun) {

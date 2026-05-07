@@ -13,82 +13,115 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Vanilla/Meshes/Drops/SM_Drop_Armor_Vanilla_Torso.SM_Drop_Armor_Vanilla_Torso",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Vanilla/Torso/BP_Armor_Vanilla_Torso.BP_Armor_Vanilla_Torso_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Vanilla/Torso/BP_Armor_Vanilla_Torso.BP_Armor_Vanilla_Torso_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Torso.DA_EquipmentType_Armor_Torso",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Vanilla_Torso.T_ItemIcon_Armor_Vanilla_Torso",
 		"AdditionalIcons": [],
-		"ItemName": "Камзол капера",
-		"ItemDescription": "Изящный наряд капитанов. В нем так же легко наносить смертельные удары во время абордажа, как и щеголять на приеме у губернатора.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Vanilla_Base_Torso_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Vanilla_Base_Torso_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
 				"RowName": "Vanilla_SetEffect_CritChance",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
 				"RowName": "Vanilla_SetEffect_CritDamageAdd",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
+				"RowName": "Vanilla_SetEffect_CritDamageMax_UI",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [
-			{},
 			{
-				"Name": "Костюм капера",
-				"Description": "Increases Critical Hit Chance by {0}.",
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Vanilla_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Vanilla_Base_SetEffect1"
+				},
 				"SetEffectTag": {
 					"TagName": "EquipData.Armor.Vanilla"
 				},
 				"ActivationCount": 2
+			},
+			{
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Vanilla_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Vanilla_Base_SetEffect2"
+				},
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Vanilla"
+				},
+				"ActivationCount": 4
 			}
 		],
-		"Category": 11,
-		"VanityText": "Мы не пираты. Мы – каперы. У нас есть бумаги, печати и хорошие юристы.\r\n— капитан Бенджамин Хорниголд",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Vanilla_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

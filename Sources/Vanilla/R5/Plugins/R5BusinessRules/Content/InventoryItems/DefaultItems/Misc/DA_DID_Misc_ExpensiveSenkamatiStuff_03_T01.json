@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 1,
-		"Weight": 0.0010000000474974513,
+		"Weight": 0.001,
 		"ItemTag": {
 			"TagName": "ItemData.Misc.ExpensiveSenkamatiStuff.03.T01"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_T03_CorruptedSenkamatiStuff_03.SM_Loot_T03_CorruptedSenkamatiStuff_03",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T03_SenkamatiStuff_01.T_ItemIcon_Loot_T03_SenkamatiStuff_01",
 		"AdditionalIcons": [],
-		"ItemName": "Золотая ваза вождя",
-		"ItemDescription": "Изящный узор и драгоценные камни – это не просто ваза, это целое состояние.\r\nМожно найти в руинах и продать контрабандистам.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_ExpensiveSenkamatiStuff_03_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_ExpensiveSenkamatiStuff_03_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

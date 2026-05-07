@@ -12,55 +12,52 @@
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Consumable.Activate.LootContainer"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/FX/Meshes/Environment/Fish/SM_FishMedium_02.SM_FishMedium_02",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
 			"ItemClass": "None",
 			"ItemConfig": "None",
 			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"SlotCountModifierParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
-				"AssetName": "DA_ConsumableAbilityData_LootContainer"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "/R5BusinessRules/LootTables/Fishing/Butchering/DA_LT_Butchering_MediumFish",
-				"AssetName": "DA_LT_Butchering_MediumFish"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer.DA_ConsumableAbilityData_LootContainer",
+		"LootTableData": "/R5BusinessRules/LootTables/Fishing/Butchering/DA_LT_Butchering_MediumFish.DA_LT_Butchering_MediumFish"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Fish_Medium_EmeraldBluefish_T01.T_ItemIcon_Loot_Fish_Medium_EmeraldBluefish_T01",
 		"AdditionalIcons": [],
-		"ItemName": "Изумрудный луфарь",
-		"ItemDescription": "Луфарь отливает глубокими зелеными оттенками словно морская волна в ясный день.\r\n\r\nCought in deep waters.\r\n\r\nCan be processed into Fish Fillet.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_Fish_Medium_EmeraldBluefish_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_Fish_Medium_EmeraldBluefish_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "It’s not easy being green.",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
+		"Category": "Misc",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_Fish_Medium_EmeraldBluefish_T01_VanityText"
+		},
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

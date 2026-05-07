@@ -13,76 +13,101 @@
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 3,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/WeaponMelee_Saber/Drop/SM_Drop_WeaponMelee_Saber_Flaweless.SM_Drop_WeaponMelee_Saber_Flaweless",
+		"ItemClass": "Equipment",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Flawless_Advanced/BP_Wpn_MainHand_Saber_Flawless_Advanced.BP_Wpn_MainHand_Saber_Flawless_Advanced_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Saber_Flawless_Advanced/BP_Wpn_MainHand_Saber_Flawless_Advanced.BP_Wpn_MainHand_Saber_Flawless_Advanced_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Weapon/T_ItemIcon_WeaponMelee_Saber_Flaweless.T_ItemIcon_WeaponMelee_Saber_Flaweless",
 		"AdditionalIcons": [],
-		"ItemName": "Бритва",
-		"ItemDescription": "Пираты Нассау предпочитают быстрое и жестокое оружие. Эта сабля безупречно заточена и закалена в сражениях.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Flawless_Advanced_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Flawless_Advanced_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Flawless_BaseDamage",
 				"CurveLevel": 0,
-				"Stat": 21
+				"Stat": "Slash"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "S",
+				"CurveLevel": 0,
+				"Stat": "Agility"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
 				"RowName": "Saber_Flawless_WpnCritChanceAdd",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Saber_Flawless_PerfectBlockTimeBonus",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			"",
-			"Increases base Critical Hit Chance by {0}."
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Flawless_Advanced_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_MeleeWeapon_Saber_Flawless_Advanced_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 8,
-		"VanityText": "Какие еще финты? Лезвием по горлу – и концы в воду.\r\n— Израэль Хендс",
+		"Category": "MeleeWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_MeleeWeapon_Saber_Flawless_Advanced_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

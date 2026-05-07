@@ -13,11 +13,17 @@
 			"TagName": "GAS.GameplayEvent.ItemAttribute.CommandExecuteAutoSpend"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Counter"
+				},
+				"Value": 0,
+				"MaxValue": 900
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Common/Accessoires/SM_Accessories_Lantern_01.SM_Accessories_Lantern_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -27,42 +33,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Lantern/DA_ConsumableAbilityData_Lantern",
-				"AssetName": "DA_ConsumableAbilityData_Lantern"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Lantern/DA_ConsumableAbilityData_Lantern.DA_ConsumableAbilityData_Lantern",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Misc_OilLamp_L4_T01.T_ItemIcon_Misc_OilLamp_L4_T01",
 		"AdditionalIcons": [],
-		"ItemName": "Масляная лампа",
-		"ItemDescription": "Масляная лампа которая осветит даже полную тьму.\r\nДелается на верстаке.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_Lantern_L1_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_Lantern_L1_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -14,8 +14,8 @@
 		},
 		"Attributes": [],
 		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -23,46 +23,42 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Params/Customization/Cutter/Sails/DA_Cutter_Sails_Brethren.DA_Cutter_Sails_Brethren"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/HUD/Building/Icons/BuildingBits/T_Cannon_01.T_Cannon_01",
 		"AdditionalIcons": [],
 		"ItemName": "Парус_2",
 		"ItemDescription": "Парус_2",
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T03",
 			"CurveLevel": 1,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "RD_BuildObject_Deco_Cannons_UIDataName"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 1,
+		"Category": "Default",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

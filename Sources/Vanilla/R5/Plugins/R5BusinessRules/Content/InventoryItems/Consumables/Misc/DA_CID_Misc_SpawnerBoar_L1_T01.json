@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Spawner"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT03_GoldAmulet_01.SM_LootT03_GoldAmulet_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,44 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Spawner/DA_ConsumableAbilityData_SpawnerBoar",
-				"AssetName": "DA_ConsumableAbilityData_SpawnerBoar"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Spawner/DA_ConsumableAbilityData_SpawnerBoar.DA_ConsumableAbilityData_SpawnerBoar",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T01_SpawnerBoar.T_ItemIcon_Consumables_T01_SpawnerBoar",
 		"AdditionalIcons": [],
-		"ItemName": "Свисток кабана",
-		"ItemDescription": "Призывает на короткое время ручного кабана.\r\n",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_SpawnerBoar_L1_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_SpawnerBoar_L1_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "Say hello to my little boar.",
+		"Category": "Misc",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_SpawnerBoar_L1_T01_ItemVanity"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

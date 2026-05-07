@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_PirateJournal_01.SM_LootT01_PirateJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
-		"ItemName": "Относительная цена",
-		"ItemDescription": "Стоило заночевать в одной из пещер, как меня едва не поймали люди Томаса Ричардса. Вот уж не хотелось бы с ним встречаться.\r\n\r\nСлыхал я однажды от трактирщика на Тортуге, как одна смекалистая испанка дала отпор его головорезам. Была она тогда помощницей капитана на торговом корабле, который шел в Вест-Индию с грузом дорогущего испанского вина.\r\n\r\nОни как раз подходили к Эспаньоле, когда их настиг пиратский корабль. Капитан приготовился сдаться, но команда отказалась. Ведь Ричардс славился тем, что не оставлял свои жертвы в живых. И тогда испанка предложила достать бутылки с вином, разбить их и осколки разбросать по палубе, чтобы пираты искололи себе ноги, когда возьмут их корабль на абордаж.\r\n\r\nСказано – сделано. Команда как раз успела разбросать стекло и спрятаться в каюте, когда первые головорезы спрыгнули на палубу... и тут же взвыли от боли. Их крики сопровождались точными выстрелами, которые посыпались на пиратов из маленького окошка в двери каюты.\r\n\r\nВ конце концов, Ричардс ушел без добычи, команда радовалась победе, а вот капитан еще долго ругался на испанку и даже высадил ее без жалованья в ближайшем порту. Ведь из-за нее он потерял весь свой дорогостоящий груз!\r\n\r\nВпрочем, трактирщик мне сказал, что испанка не расстроилась. Позже она получила свой собственный корабль, в трюме которого хранит пару ящиков с отличным вином. На всякий случай.\r\n\r\nВот и мне лучше убраться подальше от пещер подобру-поздорову. Лишние вещи, как всегда, закопаю под деревом с красной тряпкой. Тоже на всякий случай.\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_2_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_2_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_PirateJournal_01.SM_LootT01_PirateJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
-		"ItemName": "Шляпа стоит абордажа",
-		"ItemDescription": "За время своих мытарств по этим затерянным островам не увидел ни одного корабля Берегового Братства – только их обломки, которые море выбросило на берег. Зато от пиратов Черной Бороды стало не продохнуть.\r\n\r\nРаньше глава Братства Бенджамин Хорниголд с легкостью избавился бы от Тича, но сейчас у него нелегкие времена...\r\n\r\nЛюбимой байкой у его команды была история про то, как однажды Хорниголд ограбил испанский галеон.\r\n\r\nБудучи совсем молодым пиратом, он приказал поднять на своем шлюпе испанский флаг, притворяясь торговым судном, чтобы не вызывать подозрения. Да и разве могли испанцы подумать, что какой-то мелкий шлюп решится атаковать галеон? Сущее безумие.\r\n\r\nНо для Хорниголда это было дело чести. Капитану галеона сам король повелел избавиться от пиратов на Мейне.\r\n\r\nИспанский капитан не придал значения сообщению о приближающемся корабле – он был слишком занят игрой в карты – и даже не распорядился выставить караул.\r\n\r\nИменно на это рассчитывал Хорниголд. Когда он напал со своей командой, испанцы растерялись и не оказали никакого сопротивления. Хорниголду достался солидный куш и весь выигрыш испанского капитана, которому в тот день по иронии судьбы везло в картах. Вместе с выигрышем Бенджамин забрал его роскошную широкополую шляпу, сказав напоследок, что та стоила абордажа.\r\n\r\nТак Хорниголд стал одним из самых известных капитаном Вест-Индии, а впоследствии и предводителем Берегового Братства.\r\n\r\nЯ нашел в обломках полезную мелочовку. Жаль, что не шляпу: она бы мне пригодилась. Но дальше придется идти налегке. Сундук снова закопаю под деревом с красной тряпкой. Может, когда-нибудь за ним вернусь.\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_3_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_3_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

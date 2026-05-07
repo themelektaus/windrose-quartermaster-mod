@@ -4,13 +4,12 @@ PowerShell pipeline for building stack-size paks for [Windrose](https://www.nexu
 Multiplies (or replaces) `MaxCountInSlot` for every stackable vanilla item
 and packs the result into `.pak` files that go into the `~mods` folder.
 
-Vanilla values come from a snapshot of the game's defaults
-(see `Sources\Vanilla\` in the repo). Soft-object fields (mesh paths, texture
-paths, FText keys) come from `reference-fields.json`, which is shipped with
-the repo -- so no external mod is needed to build.
+Vanilla values are extracted directly from the game's main pak file
+(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) -- no external
+reference mod needed.
 
-For more details (workflow for custom mods, vanilla re-dump, troubleshooting)
-see [`DETAILS.md`](./DETAILS.md).
+For more details (workflow for custom mods, troubleshooting) see
+[`DETAILS.md`](./DETAILS.md).
 
 ---
 
@@ -21,9 +20,17 @@ see [`DETAILS.md`](./DETAILS.md).
 Copy-Item config.example.psd1 config.psd1
 ```
 
-Set one path in `config.psd1`:
+Set two paths in `config.psd1`:
 
-- `Tools.RepakExe` -- path to your `repak.exe`
+- `Tools.RepakExe`    -- path to your `repak.exe`
+- `Game.VanillaPak`   -- path to `pakchunk0-WindowsServer.pak` (server) or
+                         `pakchunk0-Windows.pak` (client)
+
+Then extract the vanilla snapshot once:
+
+```powershell
+.\Dump-WindroseVanilla.ps1
+```
 
 ## Build all variations at once
 

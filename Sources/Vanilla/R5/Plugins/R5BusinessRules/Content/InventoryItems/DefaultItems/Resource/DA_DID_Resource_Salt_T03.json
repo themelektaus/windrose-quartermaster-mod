@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 30,
-		"Weight": 0.10000000149011612,
+		"Weight": 0.10000000000000001,
 		"ItemTag": {
 			"TagName": "ItemData.Resource.Salt.T03"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Resources/SM_ResourcesT03_Salt_01.SM_ResourcesT03_Salt_01",
+		"ItemClass": "Default",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Raw_Resource_Salt_T3.T_ItemIcon_Raw_Resource_Salt_T3",
 		"AdditionalIcons": [],
-		"ItemName": "Соль",
-		"ItemDescription": "Ингредиент для готовки\r\nЧасто встречаtтся в трюмах кораблей архипелага",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_Salt_T03_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_Salt_T03_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 3,
+		"Category": "Resource",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

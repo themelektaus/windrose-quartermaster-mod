@@ -37,7 +37,7 @@ else {
 }
 
 # Ensure required sections exist
-foreach ($k in 'Paths','Tools','Pak') {
+foreach ($k in 'Paths','Tools','Pak','Game') {
     if (-not $cfg.ContainsKey($k)) { $cfg[$k] = @{} }
 }
 
@@ -48,7 +48,6 @@ $pathDefaults = [ordered]@{
     Sources = 'Sources'
     Vanilla = 'Sources\Vanilla'
     Builds  = 'Builds'
-    Dumps   = 'ue4ss-mods\VanillaItemDumper\Dumps'
 }
 foreach ($k in $pathDefaults.Keys) {
     $val = [string]$cfg.Paths[$k]

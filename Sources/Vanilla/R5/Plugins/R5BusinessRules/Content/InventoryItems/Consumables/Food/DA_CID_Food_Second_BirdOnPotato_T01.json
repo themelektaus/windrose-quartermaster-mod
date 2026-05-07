@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 10,
-		"Weight": 0.30000001192092896,
+		"Weight": 0.29999999999999999,
 		"ItemTag": {
 			"TagName": "ConsData.Food.Second.BirdOnPotato.T01"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Food"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Food/SM_Consumables_Second_BirdOnPotato.SM_Consumables_Second_BirdOnPotato",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,46 +25,59 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Second_BirdOnPotato_T01",
-				"AssetName": "DA_ConsumableAbilityData_Food_Second_BirdOnPotato_T01"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Second_BirdOnPotato_T01.DA_ConsumableAbilityData_Food_Second_BirdOnPotato_T01",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Consumables/Food/T_ItemIcon_Consumables_Second_BirdOnPotato.T_ItemIcon_Consumables_Second_BirdOnPotato",
 		"AdditionalIcons": [],
-		"ItemName": "Острая \"курица\" с бататом",
-		"ItemDescription": "Очень сытное пряное блюдо, приготовленное из мяса с острыми специями и бататом. Согревает и придает сил.\r\n\r\nУвеличивает максимальное ХП\r\nДействует {0} минут",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Second_BirdOnPotato_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Second_BirdOnPotato_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Food_GE_Values.CT_Food_GE_Values",
+				"RowName": "Food_Second_BirdOnPotato_T01_Vitality",
+				"CurveLevel": 1,
+				"Stat": "Vitality"
+			}
 		],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Food_GE_Values.CT_Food_GE_Values",
+				"RowName": "Food_Second_BirdOnPotato_T01_Duration",
+				"CurveLevel": 0,
+				"DisplayType": "SecondsAsMinutes",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 5,
-		"VanityText": "Один укус – и в груди разгорится пламя, а усталость сгорит дотла. Возможно, вместе с гортанью.",
+		"Category": "Food",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Second_BirdOnPotato_T01_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

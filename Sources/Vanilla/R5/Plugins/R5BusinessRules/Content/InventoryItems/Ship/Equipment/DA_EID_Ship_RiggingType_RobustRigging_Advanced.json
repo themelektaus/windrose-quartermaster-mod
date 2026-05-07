@@ -13,9 +13,9 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 3,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -23,47 +23,55 @@
 			"ItemConfig": "None",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"ShipItemParams": "/Game/Gameplay/Water/Character/Guns/Cannons/DA_Ship_RiggingType_RobustRigging_Adv.DA_Ship_RiggingType_RobustRigging_Adv"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/HUD/Ship/Assets/T_ShipBoostAbility.T_ShipBoostAbility",
 		"AdditionalIcons": [],
-		"ItemName": "NOT USED Ship Rigging Type Robust Rigging",
-		"ItemDescription": "NOT USED Ship_RiggingType_RobustRigging_Advanced_ Description",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_RiggingType_RobustRigging_Advanced_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_RiggingType_RobustRigging_Advanced_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [
-			"",
-			"NOT USED Robust Rigging Base Effect"
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ship_RiggingType_RobustRigging_Advanced_Effect1"
+			},
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ship_RiggingType_RobustRigging_Advanced_Effect2"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 19,
-		"VanityText": "NOT USED Ship_RiggingType_RobustRigging_Advanced_ Vanity",
+		"Category": "ShipSailMod",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ship_RiggingType_RobustRigging_Advanced_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 6,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

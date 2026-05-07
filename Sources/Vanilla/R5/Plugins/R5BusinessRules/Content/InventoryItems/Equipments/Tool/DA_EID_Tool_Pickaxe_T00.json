@@ -12,57 +12,58 @@
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 1,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/Weapon_Stone/Drop/SM_Drop_Pickaxe_Stone.SM_Drop_Pickaxe_Stone",
+		"ItemClass": "Equipment",
+		"Rarity": "Uncommon",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Pickaxe_T00_Stone/BP_Wpn_MainHand_Pickaxe_T00_Stone.BP_Wpn_MainHand_Pickaxe_T00_Stone_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_MainHand/Pickaxe_T00_Stone/BP_Wpn_MainHand_Pickaxe_T00_Stone.BP_Wpn_MainHand_Pickaxe_T00_Stone_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_MainHand.DA_EquipmentType_Wpn_MainHand",
 			"ItemLevel": 1,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"SlotCountModifierParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Drop_Pickaxe_Stone.T_ItemIcon_Drop_Pickaxe_Stone",
 		"AdditionalIcons": [],
-		"ItemName": "Каменная кирка",
-		"ItemDescription": "Долбит? Долбит!\r\nДелается на верстаке",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_Pickaxe_T00_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_Pickaxe_T00_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T01",
 			"CurveLevel": 1,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Weapon/Shared/CT_Weapon_GE_Values.CT_Weapon_GE_Values",
+				"RowName": "Pickaxe_T00_BaseDamage",
+				"CurveLevel": 0,
+				"Stat": "Crude"
+			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 7,
+		"Category": "Tool",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

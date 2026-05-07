@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "История второго звездочета",
-		"ItemDescription": "Военачальник Чик-Чан похитил дочь вождя северного народа и пришел ко мне за звездными картами, чтобы жениться на ней согласно нашим обрядам.\r\n\r\nЯ вопросил звезды. И звезды ответили, что не быть им вместе, ибо дочь вождя противится этому союзу. Пылая гневом, Чик-Чан уничтожил звездные карты. Он отказался внимать воле небес.\r\n\r\nВырвав язык, меня заточили здесь. И теперь не проходит и дня, чтобы я не молил о возмездии.\r\n\r\nЗвезды бесстрастны. Они видят. Они покарают моего убийцу.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_FateOfTheProphets_2_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_FateOfTheProphets_2_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

@@ -1,66 +1,47 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 20,
-		"Weight": 0.10000000149011612,
+		"Weight": 0.100000001490116,
+		"bKeepInInventoryOnDeath": false,
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer.DA_ConsumableAbilityData_LootContainer",
+		"AmmoBaseParams": "",
+		"LootTableData": "/R5BusinessRules/LootTables/ConsumableContainer/DA_LT_LootContainer_PouchCoin_Final.DA_LT_LootContainer_PouchCoin_Final",
+		"ItemClass": "Consumable",
 		"ItemTag": {
 			"TagName": "ConsData.Misc.PouchCoin.T01"
-		},
-		"ItemType": {
-			"TagName": "Inventory.ItemType.Consumable.Lootable"
 		},
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Consumable.Activate.LootContainer"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 0,
-		"bKeepInInventoryOnDeath": false,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
-				"AssetName": "DA_ConsumableAbilityData_LootContainer"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "/R5BusinessRules/LootTables/ConsumableContainer/DA_LT_LootContainer_PouchCoin_Final",
-				"AssetName": "DA_LT_LootContainer_PouchCoin_Final"
-			}
+		"MaxCountInSlot": 20,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Consumables/SM_Consumables_T01_PouchCoin_01.SM_Consumables_T01_PouchCoin_01",
+		"Rarity": "Common",
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Lootable"
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Мешочек монет",
-		"ItemDescription": "Внутри может оказаться целое состояние.\r\n",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_PouchCoin_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_PouchCoin_T01_ItemDescription"
+		},
+		"VanityText": "",
+		"EffectsDescriptions": [],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T01_PouchCoin_01.T_ItemIcon_Consumables_T01_PouchCoin_01"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

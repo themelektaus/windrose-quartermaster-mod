@@ -12,55 +12,51 @@
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Ability.Item.Equipment"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Weapons/Weapon_FishingRod/Fishing_Regular/SM_Drop_Gear_Fishing_Rod_Regular.SM_Drop_Gear_Fishing_Rod_Regular",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/FishingRod_T02_Regular/BP_Wpn_TwoHand_FishingRod_T02_Regular.BP_Wpn_TwoHand_FishingRod_T02_Regular_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/FishingRod_T02_Regular/BP_Wpn_TwoHand_FishingRod_T02_Regular.BP_Wpn_TwoHand_FishingRod_T02_Regular_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Weapon/EquipmentTypes/DA_EquipmentType_Wpn_TwoHands.DA_EquipmentType_Wpn_TwoHands",
 			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
+			"SlotCountModifierParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Craft_Tool_FishingRod_T02.T_ItemIcon_Craft_Tool_FishingRod_T02",
 		"AdditionalIcons": [],
-		"ItemName": "Простая удочка",
-		"ItemDescription": "С такой каждый день становится отличным деньком для рыбалки!\r\nДелается на верстаке",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_FishingRod_T02_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Tool_FishingRod_T02_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 7,
+		"Category": "Tool",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

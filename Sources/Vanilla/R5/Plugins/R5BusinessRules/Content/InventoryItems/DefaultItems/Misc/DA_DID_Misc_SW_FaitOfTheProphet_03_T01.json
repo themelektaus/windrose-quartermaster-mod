@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "История третьего звездочета",
-		"ItemDescription": "Северный народ объявил нам войну, и военачальник Чик-Чан пришел ко мне за предсказанием.\r\n\r\nНо звезды молчали. Тогда в бессильной ярости Чик-Чан разрушил святилище наверху и осквернил обсерваторию, закрыв меня внутри.\r\n\r\nСмерть уже близко. Я знаю, что это место станет моей могилой. Сил почти не осталось, от жажды кружится голова. Но звезды все видят. Они шепчут мне о возмездии.\r\n\r\nЧик-Чан скоро погибнет. Отряд северного народа придет за дочерью вождя и убъет его, бросив тело в топи вблизи от моей могилы. Оно изменится, раздуваясь и искажаясь, сплетаясь с землей и корнями, порожденными порчей.\r\n\r\nЗвезды шепчут мне о беде, которую наслал Чик-Чан на мой народ. Но здесь нет никого, кто бы меня услышал.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_FateOfTheProphets_3_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_SW_FateOfTheProphets_3_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

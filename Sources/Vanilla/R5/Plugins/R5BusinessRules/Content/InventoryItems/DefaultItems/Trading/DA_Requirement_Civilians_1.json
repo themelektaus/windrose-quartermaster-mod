@@ -1,0 +1,18 @@
+{
+	"$type": "R5BLCraftRequirement",
+	"RequiredItemsInSourceInventories": [],
+	"RequiredBlackboardValues": [
+		{
+			"BlackboardKey": {
+				"TagName": "Scenario.Reputation.Civilians"
+			},
+			"Amount": 0,
+			"ComparisonType": "GreaterEqual",
+			"AvailableBlackboardSource": "World"
+		}
+	],
+	"AssetBundleData": {
+		"Bundles": []
+	},
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLCraftRequirement'"
+}

@@ -1,66 +1,47 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 20,
-		"Weight": 0.30000001192092896,
+		"Weight": 0.300000011920928,
+		"bKeepInInventoryOnDeath": false,
+		"ConsumableData": "",
+		"AmmoBaseParams": "",
+		"LootTableData": "",
+		"ItemClass": "Default",
 		"ItemTag": {
 			"TagName": "ItemData.Resource.TritonsTrumpet.T01"
 		},
+		"ActivationAbilityTag": {
+			"TagName": ""
+		},
+		"MaxCountInSlot": 20,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_T01_TritonsTrumpet_01.SM_Loot_T01_TritonsTrumpet_01",
+		"Rarity": "Common",
 		"ItemType": {
 			"TagName": "Inventory.ItemType.Resource"
-		},
-		"ActivationAbilityTag": {
-			"TagName": "None"
-		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 0,
-		"bKeepInInventoryOnDeath": false,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Рог Тритона",
-		"ItemDescription": "Красивая ракушка.\r\nМожно найти на пляже.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_TritonsTrumpet_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Resource_TritonsTrumpet_T01_ItemDescription"
+		},
+		"VanityText": "",
+		"EffectsDescriptions": [],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 3,
-		"VanityText": "",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Resource",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T01_TritonsTrumpet_01.T_ItemIcon_Loot_T01_TritonsTrumpet_01"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

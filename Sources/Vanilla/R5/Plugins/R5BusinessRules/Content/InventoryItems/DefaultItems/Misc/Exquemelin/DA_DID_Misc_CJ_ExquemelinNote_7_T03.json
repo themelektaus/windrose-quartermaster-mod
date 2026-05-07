@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_PirateJournal_01.SM_LootT01_PirateJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
-		"ItemName": "Потерянные сапоги",
-		"ItemDescription": "Сначала мой бедный сапог у меня прямо с ноги стащил вцепившийся в него волк. Хорошо хотя бы, что я успел подхватить мешок и сбежал, прежде чем клыкастая пасть сомкнулась на моей голени.\r\n\r\nСтаю больше привлек запах жарившегося на костре куска козлятины, чем моя стремительно убегающая тушка, так что мне удалось скрыться в руинах и переждать ночь под крышей под недовольные трели пустого желудка.\r\n\r\nНо как только я, голодный и невыспавшийся, выбрался за пределы руин, чтобы собрать спелую кукурузу, на меня напал огромный козел! Эта бешеная шельма гнала меня через все поле без продыху, пытаясь то и дело забодать.\r\n\r\nНа бегу я потерял второй сапог и не глядя провалился сквозь пол в очередные развалины. Только тогда козел наконец отстал, издав напоследок победный клич.\r\n\r\nЛюбимые сапоги безмерно жаль – я выложил за них буканьерам целую пригорошню полновесных пиастров\r\n\r\nПока выбирался из развалин, исколол себе колючками руки и ноги. Говорят, из крокодильей кожи получаются неплохие сапоги. Но не с моей удачей на них охотиться.\r\n\r\nВозвращаться за вещами я, конечно, не стал, а кое-что даже успел привычно припрятать под деревом с красной тряпкой.\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_7_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_7_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

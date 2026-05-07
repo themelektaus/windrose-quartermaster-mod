@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_PirateJournal_01.SM_LootT01_PirateJournal_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_BritishJournal_T3.T_ItemIcon_Loot_Misc_BritishJournal_T3",
 		"AdditionalIcons": [],
-		"ItemName": "Причуда судьбы",
-		"ItemDescription": "Вчера наткнулся на схрон контрабандистов, где нашел щепотку пороха да бутылку рома. Если в других схронах так же пусто, то дела у них плохи.\r\n\r\nХодят слухи, что контрабандой на Мейне заправляет Генри Эвери. Врут, наверное. Вот уже два десятилетия его «Причуда» не выходила в море, а когда-то о нем слагали легенды.\r\n\r\nЕсли верить одной из них, то Эвери захватил индийский корабль, чьи трюмы ломились от сокровищ. Первым же залпом пираты снесли грот-мачту судна, лишив его хода, и пошли на абордаж. Эвери сражался в авангарде и схлестнулся с индийским капитаном.\r\n\r\nКазалось, противники были равны, пока индиец не оступился. Пирату хватило мгновения, чтобы выбить оружие из его рук. Эвери тут же приставил клинок к горлу противника, сорвал с его головы скрывавший лицо платок и застыл, увидев прекрасную девушку. Принцессу империи Великих Моголов.\r\n\r\nНастоящий же капитан судна прятался в трюме как трус. Эвери приказал протащить его под килем, а принцессу и ее сопровождение – не трогать.\r\n\r\nС тех пор Генри Эвери исчез, прихватив с собой богатства. Принцессу тоже больше никто не видел. Кто-то говорил, что она бросилась в море, кто-то – что вышла замуж за удачливого корсара…\r\n\r\nГенри Эвери наладил на Тортуге контрабандную сеть или нет, мне неизвестно, но кто бы это ни был, большое ему спасибо. В схроне я переждал дождь и двинулся дальше.\r\n\r\nЛишнюю поклажу закопаю наподалеку, под деревом с красной тряпкой – вдруг когда-нибудь снова буду в этих краях.\r\n\r\n– Из дневника Эксквемелина, путешественника",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_1_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_ExquemelinNote_1_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

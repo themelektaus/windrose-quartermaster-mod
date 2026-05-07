@@ -13,58 +13,66 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 3,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Equipment",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Jewelry/Rings/Fisherman/BP_Jewelry_Ring_Fisherman.BP_Jewelry_Ring_Fisherman_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Jewelry/Rings/Fisherman/BP_Jewelry_Ring_Fisherman.BP_Jewelry_Ring_Fisherman_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Jewelry_Ring.DA_EquipmentType_Jewelry_Ring",
 			"ItemLevel": 3,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Jewelry/T_ItemIcon_Ring_SilverFisherman_02.T_ItemIcon_Ring_SilverFisherman_02",
 		"AdditionalIcons": [],
-		"ItemName": "Большое кольцо рыбака",
-		"ItemDescription": "В худшем случае само это кольцо можно использовать в качестве наживки. Говорят, на него отлично клюет.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ring_Fisherman_Major_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Ring_Fisherman_Major_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Jewelry/CT_JewelryGEValues.CT_JewelryGEValues",
+				"RowName": "Ring_Fisherman_StatValue",
+				"CurveLevel": 3,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Ring_Fisherman_Major_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 12,
+		"Category": "Ring",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

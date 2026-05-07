@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 10,
-		"Weight": 0.30000001192092896,
+		"Weight": 0.29999999999999999,
 		"ItemTag": {
 			"TagName": "ConsData.Food.Soup.BrothWithPotato.T02"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.Food"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Food/SM_Consumables_Soup_BrothWithPotato.SM_Consumables_Soup_BrothWithPotato",
+		"ItemClass": "Consumable",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,46 +25,59 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Soup_BrothWithPotato_T02",
-				"AssetName": "DA_ConsumableAbilityData_Food_Soup_BrothWithPotato_T02"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Food_Soup_BrothWithPotato_T02.DA_ConsumableAbilityData_Food_Soup_BrothWithPotato_T02",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Consumables/Food/T_ItemIcon_Consumables_Soup_BrothWithPotato.T_ItemIcon_Consumables_Soup_BrothWithPotato",
 		"AdditionalIcons": [],
-		"ItemName": "Сытный бульон с яйцом",
-		"ItemDescription": "Сытная похлебка, которую готовят, когда трюм полон запасов, а в рейде команда не дольше недели.\r\n\r\nУвеличивает максимальное ХП\r\nДействует {0} минут",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Soup_BrothWithPotato_T02_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Soup_BrothWithPotato_T02_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Food_GE_Values.CT_Food_GE_Values",
+				"RowName": "Food_Soup_BrothWithPotato_T02_Agility",
+				"CurveLevel": 1,
+				"Stat": "Agility"
+			}
 		],
 		"ItemDescriptionData": [
-			{}
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Consumables/CT_Food_GE_Values.CT_Food_GE_Values",
+				"RowName": "Food_Soup_BrothWithPotato_T02_Duration",
+				"CurveLevel": 0,
+				"DisplayType": "SecondsAsMinutes",
+				"bInverseValue": false
+			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 5,
-		"VanityText": "Если на камбузе остался один батат, значит, скоро или порт, или бунт.\r\n— корабельный кок \"Одноглазый\" Аксель",
+		"Category": "Food",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Food_Soup_BrothWithPotato_T02_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

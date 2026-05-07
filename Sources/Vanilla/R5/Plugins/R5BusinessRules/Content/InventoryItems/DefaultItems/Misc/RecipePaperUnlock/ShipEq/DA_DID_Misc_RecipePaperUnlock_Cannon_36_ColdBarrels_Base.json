@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteRecipe_01.SM_LootT01_NoteRecipe_01",
+		"ItemClass": "Default",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,80 +25,96 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_NavalCannonRecipe_01.T_ItemIcon_Loot_NavalCannonRecipe_01",
 		"AdditionalIcons": [],
-		"ItemName": "Чертеж пушек: Tempered 36-Pounders",
-		"ItemDescription": "Forged and handled with restraint, these guns are meant to be fired with deliberation, not haste.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_RecipePaperUnlock_Cannon_36_ColdBarrels_Base_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Cannon_12_ColdBarrels_Base_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_T01",
 			"CurveLevel": 1,
-			"Stat": 2
+			"Stat": "AttackPower"
 		},
 		"StatCurveSecondaryStatsData": [
-			{},
 			{
 				"CurveTable": "None",
 				"RowName": "S",
 				"CurveLevel": 0,
-				"Stat": 25
+				"Stat": "ShipFireRangeRANK"
 			},
 			{
 				"CurveTable": "None",
 				"RowName": "S",
 				"CurveLevel": 0,
-				"Stat": 26
+				"Stat": "ShipFireAccuracyRANK"
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "2500",
 				"CurveLevel": 1,
-				"Stat": 27
+				"Stat": "ShipCannonDamage"
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "16",
+				"CurveLevel": 1,
+				"Stat": "ShipCannonReloadTime"
 			}
 		],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "ColdBarrels_Delay",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
 				"RowName": "ColdBarrels_Bonus",
 				"CurveLevel": 1,
-				"DisplayType": 4,
+				"DisplayType": "ValueAsValue",
+				"bInverseValue": false
+			},
+			{
+				"CurveTable": "/Game/Gameplay/Water/Character/Ability/ShipAttributes/CT_ShipEquipStats.CT_ShipEquipStats",
+				"RowName": "ColdBarrels_Advanced_Weakspot",
+				"CurveLevel": 1,
+				"DisplayType": "ValueAsValue",
 				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [
-			""
+			{
+				"TableId": "InventoryItems",
+				"Key": "EID_Cannon_12_ColdBarrels_Base_Effect1"
+			}
 		],
 		"SetEffectsDescriptions": [],
-		"Category": 17,
-		"VanityText": "Изучите чертеж что бы получить возможность создавать предмет",
+		"Category": "ShipWeapon",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_RecipePaperUnlock_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

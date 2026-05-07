@@ -13,9 +13,9 @@
 			"TagName": "GAS.Consumable.Activate.LootContainer"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 0,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_Tortuga_LootCrate_01.SM_Loot_Tortuga_LootCrate_01",
+		"ItemClass": "Consumable",
+		"Rarity": "Common",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
-				"AssetName": "DA_ConsumableAbilityData_LootContainer"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "/R5BusinessRules/LootTables/Foliage/DA_LT_LootContainer_BritishMaterials_04",
-				"AssetName": "DA_LT_LootContainer_BritishMaterials_04"
-			}
-		}
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer.DA_ConsumableAbilityData_LootContainer",
+		"LootTableData": "/R5BusinessRules/LootTables/Foliage/DA_LT_LootContainer_BritishMaterials_04.DA_LT_LootContainer_BritishMaterials_04"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/HUD/Building/Icons/BuildingBits/T_BI_Craft_WoodenBoxT01.T_BI_Craft_WoodenBoxT01",
 		"AdditionalIcons": [],
-		"ItemName": "NOT USED Supply Box",
-		"ItemDescription": "NOT USED Supply Box",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_SupplyBox_T04_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_SupplyBox_T04_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

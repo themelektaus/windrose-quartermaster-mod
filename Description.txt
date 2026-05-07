@@ -40,7 +40,7 @@ Multiplier values are calculated against an actual vanilla snapshot, so a "x4" p
 
 [size=4][b]Source code[/b][/size]
 
-The full build pipeline (PowerShell scripts, UE4SS Lua dumper, vanilla snapshot) is open source on GitHub:
+The full build pipeline (PowerShell scripts, vanilla snapshot extracted directly from the game pak) is open source on GitHub:
 
 [size=4]👉 [url=https://github.com/themelektaus/windrose-size-stack-mod]https://github.com/themelektaus/windrose-size-stack-mod[/url][/size]
 

@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 200,
-		"Weight": 0.0010000000474974513,
+		"Weight": 0.001,
 		"ItemTag": {
 			"TagName": "ItemData.Reputation.FactionSign.01"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 2,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/SM_Shared_BlankItem_01.SM_Shared_BlankItem_01",
+		"ItemClass": "Default",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,44 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_Letter03_T1.T_ItemIcon_Loot_Misc_Letter03_T1",
 		"AdditionalIcons": [],
-		"ItemName": "Letter of Favor",
-		"ItemDescription": "Whom it may concern: the bearer of this letter has earned their standing through deed and loyalty. Treat them as a captain of proven worth, one who can be trusted with coin, cargo, and sensitive work.\r\n\r\nTurn it in on Tortuga to any archipelago faction to gain reputation.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Reputation_FactionSign_01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Reputation_FactionSign_01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "A favor in writing: the pirate's version of a royal pardon.",
+		"Category": "Misc",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Reputation_FactionSign_01_ItemVanity"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

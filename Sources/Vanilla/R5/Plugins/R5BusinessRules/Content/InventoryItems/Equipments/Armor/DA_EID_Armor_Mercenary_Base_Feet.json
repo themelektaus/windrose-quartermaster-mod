@@ -13,75 +13,108 @@
 			"TagName": "GAS.Ability.Item.MovableEquipment"
 		},
 		"Attributes": [
-			{}
+			{
+				"Tag": {
+					"TagName": "Inventory.Item.Attribute.Level"
+				},
+				"Value": 1,
+				"MaxValue": 15
+			}
 		],
-		"ItemMesh": "None",
-		"ItemClass": 3,
-		"Rarity": 2,
+		"ItemMesh": "/Game/Character/Skeletal_Meshes/Armor/ArmorRegular/Mercenary/Meshes/Drops/SM_Drop_Armor_Mercenary_Feet.SM_Drop_Armor_Mercenary_Feet",
+		"ItemClass": "Equipment",
+		"Rarity": "Rare",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
-			"ItemClass": "/Game/Gameplay/ItemsLogic/Armor/Set_Mercenary/Feet/BP_Armor_Mercenary_Feet.BP_Armor_Mercenary_Feet_C",
-			"ItemConfig": "None",
+			"ItemClass": "/Script/Engine.BlueprintGeneratedClass'/Game/Gameplay/ItemsLogic/Armor/Set_Mercenary/Feet/BP_Armor_Mercenary_Feet.BP_Armor_Mercenary_Feet_C'",
+			"ItemConfig": "/R5BusinessRules/ItemsLogic/Armor/DA_EquipmentType_Armor_Boots.DA_EquipmentType_Armor_Boots",
 			"ItemLevel": 0,
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/Armor/T_ItemIcon_Armor_Mercenary_Feets.T_ItemIcon_Armor_Mercenary_Feets",
 		"AdditionalIcons": [],
-		"ItemName": "Сапоги стрелка",
-		"ItemDescription": "Стрелки Тортуги предпочитают костюмы из легкой ткани. В них проще передвигаться по пересеченной местности и стрелять по подвижным мишеням.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Mercenary_Base_Feet_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Mercenary_Base_Feet_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
-			"CurveTable": "None",
+			"CurveTable": "/Game/Gameplay/ItemsLogic/CT_CombatPower_StaticData.CT_CombatPower_StaticData",
 			"RowName": "power_craftable",
 			"CurveLevel": 0,
-			"Stat": 10
+			"Stat": "Defence"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [
-			{},
 			{
-				"CurveTable": "None",
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
 				"RowName": "Mercenary_SetEffect_MovementStaminaCons",
 				"CurveLevel": 0,
-				"DisplayType": 2,
+				"DisplayType": "RatioToPercent",
 				"bInverseValue": true
+			},
+			{
+				"CurveTable": "/Game/Gameplay/ItemsLogic/Armor/Shared/CT_Armor_GE_Values.CT_Armor_GE_Values",
+				"RowName": "Mercenary_SetEffect_RangeDamage",
+				"CurveLevel": 0,
+				"DisplayType": "RatioToPercent",
+				"bInverseValue": false
 			}
 		],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [
-			{},
 			{
-				"Name": "Экипировка Стрелка",
-				"Description": "Sprinting, Jump, and Dash consume {0} less Stamina.",
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Mercenary_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Mercenary_Base_SetEffect1"
+				},
 				"SetEffectTag": {
 					"TagName": "EquipData.Armor.Mercenary"
 				},
 				"ActivationCount": 2
+			},
+			{
+				"Name": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Mercenary_Base_SetName"
+				},
+				"Description": {
+					"TableId": "InventoryItems",
+					"Key": "EID_Armor_Mercenary_Base_SetEffect2"
+				},
+				"SetEffectTag": {
+					"TagName": "EquipData.Armor.Mercenary"
+				},
+				"ActivationCount": 4
 			}
 		],
-		"Category": 11,
-		"VanityText": "Сначала стреляй, потом – задавай вопросы.",
+		"Category": "Armor",
+		"VanityText": {
+			"TableId": "InventoryItems",
+			"Key": "EID_Armor_Mercenary_Base_VanityText"
+		},
 		"QualityLevel": 0,
 		"MaxQualityLevel": 10,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

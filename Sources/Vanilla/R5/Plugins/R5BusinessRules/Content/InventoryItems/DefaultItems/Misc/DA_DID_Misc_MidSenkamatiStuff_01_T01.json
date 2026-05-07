@@ -2,7 +2,7 @@
 	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
 		"MaxCountInSlot": 5,
-		"Weight": 0.0099999997764825821,
+		"Weight": 0.01,
 		"ItemTag": {
 			"TagName": "ItemData.Misc.MidSenkamatiStuff.01.T01"
 		},
@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 3,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Artifacts/Senkamati/SM_DishesClay_Senkamati_04.SM_DishesClay_Senkamati_04",
+		"ItemClass": "Default",
+		"Rarity": "Epic",
 		"bKeepInInventoryOnDeath": false,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T02_SenkamatiStuff_02.T_ItemIcon_Loot_T02_SenkamatiStuff_02",
 		"AdditionalIcons": [],
-		"ItemName": "Медно-глиняная курильница",
-		"ItemDescription": "Чудом сохранившийся предмет материальной культуры исчезнувшего народа.\r\nМожно найти в руинах и продать контрабандистам.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_MidSenkamatiStuff_01_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_MidSenkamatiStuff_01_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

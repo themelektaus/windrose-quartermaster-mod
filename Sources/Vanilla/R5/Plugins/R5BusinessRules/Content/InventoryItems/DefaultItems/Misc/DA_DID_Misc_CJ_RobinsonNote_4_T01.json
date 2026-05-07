@@ -1,66 +1,47 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 20,
-		"Weight": 0,
+		"Weight": 0.0,
+		"bKeepInInventoryOnDeath": true,
+		"ConsumableData": "",
+		"AmmoBaseParams": "",
+		"LootTableData": "",
+		"ItemClass": "Default",
 		"ItemTag": {
 			"TagName": "ConsData.Misc.RobinsonNote.04.T01"
 		},
+		"ActivationAbilityTag": {
+			"TagName": ""
+		},
+		"MaxCountInSlot": 20,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"Rarity": "Legendary",
 		"ItemType": {
 			"TagName": "Inventory.ItemType.Quest.Notes"
-		},
-		"ActivationAbilityTag": {
-			"TagName": "None"
-		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
-		"bKeepInInventoryOnDeath": true,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Обрывки дневника",
-		"ItemDescription": "Сто пятый день после кораблекрушения\r\n\r\nНет, сто пятый был две недели назад. Или три? Не помню. Запутался.\r\n\r\nБрэм и Митчелл все-таки меня оставили. Бросили. Уплыли. Да, они уплыли. Уплы-ы-ыли. Я остался. И их вещи остались. Там... Я закопал. Спрятал до их возвращения. Они же вернутся за мной? Вернутся. Обязательно.\r\n\r\nИз руин ушел. Там стало еще страшнее. Совсем страшно. Теперь даже днем слышу их голоса. Как из могилы. Гулкие. Сейчас они придут. Я чувствую. Где мой оберег? Мне нужны обереги. Больше оборегов. Они защитят...",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_RobinsonNote_4_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CJ_RobinsonNote_4_T01_ItemDescription"
+		},
+		"VanityText": "",
+		"EffectsDescriptions": [],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

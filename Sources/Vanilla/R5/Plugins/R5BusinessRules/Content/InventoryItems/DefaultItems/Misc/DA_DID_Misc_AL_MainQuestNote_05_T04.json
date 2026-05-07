@@ -1,66 +1,43 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 10,
-		"Weight": 0,
+		"ItemClass": "Default",
 		"ItemTag": {
 			"TagName": "ItemData.Misc.AshlandsNotes.MainQuestNote.05.T04"
 		},
+		"ActivationAbilityTag": {
+			"TagName": ""
+		},
+		"MaxCountInSlot": 10,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT02_CultistNoteBlood_01.SM_LootT02_CultistNoteBlood_01",
+		"Rarity": "Legendary",
 		"ItemType": {
 			"TagName": "Inventory.ItemType.Quest"
 		},
-		"ActivationAbilityTag": {
-			"TagName": "None"
-		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"Weight": 0.0,
 		"bKeepInInventoryOnDeath": false,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "",
+		"AmmoBaseParams": "",
+		"LootTableData": ""
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "",
-		"ItemDescription": "",
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
+		"ItemName": "",
+		"ItemDescription": "",
+		"VanityText": "",
+		"EffectsDescriptions": []
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

@@ -1,66 +1,47 @@
 {
-	"$type": "R5BLInventoryItem",
 	"InventoryItemGppData": {
-		"MaxCountInSlot": 10,
-		"Weight": 2,
+		"Weight": 2.0,
+		"bKeepInInventoryOnDeath": false,
+		"ConsumableData": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer.DA_ConsumableAbilityData_LootContainer",
+		"AmmoBaseParams": "",
+		"LootTableData": "/R5BusinessRules/LootTables/ConsumableContainer/DA_LT_LootContainer_LootCrateShip_Final.DA_LT_LootContainer_LootCrateShip_Final",
+		"ItemClass": "Consumable",
 		"ItemTag": {
 			"TagName": "ConsData.Misc.LootCrate.T03"
-		},
-		"ItemType": {
-			"TagName": "Inventory.ItemType.Consumable.Lootable"
 		},
 		"ActivationAbilityTag": {
 			"TagName": "GAS.Consumable.Activate.LootContainer"
 		},
-		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 4,
-		"Rarity": 3,
-		"bKeepInInventoryOnDeath": false,
-		"AmmoBaseParams": "None",
-		"InventoryEquipment": {
-			"ItemClass": "None",
-			"ItemConfig": "None",
-			"ItemLevel": 0,
-			"SlotCountModifierParams": "None",
-			"ShipItemParams": "None"
-		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "/Game/Gameplay/ItemsLogic/Consumables/LootContainer/ConsumeAbilityData/DA_ConsumableAbilityData_LootContainer",
-				"AssetName": "DA_ConsumableAbilityData_LootContainer"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "/R5BusinessRules/LootTables/ConsumableContainer/DA_LT_LootContainer_LootCrateShip_Final",
-				"AssetName": "DA_LT_LootContainer_LootCrateShip_Final"
-			}
+		"MaxCountInSlot": 10,
+		"ItemMesh": "/Game/TMP/ResourcesTEMP/Loot/SM_Loot_Tortuga_LootCrate_01.SM_Loot_Tortuga_LootCrate_01",
+		"Rarity": "Epic",
+		"ItemType": {
+			"TagName": "Inventory.ItemType.Consumable.Lootable"
 		}
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
-		"AdditionalIcons": [],
-		"ItemName": "Ящик с добычей",
-		"ItemDescription": "Ящик с добычей\r\nДобывается в море.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_LootCrate_T03_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "CID_Misc_LootCrate_T03_ItemDescription"
+		},
+		"VanityText": "",
+		"EffectsDescriptions": [],
+		"ItemDescriptionData": [],
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
-		"ItemDescriptionData": [],
-		"EffectsDescriptions": [],
-		"SetEffectsDescriptions": [],
-		"Category": 2,
-		"VanityText": "",
-		"QualityLevel": 0,
-		"MaxQualityLevel": 0,
-		"SubDataId": {
-			"TagName": "None"
-		}
+		"Category": "Misc",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Tortuga_LootCrate_0.T_ItemIcon_Loot_Tortuga_LootCrate_0"
 	},
-	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
+	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'",
+	"$type": "R5BLInventoryItem"
 }

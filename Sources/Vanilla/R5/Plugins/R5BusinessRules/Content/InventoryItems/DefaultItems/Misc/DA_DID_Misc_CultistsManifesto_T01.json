@@ -13,9 +13,9 @@
 			"TagName": "None"
 		},
 		"Attributes": [],
-		"ItemMesh": "None",
-		"ItemClass": 1,
-		"Rarity": 4,
+		"ItemMesh": "/Game/Environment/Gameplay/Resources/Loot/SM_LootT01_NoteLore_01.SM_LootT01_NoteLore_01",
+		"ItemClass": "Default",
+		"Rarity": "Legendary",
 		"bKeepInInventoryOnDeath": true,
 		"AmmoBaseParams": "None",
 		"InventoryEquipment": {
@@ -25,42 +25,41 @@
 			"SlotCountModifierParams": "None",
 			"ShipItemParams": "None"
 		},
-		"ConsumableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		},
-		"LootTableData": {
-			"AssetPath": {
-				"PackageName": "None",
-				"AssetName": "None"
-			}
-		}
+		"ConsumableData": "None",
+		"LootTableData": "None"
 	},
 	"InventoryItemUIData": {
-		"ItemTexture": "None",
+		"ItemTexture": "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_Misc_NoteLore_T1.T_ItemIcon_Loot_Misc_NoteLore_T1",
 		"AdditionalIcons": [],
-		"ItemName": "Манифест Детей Нового Ковчега",
-		"ItemDescription": "Мы – Дети Нового Ковчега. Мы – доски в его бортах, паруса в его мачтах, гвозди в его ребрах. Мы – разрозненные души, собранные воедино Божественной волей.\r\n\r\nГрешники сгниют в лоне опороченной земли, Новый Ковчег же будет плыть по благословенным волнам.\r\n\r\nГлава – наш бессменный штурман. Как море слушает ветер, так и мы слушаем Слово Его. Кто внимает – вознесется, кто ослушается – проклят будет и познает тысячи тысяч адских мучений, навсегда оставшись между землей и небом без возможности найти верный путь.\r\n\r\nМы отвергаем бремя мирского: лишь чистые сердцем и смиренные душой дойдут до обетованной гавани.\r\n\r\nМы веруем: грядет Конец Времен. Совсем скоро разверзднется Бездна Ада и поглотит погрязший во грехе мир. Мы – избранные, и потому спасены будем.\r\n\r\nМы – Дети Нового Ковчега.",
+		"ItemName": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CultistsManifesto_T01_ItemName"
+		},
+		"ItemDescription": {
+			"TableId": "InventoryItems",
+			"Key": "DID_Misc_CultistsManifesto_T01_ItemDescription"
+		},
 		"StatCurveMainStatsData": {
 			"CurveTable": "None",
 			"RowName": "",
 			"CurveLevel": 0,
-			"Stat": 0
+			"Stat": "None"
 		},
 		"StatCurveSecondaryStatsData": [],
 		"StatCurveAdditionalStats": [],
 		"ItemDescriptionData": [],
 		"EffectsDescriptions": [],
 		"SetEffectsDescriptions": [],
-		"Category": 2,
+		"Category": "Misc",
 		"VanityText": "",
 		"QualityLevel": 0,
 		"MaxQualityLevel": 0,
 		"SubDataId": {
 			"TagName": "None"
 		}
+	},
+	"AssetBundleData": {
+		"Bundles": []
 	},
 	"NativeClass": "/Script/CoreUObject.Class'/Script/R5BusinessRules.R5BLInventoryItem'"
 }

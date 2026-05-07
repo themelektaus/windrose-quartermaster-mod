@@ -5,36 +5,29 @@
 
 .DESCRIPTION
     For each variant:
-        1. Build-WindroseMod.ps1 -Action Init (from the Stack-mod x4 pak as
-           structural source)
-        2. Apply-StackMultiplier.ps1 (with -VanillaSource, multiplies
-           vanilla*N or sets an absolute value)
-        3. Build-WindroseMod.ps1 (build)
+        1. Copy Sources\Vanilla\ -> Sources\StackSize_<v>\ (skip if already
+           there; use -Force to overwrite)
+        2. Apply-StackMultiplier.ps1 (multiplies vanilla*N or sets an
+           absolute value, deletes non-stackable items)
+        3. Build-WindroseMod.ps1 (pack)
 
     The finished .pak files end up in <OutDir> and must be copied into the
     server/client ~mods folder yourself.
 
     Output: <OutDir>\StackSize_<name>_P.pak
 
-    Source folders are created at Sources\StackSize_<name>\ and kept (by
-    default) so you can inspect/diff them. Use -CleanSources to delete them
-    after a successful build.
+    Source folders are kept (by default) so you can inspect/diff them. Use
+    -CleanSources to delete them after a successful build.
+
+    Run Dump-WindroseVanilla.ps1 once before this script to populate
+    Sources\Vanilla\.
 
 .PARAMETER Variants
     List of variants to build. Default: all 11.
     Allowed names: x2, x3, x4, x5, x6, x7, x8, x9, x10, 999, 9999
-    (x4 is intentionally NOT excluded by default; it matches the currently
-    deployed pak. Pass it explicitly if you want to rebuild it.)
-
-.PARAMETER FromPak
-    Source pak for the Init step (provides the full JSON schema with mesh
-    paths, string enums, etc.). Required if you want to (re)build the per-variant
-    Sources from a reference pak; otherwise the existing Sources/<variant>/
-    folders are reused.
 
 .PARAMETER VanillaSource
-    Path to the vanilla dump (537 real vanilla MaxCountInSlot values).
-    Default: $cfg.Paths.Vanilla (config.psd1).
+    Path to the vanilla snapshot. Default: $cfg.Paths.Vanilla (config.psd1).
 
 .PARAMETER SrcRoot
     Where the per-variant source folders are placed.
@@ -70,8 +63,6 @@
 param(
     [string[]]$Variants = @('x2','x3','x4','x5','x6','x7','x8','x9','x10','999','9999'),
 
-    [string]$FromPak,
-
     [string]$VanillaSource,
 
     [string]$SrcRoot,
@@ -104,14 +95,21 @@ $ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BuildScript  = Join-Path $ScriptRoot 'Build-WindroseMod.ps1'
 $ApplyScript  = Join-Path $ScriptRoot 'Apply-StackMultiplier.ps1'
 
-foreach ($p in @($BuildScript, $ApplyScript, $VanillaSource)) {
+foreach ($p in @($BuildScript, $ApplyScript)) {
     if (-not (Test-Path -LiteralPath $p)) {
         throw "Path not found: $p"
     }
 }
-if ($FromPak -and -not (Test-Path -LiteralPath $FromPak)) {
-    throw "Path not found: $FromPak"
+
+if (-not (Test-Path -LiteralPath $VanillaSource -PathType Container)) {
+    throw @"
+VanillaSource not found: $VanillaSource
+
+Run Dump-WindroseVanilla.ps1 first to extract the vanilla JSONs from
+the game pak.
+"@
 }
+$VanillaSource = (Resolve-Path -LiteralPath $VanillaSource).Path
 
 if (-not (Test-Path -LiteralPath $OutDir)) {
     if (-not $DryRun) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
@@ -143,7 +141,6 @@ function Resolve-Variant($name) {
 
 Write-Step "Build All Stack Variations"
 Write-OK "Variants     : $($Variants -join ', ')"
-Write-OK "FromPak      : $(if ($FromPak) { $FromPak } else { '<none -- reusing existing src folders>' })"
 Write-OK "VanillaSource: $VanillaSource"
 Write-OK "SrcRoot      : $SrcRoot"
 Write-OK "OutDir       : $OutDir"
@@ -175,30 +172,28 @@ foreach ($vname in $Variants) {
     }
 
     try {
-        # 1. Init (only when -FromPak was supplied; otherwise reuse existing src)
-        if ($FromPak) {
-            Write-Step "Init from FromPak -> $srcPath"
-            $initArgs = @{
-                Action = 'Init'
-                Source = $srcPath
-                FromPak = $FromPak
+        # 1. Copy vanilla -> variant src folder
+        $srcExists = Test-Path -LiteralPath $srcPath
+        if ($srcExists -and $Force) {
+            if ($DryRun) {
+                Write-OK "DryRun: would remove existing src: $srcPath"
+            } else {
+                Remove-Item -LiteralPath $srcPath -Recurse -Force
+                Write-OK "Removed existing src (Force): $srcPath"
             }
-            if ($Force) { $initArgs.Force = $true }
-            if ($DryRun) { $initArgs.DryRun = $true }
-            & $BuildScript @initArgs
-            if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Init failed (exit $LASTEXITCODE)" }
+            $srcExists = $DryRun  # in DryRun pretend it's still there for the next branch
         }
-        elseif (-not (Test-Path -LiteralPath $srcPath)) {
-            throw "Source folder missing and no -FromPak supplied: $srcPath"
-        }
-        else {
-            Write-OK "Reusing existing src (no -FromPak): $srcPath"
+        if (-not $srcExists) {
+            Write-Step "Copy Vanilla -> $srcPath"
+            if (-not $DryRun) {
+                Copy-Item -LiteralPath $VanillaSource -Destination $srcPath -Recurse -Force
+            }
+        } elseif (-not $Force) {
+            Write-OK "Reusing existing src: $srcPath"
         }
 
         if ($DryRun) {
-            # In DryRun nothing was unpacked after Init -> Apply/Build would
-            # fail on an empty/non-existent path. End the simulation here.
-            Write-Warn2 "DryRun: skipping Apply/Pack (no src present)"
+            Write-Warn2 "DryRun: skipping Apply/Pack"
             $results += [pscustomobject]@{ Name = $modName; Status = 'ok (dryrun)'; Path = $pakPath }
             continue
         }
@@ -206,8 +201,7 @@ foreach ($vname in $Variants) {
         # 2. Apply
         Write-Step "Apply $($v.Mode) on $srcPath"
         $applyArgs = @{
-            Source        = $srcPath
-            VanillaSource = $VanillaSource
+            Source = $srcPath
         }
         if ($v.Mode -eq 'Multiplier') {
             $applyArgs.Multiplier = $v.Multiplier
@@ -215,7 +209,6 @@ foreach ($vname in $Variants) {
         } else {
             $applyArgs.AbsoluteValue = $v.Absolute
         }
-        if ($DryRun) { $applyArgs.DryRun = $true }
         & $ApplyScript @applyArgs
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Apply failed (exit $LASTEXITCODE)" }
 
@@ -226,13 +219,12 @@ foreach ($vname in $Variants) {
             Name   = $modName
             OutDir = $OutDir
         }
-        if ($Force)  { $buildArgs.Force  = $true }
-        if ($DryRun) { $buildArgs.DryRun = $true }
+        if ($Force) { $buildArgs.Force = $true }
         & $BuildScript @buildArgs
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
 
         # 4. Optional cleanup
-        if ($CleanSources -and -not $DryRun) {
+        if ($CleanSources) {
             Write-Step "CleanSources: deleting $srcPath"
             Remove-Item -LiteralPath $srcPath -Recurse -Force
         }
