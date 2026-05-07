@@ -39,7 +39,7 @@ function Invoke-StackMultiplierApply {
         if ($Cap -gt 0) { Write-OK "Cap        : $Cap" } else { Write-OK "Cap        : (none)" }
     }
     if ($KeepUnchanged) { Write-OK "Cleanup    : keep unchanged files" }
-    else                { Write-OK "Cleanup    : delete unchanged files (Stack<=1)" }
+    else                { Write-OK "Cleanup    : delete non-stackable items (Equipment/NPC/Ship)" }
     if ($DryRun)        { Write-Warn2 "DryRun active -> nothing will be written/deleted" }
 
     $files = Get-ChildItem -LiteralPath $sourceFull -Recurse -File -Filter '*.json'
@@ -48,7 +48,7 @@ function Invoke-StackMultiplierApply {
         Write-OK ("ExcludePath: {0}" -f ($ExcludePath -join ', '))
     }
 
-    $modified = 0; $deleted = 0; $kept = 0; $skipped = 0; $capped = 0; $excluded = 0
+    $modified = 0; $promoted = 0; $deleted = 0; $kept = 0; $skipped = 0; $capped = 0; $excluded = 0
 
     foreach ($f in $files) {
         $rel = $f.FullName.Substring($sourceFull.Length).TrimStart('\')
@@ -71,14 +71,35 @@ function Invoke-StackMultiplierApply {
 
         if ($content -match '("MaxCountInSlot"\s*:\s*)(\d+)') {
             $oldVal = [int]$matches[2]
+            $wasUnstacked = $false
 
             if ($oldVal -le 1) {
-                if ($KeepUnchanged) { $kept++ }
-                else {
-                    if (-not $DryRun) { Remove-Item -LiteralPath $f.FullName -Force }
-                    $deleted++
+                # Vanilla stack=1 covers two very different things:
+                #   (a) "normal items that just don't stack yet" (Consumables,
+                #       resource-class DefaultItems) -- legitimate targets for
+                #       the multiplier
+                #   (b) equipment slots / world objects (Armor, Weapon, Jewelry,
+                #       Backpack, Tool, NPCs, Ship cannons, quest recipes, ...)
+                #       -- truly non-stackable, must stay at 1
+                # Discriminate via ItemClass + Category (cheap regex on raw JSON
+                # avoids parsing the whole asset).
+                $itemClass = $null
+                $category  = $null
+                if ($content -match '"ItemClass"\s*:\s*"([^"]+)"') { $itemClass = $matches[1] }
+                if ($content -match '"Category"\s*:\s*"([^"]+)"')  { $category  = $matches[1] }
+
+                $isPromotable = ($itemClass -eq 'Consumable') -or
+                                ($itemClass -eq 'Default' -and $category -eq 'Resource')
+
+                if (-not $isPromotable) {
+                    if ($KeepUnchanged) { $kept++ }
+                    else {
+                        if (-not $DryRun) { Remove-Item -LiteralPath $f.FullName -Force }
+                        $deleted++
+                    }
+                    continue
                 }
-                continue
+                $wasUnstacked = $true
             }
 
             if ($isAbsolute) {
@@ -108,6 +129,7 @@ function Invoke-StackMultiplierApply {
                 [System.IO.File]::WriteAllText($f.FullName, $newContent, $utf8)
             }
             $modified++
+            if ($wasUnstacked) { $promoted++ }
         } else {
             # No MaxCountInSlot field -> delete (doesn't fit the schema)
             if ($KeepUnchanged) { $kept++ }
@@ -131,13 +153,16 @@ function Invoke-StackMultiplierApply {
     Write-Host ""
     Write-Step "Done"
     Write-OK ("Modified           : {0}" -f $modified)
+    if ($promoted -gt 0) {
+        Write-OK ("  of which stack=1 : {0} (Consumables / Resource items)" -f $promoted)
+    }
     if ($capped -gt 0) {
         Write-OK ("  of which capped  : {0} (to {1})" -f $capped, $Cap)
     }
     if ($KeepUnchanged) {
         Write-OK ("Unchanged          : {0}" -f $kept)
     } else {
-        Write-OK ("Deleted (Stack=1)  : {0}" -f $deleted)
+        Write-OK ("Deleted (non-stack): {0}" -f $deleted)
         Write-OK ("Deleted (no MCS)   : {0}" -f $skipped)
         Write-OK ("Deleted (excl.)    : {0}" -f $excluded)
         Write-OK ("Kept unchanged     : {0}" -f $kept)
@@ -148,6 +173,7 @@ function Invoke-StackMultiplierApply {
 
     return [pscustomobject]@{
         Modified = $modified
+        Promoted = $promoted
         Deleted  = $deleted
         Skipped  = $skipped
         Excluded = $excluded

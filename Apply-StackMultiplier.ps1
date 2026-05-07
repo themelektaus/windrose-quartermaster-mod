@@ -1,17 +1,22 @@
 <#
 .SYNOPSIS
     Multiplies MaxCountInSlot in every JSON of a mod source folder and
-    deletes files that are not stackable (Stack <= 1) or have no
-    MaxCountInSlot field.
+    deletes files for items that are inherently non-stackable (equipment
+    slots, NPCs, ship parts) or have no MaxCountInSlot field.
 
 .DESCRIPTION
     Thin wrapper around Invoke-StackMultiplierApply (Library\Apply.ps1).
 
     Per JSON:
       - reads "MaxCountInSlot": <n>
-      - n <= 1                -> delete file (stays vanilla)
-      - n >  1 (or == 0)      -> n * Multiplier (capped at -Cap)
-                                 and rewrite the JSON (tabs/order preserved)
+      - n >  1                -> n * Multiplier (capped at -Cap)
+      - n == 1 AND
+          ItemClass == "Consumable", or
+          ItemClass == "Default" AND Category == "Resource"
+                              -> n * Multiplier (promoted from vanilla 1)
+      - n == 1 otherwise      -> delete file (Armor / Weapon / Jewelry /
+                                 Backpack / Tool / NPC / Ship / quest items)
+      - field missing         -> delete file (doesn't fit the schema)
 
     The script expects -Source to already contain vanilla values (e.g. a
     fresh copy of Sources\Vanilla\ produced by Dump-WindroseVanilla.ps1).
@@ -27,8 +32,8 @@
     Maximum value. Default: 0 (no cap).
 
 .PARAMETER KeepUnchanged
-    Switch. If set, files with Stack <= 1 are kept unchanged instead of
-    being deleted.
+    Switch. If set, non-stackable items (equipment, NPCs, etc.) are kept
+    unchanged on disk instead of being deleted.
 
 .PARAMETER ExcludePath
     List of path substrings (wildcards allowed). Files whose relative
@@ -38,8 +43,9 @@
 
 .PARAMETER AbsoluteValue
     Optional fixed value. When set (>0), MaxCountInSlot is set to this
-    value for every stackable item (vanilla stack > 1) instead of being
-    multiplied. -Multiplier is then ignored.
+    value for every stackable item (including the promoted stack=1
+    Consumables/Resources) instead of being multiplied. -Multiplier is
+    then ignored.
 
 .PARAMETER DryRun
     Only show what would happen.
