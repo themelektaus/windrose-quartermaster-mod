@@ -26,15 +26,13 @@
     Allowed names: x2, x3, x4, x5, x6, x7, x8, x9, x10, 999, 9999
 
 .PARAMETER VanillaSource
-    Path to the vanilla snapshot. Default: $cfg.Paths.Vanilla (config.psd1).
+    Path to the vanilla snapshot. Default: .\Sources\Vanilla.
 
 .PARAMETER SrcRoot
-    Where the per-variant source folders are placed.
-    Default: $cfg.Paths.Sources (config.psd1).
+    Where the per-variant source folders are placed. Default: .\Sources.
 
 .PARAMETER OutDir
-    Where the finished .pak files end up.
-    Default: $cfg.Paths.Builds (config.psd1).
+    Where the finished .pak files end up. Default: .\Builds.
 
 .PARAMETER Force
     Overwrite existing src folders and builds.
@@ -77,17 +75,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'lib\Common.ps1')
-. (Join-Path $PSScriptRoot 'lib\Apply.ps1')
-. (Join-Path $PSScriptRoot 'lib\Pack.ps1')
+. (Join-Path $PSScriptRoot 'Library\Common.ps1')
+. (Join-Path $PSScriptRoot 'Library\Apply.ps1')
+. (Join-Path $PSScriptRoot 'Library\Pack.ps1')
 
-$cfg = Get-WindroseConfig -ModRoot $PSScriptRoot
+$paths = Get-WindrosePaths -ModRoot $PSScriptRoot
 
-$VanillaSource = Use-Default $VanillaSource ([string]$cfg.Paths.Vanilla)
-$SrcRoot       = Use-Default $SrcRoot       ([string]$cfg.Paths.Sources)
-$OutDir        = Use-Default $OutDir        ([string]$cfg.Paths.Builds)
-$MountPoint    = [string]$cfg.Pak.MountPoint
-$Version       = [string]$cfg.Pak.Version
+$VanillaSource = Use-Default $VanillaSource $paths.Vanilla
+$SrcRoot       = Use-Default $SrcRoot       $paths.Sources
+$OutDir        = Use-Default $OutDir        $paths.Builds
 
 if (-not (Test-Path -LiteralPath $VanillaSource -PathType Container)) {
     throw @"
@@ -189,11 +185,9 @@ foreach ($vname in $Variants) {
         # 3. Pack -- direct library call (auto-downloads repak.exe on first use)
         Write-Step "Pack $srcPath -> $pakPath"
         Invoke-WindroseModPack `
-            -Source     $srcPath `
-            -Name       $modName `
-            -OutDir     $OutDir `
-            -MountPoint $MountPoint `
-            -Version    $Version `
+            -Source $srcPath `
+            -Name   $modName `
+            -OutDir $OutDir `
             -Force:$Force | Out-Null
 
         # 4. Optional cleanup

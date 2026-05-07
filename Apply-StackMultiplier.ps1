@@ -5,7 +5,7 @@
     MaxCountInSlot field.
 
 .DESCRIPTION
-    Thin wrapper around Invoke-StackMultiplierApply (lib\Apply.ps1).
+    Thin wrapper around Invoke-StackMultiplierApply (Library\Apply.ps1).
 
     Per JSON:
       - reads "MaxCountInSlot": <n>
@@ -71,7 +71,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'lib\Common.ps1')
-. (Join-Path $PSScriptRoot 'lib\Apply.ps1')
+. (Join-Path $PSScriptRoot 'Library\Common.ps1')
+. (Join-Path $PSScriptRoot 'Library\Apply.ps1')
 
 [void](Invoke-StackMultiplierApply @PSBoundParameters)

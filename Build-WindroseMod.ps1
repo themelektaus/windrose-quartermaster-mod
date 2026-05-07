@@ -3,7 +3,7 @@
     Builds a _P.pak for Windrose from a source folder.
 
 .DESCRIPTION
-    Thin wrapper around Invoke-WindroseModPack (lib\Pack.ps1).
+    Thin wrapper around Invoke-WindroseModPack (Library\Pack.ps1).
 
     Wraps repak.exe. Expects a source folder whose contents will be mounted
     "over" the original files in the game. The pak name always ends in "_P"
@@ -16,7 +16,7 @@
         R5\Plugins\R5BusinessRules\Content\InventoryItems\Consumables\...
 
     Default mount point is `../../../` (matches every Windrose mod
-    examined so far). See config.psd1 for details.
+    examined so far).
 
 .PARAMETER Source
     Required. Path to the source folder with the mod files.
@@ -26,16 +26,16 @@
     if not already present. Default: name of the source folder.
 
 .PARAMETER OutDir
-    Where the pak is written. Default: $cfg.Paths.Builds (config.psd1).
+    Where the pak is written. Default: .\Builds.
 
 .PARAMETER MountPoint
-    Mount point inside the pak. Default: $cfg.Pak.MountPoint ('../../../').
+    Mount point inside the pak. Default: '../../../'.
 
 .PARAMETER Version
-    Pak format version. Default: $cfg.Pak.Version ('V8B').
+    Pak format version. Default: 'V8B'.
 
 .PARAMETER RepakExe
-    Path to repak.exe. Default: auto-downloaded to lib\bin\repak.exe on
+    Path to repak.exe. Default: auto-downloaded to repak.exe on
     first use (pinned v0.2.3, SHA256-verified). Override only if you want
     to use a system-installed repak.
 
@@ -75,23 +75,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'lib\Common.ps1')
-. (Join-Path $PSScriptRoot 'lib\Pack.ps1')
+. (Join-Path $PSScriptRoot 'Library\Common.ps1')
+. (Join-Path $PSScriptRoot 'Library\Pack.ps1')
 
-$cfg = Get-WindroseConfig -ModRoot $PSScriptRoot
-
-# Pull defaults from config when not explicitly set. RepakExe is left empty
-# when not provided -- the library auto-resolves it via Get-RepakExe (lazy
-# download to lib\bin\ on first use).
+# Library defaults (Builds folder, MountPoint '../../../', Version 'V8B',
+# repak.exe auto-download) kick in when the corresponding parameter is
+# left empty. Only forward the values the caller actually set.
 $packArgs = @{
-    Source     = $Source
-    Name       = $Name
-    OutDir     = (Use-Default $OutDir     ([string]$cfg.Paths.Builds))
-    MountPoint = (Use-Default $MountPoint ([string]$cfg.Pak.MountPoint))
-    Version    = (Use-Default $Version    ([string]$cfg.Pak.Version))
-    Force      = $Force
-    DryRun     = $DryRun
+    Source = $Source
+    Name   = $Name
+    Force  = $Force
+    DryRun = $DryRun
 }
-if ($RepakExe -and $RepakExe.Trim() -ne '') { $packArgs.RepakExe = $RepakExe }
+if ($OutDir     -and $OutDir.Trim()     -ne '') { $packArgs.OutDir     = $OutDir     }
+if ($MountPoint -and $MountPoint.Trim() -ne '') { $packArgs.MountPoint = $MountPoint }
+if ($Version    -and $Version.Trim()    -ne '') { $packArgs.Version    = $Version    }
+if ($RepakExe   -and $RepakExe.Trim()   -ne '') { $packArgs.RepakExe   = $RepakExe   }
 
 [void](Invoke-WindroseModPack @packArgs)

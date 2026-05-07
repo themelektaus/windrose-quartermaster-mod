@@ -1,42 +1,8 @@
-# User-specific configuration (paths, local tools).
-# Template is config.example.psd1.
-config.psd1
-
-# Build output (regenerable via Build-WindroseMod.ps1 / Build-AllStackVariations.ps1).
-Builds/
-
-# Auto-downloaded repak.exe (pinned v0.2.3 from trumank/repak, SHA256-verified).
-# Re-fetched automatically on first use of any pack/unpack call.
-lib/bin/
-
-# Build artefacts from Init/Apply (regenerable via Build-AllStackVariations.ps1).
-# Sources/Vanilla/ is intentionally tracked -- snapshot of the game, only
-# regenerable via the UE4SS Lua mod.
-Sources/StackSize_*/
-
-# Historical dead-ends and debug artefacts. Not repo-relevant.
-Archive/
-
-# Build metadata (written by Build-WindroseMod.ps1 -Action Init).
-_INIT.txt
-
-# UE4SS mod output (populated by VanillaItemDumper at runtime).
-ue4ss-mods/VanillaItemDumper/Dumps/
-
-# Maintainer-only tool: regenerates reference-fields.json from a local copy of
-# the reference mod. End users never need this -- they consume the committed
-# reference-fields.json directly.
-Extract-ReferenceData.ps1
-
-# Windows cruft.
-Thumbs.db
-desktop.ini
-
-# Editor artefacts.
-.vscode/
-.idea/
-*.swp
-*~
-
+/Archive/
+/Builds/
+/repak.exe
+/Sources/
 /Testserver/
 /WindrosePlus/
+desktop.ini
+Thumbs.db

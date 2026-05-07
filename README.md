@@ -21,7 +21,7 @@ No config required for the default workflow:
   registry and `libraryfolders.vdf`, and `pakchunk0-Windows.pak` is read
   from there;
 - `repak.exe` is downloaded automatically (pinned v0.2.3 from
-  trumank/repak, SHA256-verified) and cached in `lib\bin\`.
+  trumank/repak, SHA256-verified).
 
 Extract the vanilla snapshot once:
 
@@ -35,9 +35,6 @@ pass `-VanillaPak <path>` once:
 ```powershell
 .\Dump-WindroseVanilla.ps1 -VanillaPak 'E:\...\pakchunk0-WindowsServer.pak'
 ```
-
-For overriding the build paths (`Sources\`, `Builds\`), copy
-`config.example.psd1` to `config.psd1` and adjust the `Paths` section.
 
 ## Build all variations at once
 

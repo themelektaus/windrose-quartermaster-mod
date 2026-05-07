@@ -4,7 +4,7 @@
     encrypted pak file.
 
 .DESCRIPTION
-    Thin wrapper around Invoke-WindroseVanillaDump (lib\Dump.ps1).
+    Thin wrapper around Invoke-WindroseVanillaDump (Library\Dump.ps1).
 
     The Windrose main pak (`pakchunk0-WindowsServer.pak` on a dedicated
     server, `pakchunk0-Windows.pak` on the game client) is AES-encrypted
@@ -28,13 +28,11 @@
     lives somewhere Steam doesn't know about (e.g. a dedicated server).
 
 .PARAMETER OutDir
-    Target directory for the extracted tree. Default: $cfg.Paths.Vanilla
-    (normally Sources\Vanilla).
+    Target directory for the extracted tree. Default: .\Sources\Vanilla.
 
 .PARAMETER RepakExe
-    Path to repak.exe. Default: auto-downloaded to lib\bin\repak.exe on
-    first use (pinned v0.2.3, SHA256-verified). Override only if you want
-    to use a system-installed repak.
+    Path to repak.exe. Default: auto-downloaded on first use (pinned v0.2.3, SHA256-verified).
+    Override only if you want to use a system-installed repak.
 
 .PARAMETER Clean
     Empties OutDir before extracting.
@@ -76,21 +74,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'lib\Common.ps1')
-. (Join-Path $PSScriptRoot 'lib\Dump.ps1')
+. (Join-Path $PSScriptRoot 'Library\Common.ps1')
+. (Join-Path $PSScriptRoot 'Library\Dump.ps1')
 
-$cfg = Get-WindroseConfig -ModRoot $PSScriptRoot
-
-$od = Use-Default $OutDir ([string]$cfg.Paths.Vanilla)
-
-# VanillaPak and RepakExe are left empty when not provided -- the library
-# auto-resolves them (Steam install lookup / lib\bin\repak.exe download).
+# Library defaults (Sources\Vanilla\, Steam-detected pak, repak auto-download)
+# kick in when the corresponding parameter is left empty. Only forward what
+# the caller actually set.
 $dumpArgs = @{
-    OutDir = $od
     Clean  = $Clean
     Force  = $Force
     DryRun = $DryRun
 }
+if ($OutDir     -and $OutDir.Trim()     -ne '') { $dumpArgs.OutDir     = $OutDir     }
 if ($VanillaPak -and $VanillaPak.Trim() -ne '') { $dumpArgs.VanillaPak = $VanillaPak }
 if ($RepakExe   -and $RepakExe.Trim()   -ne '') { $dumpArgs.RepakExe   = $RepakExe   }
 
