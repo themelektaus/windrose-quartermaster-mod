@@ -17,7 +17,7 @@
       <p id="setup-intro" class="setup-intro">
         The configurator needs to extract the vanilla item JSONs and icon
         textures from your Windrose install before it can show you anything.
-        This takes 30&ndash;90 seconds the first time and is cached afterwards.
+        This takes 30-90 seconds the first time and is cached afterwards.
       </p>
       <ul id="setup-checks" class="setup-checks"></ul>
       <div id="setup-error" class="setup-error" hidden></div>
@@ -49,15 +49,15 @@
   <main>
     <aside id="left-pane">
       <section class="card">
-        <h2>Globals &mdash; Stack Size</h2>
+        <h2>Globals - Stack Size</h2>
         <fieldset id="stacksize-globals">
           <label class="radio-row">
             <input type="radio" name="ssmode" value="none" checked>
-            None &mdash; per-item overrides only (or vanilla)
+            None - per-item overrides only (or vanilla)
           </label>
           <label class="radio-row">
             <input type="radio" name="ssmode" value="multiplier">
-            Multiplier &mdash; <code>vanilla &times; N</code>
+            Multiplier - <code>vanilla &times; N</code>
           </label>
           <div class="indent">
             <label>Value <input type="number" id="ss-mult" min="1" step="1" value="4" disabled></label>
@@ -65,7 +65,7 @@
           </div>
           <label class="radio-row">
             <input type="radio" name="ssmode" value="absolute">
-            Absolute &mdash; flat value for every item
+            Absolute - flat value for every item
           </label>
           <div class="indent">
             <label>Value <input type="number" id="ss-abs" min="0" step="1" value="999" disabled></label>
@@ -76,10 +76,10 @@
       <section class="card">
         <h2>Status</h2>
         <dl id="status-summary">
-          <dt>Items in vanilla</dt><dd id="stat-total">&mdash;</dd>
-          <dt>Per-item overrides</dt><dd id="stat-overrides">&mdash;</dd>
-          <dt>Will be modified</dt><dd id="stat-modified">&mdash;</dd>
-          <dt>Of which promoted</dt><dd id="stat-promoted">&mdash;</dd>
+          <dt>Items in vanilla</dt><dd id="stat-total">-</dd>
+          <dt>Per-item overrides</dt><dd id="stat-overrides">-</dd>
+          <dt>Will be modified</dt><dd id="stat-modified">-</dd>
+          <dt>Of which promoted</dt><dd id="stat-promoted">-</dd>
         </dl>
       </section>
     </aside>
@@ -103,7 +103,7 @@
 
   <footer>
     <h2>Build Log</h2>
-    <pre id="build-log">No build yet. Press <kbd>Build .pak</kbd> to run the pipeline.</pre>
+    <pre id="build-log">No build yet. Press "Build .pak" to run the pipeline.</pre>
     <p class="footer-links">Debug view: <a href="/items-test.html">items-test.html</a></p>
   </footer>
 

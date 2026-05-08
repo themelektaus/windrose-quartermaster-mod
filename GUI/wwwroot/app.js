@@ -301,10 +301,9 @@ function renderProfileMeta() {
     const p = state.current;
     const out = document.getElementById('profile-meta');
     if (!p) { out.innerHTML = ''; return; }
-    let html = '';
-    if (p.isBuiltin) html += '<span class="builtin-badge">BUILTIN</span>';
+    let html = '<span class="' + (p.isBuiltin ? 'builtin' : 'custom') + '-badge">' + (p.isBuiltin ? 'BUILTIN' : 'CUSTOM') + '</span>';
     if (state.isDirty) html += '<span class="dirty-badge">UNSAVED</span>';
-    if (p.description) html += esc(p.description);
+    html += esc(p.description) || `&nbsp;`;
     out.innerHTML = html;
 }
 
@@ -465,9 +464,9 @@ function buildItemRow(item) {
             '<b>' + esc(displayName) + '</b>' +
             '<small>' + esc(subtitle) + '</small>' +
         '</div>' +
-        '<div class="compute">v' + item.vanillaStack + ' → ' + target.html + '</div>' +
+        '<div class="compute">' + item.vanillaStack + ' → ' + target.html + '</div>' +
         '<input type="number" class="override-input" data-item-id="' + esc(item.id) + '" ' +
-               'value="' + esc(ovValue) + '" placeholder="—" min="0" step="1"' +
+               'value="' + esc(ovValue) + '" placeholder="-" min="0" step="1"' +
                (isReadonly ? ' disabled' : '') + '>';
     return li;
 }
@@ -482,7 +481,7 @@ function refreshRowInPlace(itemId) {
     row.classList.toggle('changed',    t.changed);
     row.classList.toggle('overridden', t.overridden);
     const compute = row.querySelector('.compute');
-    if (compute) compute.innerHTML = 'v' + item.vanillaStack + ' → ' + t.html;
+    if (compute) compute.innerHTML = item.vanillaStack + ' → ' + t.html;
 }
 
 function cssEsc(s) {
