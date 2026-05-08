@@ -8,7 +8,8 @@ namespace Windrose.StackSize.Gui
 {
     // Headless CLI shim that lets us drive the patcher from the command line:
     //
-    //   dotnet run --project GUI -- --test-patcher --multiplier 4 --out tmp-x4
+    //   dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
+    //   dotnet run --project GUI -- --test-patcher --profile x4
     //
     // Used to smoke-test parity with the legacy PowerShell pipeline before the
     // full Build endpoint exists (Phase 4).  Keeps the production HTTP path
@@ -25,6 +26,8 @@ namespace Windrose.StackSize.Gui
             string outDir = null;
             string pakPath = null;
             bool buildPak = false;
+            string profileSpec = null;
+            bool keepTemp = false;
 
             for (int i = 1; i < args.Length; i++)
             {
@@ -53,10 +56,23 @@ namespace Windrose.StackSize.Gui
                     case "--build-pak":
                         buildPak = true;
                         break;
+                    case "--profile":
+                        profileSpec = args[++i];
+                        break;
+                    case "--keep-temp":
+                        keepTemp = true;
+                        break;
                     default:
                         Console.Error.WriteLine("Unknown argument: " + a);
                         return 2;
                 }
+            }
+
+            // Profile mode: load a builtin / user profile by id or name and
+            // run the full BuildPipeline (patch + pack + cleanup).
+            if (!string.IsNullOrEmpty(profileSpec))
+            {
+                return RunProfileMode(repoRoot, profileSpec, keepTemp);
             }
 
             if (!multiplier.HasValue && !absolute.HasValue)
@@ -151,6 +167,56 @@ namespace Windrose.StackSize.Gui
             }
 
             return 0;
+        }
+
+        // Loads a profile by id or display-name and runs the full pipeline
+        // through Builds/<sanitized-name>_P.pak. Used to verify Phase 3 against
+        // the legacy PS pipeline and as a hand-test for user-created profiles.
+        static int RunProfileMode(string repoRoot, string spec, bool keepTemp)
+        {
+            var paths = WindrosePaths.FromModRoot(repoRoot);
+            var store = new ProfileStore(paths);
+            var all = store.LoadAll();
+
+            var profile = all.FirstOrDefault(p =>
+                string.Equals(p.Id, spec, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, spec, StringComparison.OrdinalIgnoreCase));
+
+            if (profile == null)
+            {
+                Console.Error.WriteLine("Profile not found: " + spec);
+                Console.Error.WriteLine("Available:");
+                foreach (var p in all)
+                {
+                    Console.Error.WriteLine("  " + (p.IsBuiltin ? "[builtin] " : "[user]    ")
+                                            + p.Name + "  (" + p.Id + ")");
+                }
+                return 3;
+            }
+
+            Console.WriteLine("Profile : " + profile.Name + (profile.IsBuiltin ? " [builtin]" : "")
+                              + "  (" + profile.Id + ")");
+
+            var pipeline = new BuildPipeline(paths);
+            pipeline.Log = m => Console.WriteLine("  " + m);
+
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var result = pipeline.Build(profile, keepTemp: keepTemp);
+                sw.Stop();
+                Console.WriteLine();
+                Console.WriteLine("Pak     : " + result.PakPath);
+                Console.WriteLine("Size    : " + Math.Round(result.PakResult.SizeBytes / 1024.0, 1) + " KB");
+                Console.WriteLine("Files   : " + result.PakResult.FileCount);
+                Console.WriteLine("Time    : " + sw.Elapsed.TotalSeconds.ToString("0.00") + "s");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("Build failed: " + ex.Message);
+                return 1;
+            }
         }
     }
 }

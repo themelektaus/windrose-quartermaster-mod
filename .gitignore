@@ -12,5 +12,8 @@
 /GUI/bin/
 /GUI/obj/
 /.build-tmp/
+# User profiles live in /Profiles/<id>.json (gitignored).
+# Built-in profiles live in /Profiles/_builtin/ (tracked, read-only).
+/Profiles/*.json
 desktop.ini
 Thumbs.db

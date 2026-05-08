@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Windrose.StackSize.Core
 {
@@ -21,7 +22,10 @@ namespace Windrose.StackSize.Core
         public ProfileGlobals Globals;
         public Dictionary<string, ItemOverride> Overrides;
 
-        public bool IsBuiltin;   // not serialized -- set by ProfileStore at load time
+        // Runtime-only flag, populated by ProfileStore after loading from
+        // Profiles/_builtin/. Never written back to disk (profiles in the
+        // _builtin dir simply ARE builtin).
+        [JsonIgnore] public bool IsBuiltin;
     }
 
     public sealed class ProfileGlobals
