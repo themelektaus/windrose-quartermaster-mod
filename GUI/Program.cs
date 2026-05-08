@@ -1,162 +1,68 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Windrose.StackSize.Gui.Endpoints;
 
 namespace Windrose.StackSize.Gui;
 
 public static class Program
 {
-    static WebApplication app;
-
-    static string RepoRoot => Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, ".."));
-    static string SourcesDir => Path.Combine(RepoRoot, "Sources", "Vanilla");
-    static string IconsDir => Path.Combine(RepoRoot, "Icons");
-
     public static int Main(string[] args)
     {
         // Headless smoke-test path: bypass the WebApplication entirely.
-        // Used during Phase 1 development to verify the StackPatcher against
-        // the legacy PowerShell apply step. Will be superseded by the proper
-        // build endpoint in Phase 4.
+        // Used during Phase 1-3 development to verify the StackPatcher /
+        // BuildPipeline against the legacy PowerShell pipeline. Will stay
+        // available as a CLI for headless / CI builds.
         if (args.Length > 0 && args[0] == "--test-patcher")
         {
-            var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-            return PatcherCli.Run(args, repoRoot);
+            var repoRootCli = Path.GetFullPath(
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            return PatcherCli.Run(args, repoRootCli);
         }
 
         var builder = WebApplication.CreateBuilder(args);
-        builder.Services.Configure<JsonOptions>(x => x.SerializerOptions.IncludeFields = true);
+        builder.Services.Configure<JsonOptions>(opts =>
+        {
+            // Keep the wire-format consistent with the on-disk profile files
+            // (camelCase, fields-as-properties, drop nulls).
+            opts.SerializerOptions.IncludeFields = true;
+            opts.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+            opts.SerializerOptions.WriteIndented = false;
+        });
         builder.WebHost.UseUrls("http://localhost:17777");
 
-        app = builder.Build();
+        var app = builder.Build();
+
+        var repoRoot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, ".."));
+        var iconsDir = Path.Combine(repoRoot, "Icons");
 
         app.UseDefaultFiles();
         app.UseStaticFiles();
 
-        if (Directory.Exists(IconsDir))
+        // Icons live outside wwwroot (they're produced by IconExtractor.exe
+        // into the repo's Icons/ folder). Mount them at /Icons/* so the
+        // frontend can reference them directly without us proxying.
+        if (Directory.Exists(iconsDir))
         {
             app.UseStaticFiles(new StaticFileOptions
             {
-                FileProvider = new PhysicalFileProvider(IconsDir),
+                FileProvider = new PhysicalFileProvider(iconsDir),
                 RequestPath = "/Icons"
             });
         }
 
-        app.MapGet("/api/items", async () =>
-        {
-            var items = await LoadItems(SourcesDir, IconsDir);
-            return Results.Json(items);
-        });
+        ItemsEndpoint.Map(app, repoRoot);
+        ProfilesEndpoint.Map(app, repoRoot);
+        BuildEndpoint.Map(app, repoRoot);
 
         app.Run();
         return 0;
-    }
-
-    static async Task<List<ItemDto>> LoadItems(string sourcesDir, string iconsDir)
-    {
-        var result = new List<ItemDto>();
-        if (!Directory.Exists(sourcesDir))
-        {
-            return result;
-        }
-
-        var availableIcons = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (Directory.Exists(iconsDir))
-        {
-            foreach (var iconPath in Directory.EnumerateFiles(iconsDir, "*.png", SearchOption.TopDirectoryOnly))
-            {
-                availableIcons.Add(Path.GetFileNameWithoutExtension(iconPath));
-            }
-        }
-
-        foreach (var path in Directory.EnumerateFiles(sourcesDir, "*.json", SearchOption.AllDirectories))
-        {
-            var item = await TryParseItem(iconsDir, path, availableIcons);
-            if (item is not null)
-            {
-                result.Add(item);
-            }
-        }
-
-        result.Sort((a, b) => string.CompareOrdinal(a.id, b.id));
-
-        return result;
-    }
-
-    static async Task<ItemDto> TryParseItem(string iconsDir, string jsonPath, HashSet<string> availableIcons)
-    {
-        try
-        {
-            using var stream = File.OpenRead(jsonPath);
-            using var doc = JsonDocument.Parse(stream);
-
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-            if (!root.TryGetProperty("$type", out JsonElement typeEl))
-            {
-                return null;
-            }
-            if (typeEl.ValueKind != JsonValueKind.String || typeEl.GetString() != "R5BLInventoryItem")
-            {
-                return null;
-            }
-
-            var item = new ItemDto { id = Path.GetFileNameWithoutExtension(jsonPath) };
-            item.name = item.id;
-
-            if (root.TryGetProperty("InventoryItemGppData", out var gpp) && gpp.ValueKind == JsonValueKind.Object)
-            {
-                if (gpp.TryGetProperty("MaxCountInSlot", out var maxEl) && maxEl.ValueKind == JsonValueKind.Number)
-                {
-                    maxEl.TryGetInt32(out item.maxCountInSlot);
-                }
-                if (gpp.TryGetProperty("ItemClass", out var icEl) && icEl.ValueKind == JsonValueKind.String)
-                {
-                    item.itemClass = icEl.GetString();
-                }
-                if (gpp.TryGetProperty("Rarity", out var rEl) && rEl.ValueKind == JsonValueKind.String)
-                {
-                    item.rarity = rEl.GetString();
-                }
-            }
-
-            if (root.TryGetProperty("InventoryItemUIData", out var ui) && ui.ValueKind == JsonValueKind.Object)
-            {
-                if (ui.TryGetProperty("Category", out var catEl) && catEl.ValueKind == JsonValueKind.String)
-                {
-                    item.category = catEl.GetString();
-                }
-            }
-
-            if (availableIcons.Contains(item.id))
-            {
-                item.icon = $"/Icons/{item.id}.png";
-                var iconJsonPath = $"{iconsDir}/{item.id}.json";
-                if (File.Exists(iconJsonPath))
-                {
-                    using var iconJsonStream = File.OpenRead(iconJsonPath);
-                    var meta = await JsonNode.ParseAsync(iconJsonStream);
-                    item.meta = meta.AsObject().Count > 0 ? meta[0] : null;
-                }
-            }
-
-            return item;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
