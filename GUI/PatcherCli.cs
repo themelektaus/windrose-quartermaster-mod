@@ -23,6 +23,8 @@ namespace Windrose.StackSize.Gui
             int? cap = null;
             string vanilla = Path.Combine(repoRoot, "Sources", "Vanilla");
             string outDir = null;
+            string pakPath = null;
+            bool buildPak = false;
 
             for (int i = 1; i < args.Length; i++)
             {
@@ -43,6 +45,13 @@ namespace Windrose.StackSize.Gui
                         break;
                     case "--out":
                         outDir = args[++i];
+                        break;
+                    case "--pak":
+                        pakPath = args[++i];
+                        buildPak = true;
+                        break;
+                    case "--build-pak":
+                        buildPak = true;
                         break;
                     default:
                         Console.Error.WriteLine("Unknown argument: " + a);
@@ -113,6 +122,32 @@ namespace Windrose.StackSize.Gui
                 var match = System.Text.RegularExpressions.Regex.Match(content, "\"MaxCountInSlot\"\\s*:\\s*(\\d+)");
                 Console.WriteLine();
                 Console.WriteLine("Spot check Banana (vanilla=50): " + (match.Success ? match.Groups[1].Value : "<not found>"));
+            }
+
+            if (buildPak)
+            {
+                if (string.IsNullOrEmpty(pakPath))
+                {
+                    var tag = multiplier.HasValue ? ("x" + multiplier.Value) : ("abs" + absolute.Value);
+                    pakPath = Path.Combine(repoRoot, ".build-tmp", "smoke_" + tag + "_P.pak");
+                }
+
+                Console.WriteLine();
+                Console.WriteLine("Resolving repak.exe...");
+                var resolver = new RepakResolver(repoRoot);
+                resolver.Log = m => Console.WriteLine("  " + m);
+                var repakExe = resolver.Resolve();
+                Console.WriteLine("repak: " + repakExe);
+
+                Console.WriteLine();
+                Console.WriteLine("Packing...");
+                var builder = new PakBuilder(repakExe);
+                builder.Log = m => Console.WriteLine("  " + m);
+                var pakResult = builder.Build(outDir, pakPath, overwrite: true);
+                Console.WriteLine();
+                Console.WriteLine("Pak     : " + pakResult.PakPath);
+                Console.WriteLine("Size    : " + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB");
+                Console.WriteLine("Files   : " + pakResult.FileCount);
             }
 
             return 0;
