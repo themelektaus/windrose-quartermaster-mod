@@ -136,6 +136,7 @@ public static class ProfilesEndpoint
                         kvp => kvp.Value == null
                             ? null
                             : new ItemOverride { StackSize = kvp.Value.StackSize }),
+                LootOverrides = CloneLootOverrides(src.LootOverrides),
                 IsBuiltin = false,
             };
 
@@ -159,7 +160,61 @@ public static class ProfilesEndpoint
                     Absolute = g.StackSize.Absolute,
                     Cap = g.StackSize.Cap,
                 },
+            Loot = g.Loot == null
+                ? null
+                : new LootGlobal
+                {
+                    ByCategory = g.Loot.ByCategory == null
+                        ? null
+                        : new Dictionary<string, double>(g.Loot.ByCategory),
+                },
         };
+    }
+
+    // Deep-clones the per-LT override map. Each LootTableOverride contains
+    // dictionaries / lists that we don't want shared with the source profile
+    // (otherwise editing the clone would mutate the original).
+    static Dictionary<string, LootTableOverride> CloneLootOverrides(
+        Dictionary<string, LootTableOverride> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, LootTableOverride>(src.Count);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new LootTableOverride
+            {
+                Entries = v.Entries == null
+                    ? null
+                    : v.Entries.ToDictionary(
+                        e => e.Key,
+                        e => e.Value == null
+                            ? null
+                            : new LootEntryEdit
+                            {
+                                Min = e.Value.Min,
+                                Max = e.Value.Max,
+                                Weight = e.Value.Weight,
+                                LootItem = e.Value.LootItem,
+                                LootTable = e.Value.LootTable,
+                            }),
+                Removed = v.Removed == null ? null : new List<int>(v.Removed),
+                Added = v.Added == null
+                    ? null
+                    : v.Added.Select(a => a == null
+                        ? null
+                        : new LootEntry
+                        {
+                            Min = a.Min,
+                            Max = a.Max,
+                            Weight = a.Weight,
+                            LootItem = a.LootItem,
+                            LootTable = a.LootTable,
+                        }).ToList(),
+            };
+        }
+        return result;
     }
 
     // Lightweight summary for the list view -- the full profile (including
@@ -175,9 +230,13 @@ public static class ProfilesEndpoint
             createdAt = p.CreatedAt,
             modifiedAt = p.ModifiedAt,
             overrideCount = p.Overrides == null ? 0 : p.Overrides.Count,
+            lootOverrideCount = p.LootOverrides == null ? 0 : p.LootOverrides.Count,
             hasGlobalStackSize = p.Globals != null && p.Globals.StackSize != null
                                  && (p.Globals.StackSize.Multiplier.HasValue
                                      || p.Globals.StackSize.Absolute.HasValue),
+            hasGlobalLoot = p.Globals != null && p.Globals.Loot != null
+                            && p.Globals.Loot.ByCategory != null
+                            && p.Globals.Loot.ByCategory.Count > 0,
         };
     }
 

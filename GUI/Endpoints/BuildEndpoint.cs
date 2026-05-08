@@ -51,6 +51,28 @@ public static class BuildEndpoint
             try
             {
                 var result = await Task.Run(() => pipeline.Build(profile, keepTemp: body.KeepTemp));
+                // The loot patcher only runs when the profile actually has
+                // loot config, so lootPatchResult is null on stack-only
+                // profiles. The frontend distinguishes "no loot configured"
+                // (=null) vs "loot configured but no LT actually changed"
+                // (=present, written:0) by the field's presence.
+                object lootPatchResult = null;
+                if (result.LootPatchResult != null)
+                {
+                    var lpr = result.LootPatchResult;
+                    lootPatchResult = new
+                    {
+                        scanned = lpr.Scanned,
+                        unchangedSkip = lpr.UnchangedSkip,
+                        noSchema = lpr.NoSchema,
+                        written = lpr.Written,
+                        multiplierApplied = lpr.MultiplierApplied,
+                        edited = lpr.Edited,
+                        removed = lpr.Removed,
+                        added = lpr.Added,
+                        warnings = lpr.Warnings,
+                    };
+                }
                 return Results.Json(new
                 {
                     success = true,
@@ -69,6 +91,7 @@ public static class BuildEndpoint
                         overridden = result.PatchResult.Overridden,
                         capped = result.PatchResult.Capped,
                     },
+                    lootPatchResult,
                     log,
                 });
             }

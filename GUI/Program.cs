@@ -66,6 +66,7 @@ public static class Program
         });
 
         ItemsEndpoint.Map(app, repoRoot);
+        LootTablesEndpoint.Map(app, repoRoot);
         ProfilesEndpoint.Map(app, repoRoot);
         BuildEndpoint.Map(app, repoRoot);
         SetupEndpoint.Map(app, repoRoot);
