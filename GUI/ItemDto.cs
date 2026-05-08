@@ -11,5 +11,6 @@ sealed class ItemDto
     public string itemClass;
     public string rarity;
     public string category;
+    public string itemType;
     public JsonNode meta;
 }

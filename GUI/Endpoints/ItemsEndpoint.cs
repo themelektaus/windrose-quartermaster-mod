@@ -86,6 +86,11 @@ public static class ItemsEndpoint
                 {
                     item.rarity = rEl.GetString();
                 }
+                if (gpp.TryGetProperty("ItemType", out var itEl) && itEl.ValueKind == JsonValueKind.Object
+                    && itEl.TryGetProperty("TagName", out var itTagEl) && itTagEl.ValueKind == JsonValueKind.String)
+                {
+                    item.itemType = itTagEl.GetString();
+                }
             }
 
             if (root.TryGetProperty("InventoryItemUIData", out var ui) && ui.ValueKind == JsonValueKind.Object)

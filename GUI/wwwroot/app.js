@@ -163,10 +163,14 @@ function computeTarget(item) {
         };
     }
 
-    // For vanillaStack <= 1, globals only apply if the item is "promotable"
-    // -- Consumable, or Default+Resource. Equipment / NPCs / Ship cannons /
-    // quest tokens stay locked at 1 unless an explicit override exists.
+    // For vanillaStack <= 1, globals only apply if the item is "promotable":
+    //   * ItemClass == Consumable, OR
+    //   * ItemType.TagName == Inventory.ItemType.Resource (catches Misc-tagged
+    //     treasure pieces the game still classifies as resources), OR
+    //   * Default+Resource (legacy folder rule).
+    // Must stay in sync with StackPatcher.IsPromotable on the server side.
     const isPromotable = item.itemClass === 'Consumable'
+        || item.itemType === 'Inventory.ItemType.Resource'
         || (item.itemClass === 'Default' && item.category === 'Resource');
     if (v <= 1 && !isPromotable) {
         return {

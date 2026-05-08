@@ -18,9 +18,17 @@ namespace Windrose.StackSize.Core
     //   4. null  -> skip (item stays vanilla in-game)
     //
     // For vanillaStack == 1 items, globals (steps 2/3) only apply when the item
-    // is "promotable" -- i.e. ItemClass==Consumable, or ItemClass==Default with
-    // Category==Resource. Equipment / NPCs / Ship cannons / Quest tokens stay
-    // at 1 unless the user explicitly sets a per-item override.
+    // is "promotable" -- i.e. one of:
+    //   * ItemClass == "Consumable"
+    //   * ItemType.TagName == "Inventory.ItemType.Resource"  (game's own
+    //     classification -- catches treasure/loot Misc items like the
+    //     Senkamati pieces that look like resources to the game but live
+    //     under Category=Misc)
+    //   * ItemClass == "Default" && Category == "Resource"   (legacy folder-
+    //     based rule; covers a couple of items the game still tags Quest.Other
+    //     even though they sit in Resource/)
+    // Equipment / NPCs / Ship cannons / Quest tokens stay at 1 unless the
+    // user explicitly sets a per-item override.
     //
     // Behaviour matches Library/Apply.ps1 byte-for-byte (same regex pass on the
     // raw JSON, single-occurrence replace, UTF-8 no-BOM output).
@@ -37,6 +45,13 @@ namespace Windrose.StackSize.Core
 
         static readonly Regex CategoryRegex = new Regex(
             "\"Category\"\\s*:\\s*\"([^\"]+)\"",
+            RegexOptions.Compiled);
+
+        // Matches the nested ItemType { TagName: ... } block. The TagName key
+        // appears in many other contexts (ItemTag, ActivationAbilityTag, ...),
+        // so we anchor on the parent property name to avoid false positives.
+        static readonly Regex ItemTypeTagRegex = new Regex(
+            "\"ItemType\"\\s*:\\s*\\{\\s*\"TagName\"\\s*:\\s*\"([^\"]+)\"",
             RegexOptions.Compiled);
 
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
@@ -174,6 +189,7 @@ namespace Windrose.StackSize.Core
         {
             string itemClass = null;
             string category = null;
+            string itemType = null;
 
             var icMatch = ItemClassRegex.Match(content);
             if (icMatch.Success) itemClass = icMatch.Groups[1].Value;
@@ -181,7 +197,11 @@ namespace Windrose.StackSize.Core
             var catMatch = CategoryRegex.Match(content);
             if (catMatch.Success) category = catMatch.Groups[1].Value;
 
+            var itMatch = ItemTypeTagRegex.Match(content);
+            if (itMatch.Success) itemType = itMatch.Groups[1].Value;
+
             return itemClass == "Consumable"
+                || itemType == "Inventory.ItemType.Resource"
                 || (itemClass == "Default" && category == "Resource");
         }
 
