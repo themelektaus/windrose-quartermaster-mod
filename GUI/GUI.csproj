@@ -3,4 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Windrose.StackSize.Gui</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tools\StackSizeCore\StackSizeCore.csproj" />
+  </ItemGroup>
 </Project>

@@ -21,8 +21,18 @@ public static class Program
     static string SourcesDir => Path.Combine(RepoRoot, "Sources", "Vanilla");
     static string IconsDir => Path.Combine(RepoRoot, "Icons");
 
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
+        // Headless smoke-test path: bypass the WebApplication entirely.
+        // Used during Phase 1 development to verify the StackPatcher against
+        // the legacy PowerShell apply step. Will be superseded by the proper
+        // build endpoint in Phase 4.
+        if (args.Length > 0 && args[0] == "--test-patcher")
+        {
+            var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            return PatcherCli.Run(args, repoRoot);
+        }
+
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<JsonOptions>(x => x.SerializerOptions.IncludeFields = true);
         builder.WebHost.UseUrls("http://localhost:17777");
@@ -48,6 +58,7 @@ public static class Program
         });
 
         app.Run();
+        return 0;
     }
 
     static async Task<List<ItemDto>> LoadItems(string sourcesDir, string iconsDir)
