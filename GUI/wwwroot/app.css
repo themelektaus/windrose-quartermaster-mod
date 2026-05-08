@@ -953,3 +953,85 @@ footer.collapsed .footer-body {
   font-family: var(--monospace);
   font-size: var(--monospace-size);
 }
+
+/* ---------- Picker dropdown (custom autocomplete) -------------------- */
+
+/* Floating panel anchored under the active picker-target input via fixed
+   coords from openPicker(). One shared element across all add-entry forms. */
+.picker-dropdown {
+  position: fixed;
+  z-index: 100;
+  list-style: none;
+  margin: 0;
+  padding: .15em;
+  max-height: 22em;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: 0 .5em 1em rgba(0, 0, 0, .35);
+}
+
+.picker-dropdown[hidden] {
+  display: none;
+}
+
+/* Row layout mirrors .item from the items page: icon, two-line text block. */
+.picker-option {
+  display: grid;
+  grid-template-columns: 2.5em 1fr;
+  align-items: center;
+  gap: .5em;
+  padding: .25em .35em;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.picker-option:hover {
+  background: var(--bg-elev-2);
+}
+
+.picker-option img {
+  width: 2.5em;
+  height: 2.5em;
+  object-fit: contain;
+}
+
+.picker-option .placeholder-icon {
+  width: 2.5em;
+  height: 2.5em;
+  background: var(--border);
+  border-radius: var(--border-radius);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.picker-option .info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.picker-option .info b {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-option .info small {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-empty {
+  padding: .5em;
+  color: var(--text-dim);
+  text-align: center;
+  font-size: var(--font-size-small);
+}

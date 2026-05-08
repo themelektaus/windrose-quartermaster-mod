@@ -19,6 +19,12 @@ const state = {
     current: null,   // full profile, with .isBuiltin flag from server
     isDirty: false,
     activeTab: 'items',
+
+    // Currently-open picker dropdown (loot add-entry autocomplete).
+    // null when no picker is open. Holds the input element so we can reposition
+    // on scroll / write the chosen id back, plus the address of the added entry
+    // (ltId + addedIndex) and the picker mode ('item' | 'table').
+    picker: null,    // { input, ltId, addedIndex, type } or null
 };
 
 // ---------- API helpers --------------------------------------------------
@@ -65,7 +71,6 @@ async function loadAppData() {
     populateValueFilter('filter-class',  'itemClass', 'All classes');
     populateValueFilter('filter-rarity', 'rarity',    'All rarities');
     populateLootCategoryFilter();
-    populateItemDatalist();
 
     if (state.profiles.length > 0) {
         await loadProfile(state.profiles[0].id);
@@ -451,23 +456,11 @@ function populateLootCategoryFilter() {
     }
 }
 
-// Datalist of all item ids so the user can type-and-pick when adding a new
-// LootData entry. We only suggest items that ALREADY appear in some vanilla
-// LT, because for those we have a known asset path -- typing in an item
-// that was never in any LT would mean we don't know where to find it.
-function populateItemDatalist() {
-    const dl = document.getElementById('item-options');
-    if (!dl) return;
-    dl.innerHTML = '';
-    const ids = Array.from(state.itemPathsByItemId.keys()).sort();
-    for (const id of ids) {
-        const o = document.createElement('option');
-        o.value = id;
-        const item = state.itemsById.get(id);
-        if (item && item.meta && item.meta.name) o.textContent = item.meta.name;
-        dl.appendChild(o);
-    }
-}
+// (The native <datalist> approach was replaced by a custom dropdown --
+// see openPicker / populatePicker further down. We need rich rows
+// (icon + name + class/category for items; id + category/type/entry count
+// for sub-tables) and per-mode data sources, neither of which a datalist
+// can do.)
 
 // ---------- Computed target (mirrors StackPatcher.cs) -------------------
 
@@ -965,17 +958,17 @@ function buildEntryTargetHtml(e, item) {
 
 function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
     const a = addedEntry || {};
-    const path = a.lootItem && a.lootItem !== 'None' ? a.lootItem
-              : a.lootTable && a.lootTable !== 'None' ? a.lootTable
-              : '';
-    const isTable = !!(a.lootTable && a.lootTable !== 'None');
-    const inferredItemId = (a.lootItem && a.lootItem !== 'None')
-        ? lastSegment(a.lootItem) : null;
+    const isItem    = !!(a.lootItem  && a.lootItem  !== 'None');
+    const isTable   = !!(a.lootTable && a.lootTable !== 'None');
+    // Both fields explicitly 'None' = the user picked "No drop" via the form.
+    // Both fields missing = the form hasn't been filled out yet -> show form.
+    const isNoDrop  = a.lootItem === 'None' && a.lootTable === 'None';
+    const inferredItemId  = isItem  ? lastSegment(a.lootItem)        : null;
     const inferredTableId = isTable ? lootTablePathToId(a.lootTable) : null;
     const item = inferredItemId ? state.itemsById.get(inferredItemId) : null;
 
     let targetHtml;
-    if (a.lootItem && a.lootItem !== 'None') {
+    if (isItem) {
         const name = (item && item.meta && item.meta.name) || inferredItemId || '(item)';
         const iconHtml = item && item.icon
             ? '<img src="' + esc(item.icon) + '" alt="" loading="lazy">'
@@ -990,6 +983,12 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
             '<div class="target subtable">' +
                 '<b>' + esc(inferredTableId || a.lootTable) + '</b>' +
                 '<small>(added sub-table)</small>' +
+            '</div>';
+    } else if (isNoDrop) {
+        targetHtml = '<div class="placeholder-icon">·</div>' +
+            '<div class="target">' +
+                '<b>(no drop)</b>' +
+                '<small>added empty slot</small>' +
             '</div>';
     } else {
         // Empty added entry -- user clicked "+ Add entry" but hasn't picked
@@ -1017,20 +1016,30 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
 }
 
 // Inline picker form for an added entry whose lootItem/lootTable hasn't been
-// selected yet. The user picks Item or Sub-Table, types the id, and we
-// resolve the asset path on confirm via state.itemPathsByItemId /
-// state.tablePathsByLtId.
+// selected yet. The user picks Item / Sub-Table / No drop, types the id
+// (autocompleted via the custom picker dropdown -- see openPicker), and
+// confirmAddedEntry resolves the id into the canonical UE asset path.
+//
+// "No drop" is the engine's term for an empty slot in a Weight table -- it
+// reserves probability mass for nothing. The picker hides the target input
+// since there's nothing to type.
 function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
+    // Default the form to "Item" mode every time it's rendered. We don't
+    // persist mid-form state across re-renders -- if the user wanted a
+    // sub-table they'll just flip the select.
     return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
         '<div class="lt-add-form">' +
             '<div class="picker-row">' +
-                '<select data-add-form-type="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                '<select class="picker-type" data-add-form-type="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
                     (isReadonly ? ' disabled' : '') + '>' +
                     '<option value="item">Item</option>' +
                     '<option value="table">Sub-Table</option>' +
+                    '<option value="nodrop">No drop</option>' +
                 '</select>' +
-                '<input type="text" placeholder="Item id (autocomplete)" list="item-options" ' +
-                    'data-add-form-target="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                '<input type="text" class="picker-target" placeholder="Search items by name or id..."' +
+                    ' data-add-form-target="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                    ' data-picker-mode="item"' +
+                    ' autocomplete="off" spellcheck="false"' +
                     (isReadonly ? ' disabled' : '') + '>' +
             '</div>' +
             '<input type="number" class="num" value="' + esc(a.min || 1) +
@@ -1162,11 +1171,24 @@ function setAddedEntryField(ltId, addedIndex, field, rawValue) {
 // Resolves a typed item-id or sub-table-id into its full UE asset path,
 // then writes it back into the added entry. Returns false (and shows a
 // transient hint) if the id wasn't recognized.
+//
+// type === 'nodrop' is special: it doesn't need a target -- both fields
+// are pinned to 'None' and the entry serializes as a plain empty slot.
 function confirmAddedEntry(ltId, addedIndex, type, target) {
     if (!state.current || state.current.isBuiltin) return false;
     const ovr = getOrCreateLootOverride(ltId);
     const a = ovr.added[addedIndex];
     if (!a) return false;
+
+    if (type === 'nodrop') {
+        a.lootItem  = 'None';
+        a.lootTable = 'None';
+        markDirty();
+        refreshLtRow(ltId);
+        renderLootStatus();
+        return true;
+    }
+
     const id = (target || '').trim();
     if (!id) return false;
 
@@ -1175,11 +1197,13 @@ function confirmAddedEntry(ltId, addedIndex, type, target) {
         if (!path) return false;
         a.lootItem = path;
         a.lootTable = 'None';
-    } else {
+    } else if (type === 'table') {
         const path = state.tablePathsByLtId.get(id);
         if (!path) return false;
         a.lootTable = path;
         a.lootItem = 'None';
+    } else {
+        return false;
     }
     markDirty();
     refreshLtRow(ltId);
@@ -1196,6 +1220,143 @@ function deleteAddedEntry(ltId, addedIndex) {
     markDirty();
     refreshLtRow(ltId);
     renderLootStatus();
+}
+
+// ---------- Loot: custom autocomplete picker ----------------------------
+
+// Open the picker under `input`. mode is 'item' or 'table'. The picker is a
+// single shared <ul id="picker-dropdown"> in the body; we position it via
+// fixed coords next to the input. Closes on outside click, Escape, or scroll.
+function openPicker(input, ltId, addedIndex, mode) {
+    closePicker();
+    state.picker = { input, ltId, addedIndex, type: mode };
+    populatePicker(input.value);
+    positionPicker(input);
+    document.getElementById('picker-dropdown').hidden = false;
+}
+
+function closePicker() {
+    const dd = document.getElementById('picker-dropdown');
+    if (dd) {
+        dd.hidden = true;
+        dd.innerHTML = '';
+    }
+    state.picker = null;
+}
+
+function positionPicker(input) {
+    const dd = document.getElementById('picker-dropdown');
+    if (!dd || !input) return;
+    const rect = input.getBoundingClientRect();
+    dd.style.left = rect.left + 'px';
+    dd.style.top  = (rect.bottom + 2) + 'px';
+    dd.style.minWidth = Math.max(rect.width, 320) + 'px';
+
+    // Don't go off the right edge of the viewport.
+    const ddRect = dd.getBoundingClientRect();
+    const overshootRight = ddRect.right - window.innerWidth + 8;
+    if (overshootRight > 0) {
+        dd.style.left = Math.max(8, rect.left - overshootRight) + 'px';
+    }
+}
+
+// Fills the picker with rows matching `query`, scoped to the active mode.
+// Items: only the ones that already appear in some vanilla LT (we know the
+// asset path for those). Sub-tables: every LT in vanilla.
+function populatePicker(query) {
+    const dd = document.getElementById('picker-dropdown');
+    if (!dd || !state.picker) return;
+    const q = (query || '').toLowerCase().trim();
+    const MAX = 100;
+    const rows = [];
+
+    if (state.picker.type === 'table') {
+        for (const lt of state.lootTables) {
+            if (rows.length >= MAX) break;
+            if (q && !lt.id.toLowerCase().includes(q)) continue;
+            const subtitle =
+                (lt.category || '') +
+                (lt.type ? ' · ' + lt.type : '') +
+                (lt.entries ? ' · ' + lt.entries.length + ' entries' : '');
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(lt.id) + '">' +
+                    '<div class="placeholder-icon">▦</div>' +
+                    '<div class="info">' +
+                        '<b>' + esc(lt.id) + '</b>' +
+                        '<small>' + esc(subtitle) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
+    } else {
+        // Items: iterate state.items (already sorted as the server returned
+        // them) but skip anything that doesn't have a known path -- the user
+        // can't reference items we don't know how to serialize.
+        for (const item of state.items) {
+            if (rows.length >= MAX) break;
+            if (!state.itemPathsByItemId.has(item.id)) continue;
+            const name = (item.meta && item.meta.name) || '';
+            if (q && !item.id.toLowerCase().includes(q) && !name.toLowerCase().includes(q)) continue;
+            const displayName = name || item.id;
+            const subtitle =
+                item.id +
+                (item.itemClass ? ' · ' + item.itemClass : '') +
+                (item.category  ? ' · ' + item.category  : '');
+            const iconHtml = item.icon
+                ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
+                : '<div class="placeholder-icon">?</div>';
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(item.id) + '">' +
+                    iconHtml +
+                    '<div class="info">' +
+                        '<b>' + esc(displayName) + '</b>' +
+                        '<small>' + esc(subtitle) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
+    }
+
+    if (rows.length === 0) {
+        dd.innerHTML = '<li class="picker-empty">No matches</li>';
+    } else {
+        dd.innerHTML = rows.join('');
+    }
+}
+
+// Picks the highlighted entry into the active picker's input. Caller is
+// responsible for closing the picker afterwards.
+function pickPickerOption(id) {
+    if (!state.picker || !id) return;
+    state.picker.input.value = id;
+    state.picker.input.focus();
+}
+
+// Reflects the current picker-type select state into the target input:
+// switches data-picker-mode, updates placeholder, and (for nodrop) hides
+// the input entirely since there's nothing to type.
+function syncPickerInputToType(selectEl) {
+    const wrap = selectEl.closest('.picker-row');
+    if (!wrap) return;
+    const input = wrap.querySelector('input[data-add-form-target]');
+    if (!input) return;
+    const mode = selectEl.value;
+    input.dataset.pickerMode = mode;
+    input.value = '';
+    if (mode === 'nodrop') {
+        input.hidden = true;
+    } else {
+        input.hidden = false;
+        input.placeholder = mode === 'table'
+            ? 'Search sub-tables by id...'
+            : 'Search items by name or id...';
+    }
+    // If the dropdown is open for this same input, refresh it; if it's open
+    // for another input (or 'nodrop' was just chosen), close it.
+    if (state.picker && state.picker.input === input && mode !== 'nodrop') {
+        populatePicker(input.value);
+        positionPicker(input);
+    } else {
+        closePicker();
+    }
 }
 
 // Re-renders just one LT card. Used by all loot mutations to avoid blowing
@@ -1468,8 +1629,26 @@ function bindHandlers() {
     // Delegated handlers on the LT list -- one set covers expand/collapse,
     // per-entry edits, removals, and add-form interactions.
     const ltList = document.getElementById('lt-list');
-    ltList.addEventListener('click', onLtListClick);
-    ltList.addEventListener('input', onLtListInput);
+    ltList.addEventListener('click',   onLtListClick);
+    ltList.addEventListener('input',   onLtListInput);
+    ltList.addEventListener('change',  onLtListChange);
+    // focusin (vs focus) bubbles, so we can delegate from the list root.
+    ltList.addEventListener('focusin', onLtListFocusIn);
+
+    // Picker dropdown: pick on click, close on outside-click / scroll / Escape.
+    document.getElementById('picker-dropdown').addEventListener('mousedown', onPickerClick);
+    document.addEventListener('click',  onDocClickClosePicker);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closePicker();
+    });
+    // Re-position when the LT list scrolls. Cheap (only runs while open
+    // since positionPicker no-ops on null state).
+    ltList.addEventListener('scroll', () => {
+        if (state.picker) positionPicker(state.picker.input);
+    }, { passive: true });
+    window.addEventListener('resize', () => {
+        if (state.picker) positionPicker(state.picker.input);
+    });
 }
 
 function onLtListClick(e) {
@@ -1505,11 +1684,13 @@ function onLtListClick(e) {
         const row  = t.closest('.lt-entry');
         const sel  = row.querySelector('select[data-add-form-type]');
         const inp  = row.querySelector('input[data-add-form-target]');
-        const ok = confirmAddedEntry(ltId, idx, sel.value, inp.value);
-        if (!ok) {
+        const type = sel ? sel.value : 'item';
+        const ok = confirmAddedEntry(ltId, idx, type, inp ? inp.value : '');
+        if (!ok && inp && type !== 'nodrop') {
             inp.style.borderColor = 'var(--danger)';
             setTimeout(() => { inp.style.borderColor = ''; }, 1200);
         }
+        closePicker();
         return;
     }
 
@@ -1540,4 +1721,47 @@ function onLtListInput(e) {
             t.value);
         return;
     }
+    // Picker-target input: refresh the autocomplete dropdown live.
+    if (t.dataset.addFormTarget && state.picker && state.picker.input === t) {
+        populatePicker(t.value);
+    }
+}
+
+// Picker-type select changed -> sync the target input (placeholder, mode, hide).
+function onLtListChange(e) {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.addFormType) {
+        syncPickerInputToType(t);
+    }
+}
+
+// Focusing a picker-target input opens the autocomplete dropdown.
+function onLtListFocusIn(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.addFormTarget) return;
+    const mode = t.dataset.pickerMode || 'item';
+    if (mode === 'nodrop') return;  // no input visible
+    const ltId = t.dataset.addFormTarget;
+    const idx  = parseInt(t.dataset.addedIndex, 10);
+    openPicker(t, ltId, idx, mode);
+}
+
+// Click on a row in the picker dropdown -> write the id back into the input.
+// We use mousedown (not click) so we fire BEFORE the input loses focus to the
+// document-level click handler that would otherwise close the picker.
+function onPickerClick(e) {
+    const li = e.target.closest && e.target.closest('.picker-option');
+    if (!li || !li.dataset.pickId) return;
+    e.preventDefault();  // keep input focused
+    pickPickerOption(li.dataset.pickId);
+    closePicker();
+}
+
+// Any click outside the picker or its anchor input closes the dropdown.
+function onDocClickClosePicker(e) {
+    if (!state.picker) return;
+    const dd = document.getElementById('picker-dropdown');
+    if (dd && dd.contains(e.target)) return;
+    if (e.target === state.picker.input) return;
+    closePicker();
 }

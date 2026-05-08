@@ -155,9 +155,13 @@
     </div>
   </footer>
 
-  <!-- Item picker, hidden by default. Used in the Loot view to assign LootItem
-       to an entry; opens via setLootEntryItemPickerTarget(). -->
-  <datalist id="item-options"></datalist>
+  <!-- Custom autocomplete dropdown for the loot-entry picker.
+       Single shared element re-used by every add-entry form: openPicker()
+       positions it under the active text input, populatePicker() fills it
+       with rich rows (icon + name + class/category for items, or
+       category/type/entry-count for sub-tables) based on the picker mode.
+       Native <datalist> is too thin for our needs (text-only options). -->
+  <ul id="picker-dropdown" class="picker-dropdown" hidden></ul>
 
   <script src="app.js"></script>
 </body>
