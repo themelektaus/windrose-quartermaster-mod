@@ -15,14 +15,18 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        // Headless smoke-test path: bypass the WebApplication entirely.
-        // Used during Phase 1-3 development to verify the StackPatcher /
-        // BuildPipeline against the legacy PowerShell pipeline. Will stay
-        // available as a CLI for headless / CI builds.
-        if (args.Length > 0 && args[0] == "--test-patcher")
+        // Headless CLI paths -- bypass the WebApplication entirely.
+        //   --test-patcher  : smoke-test the StackPatcher / BuildPipeline
+        //                     against the legacy PowerShell pipeline.
+        //   --setup [--force] : run the dump + icon extraction pipeline
+        //                     (replaces the old Dump-WindroseVanilla.ps1 +
+        //                     Extract-Icons.ps1 wrappers).
+        if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--setup"))
         {
             var repoRootCli = Path.GetFullPath(
                 Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            if (args[0] == "--setup")
+                return PatcherCli.RunSetup(args, repoRootCli);
             return PatcherCli.Run(args, repoRootCli);
         }
 
@@ -48,19 +52,20 @@ public static class Program
 
         // Icons live outside wwwroot (they're produced by IconExtractor.exe
         // into the repo's Icons/ folder). Mount them at /Icons/* so the
-        // frontend can reference them directly without us proxying.
-        if (Directory.Exists(iconsDir))
+        // frontend can reference them directly without us proxying. We
+        // create the folder upfront so the first-run setup can populate
+        // it without restarting the GUI.
+        Directory.CreateDirectory(iconsDir);
+        app.UseStaticFiles(new StaticFileOptions
         {
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = new PhysicalFileProvider(iconsDir),
-                RequestPath = "/Icons"
-            });
-        }
+            FileProvider = new PhysicalFileProvider(iconsDir),
+            RequestPath = "/Icons"
+        });
 
         ItemsEndpoint.Map(app, repoRoot);
         ProfilesEndpoint.Map(app, repoRoot);
         BuildEndpoint.Map(app, repoRoot);
+        SetupEndpoint.Map(app, repoRoot);
 
         app.Run();
         return 0;

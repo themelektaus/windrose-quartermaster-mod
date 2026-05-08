@@ -169,6 +169,54 @@ namespace Windrose.StackSize.Gui
             return 0;
         }
 
+        // Headless setup pipeline: runs the same dump + icon extraction
+        // logic the GUI exposes via /api/setup/run, but writes progress to
+        // stdout. Replaces the old Dump-WindroseVanilla.ps1 +
+        // Extract-Icons.ps1 wrappers.
+        //
+        // Usage:
+        //   dotnet run --project GUI -- --setup           (run missing steps only)
+        //   dotnet run --project GUI -- --setup --force   (re-run every step)
+        public static int RunSetup(string[] args, string repoRoot)
+        {
+            bool force = false;
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--force") force = true;
+                else
+                {
+                    Console.Error.WriteLine("Unknown argument: " + args[i]);
+                    return 2;
+                }
+            }
+            var paths = WindrosePaths.FromModRoot(repoRoot);
+            var runner = new SetupRunner(paths)
+            {
+                ForceAll = force,
+                Log = m => Console.WriteLine(m),
+            };
+            try
+            {
+                var status = runner.Probe();
+                Console.WriteLine("Status:");
+                Console.WriteLine("  vanilla sources : " + (status.HasVanillaSources ? "OK" : "MISSING"));
+                Console.WriteLine("  icons           : " + (status.HasIcons          ? "OK" : "MISSING"));
+                Console.WriteLine("  usmap           : " + (status.HasUsmap          ? "OK -- " + status.UsmapPath : "MISSING"));
+                Console.WriteLine("  steam pak       : " + (status.HasVanillaPak     ? "OK -- " + status.VanillaPakPath : "MISSING -- " + status.VanillaPakError));
+                Console.WriteLine();
+                runner.Run();
+                Console.WriteLine();
+                Console.WriteLine("Setup complete.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("Setup failed: " + ex.Message);
+                return 1;
+            }
+        }
+
         // Loads a profile by id or display-name and runs the full pipeline
         // through Builds/<sanitized-name>_P.pak. Used to verify Phase 3 against
         // the legacy PS pipeline and as a hand-test for user-created profiles.

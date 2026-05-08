@@ -7,6 +7,29 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
+  <!-- Full-screen setup overlay. Hidden by default; shown by app.js when
+       /api/setup/status reports the mod root is not yet ready (no Sources/Vanilla
+       JSONs, or no Icons/*.png). Streams live progress over Server-Sent
+       Events while the dump + icon-extraction pipeline runs. -->
+  <div id="setup-overlay" class="setup-overlay" hidden>
+    <div class="setup-card">
+      <h2 id="setup-title">First-time setup</h2>
+      <p id="setup-intro" class="setup-intro">
+        The configurator needs to extract the vanilla item JSONs and icon
+        textures from your Windrose install before it can show you anything.
+        This takes 30&ndash;90 seconds the first time and is cached afterwards.
+      </p>
+      <ul id="setup-checks" class="setup-checks"></ul>
+      <div id="setup-error" class="setup-error" hidden></div>
+      <pre id="setup-log" class="setup-log"></pre>
+      <div class="setup-actions">
+        <button id="setup-run"   type="button" class="primary">Run setup</button>
+        <button id="setup-force" type="button" hidden>Re-run all steps</button>
+        <button id="setup-recheck" type="button">Re-check</button>
+      </div>
+    </div>
+  </div>
+
   <header>
     <h1>Windrose Stack Size Configurator</h1>
     <div id="profile-bar" class="profile-bar">

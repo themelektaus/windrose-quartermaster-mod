@@ -35,7 +35,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
 
 // ---------- Boot ---------------------------------------------------------
 
-async function init() {
+async function loadAppData() {
     const [profiles, items] = await Promise.all([
         api('GET', '/api/profiles'),
         api('GET', '/api/items'),
@@ -48,7 +48,6 @@ async function init() {
     populateProfileSelect();
     populateValueFilter('filter-class',  'itemClass', 'All classes');
     populateValueFilter('filter-rarity', 'rarity',    'All rarities');
-    bindHandlers();
 
     if (state.profiles.length > 0) {
         await loadProfile(state.profiles[0].id);
@@ -57,14 +56,217 @@ async function init() {
     }
 }
 
+async function boot() {
+    // Bind setup-overlay handlers up-front so the user can interact with it
+    // even if the first /api/setup/status fails entirely.
+    bindSetupHandlers();
+    bindHandlers();
+
+    // Probe the mod root. If both Sources/Vanilla and Icons are populated
+    // we go straight into the configurator; otherwise the overlay takes
+    // over and auto-runs the missing steps.
+    const status = await api('GET', '/api/setup/status');
+    if (status.isReady) {
+        await loadAppData();
+        return;
+    }
+
+    showSetupOverlay(status);
+    // Auto-run when we have everything we need to actually run -- otherwise
+    // the user has to fix something first (drop a .usmap, install Windrose).
+    if (canAutoRunSetup(status)) {
+        await runSetup(false);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    init().catch(err => {
+    boot().catch(err => {
         document.body.innerHTML =
             '<pre style="color:#e16464;padding:2em;white-space:pre-wrap;">' +
             esc('Init failed: ' + err.message + '\n\n' + (err.stack || '')) +
             '</pre>';
     });
 });
+
+// ---------- Setup overlay ------------------------------------------------
+
+function showSetupOverlay(status) {
+    document.getElementById('setup-overlay').hidden = false;
+    renderSetupChecks(status);
+    renderSetupError(status);
+}
+
+function hideSetupOverlay() {
+    document.getElementById('setup-overlay').hidden = true;
+}
+
+function renderSetupChecks(status) {
+    const ul = document.getElementById('setup-checks');
+    const rows = [
+        ['hasVanillaPak',     'Windrose install detected via Steam',
+                              status.vanillaPakPath || status.vanillaPakError],
+        ['hasUsmap',          'UE5 mappings file (.usmap) in mod root',
+                              status.usmapPath || 'Drop a Ctrl+Num6 dump into the mod root.'],
+        ['hasVanillaSources', 'Vanilla item JSONs extracted',
+                              'Sources/Vanilla -- produced by the dump step.'],
+        ['hasIcons',          'Item icons extracted',
+                              status.iconsDir + ' -- produced by the icons step.'],
+    ];
+    ul.innerHTML = rows.map(([key, label, detail]) => {
+        const ok = !!status[key];
+        return '<li class="' + (ok ? 'ok' : 'bad') + '">' +
+            '<div><b>' + esc(label) + '</b>' +
+            (detail ? '<br><small>' + esc(detail) + '</small>' : '') +
+            '</div></li>';
+    }).join('');
+}
+
+function renderSetupError(status) {
+    const out = document.getElementById('setup-error');
+    if (!status.hasVanillaPak) {
+        out.hidden = false;
+        out.textContent =
+            'Cannot find a Windrose install: ' + (status.vanillaPakError || '(no detail)') +
+            '\nInstall Windrose via Steam, then click Re-check.';
+        return;
+    }
+    if (!status.hasUsmap) {
+        out.hidden = false;
+        out.textContent =
+            'No .usmap file found in the mod root.\n' +
+            'Generate one via UE4SS Keybinds (DumpUSMAP -- Ctrl+Num6 by default), ' +
+            'copy it next to the mod, then click Re-check.';
+        return;
+    }
+    out.hidden = true;
+    out.textContent = '';
+}
+
+function canAutoRunSetup(status) {
+    return status.hasVanillaPak && status.hasUsmap && !status.isRunning;
+}
+
+function appendSetupLog(line, kind) {
+    const out = document.getElementById('setup-log');
+    const span = document.createElement('span');
+    if (kind) span.className = kind;
+    span.textContent = (kind ? '[' + kind.toUpperCase() + '] ' : '') + line + '\n';
+    out.appendChild(span);
+    out.scrollTop = out.scrollHeight;
+}
+
+function clearSetupLog() {
+    document.getElementById('setup-log').innerHTML = '';
+}
+
+function setSetupButtonsDisabled(disabled) {
+    document.getElementById('setup-run').disabled     = disabled;
+    document.getElementById('setup-force').disabled   = disabled;
+    document.getElementById('setup-recheck').disabled = disabled;
+}
+
+function bindSetupHandlers() {
+    document.getElementById('setup-run').addEventListener('click', () => runSetup(false));
+    document.getElementById('setup-force').addEventListener('click', () => runSetup(true));
+    document.getElementById('setup-recheck').addEventListener('click', recheckSetup);
+}
+
+async function recheckSetup() {
+    const status = await api('GET', '/api/setup/status');
+    if (status.isReady) {
+        hideSetupOverlay();
+        await loadAppData();
+        return;
+    }
+    renderSetupChecks(status);
+    renderSetupError(status);
+}
+
+// Streams /api/setup/run via Server-Sent Events. Each "log" event becomes
+// a line in the setup log; the terminal "done" event carries success/error.
+function runSetup(force) {
+    return new Promise(resolve => {
+        const url = '/api/setup/run' + (force ? '?force=true' : '');
+        clearSetupLog();
+        setSetupButtonsDisabled(true);
+        appendSetupLog((force ? 'Force re-running ' : 'Running ') + 'setup...', 'step');
+
+        // Native EventSource only supports GET; we want POST to keep the
+        // semantics clear (this mutates state). Use fetch() + ReadableStream
+        // and parse SSE manually -- straightforward for the small frame set
+        // we emit.
+        fetch(url, { method: 'POST' }).then(async resp => {
+            if (!resp.ok) {
+                const text = await resp.text().catch(() => resp.statusText);
+                appendSetupLog('HTTP ' + resp.status + ': ' + text, 'err');
+                setSetupButtonsDisabled(false);
+                document.getElementById('setup-force').hidden = false;
+                return resolve();
+            }
+            const reader = resp.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                // SSE frames end with a blank line.
+                let idx;
+                while ((idx = buf.indexOf('\n\n')) >= 0) {
+                    const frame = buf.slice(0, idx);
+                    buf = buf.slice(idx + 2);
+                    handleSseFrame(frame);
+                }
+            }
+            // Stream ended without an explicit "done" event.
+            setSetupButtonsDisabled(false);
+            resolve();
+        }).catch(err => {
+            appendSetupLog('Network error: ' + err.message, 'err');
+            setSetupButtonsDisabled(false);
+            document.getElementById('setup-force').hidden = false;
+            resolve();
+        });
+
+        function handleSseFrame(frame) {
+            let event = 'message', data = '';
+            for (const line of frame.split('\n')) {
+                if      (line.startsWith('event: ')) event = line.slice(7).trim();
+                else if (line.startsWith('data: '))  data  = line.slice(6);
+            }
+            if (event === 'log') {
+                const cls = classifyLogLine(data);
+                appendSetupLog(data, cls);
+            } else if (event === 'done') {
+                let payload = {};
+                try { payload = JSON.parse(data); } catch (e) { /* keep empty */ }
+                if (payload.success) {
+                    appendSetupLog('Setup complete.', 'ok');
+                    setTimeout(async () => {
+                        hideSetupOverlay();
+                        await loadAppData();
+                        resolve();
+                    }, 350);
+                } else {
+                    appendSetupLog('Setup failed: ' + (payload.error || 'unknown'), 'err');
+                    setSetupButtonsDisabled(false);
+                    document.getElementById('setup-force').hidden = false;
+                    resolve();
+                }
+            }
+        }
+    });
+}
+
+// Cosmetic: highlight [step:start ...] / [OK] / [X] etc. in the log feed.
+function classifyLogLine(line) {
+    if (line.startsWith('[step:start ') || line.startsWith('[step:end ')) return 'step';
+    if (line.startsWith('[skip] ')) return 'step';
+    if (line.startsWith('[OK]') || line.startsWith('[ok]')) return 'ok';
+    if (line.startsWith('[X]')  || line.startsWith('[!]'))  return 'err';
+    return null;
+}
 
 // ---------- Profile loading ---------------------------------------------
 

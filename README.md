@@ -10,40 +10,31 @@ Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) -- no external
 reference mod needed.
 
-For more details (icon extraction, internals) see [`DETAILS.md`](./DETAILS.md).
+For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
 
 ---
 
-## One-time setup
+## Prerequisites
 
-You need:
-
-- **.NET 10 SDK** (or newer preview) -- the GUI and pipeline are C#.
-- **PowerShell 5.1+** -- only for the two setup scripts below.
-- **Internet access (first run only)** -- `repak.exe` is auto-downloaded
-  (pinned v0.2.3, SHA256-verified).
-- **CUE4Parse submodule** initialized -- needed by the icon extractor:
+- **.NET 10 SDK** (or newer preview) -- everything is C# now.
+- **Windrose installed via Steam** -- auto-detected via the registry +
+  `libraryfolders.vdf`. Dedicated-server / non-Steam installs work too,
+  you just need to point at a pak path.
+- **CUE4Parse submodule** -- needed by the icon extractor:
   ```powershell
   git submodule update --init Tools/CUE4Parse
   ```
+- **A UE5 `*.usmap` file in the mod root** -- generated once by UE4SS via
+  the built-in dumper. With UE4SS' Keybinds mod active, press
+  `Ctrl+Num6` in-game; the dumper writes a file like
+  `R5-5.6.1-0+UE5-<hash>.usmap` next to `UE4SS.exe`. Copy that file into
+  the mod root.
 
-Two one-time data dumps (re-run after a Windrose patch that changes items):
+`repak.exe` is auto-downloaded (pinned v0.2.3, SHA256-verified) on first
+use. There are no PowerShell scripts left -- everything runs through the
+GUI or the headless CLI shim.
 
-```powershell
-# 1. Extract the vanilla item JSONs from the local Windrose install.
-.\Dump-WindroseVanilla.ps1
-
-# 2. Extract per-item icons + localized metadata (optional but the GUI uses them).
-.\Extract-Icons.ps1
-```
-
-The Steam install of Windrose is auto-detected via the registry +
-`libraryfolders.vdf`. Pass `-VanillaPak <path>` if your pak lives outside
-any Steam library (e.g. a dedicated server install).
-
-The icon extractor needs a UE5 `.usmap` next to it. Generate one once via
-UE4SS (`Ctrl+Num6` in-game with the Keybinds mod active) and drop the
-resulting `*.usmap` file into the mod root.
+---
 
 ## Run the configurator
 
@@ -53,6 +44,13 @@ dotnet run -c Release
 ```
 
 Then open <http://localhost:17777>.
+
+**On first start the GUI is empty** until the vanilla item JSONs +
+icons are extracted. The setup overlay does that for you: when it
+detects a missing piece (no `Sources\Vanilla`, no `Icons\*.png`) it
+auto-runs the dump + icon-extraction pipeline and streams the live
+log into the page. ~30-90 seconds total. Subsequent launches skip
+straight into the configurator.
 
 The dropdown shows 11 built-in profiles (`x2`...`x10`, `999`, `9999`)
 that reproduce the legacy variant grid. Built-ins are read-only -- click
@@ -71,11 +69,15 @@ For each profile you can:
 User profiles persist as `Profiles\<id>.json` (gitignored). Builtins live
 under `Profiles\_builtin\` (tracked).
 
-## Headless build
+## Headless CLI
 
 Same pipeline without the browser:
 
 ```powershell
+# One-time setup (dump vanilla JSONs + extract icons). Skips steps that
+# are already done; pass --force to re-run everything.
+dotnet run --project GUI -- --setup
+
 # Build a builtin
 dotnet run --project GUI -- --test-patcher --profile x4
 
