@@ -25,11 +25,11 @@ namespace Windrose.StackSize.Core
     // against the vanilla list -- if nothing actually changed, the LT is
     // skipped (no file is written, the engine uses vanilla).
     //
-    // Output formatting matches the format `MoreEnemyResources_2x_P.pak`
-    // ships: tab indent (size 1), LF line endings, trailing newline. Field
-    // order on the entries is preserved exactly, including the
-    // counter-intuitive Min/Max/Weight/LootItem/ItemAttributeModifiers/LootTable
-    // sequence the engine expects.
+    // Output formatting matches vanilla LootTable JSONs: tab indent
+    // (size 1), CRLF line endings, trailing CRLF. Field order on the
+    // entries is preserved exactly, including the counter-intuitive
+    // Min/Max/Weight/LootItem/ItemAttributeModifiers/LootTable sequence
+    // the engine expects.
     public sealed class LootPatcher
     {
         // UE asset paths reference the in-pak LootTables under this prefix.
@@ -37,8 +37,8 @@ namespace Windrose.StackSize.Core
         // under Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/LootTables/.
         const string LootTablesPathPrefix = "/R5BusinessRules/LootTables/";
 
-        // No-BOM UTF-8; line endings handled manually because we want LF
-        // explicitly even on Windows.
+        // No-BOM UTF-8; line endings handled manually because we pin
+        // CRLF to match vanilla regardless of host platform.
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         // The dump tree always lives under this relative root. We strip it
@@ -127,7 +127,7 @@ namespace Windrose.StackSize.Core
 
                 var outPath = Path.Combine(outDir, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(outPath));
-                File.WriteAllBytes(outPath, SerializeWithTabsAndLf(root));
+                File.WriteAllBytes(outPath, SerializeWithTabsAndCrlf(root));
 
                 result.Written++;
                 result.WrittenLootTables.Add(ltId);
@@ -338,10 +338,10 @@ namespace Windrose.StackSize.Core
             return false;
         }
 
-        // Tab-indent (size 1), LF line endings, trailing newline. The
-        // System.Text.Json writer adds the indent + LF naturally; we stitch
-        // the final newline on manually.
-        static byte[] SerializeWithTabsAndLf(JsonObject root)
+        // Tab-indent (size 1), CRLF line endings, trailing CRLF. The
+        // System.Text.Json writer emits CRLF for the inter-token newlines;
+        // we stitch the final CRLF on manually to match vanilla.
+        static byte[] SerializeWithTabsAndCrlf(JsonObject root)
         {
             using var ms = new MemoryStream();
             var writerOptions = new JsonWriterOptions
@@ -349,7 +349,7 @@ namespace Windrose.StackSize.Core
                 Indented = true,
                 IndentCharacter = '\t',
                 IndentSize = 1,
-                NewLine = "\n",
+                NewLine = "\r\n",
                 // The pak file allows raw / and . in strings; UnsafeRelaxed
                 // matches what the vanilla emitter produces (no \u escapes
                 // for ASCII characters above 0x20).
@@ -359,7 +359,8 @@ namespace Windrose.StackSize.Core
             {
                 root.WriteTo(writer);
             }
-            // Trailing newline -- vanilla and reference both have one.
+            // Trailing CRLF -- vanilla LT JSONs end with one.
+            ms.WriteByte((byte)'\r');
             ms.WriteByte((byte)'\n');
             return ms.ToArray();
         }

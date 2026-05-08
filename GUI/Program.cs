@@ -18,8 +18,9 @@ public static class Program
         // Headless CLI paths -- bypass the WebApplication entirely.
         //   --test-patcher       : smoke-test the StackPatcher / BuildPipeline
         //                          against the legacy PowerShell pipeline.
-        //   --test-loot-patcher  : smoke-test the LootPatcher; round-trip
-        //                          against MoreEnemyResources_2x_P.pak.
+        //   --test-loot-patcher  : smoke-test the LootPatcher by writing a
+        //                          single-bucket multiplier patch into
+        //                          .build-tmp/loot_smoke_<...>/.
         //   --setup [--force]    : run the dump + icon extraction pipeline
         //                          (replaces the old Dump-WindroseVanilla.ps1 +
         //                          Extract-Icons.ps1 wrappers).
