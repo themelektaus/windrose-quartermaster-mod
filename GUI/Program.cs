@@ -16,12 +16,14 @@ public static class Program
     public static int Main(string[] args)
     {
         // Headless CLI paths -- bypass the WebApplication entirely.
-        //   --test-patcher  : smoke-test the StackPatcher / BuildPipeline
-        //                     against the legacy PowerShell pipeline.
-        //   --setup [--force] : run the dump + icon extraction pipeline
-        //                     (replaces the old Dump-WindroseVanilla.ps1 +
-        //                     Extract-Icons.ps1 wrappers).
-        if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--setup"))
+        //   --test-patcher       : smoke-test the StackPatcher / BuildPipeline
+        //                          against the legacy PowerShell pipeline.
+        //   --test-loot-patcher  : smoke-test the LootPatcher; round-trip
+        //                          against MoreEnemyResources_2x_P.pak.
+        //   --setup [--force]    : run the dump + icon extraction pipeline
+        //                          (replaces the old Dump-WindroseVanilla.ps1 +
+        //                          Extract-Icons.ps1 wrappers).
+        if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--test-loot-patcher" || args[0] == "--setup"))
         {
             var repoRootCli = Path.GetFullPath(
                 Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));

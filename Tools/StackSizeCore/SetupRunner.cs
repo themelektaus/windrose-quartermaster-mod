@@ -29,9 +29,16 @@ namespace Windrose.StackSize.Core
         {
             var status = new SetupStatus();
 
-            status.HasVanillaSources =
-                Directory.Exists(_paths.Vanilla) &&
-                Directory.EnumerateFiles(_paths.Vanilla, "*.json", SearchOption.AllDirectories).Any();
+            // Both subtrees (InventoryItems + LootTables) must be present;
+            // a half-extracted Vanilla/ from a previous run shouldn't be
+            // treated as ready.
+            status.HasVanillaInventoryItems =
+                Directory.Exists(_paths.VanillaInventoryItems) &&
+                Directory.EnumerateFiles(_paths.VanillaInventoryItems, "*.json", SearchOption.AllDirectories).Any();
+            status.HasVanillaLootTables =
+                Directory.Exists(_paths.VanillaLootTables) &&
+                Directory.EnumerateFiles(_paths.VanillaLootTables, "*.json", SearchOption.AllDirectories).Any();
+            status.HasVanillaSources = status.HasVanillaInventoryItems && status.HasVanillaLootTables;
 
             // Icons: at least one .png present is good enough -- a partial
             // run from a previous failed extraction shouldn't trigger a
@@ -160,7 +167,9 @@ namespace Windrose.StackSize.Core
     public sealed class SetupStatus
     {
         public bool IsReady;          // both Sources + Icons populated
-        public bool HasVanillaSources;
+        public bool HasVanillaSources;        // = InventoryItems && LootTables
+        public bool HasVanillaInventoryItems;
+        public bool HasVanillaLootTables;
         public bool HasIcons;
         public string IconsDir;
         public bool HasUsmap;

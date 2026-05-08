@@ -14,6 +14,7 @@ namespace Windrose.StackSize.Core
     {
         readonly WindrosePaths _paths;
         readonly StackPatcher _patcher;
+        readonly LootPatcher _lootPatcher;
         readonly RepakResolver _repakResolver;
 
         public Action<string> Log;
@@ -23,6 +24,7 @@ namespace Windrose.StackSize.Core
             if (paths == null) throw new ArgumentNullException("paths");
             _paths = paths;
             _patcher = new StackPatcher();
+            _lootPatcher = new LootPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
         }
 
@@ -47,19 +49,45 @@ namespace Windrose.StackSize.Core
                 // previous run could otherwise leak files into the new pak.
                 if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, true);
 
-                LogLine("Patching vanilla -> " + tmpDir);
-                var patchResult = _patcher.PatchToDirectory(_paths.Vanilla, tmpDir, profile);
-
-                LogLine("Patched: " + patchResult.Written + " items"
+                // The two patchers write into the SAME temp directory but
+                // into disjoint subtrees (InventoryItems/ vs LootTables/),
+                // so they can't collide. After both run, repak packs the
+                // merged tree as a single .pak.
+                // StackPatcher writes into the InventoryItems subtree to
+                // mirror the in-pak path (and to avoid scanning LootTables/
+                // for MaxCountInSlot that's never going to be there).
+                var tmpInvDir = Path.Combine(tmpDir, "R5", "Plugins",
+                    "R5BusinessRules", "Content", "InventoryItems");
+                LogLine("Patching vanilla items -> " + tmpInvDir);
+                var patchResult = _patcher.PatchToDirectory(_paths.VanillaInventoryItems, tmpInvDir, profile);
+                LogLine("Patched items: " + patchResult.Written
                         + " (" + patchResult.Promoted + " promoted, "
                         + patchResult.Overridden + " overridden, "
                         + patchResult.Capped + " capped)");
 
-                if (patchResult.Written == 0)
+                LootPatchResult lootResult = null;
+                bool lootActive = HasLootConfiguration(profile);
+                if (lootActive)
+                {
+                    var tmpLootDir = Path.Combine(tmpDir, "R5", "Plugins",
+                        "R5BusinessRules", "Content", "LootTables");
+                    LogLine("Patching loot tables -> " + tmpLootDir);
+                    lootResult = _lootPatcher.PatchToDirectory(
+                        _paths.VanillaLootTables, tmpLootDir, profile);
+                    LogLine("Patched loot: " + lootResult.Written
+                            + " (" + lootResult.MultiplierApplied + " multiplied, "
+                            + lootResult.Edited + " edited, "
+                            + lootResult.Removed + " removed-from, "
+                            + lootResult.Added + " appended-to)");
+                    foreach (var w in lootResult.Warnings) LogLine("  warn: " + w);
+                }
+
+                int totalWritten = patchResult.Written + (lootResult != null ? lootResult.Written : 0);
+                if (totalWritten == 0)
                 {
                     throw new InvalidOperationException(
                         "Profile produces no changes -- nothing to pack. "
-                        + "Adjust globals or add per-item overrides.");
+                        + "Adjust globals or add per-item / per-loot-table overrides.");
                 }
 
                 LogLine("Resolving repak.exe...");
@@ -80,6 +108,7 @@ namespace Windrose.StackSize.Core
                 {
                     Profile = profile,
                     PatchResult = patchResult,
+                    LootPatchResult = lootResult,
                     PakResult = pakResult,
                     PakPath = outPakPath,
                     TmpDir = tmpDir,
@@ -99,6 +128,22 @@ namespace Windrose.StackSize.Core
                     }
                 }
             }
+        }
+
+        // True when the profile actually configures the loot domain --
+        // either via a per-bucket multiplier or per-LT override. Lets the
+        // pipeline skip the loot patch step entirely for stack-only
+        // profiles (e.g. all 11 builtins).
+        static bool HasLootConfiguration(Profile profile)
+        {
+            if (profile.LootOverrides != null && profile.LootOverrides.Count > 0) return true;
+            var loot = profile.Globals != null ? profile.Globals.Loot : null;
+            if (loot == null || loot.ByCategory == null) return false;
+            foreach (var kv in loot.ByCategory)
+            {
+                if (kv.Value != 1.0) return true;
+            }
+            return false;
         }
 
         // Profile.Name -> filename component for "StackSize_<name>_P.pak".
@@ -138,6 +183,7 @@ namespace Windrose.StackSize.Core
     {
         public Profile Profile;
         public PatchResult PatchResult;
+        public LootPatchResult LootPatchResult;   // null if profile has no loot config
         public PakBuildResult PakResult;
         public string PakPath;
         public string TmpDir;

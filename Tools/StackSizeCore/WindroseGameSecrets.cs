@@ -8,8 +8,14 @@ namespace Windrose.StackSize.Core
         public const string AesKey =
             "0x5F430BF9FEF2B0B91B7C79C313BDAF291BA076A1DAB5045974186333AA16CFAE";
 
-        // Pak-internal prefix the dumper extracts.
+        // Pak-internal prefix the dumper extracts (item definitions).
         public const string InventoryItemsPath =
             "R5/Plugins/R5BusinessRules/Content/InventoryItems";
+
+        // Pak-internal prefix the dumper extracts (loot tables for mobs,
+        // chests, foliage, ships, etc -- referenced by InventoryItems but
+        // shipped as a sibling tree).
+        public const string LootTablesPath =
+            "R5/Plugins/R5BusinessRules/Content/LootTables";
     }
 }

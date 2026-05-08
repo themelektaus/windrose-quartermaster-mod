@@ -10,6 +10,7 @@ namespace Windrose.StackSize.Gui
     //
     //   dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
     //   dotnet run --project GUI -- --test-patcher --profile x4
+    //   dotnet run --project GUI -- --test-loot-patcher --multiplier 2 --bucket Mobs
     //
     // Used to smoke-test parity with the legacy PowerShell pipeline before the
     // full Build endpoint exists (Phase 4).  Keeps the production HTTP path
@@ -28,6 +29,9 @@ namespace Windrose.StackSize.Gui
             bool buildPak = false;
             string profileSpec = null;
             bool keepTemp = false;
+            string lootBucket = null;
+            double? lootMultiplier = null;
+            bool lootMode = args.Length > 0 && args[0] == "--test-loot-patcher";
 
             for (int i = 1; i < args.Length; i++)
             {
@@ -62,10 +66,26 @@ namespace Windrose.StackSize.Gui
                     case "--keep-temp":
                         keepTemp = true;
                         break;
+                    case "--bucket":
+                        lootBucket = args[++i];
+                        break;
+                    case "--loot-multiplier":
+                        lootMultiplier = double.Parse(args[++i], System.Globalization.CultureInfo.InvariantCulture);
+                        break;
                     default:
                         Console.Error.WriteLine("Unknown argument: " + a);
                         return 2;
                 }
+            }
+
+            // Loot-patcher smoke mode: builds a multiplier-only profile and
+            // writes the patched LootTables tree, no pak. Used for the
+            // round-trip diff against MoreEnemyResources_2x_P.pak.
+            if (lootMode)
+            {
+                return RunLootSmoke(repoRoot, lootBucket,
+                    lootMultiplier ?? (multiplier.HasValue ? (double)multiplier.Value : 1.0),
+                    outDir);
             }
 
             // Profile mode: load a builtin / user profile by id or name and
@@ -215,6 +235,74 @@ namespace Windrose.StackSize.Gui
                 Console.Error.WriteLine("Setup failed: " + ex.Message);
                 return 1;
             }
+        }
+
+        // Loot smoke: applies a single bucket multiplier (or "*" wildcard)
+        // to the vanilla LootTables tree and writes the patched files into
+        // .build-tmp/loot_smoke_<...>/. Used to byte-diff against the
+        // reference MoreEnemyResources_2x_P.pak (which is exactly a Mobs
+        // x2 multiplier mod).
+        static int RunLootSmoke(string repoRoot, string bucket, double mult, string outDirOverride)
+        {
+            var paths = WindrosePaths.FromModRoot(repoRoot);
+            var bucketKey = string.IsNullOrEmpty(bucket) ? "*" : bucket;
+            var tag = (bucketKey == "*" ? "all" : bucketKey) + "_x" +
+                      mult.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            var outDir = string.IsNullOrEmpty(outDirOverride)
+                ? Path.Combine(paths.BuildTmp, "loot_smoke_" + tag)
+                : outDirOverride;
+
+            if (Directory.Exists(outDir))
+            {
+                Console.WriteLine("Cleaning existing output: " + outDir);
+                Directory.Delete(outDir, true);
+            }
+            Directory.CreateDirectory(outDir);
+
+            var profile = new Profile
+            {
+                Id = Guid.NewGuid().ToString(),
+                Name = "loot-smoke-" + tag,
+                Globals = new ProfileGlobals
+                {
+                    Loot = new LootGlobal
+                    {
+                        ByCategory = new Dictionary<string, double> { { bucketKey, mult } },
+                    },
+                },
+            };
+
+            Console.WriteLine("Vanilla LootTables: " + paths.VanillaLootTables);
+            Console.WriteLine("Out:                " + outDir);
+            Console.WriteLine("Bucket:             " + bucketKey);
+            Console.WriteLine("Multiplier:         x" + mult);
+
+            // Write into the same tree shape repak expects so the output can
+            // be compared 1:1 with an unpacked reference pak.
+            var outLoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules", "Content", "LootTables");
+
+            var patcher = new LootPatcher();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var result = patcher.PatchToDirectory(paths.VanillaLootTables, outLoot, profile);
+            sw.Stop();
+
+            Console.WriteLine();
+            Console.WriteLine("Scanned        : " + result.Scanned);
+            Console.WriteLine("UnchangedSkip  : " + result.UnchangedSkip);
+            Console.WriteLine("NoSchema       : " + result.NoSchema);
+            Console.WriteLine("Written        : " + result.Written);
+            Console.WriteLine("  MultApplied  : " + result.MultiplierApplied);
+            Console.WriteLine("  Edited       : " + result.Edited);
+            Console.WriteLine("  Removed      : " + result.Removed);
+            Console.WriteLine("  Added        : " + result.Added);
+            Console.WriteLine("Time           : " + sw.Elapsed.TotalSeconds.ToString("0.00") + "s");
+            if (result.Warnings.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Warnings:");
+                foreach (var w in result.Warnings) Console.WriteLine("  " + w);
+            }
+            return 0;
         }
 
         // Loads a profile by id or display-name and runs the full pipeline

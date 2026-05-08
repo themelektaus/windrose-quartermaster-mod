@@ -11,6 +11,8 @@ namespace Windrose.StackSize.Core
         public string ModRoot;
         public string Sources;
         public string Vanilla;
+        public string VanillaInventoryItems;
+        public string VanillaLootTables;
         public string Builds;
         public string Profiles;
         public string ProfilesBuiltin;
@@ -21,11 +23,20 @@ namespace Windrose.StackSize.Core
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");
             modRoot = Path.GetFullPath(modRoot);
+            var vanilla = Path.Combine(modRoot, "Sources", "Vanilla");
+            // Match the in-pak directory layout exactly so output trees can be
+            // re-packed without path massaging.
+            var vanillaInv = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "InventoryItems");
+            var vanillaLoot = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "LootTables");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
                 Sources = Path.Combine(modRoot, "Sources"),
-                Vanilla = Path.Combine(modRoot, "Sources", "Vanilla"),
+                Vanilla = vanilla,
+                VanillaInventoryItems = vanillaInv,
+                VanillaLootTables = vanillaLoot,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 ProfilesBuiltin = Path.Combine(modRoot, "Profiles", "_builtin"),

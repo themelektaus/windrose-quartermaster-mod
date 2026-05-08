@@ -6,10 +6,11 @@ using System.Linq;
 
 namespace Windrose.StackSize.Core
 {
-    // Extracts the AES-encrypted InventoryItems prefix from the Windrose
-    // vanilla pak via repak.exe. Replaces Library/Dump.ps1 +
+    // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
+    // pak via repak.exe. Replaces Library/Dump.ps1 +
     // Dump-WindroseVanilla.ps1 -- same repak invocation, same default
-    // paths, same "force overwrite" semantics.
+    // paths, same "force overwrite" semantics. Two prefixes are extracted in
+    // sequence: InventoryItems (item defs) and LootTables (drop pools).
     //
     // Auto-resolves repak.exe (download on first use) and the vanilla pak
     // (via Steam) when the corresponding inputs are null/empty.
@@ -74,12 +75,15 @@ namespace Windrose.StackSize.Core
             }
 
             LogLine("Unpacking InventoryItems from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir);
+            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.InventoryItemsPath);
+
+            LogLine("Unpacking LootTables from pak");
+            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.LootTablesPath);
 
             return Statistics(outDir);
         }
 
-        void RunRepakUnpack(string repakExe, string vanillaPak, string outDir)
+        void RunRepakUnpack(string repakExe, string vanillaPak, string outDir, string includePrefix)
         {
             var psi = new ProcessStartInfo
             {
@@ -93,7 +97,7 @@ namespace Windrose.StackSize.Core
             psi.ArgumentList.Add(WindroseGameSecrets.AesKey);
             psi.ArgumentList.Add("unpack");
             psi.ArgumentList.Add("-i");
-            psi.ArgumentList.Add(WindroseGameSecrets.InventoryItemsPath);
+            psi.ArgumentList.Add(includePrefix);
             psi.ArgumentList.Add("-o");
             psi.ArgumentList.Add(outDir);
             if (Force) psi.ArgumentList.Add("-f");
@@ -101,7 +105,7 @@ namespace Windrose.StackSize.Core
 
             // Display the same command without the AES key so logs are safe
             // to share with users.
-            LogLine("repak --aes-key <hidden> unpack -i " + WindroseGameSecrets.InventoryItemsPath +
+            LogLine("repak --aes-key <hidden> unpack -i " + includePrefix +
                     " -o \"" + outDir + "\"" + (Force ? " -f" : "") +
                     " \"" + vanillaPak + "\"");
 
@@ -122,30 +126,47 @@ namespace Windrose.StackSize.Core
         {
             var invRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
                 "Content", "InventoryItems");
-            if (!Directory.Exists(invRoot))
+            var lootRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
+                "Content", "LootTables");
+
+            int totalCount = 0;
+            var byCategory = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            CollectStatistics(invRoot, "items", byCategory, ref totalCount);
+            CollectStatistics(lootRoot, "loot", byCategory, ref totalCount);
+
+            LogLine(totalCount + " JSON files extracted");
+            foreach (var kv in byCategory.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
-                LogLine("[!] Expected directory not produced: " + invRoot);
-                return new DumpResult { OutDir = outDir, FileCount = 0, ByCategory = new Dictionary<string, int>() };
+                LogLine(string.Format("  {0,-25} {1,6}", kv.Key, kv.Value));
+            }
+            return new DumpResult { OutDir = outDir, FileCount = totalCount, ByCategory = byCategory };
+        }
+
+        // Walks one of the extracted prefix-trees and tallies a per-category
+        // count, prefixed with the tree label so InventoryItems and LootTables
+        // counters don't collide (e.g. "items/Food" vs "loot/Food").
+        void CollectStatistics(string root, string treeLabel,
+            Dictionary<string, int> byCategory, ref int totalCount)
+        {
+            if (!Directory.Exists(root))
+            {
+                LogLine("[!] Expected directory not produced: " + root);
+                return;
             }
 
-            var files = Directory.EnumerateFiles(invRoot, "*.json", SearchOption.AllDirectories).ToList();
-            var byCategory = new Dictionary<string, int>(StringComparer.Ordinal);
-            var prefixLen = invRoot.Length + 1; // skip the trailing separator
+            var files = Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories).ToList();
+            totalCount += files.Count;
+            var prefixLen = root.Length + 1; // skip the trailing separator
             foreach (var f in files)
             {
                 var rel = f.Length > prefixLen ? f.Substring(prefixLen) : Path.GetFileName(f);
                 var segs = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                var cat = segs.Length >= 2 ? segs[0] : "(other)";
+                var cat = treeLabel + "/" + (segs.Length >= 2 ? segs[0] : "(other)");
                 int count;
                 byCategory.TryGetValue(cat, out count);
                 byCategory[cat] = count + 1;
             }
-            LogLine(files.Count + " JSON files extracted");
-            foreach (var kv in byCategory.OrderBy(p => p.Key, StringComparer.Ordinal))
-            {
-                LogLine(string.Format("  {0,-15} {1,6}", kv.Key, kv.Value));
-            }
-            return new DumpResult { OutDir = outDir, FileCount = files.Count, ByCategory = byCategory };
         }
 
         void LogLine(string msg)
