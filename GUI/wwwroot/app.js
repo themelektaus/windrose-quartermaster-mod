@@ -333,7 +333,8 @@ function syncStackSizeInputsState() {
 function populateProfileSelect() {
     const sel = document.getElementById('profile-select');
     state.profiles.sort((a, b) => {
-        if (a.isBuiltin !== b.isBuiltin) return a.isBuiltin ? -1 : 1;
+        // Custom profiles first so user-authored work is the default pick.
+        if (a.isBuiltin !== b.isBuiltin) return a.isBuiltin ? 1 : -1;
         return a.name.localeCompare(b.name);
     });
     sel.innerHTML = '';
