@@ -368,10 +368,10 @@ function computeTarget(item) {
     const ov = overrides[item.id];
     if (ov && typeof ov.stackSize === 'number') {
         if (ov.stackSize === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: true, noChange: true, target: v };
+            return { html: '<span class="skip">' + ov.stackSize + '</span>', changed: false, overridden: true, noChange: true, target: v };
         }
         return {
-            html: '<b>' + ov.stackSize + '</b> <small>(override)</small>',
+            html: '<b>' + ov.stackSize + '</b>',
             changed: true, overridden: true, target: ov.stackSize,
         };
     }
@@ -387,14 +387,14 @@ function computeTarget(item) {
         || (item.itemClass === 'Default' && item.category === 'Resource');
     if (v <= 1 && !isPromotable) {
         return {
-            html: '<span class="skip">vanilla (locked at 1)</span>',
+            html: '<span class="skip">1</span>',
             changed: false, overridden: false, target: v,
         };
     }
 
     if (typeof ss.absolute === 'number') {
         if (ss.absolute === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, noChange: true, target: v };
+            return { html: '<span class="skip">0</span>', changed: false, overridden: false, noChange: true, target: v };
         }
         return { html: '<b>' + ss.absolute + '</b>', changed: true, overridden: false, target: ss.absolute };
     }
@@ -402,12 +402,12 @@ function computeTarget(item) {
         let target = v * ss.multiplier;
         if (typeof ss.cap === 'number' && ss.cap > 0 && target > ss.cap) target = ss.cap;
         if (target === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, noChange: true, target: v };
+            return { html: '<span class="skip">0</span>', changed: false, overridden: false, noChange: true, target: v };
         }
         return { html: '<b>' + target + '</b>', changed: true, overridden: false, target };
     }
 
-    return { html: '<span class="skip">vanilla</span>', changed: false, overridden: false, target: v };
+    return { html: '<span class="skip">' + v + '</span>', changed: false, overridden: false, target: v };
 }
 
 // ---------- Item rendering ----------------------------------------------
@@ -462,6 +462,7 @@ function buildItemRow(item) {
         + (item.category ? ' · ' + item.category : '')
         + (item.rarity   ? ' · ' + item.rarity   : '');
 
+    const description = item.meta?.description ?? ``
     const ov = state.current && state.current.overrides && state.current.overrides[item.id];
     const ovValue = ov && ov.stackSize != null ? ov.stackSize : '';
     const isReadonly = !!(state.current && state.current.isBuiltin);
@@ -475,10 +476,11 @@ function buildItemRow(item) {
         '<div class="name">' +
             '<b>' + esc(displayName) + '</b>' +
             '<small>' + esc(subtitle) + '</small>' +
+            '<div>' + esc(description) + '</div>' +
         '</div>' +
         '<div class="compute">' + item.vanillaStack + ' → ' + target.html + '</div>' +
         '<input type="number" class="override-input" data-item-id="' + esc(item.id) + '" ' +
-               'value="' + esc(ovValue) + '" placeholder="-" min="0" step="1"' +
+               'value="' + esc(ovValue) + '" placeholder="' + target.target + '" min="0" step="1"' +
                (isReadonly ? ' disabled' : '') + '>';
     return li;
 }
