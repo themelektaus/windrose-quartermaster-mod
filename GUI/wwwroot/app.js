@@ -368,7 +368,7 @@ function computeTarget(item) {
     const ov = overrides[item.id];
     if (ov && typeof ov.stackSize === 'number') {
         if (ov.stackSize === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: true, target: v };
+            return { html: '<span class="skip">no change</span>', changed: false, overridden: true, noChange: true, target: v };
         }
         return {
             html: '<b>' + ov.stackSize + '</b> <small>(override)</small>',
@@ -394,7 +394,7 @@ function computeTarget(item) {
 
     if (typeof ss.absolute === 'number') {
         if (ss.absolute === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, target: v };
+            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, noChange: true, target: v };
         }
         return { html: '<b>' + ss.absolute + '</b>', changed: true, overridden: false, target: ss.absolute };
     }
@@ -402,7 +402,7 @@ function computeTarget(item) {
         let target = v * ss.multiplier;
         if (typeof ss.cap === 'number' && ss.cap > 0 && target > ss.cap) target = ss.cap;
         if (target === v) {
-            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, target: v };
+            return { html: '<span class="skip">no change</span>', changed: false, overridden: false, noChange: true, target: v };
         }
         return { html: '<b>' + target + '</b>', changed: true, overridden: false, target };
     }
@@ -492,6 +492,7 @@ function refreshRowInPlace(itemId) {
     const t = computeTarget(item);
     row.classList.toggle('changed',    t.changed);
     row.classList.toggle('overridden', t.overridden);
+    row.classList.toggle('noChange',   t.noChange);
     const compute = row.querySelector('.compute');
     if (compute) compute.innerHTML = item.vanillaStack + ' → ' + t.html;
 }
