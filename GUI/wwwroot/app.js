@@ -5,10 +5,20 @@
 // affected render functions explicitly.
 
 const state = {
-    items: [],       // [{id, vanillaStack, itemClass, rarity, category, icon, meta}]
+    items: [],            // [{id, vanillaStack, itemClass, rarity, category, icon, meta}]
+    itemsById: new Map(), // id -> item, for quick LT-entry lookups
+    lootTables: [],       // [{id, category, type, entries:[{index,min,max,weight,lootItemId,lootItemPath,lootTableId,lootTablePath}]}]
+    lootById: new Map(),  // ltId -> lt
+    lootCategories: [],   // sorted list of distinct categories with counts: [{name, count}]
+    lootTypes: [],        // sorted distinct LT types
+    itemPathsByItemId: new Map(),    // itemId -> lootItemPath (mined from LT entries; only items that show up in LTs)
+    tablePathsByLtId:  new Map(),    // ltId    -> lootTablePath
+    expandedLts: new Set(),          // ltIds currently expanded in the loot view
+
     profiles: [],    // summaries from /api/profiles
     current: null,   // full profile, with .isBuiltin flag from server
     isDirty: false,
+    activeTab: 'items',
 };
 
 // ---------- API helpers --------------------------------------------------
@@ -36,24 +46,63 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
 // ---------- Boot ---------------------------------------------------------
 
 async function loadAppData() {
-    const [profiles, items] = await Promise.all([
+    const [profiles, items, lootTables] = await Promise.all([
         api('GET', '/api/profiles'),
         api('GET', '/api/items'),
+        api('GET', '/api/loot-tables'),
     ]);
     state.profiles = profiles;
     state.items = items
         .filter(i => typeof i.maxCountInSlot === 'number')
         .map(i => Object.assign({}, i, { vanillaStack: i.maxCountInSlot }));
+    state.itemsById = new Map(state.items.map(i => [i.id, i]));
+
+    state.lootTables = lootTables || [];
+    state.lootById = new Map(state.lootTables.map(lt => [lt.id, lt]));
+    indexLootCrossReferences();
 
     populateProfileSelect();
     populateValueFilter('filter-class',  'itemClass', 'All classes');
     populateValueFilter('filter-rarity', 'rarity',    'All rarities');
+    populateLootCategoryFilter();
+    populateItemDatalist();
 
     if (state.profiles.length > 0) {
         await loadProfile(state.profiles[0].id);
     } else {
         updateButtons();
     }
+}
+
+// Build lookup maps so the loot view can:
+//   * resolve a lootItemId -> the canonical UE asset path used in vanilla
+//     (needed when a user adds a new entry: we want them to be able to type
+//     "Banana" and have us emit /R5BusinessRules/.../Banana_T01.Banana_T01)
+//   * resolve a lootTableId -> the canonical UE sub-table asset path (for
+//     reuse when adding sub-table refs).
+//   * enumerate distinct categories + types for the filter dropdowns and
+//     the per-category multiplier rows in the globals panel.
+function indexLootCrossReferences() {
+    state.itemPathsByItemId = new Map();
+    state.tablePathsByLtId  = new Map();
+    const categoryCounts = new Map();
+    const types = new Set();
+    for (const lt of state.lootTables) {
+        if (lt.category) categoryCounts.set(lt.category, (categoryCounts.get(lt.category) || 0) + 1);
+        if (lt.type) types.add(lt.type);
+        for (const e of lt.entries || []) {
+            if (e.lootItemId  && e.lootItemPath  && !state.itemPathsByItemId.has(e.lootItemId)) {
+                state.itemPathsByItemId.set(e.lootItemId, e.lootItemPath);
+            }
+            if (e.lootTableId && e.lootTablePath && !state.tablePathsByLtId.has(e.lootTableId)) {
+                state.tablePathsByLtId.set(e.lootTableId, e.lootTablePath);
+            }
+        }
+    }
+    state.lootCategories = Array.from(categoryCounts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    state.lootTypes = Array.from(types).sort();
 }
 
 async function boot() {
@@ -280,17 +329,42 @@ function classifyLogLine(line) {
     return null;
 }
 
+// ---------- Tabs ---------------------------------------------------------
+
+function setActiveTab(tab) {
+    state.activeTab = tab;
+    for (const b of document.querySelectorAll('.tab')) {
+        const isActive = b.dataset.tab === tab;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-selected', String(isActive));
+    }
+    for (const p of document.querySelectorAll('.tab-page')) {
+        p.hidden = p.dataset.tab !== tab;
+    }
+    if (tab === 'loot') {
+        renderLootGlobals();
+        renderLootTables();
+        renderLootStatus();
+    }
+}
+
 // ---------- Profile loading ---------------------------------------------
 
 async function loadProfile(id) {
     state.current = await api('GET', '/api/profiles/' + encodeURIComponent(id));
-    state.current.globals = state.current.globals || {};
-    state.current.overrides = state.current.overrides || {};
+    state.current.globals       = state.current.globals || {};
+    state.current.overrides     = state.current.overrides || {};
+    state.current.lootOverrides = state.current.lootOverrides || {};
     state.isDirty = false;
     document.getElementById('profile-select').value = id;
     applyProfileToUI();
     renderItems();
     renderStatus();
+    if (state.activeTab === 'loot') {
+        renderLootGlobals();
+        renderLootTables();
+        renderLootStatus();
+    }
     updateButtons();
     setBuildLog([{ kind: 'info', msg: 'Profile loaded: ' + state.current.name }]);
 }
@@ -356,6 +430,42 @@ function populateValueFilter(elId, key, allLabel) {
         const o = document.createElement('option');
         o.value = v; o.textContent = v;
         sel.appendChild(o);
+    }
+}
+
+function populateLootCategoryFilter() {
+    const cat = document.getElementById('lt-filter-category');
+    cat.innerHTML = '<option value="">All categories</option>';
+    for (const c of state.lootCategories) {
+        const o = document.createElement('option');
+        o.value = c.name;
+        o.textContent = c.name + ' (' + c.count + ')';
+        cat.appendChild(o);
+    }
+    const tp = document.getElementById('lt-filter-type');
+    tp.innerHTML = '<option value="">All types</option>';
+    for (const t of state.lootTypes) {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        tp.appendChild(o);
+    }
+}
+
+// Datalist of all item ids so the user can type-and-pick when adding a new
+// LootData entry. We only suggest items that ALREADY appear in some vanilla
+// LT, because for those we have a known asset path -- typing in an item
+// that was never in any LT would mean we don't know where to find it.
+function populateItemDatalist() {
+    const dl = document.getElementById('item-options');
+    if (!dl) return;
+    dl.innerHTML = '';
+    const ids = Array.from(state.itemPathsByItemId.keys()).sort();
+    for (const id of ids) {
+        const o = document.createElement('option');
+        o.value = id;
+        const item = state.itemsById.get(id);
+        if (item && item.meta && item.meta.name) o.textContent = item.meta.name;
+        dl.appendChild(o);
     }
 }
 
@@ -525,6 +635,581 @@ function renderStatus() {
     document.getElementById('stat-promoted').textContent  = promoted;
 }
 
+// ---------- Loot: globals panel -----------------------------------------
+
+function getLootGlobalForCategory(cat) {
+    const g = state.current && state.current.globals;
+    if (!g || !g.loot || !g.loot.byCategory) return null;
+    const v = g.loot.byCategory[cat];
+    return typeof v === 'number' ? v : null;
+}
+
+function renderLootGlobals() {
+    const out = document.getElementById('loot-globals');
+    if (!out) return;
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    const rows = [];
+    for (const c of state.lootCategories) {
+        const v = getLootGlobalForCategory(c.name);
+        rows.push(
+            '<span class="cat">' + esc(c.name) +
+                '<span class="cat-count">(' + c.count + ')</span></span>' +
+            '<input type="number" min="0" step="0.5" placeholder="1.0" ' +
+                'data-loot-cat="' + esc(c.name) + '" ' +
+                'value="' + (v != null ? esc(v) : '') + '"' +
+                (isReadonly ? ' disabled' : '') + '>' +
+            '<button class="reset" type="button" data-reset-cat="' + esc(c.name) + '"' +
+                (isReadonly ? ' disabled' : '') + '>x</button>'
+        );
+    }
+    out.innerHTML = rows.join('');
+}
+
+function renderLootStatus() {
+    const ovrCount = state.current && state.current.lootOverrides
+        ? Object.keys(state.current.lootOverrides).length
+        : 0;
+
+    let modified = 0;
+    for (const lt of state.lootTables) {
+        if (computeLtChanged(lt)) modified++;
+    }
+
+    const total = document.getElementById('lt-stat-total');
+    const ovr   = document.getElementById('lt-stat-overrides');
+    const mod   = document.getElementById('lt-stat-modified');
+    if (total) total.textContent = state.lootTables.length;
+    if (ovr)   ovr.textContent   = ovrCount;
+    if (mod)   mod.textContent   = modified;
+}
+
+function setLootGlobalFromInput(cat, rawValue) {
+    if (!state.current || state.current.isBuiltin) return;
+    state.current.globals = state.current.globals || {};
+    state.current.globals.loot = state.current.globals.loot || { byCategory: {} };
+    state.current.globals.loot.byCategory = state.current.globals.loot.byCategory || {};
+
+    const trimmed = (rawValue || '').trim();
+    if (trimmed === '') {
+        delete state.current.globals.loot.byCategory[cat];
+    } else {
+        const n = parseFloat(trimmed);
+        if (!isFinite(n) || n < 0) return;
+        state.current.globals.loot.byCategory[cat] = n;
+    }
+    // Empty out the loot block entirely if the user cleared every category,
+    // so we don't persist a noisy "{ byCategory: {} }" sentinel.
+    if (Object.keys(state.current.globals.loot.byCategory).length === 0) {
+        delete state.current.globals.loot;
+    }
+    markDirty();
+    renderLootStatus();
+    renderLootTables();
+}
+
+function resetLootGlobalCategory(cat) {
+    if (!state.current || state.current.isBuiltin) return;
+    if (state.current.globals && state.current.globals.loot
+        && state.current.globals.loot.byCategory) {
+        if (!(cat in state.current.globals.loot.byCategory)) return;
+        delete state.current.globals.loot.byCategory[cat];
+        if (Object.keys(state.current.globals.loot.byCategory).length === 0) {
+            delete state.current.globals.loot;
+        }
+    }
+    markDirty();
+    renderLootGlobals();
+    renderLootStatus();
+    renderLootTables();
+}
+
+// ---------- Loot: per-LT resolver mirror -------------------------------
+
+// Resolves a vanilla LootData[i] entry under the current profile, mirroring
+// LootPatcher.BuildEntry on the server. Returns:
+//   {
+//     min, max, weight, lootItem, lootTable,
+//     edited:    bool (this entry has any edit fields set),
+//     removed:   bool (entry is in lootOverrides[ltId].removed),
+//     changedByMult: bool (multiplier alters min/max relative to vanilla),
+//     vanilla: { min, max, weight, lootItem, lootTable }
+//   }
+function resolveLootEntry(lt, vanillaEntry) {
+    const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    const edit = (ovr && ovr.entries && ovr.entries[String(vanillaEntry.index)]) || null;
+    const removed = !!(ovr && ovr.removed && ovr.removed.includes(vanillaEntry.index));
+
+    const cat = lt.category;
+    const mult = getLootGlobalForCategory(cat);
+    const isOrchestrator = !vanillaEntry.lootItemId && !!vanillaEntry.lootTableId;
+
+    const v = {
+        min: vanillaEntry.min, max: vanillaEntry.max, weight: vanillaEntry.weight,
+        lootItem:  vanillaEntry.lootItemPath  || (vanillaEntry.lootItemId ? null : 'None'),
+        lootTable: vanillaEntry.lootTablePath || (vanillaEntry.lootTableId ? null : 'None'),
+    };
+
+    let min = v.min, max = v.max;
+    if (edit && edit.min != null) min = edit.min;
+    else if (!isOrchestrator && mult != null) min = Math.round(v.min * mult);
+
+    if (edit && edit.max != null) max = edit.max;
+    else if (!isOrchestrator && mult != null) max = Math.round(v.max * mult);
+
+    const weight = (edit && edit.weight != null) ? edit.weight : v.weight;
+    const lootItem  = (edit && edit.lootItem  != null) ? edit.lootItem  : v.lootItem;
+    const lootTable = (edit && edit.lootTable != null) ? edit.lootTable : v.lootTable;
+
+    const changedByMult = !isOrchestrator && mult != null && mult !== 1
+        && (min !== v.min || max !== v.max);
+    const edited = !!edit && (edit.min != null || edit.max != null
+        || edit.weight != null || edit.lootItem != null || edit.lootTable != null);
+
+    return { min, max, weight, lootItem, lootTable,
+        edited, removed, changedByMult, vanilla: v };
+}
+
+// Returns true if any aspect of the LT will change in the build relative to
+// vanilla -- this drives the "modified" badge and the only-changed filter.
+function computeLtChanged(lt) {
+    const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    if (ovr) {
+        if (ovr.added && ovr.added.length > 0) return true;
+        if (ovr.removed && ovr.removed.length > 0) return true;
+        if (ovr.entries && Object.keys(ovr.entries).length > 0) return true;
+    }
+    const mult = getLootGlobalForCategory(lt.category);
+    if (mult != null && mult !== 1) {
+        // Only counts as "changed" if at least one entry is non-orchestrator
+        // with non-zero min/max (otherwise the multiplier no-ops the LT).
+        for (const e of lt.entries) {
+            const isOrchestrator = !e.lootItemId && !!e.lootTableId;
+            if (!isOrchestrator && (e.min !== 0 || e.max !== 0)) return true;
+        }
+    }
+    return false;
+}
+
+function computeLtOverridden(lt) {
+    const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    if (!ovr) return false;
+    return (ovr.added && ovr.added.length > 0)
+        || (ovr.removed && ovr.removed.length > 0)
+        || (ovr.entries && Object.keys(ovr.entries).length > 0);
+}
+
+// ---------- Loot: list rendering -----------------------------------------
+
+function filterLootTables() {
+    const q   = document.getElementById('lt-filter').value.toLowerCase().trim();
+    const fc  = document.getElementById('lt-filter-category').value;
+    const ft  = document.getElementById('lt-filter-type').value;
+    const chg = document.getElementById('lt-filter-changed').value;
+
+    return state.lootTables.filter(lt => {
+        if (q && !lt.id.toLowerCase().includes(q)) return false;
+        if (fc && lt.category !== fc) return false;
+        if (ft && lt.type !== ft) return false;
+        if (chg === 'changed'    && !computeLtChanged(lt))    return false;
+        if (chg === 'overridden' && !computeLtOverridden(lt)) return false;
+        return true;
+    });
+}
+
+function renderLootTables() {
+    const ul = document.getElementById('lt-list');
+    if (!ul) return;
+    const filtered = filterLootTables();
+    document.getElementById('lt-count').textContent =
+        filtered.length + ' / ' + state.lootTables.length + ' tables';
+
+    const frag = document.createDocumentFragment();
+    for (const lt of filtered) frag.appendChild(buildLtRow(lt));
+    ul.innerHTML = '';
+    ul.appendChild(frag);
+}
+
+function buildLtRow(lt) {
+    const li = document.createElement('li');
+    li.className = 'lt';
+    if (!state.expandedLts.has(lt.id)) li.classList.add('collapsed');
+    li.dataset.ltId = lt.id;
+    if (computeLtChanged(lt))    li.classList.add('changed');
+    if (computeLtOverridden(lt)) li.classList.add('overridden');
+
+    const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    const editCount = ovr && ovr.entries ? Object.keys(ovr.entries).length : 0;
+    const remCount  = ovr && ovr.removed ? ovr.removed.length : 0;
+    const addCount  = ovr && ovr.added   ? ovr.added.length   : 0;
+    const mult      = getLootGlobalForCategory(lt.category);
+
+    const badges = [];
+    if (mult != null && mult !== 1) badges.push('×' + mult);
+    if (editCount > 0) badges.push('<span class="lt-badge edited">' + editCount + ' edited</span>');
+    if (remCount  > 0) badges.push('<span class="lt-badge removed">' + remCount + ' removed</span>');
+    if (addCount  > 0) badges.push('<span class="lt-badge added">' + addCount + ' added</span>');
+
+    const headerHtml =
+        '<div class="lt-header" data-toggle="' + esc(lt.id) + '">' +
+            '<span class="chevron"></span>' +
+            '<span class="lt-id">' + esc(lt.id) + '</span>' +
+            '<span class="lt-meta">' + esc(lt.type || '') + ' · ' + (lt.entries ? lt.entries.length : 0) + ' entries</span>' +
+            '<span class="lt-meta">' + badges.join(' ') + '</span>' +
+        '</div>';
+
+    li.innerHTML = headerHtml + '<div class="lt-body"></div>';
+    if (state.expandedLts.has(lt.id)) {
+        renderLtBody(li, lt);
+    }
+    return li;
+}
+
+// Renders the per-entry editor block inside an expanded LT card. Called on
+// expansion, not at initial list render -- 1500 LTs * ~5 entries each would
+// otherwise blow up the DOM.
+function renderLtBody(li, lt) {
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    const body = li.querySelector('.lt-body');
+    if (!body) return;
+
+    const rows = [];
+
+    // Vanilla entries (with edits/removal markers).
+    for (const e of lt.entries) {
+        rows.push(buildLtEntryRowHtml(lt, e, isReadonly));
+    }
+
+    // Added (custom) entries.
+    const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    if (ovr && ovr.added) {
+        for (let i = 0; i < ovr.added.length; i++) {
+            rows.push(buildLtAddedRowHtml(lt, ovr.added[i], i, isReadonly));
+        }
+    }
+
+    // Add-entry button.
+    if (!isReadonly) {
+        rows.push(
+            '<div class="lt-add-row">' +
+                '<button type="button" class="add-btn" data-add-entry="' + esc(lt.id) + '">+ Add entry</button>' +
+            '</div>');
+    }
+
+    body.innerHTML = rows.join('');
+}
+
+function buildLtEntryRowHtml(lt, e, isReadonly) {
+    const r = resolveLootEntry(lt, e);
+    const classes = ['lt-entry'];
+    if (r.removed) classes.push('removed');
+    if (r.edited)  classes.push('edited');
+
+    const isItem  = !!e.lootItemId;
+    const isTable = !!e.lootTableId;
+    const item    = isItem ? state.itemsById.get(e.lootItemId) : null;
+    const targetHtml = buildEntryTargetHtml(e, item);
+
+    const ovr  = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
+    const edit = (ovr && ovr.entries && ovr.entries[String(e.index)]) || null;
+    const minVal    = edit && edit.min    != null ? edit.min    : '';
+    const maxVal    = edit && edit.max    != null ? edit.max    : '';
+    const weightVal = edit && edit.weight != null ? edit.weight : '';
+
+    const minPh = r.changedByMult ? r.min : e.min;
+    const maxPh = r.changedByMult ? r.max : e.max;
+
+    const removeBtn = '<button type="button" class="danger" data-toggle-remove="' + esc(lt.id) + '" data-index="' + e.index + '"' +
+        (isReadonly ? ' disabled' : '') + '>' + (r.removed ? 'undo' : 'x') + '</button>';
+
+    return '<div class="' + classes.join(' ') + '" data-lt-id="' + esc(lt.id) + '" data-vanilla-index="' + e.index + '">' +
+        targetHtml +
+        '<input type="number" class="num" placeholder="' + minPh + '" value="' + esc(minVal) +
+            '" data-edit-field="min" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
+            (isReadonly || r.removed ? ' disabled' : '') + '>' +
+        '<input type="number" class="num" placeholder="' + maxPh + '" value="' + esc(maxVal) +
+            '" data-edit-field="max" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
+            (isReadonly || r.removed ? ' disabled' : '') + '>' +
+        '<input type="number" class="num" placeholder="' + e.weight + '" value="' + esc(weightVal) +
+            '" data-edit-field="weight" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
+            (isReadonly || r.removed ? ' disabled' : '') + '>' +
+        '<span class="vanilla-hint">vanilla ' + e.min + '-' + e.max + (e.weight ? ' w' + e.weight : '') + '</span>' +
+        '<div class="row-actions">' + removeBtn + '</div>' +
+    '</div>';
+}
+
+function buildEntryTargetHtml(e, item) {
+    const isItem  = !!e.lootItemId;
+    const isTable = !!e.lootTableId;
+    if (isItem) {
+        const name = (item && item.meta && item.meta.name) || e.lootItemId;
+        const iconHtml = item && item.icon
+            ? '<img src="' + esc(item.icon) + '" alt="" loading="lazy">'
+            : '<div class="placeholder-icon">?</div>';
+        return iconHtml +
+            '<div class="target">' +
+                '<b>' + esc(name) + '</b>' +
+                '<small>' + esc(e.lootItemId) + '</small>' +
+            '</div>';
+    }
+    if (isTable) {
+        return '<div class="placeholder-icon">▦</div>' +
+            '<div class="target subtable">' +
+                '<b>' + esc(e.lootTableId) + '</b>' +
+                '<small>(sub-table)</small>' +
+            '</div>';
+    }
+    // No-drop slot (typical in Weight tables).
+    return '<div class="placeholder-icon">·</div>' +
+        '<div class="target"><b>(no drop)</b><small></small></div>';
+}
+
+function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
+    const a = addedEntry || {};
+    const path = a.lootItem && a.lootItem !== 'None' ? a.lootItem
+              : a.lootTable && a.lootTable !== 'None' ? a.lootTable
+              : '';
+    const isTable = !!(a.lootTable && a.lootTable !== 'None');
+    const inferredItemId = (a.lootItem && a.lootItem !== 'None')
+        ? lastSegment(a.lootItem) : null;
+    const inferredTableId = isTable ? lootTablePathToId(a.lootTable) : null;
+    const item = inferredItemId ? state.itemsById.get(inferredItemId) : null;
+
+    let targetHtml;
+    if (a.lootItem && a.lootItem !== 'None') {
+        const name = (item && item.meta && item.meta.name) || inferredItemId || '(item)';
+        const iconHtml = item && item.icon
+            ? '<img src="' + esc(item.icon) + '" alt="" loading="lazy">'
+            : '<div class="placeholder-icon">+</div>';
+        targetHtml = iconHtml +
+            '<div class="target">' +
+                '<b>' + esc(name) + '</b>' +
+                '<small>' + esc(a.lootItem) + '</small>' +
+            '</div>';
+    } else if (isTable) {
+        targetHtml = '<div class="placeholder-icon">▦</div>' +
+            '<div class="target subtable">' +
+                '<b>' + esc(inferredTableId || a.lootTable) + '</b>' +
+                '<small>(added sub-table)</small>' +
+            '</div>';
+    } else {
+        // Empty added entry -- user clicked "+ Add entry" but hasn't picked
+        // a target yet. Render the picker form inline.
+        return buildLtAddedFormHtml(lt, a, addedIndex, isReadonly);
+    }
+
+    return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
+        targetHtml +
+        '<input type="number" class="num" value="' + esc(a.min || 1) +
+            '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+            (isReadonly ? ' disabled' : '') + '>' +
+        '<input type="number" class="num" value="' + esc(a.max || 1) +
+            '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+            (isReadonly ? ' disabled' : '') + '>' +
+        '<input type="number" class="num" value="' + esc(a.weight || 0) +
+            '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+            (isReadonly ? ' disabled' : '') + '>' +
+        '<span class="vanilla-hint">added</span>' +
+        '<div class="row-actions">' +
+            '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                (isReadonly ? ' disabled' : '') + '>x</button>' +
+        '</div>' +
+    '</div>';
+}
+
+// Inline picker form for an added entry whose lootItem/lootTable hasn't been
+// selected yet. The user picks Item or Sub-Table, types the id, and we
+// resolve the asset path on confirm via state.itemPathsByItemId /
+// state.tablePathsByLtId.
+function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
+    return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
+        '<div class="lt-add-form">' +
+            '<div class="picker-row">' +
+                '<select data-add-form-type="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                    (isReadonly ? ' disabled' : '') + '>' +
+                    '<option value="item">Item</option>' +
+                    '<option value="table">Sub-Table</option>' +
+                '</select>' +
+                '<input type="text" placeholder="Item id (autocomplete)" list="item-options" ' +
+                    'data-add-form-target="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                    (isReadonly ? ' disabled' : '') + '>' +
+            '</div>' +
+            '<input type="number" class="num" value="' + esc(a.min || 1) +
+                '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                (isReadonly ? ' disabled' : '') + '>' +
+            '<input type="number" class="num" value="' + esc(a.max || 1) +
+                '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                (isReadonly ? ' disabled' : '') + '>' +
+            '<input type="number" class="num" value="' + esc(a.weight || 0) +
+                '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                (isReadonly ? ' disabled' : '') + '>' +
+            '<span class="vanilla-hint">new</span>' +
+            '<div class="row-actions">' +
+                '<button type="button" data-confirm-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                    (isReadonly ? ' disabled' : '') + '>set</button>' +
+                '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
+                    (isReadonly ? ' disabled' : '') + '>x</button>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}
+
+// "/R5BusinessRules/InventoryItems/.../Banana_T01.Banana_T01" -> "Banana_T01"
+function lastSegment(s) {
+    if (!s) return null;
+    const dot = s.lastIndexOf('.');
+    const slash = s.lastIndexOf('/');
+    const cut = Math.max(dot, slash);
+    return cut >= 0 && cut < s.length - 1 ? s.substring(cut + 1) : s;
+}
+
+function lootTablePathToId(p) {
+    if (!p) return null;
+    const PREFIX = '/R5BusinessRules/LootTables/';
+    if (!p.startsWith(PREFIX)) return lastSegment(p);
+    let s = p.substring(PREFIX.length);
+    const dot = s.lastIndexOf('.');
+    if (dot < 0) return s;
+    return s.substring(0, dot);
+}
+
+// ---------- Loot: mutations ---------------------------------------------
+
+function getOrCreateLootOverride(ltId) {
+    state.current.lootOverrides = state.current.lootOverrides || {};
+    if (!state.current.lootOverrides[ltId]) {
+        state.current.lootOverrides[ltId] = { entries: {}, removed: [], added: [] };
+    }
+    const o = state.current.lootOverrides[ltId];
+    o.entries = o.entries || {};
+    o.removed = o.removed || [];
+    o.added   = o.added   || [];
+    return o;
+}
+
+function pruneLootOverrideIfEmpty(ltId) {
+    const o = state.current.lootOverrides && state.current.lootOverrides[ltId];
+    if (!o) return;
+    const empty = Object.keys(o.entries || {}).length === 0
+        && (!o.removed || o.removed.length === 0)
+        && (!o.added   || o.added.length   === 0);
+    if (empty) delete state.current.lootOverrides[ltId];
+    if (Object.keys(state.current.lootOverrides).length === 0) {
+        delete state.current.lootOverrides;
+    }
+}
+
+function setLootEntryFieldFromInput(ltId, index, field, rawValue) {
+    if (!state.current || state.current.isBuiltin) return;
+    const ovr = getOrCreateLootOverride(ltId);
+    const key = String(index);
+    const cur = ovr.entries[key] || {};
+    const trimmed = (rawValue || '').trim();
+    if (trimmed === '') {
+        delete cur[field];
+    } else {
+        const n = parseInt(trimmed, 10);
+        if (!isFinite(n) || n < 0) return;
+        cur[field] = n;
+    }
+    if (Object.keys(cur).length === 0) {
+        delete ovr.entries[key];
+    } else {
+        ovr.entries[key] = cur;
+    }
+    pruneLootOverrideIfEmpty(ltId);
+    markDirty();
+    refreshLtRow(ltId);
+    renderLootStatus();
+}
+
+function toggleLootEntryRemoved(ltId, index) {
+    if (!state.current || state.current.isBuiltin) return;
+    const ovr = getOrCreateLootOverride(ltId);
+    const i = ovr.removed.indexOf(index);
+    if (i >= 0) ovr.removed.splice(i, 1);
+    else        ovr.removed.push(index);
+    pruneLootOverrideIfEmpty(ltId);
+    markDirty();
+    refreshLtRow(ltId);
+    renderLootStatus();
+}
+
+function addLootEntry(ltId) {
+    if (!state.current || state.current.isBuiltin) return;
+    const ovr = getOrCreateLootOverride(ltId);
+    // Stub entry; the picker form lets the user pick item-or-table and id.
+    ovr.added.push({ min: 1, max: 1, weight: 0 });
+    markDirty();
+    refreshLtRow(ltId);
+    renderLootStatus();
+}
+
+function setAddedEntryField(ltId, addedIndex, field, rawValue) {
+    if (!state.current || state.current.isBuiltin) return;
+    const ovr = getOrCreateLootOverride(ltId);
+    const a = ovr.added[addedIndex];
+    if (!a) return;
+    const trimmed = (rawValue || '').trim();
+    const n = parseInt(trimmed, 10);
+    if (!isFinite(n) || n < 0) return;
+    a[field] = n;
+    markDirty();
+    // No re-render: the input is already showing the new value; just bump
+    // the status counters.
+    renderLootStatus();
+}
+
+// Resolves a typed item-id or sub-table-id into its full UE asset path,
+// then writes it back into the added entry. Returns false (and shows a
+// transient hint) if the id wasn't recognized.
+function confirmAddedEntry(ltId, addedIndex, type, target) {
+    if (!state.current || state.current.isBuiltin) return false;
+    const ovr = getOrCreateLootOverride(ltId);
+    const a = ovr.added[addedIndex];
+    if (!a) return false;
+    const id = (target || '').trim();
+    if (!id) return false;
+
+    if (type === 'item') {
+        const path = state.itemPathsByItemId.get(id);
+        if (!path) return false;
+        a.lootItem = path;
+        a.lootTable = 'None';
+    } else {
+        const path = state.tablePathsByLtId.get(id);
+        if (!path) return false;
+        a.lootTable = path;
+        a.lootItem = 'None';
+    }
+    markDirty();
+    refreshLtRow(ltId);
+    renderLootStatus();
+    return true;
+}
+
+function deleteAddedEntry(ltId, addedIndex) {
+    if (!state.current || state.current.isBuiltin) return;
+    const ovr = state.current.lootOverrides && state.current.lootOverrides[ltId];
+    if (!ovr || !ovr.added) return;
+    ovr.added.splice(addedIndex, 1);
+    pruneLootOverrideIfEmpty(ltId);
+    markDirty();
+    refreshLtRow(ltId);
+    renderLootStatus();
+}
+
+// Re-renders just one LT card. Used by all loot mutations to avoid blowing
+// up the entire 1500-row list.
+function refreshLtRow(ltId) {
+    const ul = document.getElementById('lt-list');
+    const old = ul && ul.querySelector('.lt[data-lt-id="' + cssEsc(ltId) + '"]');
+    if (!old) return;
+    const lt = state.lootById.get(ltId);
+    if (!lt) return;
+    const fresh = buildLtRow(lt);
+    old.replaceWith(fresh);
+}
+
 // ---------- Mutations ----------------------------------------------------
 
 function setStackSizeFromUI() {
@@ -596,11 +1281,13 @@ async function onSave() {
         id: p.id, name: p.name, description: p.description,
         createdAt: p.createdAt,
         globals: p.globals, overrides: p.overrides,
+        lootOverrides: p.lootOverrides,
     };
     const updated = await api('PUT', '/api/profiles/' + encodeURIComponent(p.id), body);
     state.current = updated;
-    state.current.globals   = state.current.globals   || {};
-    state.current.overrides = state.current.overrides || {};
+    state.current.globals       = state.current.globals       || {};
+    state.current.overrides     = state.current.overrides     || {};
+    state.current.lootOverrides = state.current.lootOverrides || {};
     state.isDirty = false;
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -617,6 +1304,7 @@ async function onNew() {
         description: '',
         globals: {},
         overrides: {},
+        lootOverrides: {},
     });
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -654,6 +1342,11 @@ async function onDelete() {
         state.current = null;
         renderItems();
         renderStatus();
+        if (state.activeTab === 'loot') {
+            renderLootGlobals();
+            renderLootTables();
+            renderLootStatus();
+        }
         updateButtons();
         renderProfileMeta();
     }
@@ -750,4 +1443,101 @@ function bindHandlers() {
             setOverrideFromInput(e.target.dataset.itemId, e.target.value);
         }
     });
+
+    // Tabs.
+    for (const b of document.querySelectorAll('.tab')) {
+        b.addEventListener('click', () => setActiveTab(b.dataset.tab));
+    }
+
+    // Loot-globals: per-category multiplier + reset.
+    document.getElementById('loot-globals').addEventListener('input', e => {
+        const cat = e.target.dataset && e.target.dataset.lootCat;
+        if (cat) setLootGlobalFromInput(cat, e.target.value);
+    });
+    document.getElementById('loot-globals').addEventListener('click', e => {
+        const cat = e.target.dataset && e.target.dataset.resetCat;
+        if (cat) resetLootGlobalCategory(cat);
+    });
+
+    // Loot filters.
+    document.getElementById('lt-filter').addEventListener('input',           renderLootTables);
+    document.getElementById('lt-filter-category').addEventListener('change', renderLootTables);
+    document.getElementById('lt-filter-type').addEventListener('change',     renderLootTables);
+    document.getElementById('lt-filter-changed').addEventListener('change',  renderLootTables);
+
+    // Delegated handlers on the LT list -- one set covers expand/collapse,
+    // per-entry edits, removals, and add-form interactions.
+    const ltList = document.getElementById('lt-list');
+    ltList.addEventListener('click', onLtListClick);
+    ltList.addEventListener('input', onLtListInput);
+}
+
+function onLtListClick(e) {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+
+    // Expand / collapse on header click (but not when clicking the input/button).
+    if (t.closest && t.closest('.lt-header') && !t.matches('input, button, select')) {
+        const header = t.closest('.lt-header');
+        const ltId = header.dataset.toggle;
+        if (state.expandedLts.has(ltId)) state.expandedLts.delete(ltId);
+        else                              state.expandedLts.add(ltId);
+        refreshLtRow(ltId);
+        return;
+    }
+
+    // Toggle remove on a vanilla entry.
+    if (t.dataset.toggleRemove) {
+        toggleLootEntryRemoved(t.dataset.toggleRemove, parseInt(t.dataset.index, 10));
+        return;
+    }
+
+    // Add a stub entry (renders the picker form).
+    if (t.dataset.addEntry) {
+        addLootEntry(t.dataset.addEntry);
+        return;
+    }
+
+    // Confirm a freshly-typed picker (resolves id -> asset path).
+    if (t.dataset.confirmAdded) {
+        const ltId = t.dataset.confirmAdded;
+        const idx  = parseInt(t.dataset.addedIndex, 10);
+        const row  = t.closest('.lt-entry');
+        const sel  = row.querySelector('select[data-add-form-type]');
+        const inp  = row.querySelector('input[data-add-form-target]');
+        const ok = confirmAddedEntry(ltId, idx, sel.value, inp.value);
+        if (!ok) {
+            inp.style.borderColor = 'var(--danger)';
+            setTimeout(() => { inp.style.borderColor = ''; }, 1200);
+        }
+        return;
+    }
+
+    // Delete an added entry outright.
+    if (t.dataset.deleteAdded) {
+        deleteAddedEntry(t.dataset.deleteAdded, parseInt(t.dataset.addedIndex, 10));
+        return;
+    }
+}
+
+function onLtListInput(e) {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+
+    if (t.dataset.editField) {
+        setLootEntryFieldFromInput(
+            t.dataset.ltId,
+            parseInt(t.dataset.index, 10),
+            t.dataset.editField,
+            t.value);
+        return;
+    }
+    if (t.dataset.addedField) {
+        setAddedEntryField(
+            t.dataset.ltId,
+            parseInt(t.dataset.addedIndex, 10),
+            t.dataset.addedField,
+            t.value);
+        return;
+    }
 }
