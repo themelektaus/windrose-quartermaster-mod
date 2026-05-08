@@ -63,8 +63,8 @@ async function boot() {
     bindHandlers();
 
     // Probe the mod root. If both Sources/Vanilla and Icons are populated
-    // we go straight into the configurator; otherwise the overlay takes
-    // over and auto-runs the missing steps.
+    // we go straight into the configurator; otherwise the setup overlay
+    // takes over and the user clicks "Run setup" themselves.
     const status = await api('GET', '/api/setup/status');
     if (status.isReady) {
         await loadAppData();
@@ -72,11 +72,8 @@ async function boot() {
     }
 
     showSetupOverlay(status);
-    // Auto-run when we have everything we need to actually run -- otherwise
-    // the user has to fix something first (drop a .usmap, install Windrose).
-    if (canAutoRunSetup(status)) {
-        await runSetup(false);
-    }
+    // No auto-run -- the user explicitly clicks "Run setup". The Run button
+    // is enabled when prerequisites are satisfied (see canAutoRunSetup).
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -94,6 +91,13 @@ function showSetupOverlay(status) {
     document.getElementById('setup-overlay').hidden = false;
     renderSetupChecks(status);
     renderSetupError(status);
+    syncSetupRunEnabled(status);
+}
+
+function syncSetupRunEnabled(status) {
+    // Run button only useful when prereqs are present; otherwise the user
+    // needs to fix something first and click Re-check.
+    document.getElementById('setup-run').disabled = !canAutoRunSetup(status);
 }
 
 function hideSetupOverlay() {
@@ -169,6 +173,10 @@ function bindSetupHandlers() {
     document.getElementById('setup-run').addEventListener('click', () => runSetup(false));
     document.getElementById('setup-force').addEventListener('click', () => runSetup(true));
     document.getElementById('setup-recheck').addEventListener('click', recheckSetup);
+    document.getElementById('setup-continue').addEventListener('click', async () => {
+        hideSetupOverlay();
+        await loadAppData();
+    });
 }
 
 async function recheckSetup() {
@@ -180,6 +188,7 @@ async function recheckSetup() {
     }
     renderSetupChecks(status);
     renderSetupError(status);
+    syncSetupRunEnabled(status);
 }
 
 // Streams /api/setup/run via Server-Sent Events. Each "log" event becomes
@@ -189,6 +198,9 @@ function runSetup(force) {
         const url = '/api/setup/run' + (force ? '?force=true' : '');
         clearSetupLog();
         setSetupButtonsDisabled(true);
+        // Re-hide the success-only Continue button if we're restarting.
+        document.getElementById('setup-continue').hidden = true;
+        document.getElementById('setup-run').hidden = false;
         appendSetupLog((force ? 'Force re-running ' : 'Running ') + 'setup...', 'step');
 
         // Native EventSource only supports GET; we want POST to keep the
@@ -242,12 +254,12 @@ function runSetup(force) {
                 let payload = {};
                 try { payload = JSON.parse(data); } catch (e) { /* keep empty */ }
                 if (payload.success) {
-                    appendSetupLog('Setup complete.', 'ok');
-                    setTimeout(async () => {
-                        hideSetupOverlay();
-                        await loadAppData();
-                        resolve();
-                    }, 350);
+                    appendSetupLog('Setup complete. Click "Continue" to open the configurator.', 'ok');
+                    setSetupButtonsDisabled(false);
+                    document.getElementById('setup-run').hidden = true;
+                    document.getElementById('setup-force').hidden = false;
+                    document.getElementById('setup-continue').hidden = false;
+                    resolve();
                 } else {
                     appendSetupLog('Setup failed: ' + (payload.error || 'unknown'), 'err');
                     setSetupButtonsDisabled(false);
@@ -599,7 +611,7 @@ async function onNew() {
     const created = await api('POST', '/api/profiles', {
         name,
         description: '',
-        globals: { stackSize: { multiplier: 4 } },
+        globals: {},
         overrides: {},
     });
     state.profiles = await api('GET', '/api/profiles');
@@ -650,6 +662,7 @@ async function onBuild() {
             await onSave();
         }
     }
+    setFooterCollapsed(false);  // build always opens the log so output is visible
     setBuildLog([{ kind: 'info', msg: 'Building (this may take 1-2 seconds)...' }]);
     document.getElementById('btn-build').disabled = true;
 
@@ -684,6 +697,13 @@ function setBuildLog(lines) {
     ).join('\n');
 }
 
+function setFooterCollapsed(collapsed) {
+    const footer = document.getElementById('footer');
+    const btn    = document.getElementById('footer-toggle');
+    footer.classList.toggle('collapsed', collapsed);
+    btn.setAttribute('aria-expanded', String(!collapsed));
+}
+
 // ---------- Bindings -----------------------------------------------------
 
 function bindHandlers() {
@@ -702,6 +722,11 @@ function bindHandlers() {
     document.getElementById('btn-save').addEventListener('click',      onSave);
     document.getElementById('btn-delete').addEventListener('click',    onDelete);
     document.getElementById('btn-build').addEventListener('click',     onBuild);
+
+    document.getElementById('footer-toggle').addEventListener('click', () => {
+        const isCollapsed = document.getElementById('footer').classList.contains('collapsed');
+        setFooterCollapsed(!isCollapsed);
+    });
 
     for (const r of document.querySelectorAll('input[name="ssmode"]')) {
         r.addEventListener('change', setStackSizeFromUI);

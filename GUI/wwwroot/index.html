@@ -23,9 +23,10 @@
       <div id="setup-error" class="setup-error" hidden></div>
       <pre id="setup-log" class="setup-log"></pre>
       <div class="setup-actions">
-        <button id="setup-run"   type="button" class="primary">Run setup</button>
-        <button id="setup-force" type="button" hidden>Re-run all steps</button>
-        <button id="setup-recheck" type="button">Re-check</button>
+        <button id="setup-run"      type="button" class="primary">Run setup</button>
+        <button id="setup-continue" type="button" class="primary" hidden>Continue</button>
+        <button id="setup-force"    type="button" hidden>Re-run all steps</button>
+        <button id="setup-recheck"  type="button">Re-check</button>
       </div>
     </div>
   </div>
@@ -101,10 +102,15 @@
     </section>
   </main>
 
-  <footer>
-    <h2>Build Log</h2>
-    <pre id="build-log">No build yet. Press "Build .pak" to run the pipeline.</pre>
-    <p class="footer-links">Debug view: <a href="/items-test.html">items-test.html</a></p>
+  <footer id="footer" class="collapsed">
+    <button id="footer-toggle" type="button" class="footer-toggle" aria-expanded="false">
+      <span class="chevron"></span>
+      <span>Build Log</span>
+    </button>
+    <div class="footer-body">
+      <pre id="build-log">No build yet. Press "Build .pak" to run the pipeline.</pre>
+      <p class="footer-links">Debug view: <a href="/items-test.html">items-test.html</a></p>
+    </div>
   </footer>
 
   <script src="app.js"></script>
