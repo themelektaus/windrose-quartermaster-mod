@@ -13,7 +13,20 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _url = url;
+        ApplyStartupBounds();
         Loaded += OnLoadedAsync;
+    }
+
+    // 5% padding around the primary work area (taskbar excluded), centered.
+    // WorkArea is in DIPs, matching Window.Left/Top/Width/Height units.
+    private void ApplyStartupBounds()
+    {
+        var wa = SystemParameters.WorkArea;
+        const double pad = 0.05;
+        Width = wa.Width * (1.0 - 2.0 * pad);
+        Height = wa.Height * (1.0 - 2.0 * pad);
+        Left = wa.Left + wa.Width * pad;
+        Top = wa.Top + wa.Height * pad;
     }
 
     private async void OnLoadedAsync(object sender, RoutedEventArgs e)
