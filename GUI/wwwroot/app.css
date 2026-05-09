@@ -89,6 +89,10 @@ header {
   gap: .5em;
 }
 
+header h1 {
+  width: 19em;
+}
+
 .profile-bar {
   display: flex;
   flex-wrap: wrap;
@@ -644,7 +648,8 @@ footer.collapsed .footer-body {
 
 .tabs {
   display: flex;
-  gap: .25em;
+  gap: .5em;
+  translate: 0 1em;
 }
 
 .tabs .tab {
@@ -655,7 +660,6 @@ footer.collapsed .footer-body {
   padding: var(--button-padding);
   font-weight: bold;
   text-transform: uppercase;
-  font-size: var(--font-size-small);
 }
 
 .tabs .tab:hover {
@@ -742,6 +746,14 @@ footer.collapsed .footer-body {
   gap: .5em;
   cursor: default;
   padding: .25em 0;
+}
+
+.lt.collapsed .lt-header {
+  color: var(--text-dim);
+}
+
+.lt.collapsed .lt-header:hover {
+  color: var(--text);
 }
 
 .lt-header .chevron {
