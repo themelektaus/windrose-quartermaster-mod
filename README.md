@@ -2,12 +2,12 @@
 
 Configurator + build pipeline for JSON-based mods for
 [Windrose](https://www.nexusmods.com/windrose). A small web GUI lets you
-edit profiles -- a profile bundles item-stack-size tweaks and loot-table
-edits (with more domains to come) -- and produces a single `_P.pak` you
+edit profiles - a profile bundles item-stack-size tweaks and loot-table
+edits (with more domains to come) - and produces a single `_P.pak` you
 drop into the `~mods` folder.
 
 Vanilla values are extracted directly from the game's main pak file
-(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) -- no external
+(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) - no external
 reference mod needed.
 
 For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
@@ -16,22 +16,22 @@ For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
 
 ## Prerequisites
 
-- **.NET 10 SDK** (or newer preview) -- everything is C# now.
-- **Windrose installed via Steam** -- auto-detected via the registry +
+- **.NET 10 SDK** (or newer preview) - everything is C# now.
+- **Windrose installed via Steam** - auto-detected via the registry +
   `libraryfolders.vdf`. Dedicated-server / non-Steam installs work too,
   you just need to point at a pak path.
-- **CUE4Parse submodule** -- needed by the icon extractor:
+- **CUE4Parse submodule** - needed by the icon extractor:
   ```powershell
   git submodule update --init Tools/CUE4Parse
   ```
-- **A UE5 `*.usmap` file in the mod root** -- generated once by UE4SS via
+- **A UE5 `*.usmap` file in the mod root** - generated once by UE4SS via
   the built-in dumper. With UE4SS' Keybinds mod active, press
   `Ctrl+Num6` in-game; the dumper writes a file like
   `R5-5.6.1-0+UE5-<hash>.usmap` next to `UE4SS.exe`. Copy that file into
   the mod root.
 
 `repak.exe` is auto-downloaded (pinned v0.2.3, SHA256-verified) on first
-use. There are no PowerShell scripts left -- everything runs through the
+use. There are no PowerShell scripts left - everything runs through the
 GUI or the headless CLI shim.
 
 ---
@@ -53,7 +53,7 @@ log into the page. ~30-90 seconds total. Subsequent launches skip
 straight into the configurator.
 
 The dropdown shows 11 built-in profiles (`x2`...`x10`, `999`, `9999`)
-that reproduce the legacy variant grid. Built-ins are read-only -- click
+that reproduce the legacy variant grid. Built-ins are read-only - click
 **Duplicate** to create an editable copy.
 
 For each profile you can:

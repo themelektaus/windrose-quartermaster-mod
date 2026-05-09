@@ -1,4 +1,4 @@
-# Windrose Quartermaster -- Details
+# Windrose Quartermaster - Details
 
 Configurator + build pipeline for JSON-based Windrose mods (item stack
 sizes etc.) from a vanilla snapshot extracted out of the game's main pak.
@@ -39,7 +39,7 @@ cd 'E:\Windrose\Mods\Stack Size'
 git submodule update --init Tools/CUE4Parse
 ```
 
-That's it. **No PowerShell scripts to run** -- the first time you start
+That's it. **No PowerShell scripts to run** - the first time you start
 the GUI it auto-runs the dump + icon extraction:
 
 ```powershell
@@ -141,7 +141,7 @@ dotnet run --project GUI -- --test-patcher --multiplier 4 --out .\.build-tmp\ins
 
 ## 5. HTTP API
 
-The GUI is a thin shell over a small REST API -- handy if you want to
+The GUI is a thin shell over a small REST API - handy if you want to
 drive builds from another tool:
 
 | Method | Path | Purpose |
@@ -163,10 +163,10 @@ edit the clone.
 
 The `/api/setup/run` stream emits two event types:
 
-- `event: log` -- one log line per frame. Step boundaries are tagged with
+- `event: log` - one log line per frame. Step boundaries are tagged with
   `[step:start name=<dump|icons>] ...` and `[step:end name=... ok=true|false]`
   so the frontend (or any consumer) can render collapsible sections.
-- `event: done` -- terminal frame, payload is `{success: bool, error?: string}`.
+- `event: done` - terminal frame, payload is `{success: bool, error?: string}`.
 
 A simple-flight guard prevents concurrent setup runs: a second
 `POST /api/setup/run` while one is in progress returns `409`.
@@ -196,7 +196,7 @@ grow:
   (`globals.weight = { ... }`) and a field on `ItemOverride`
   (`overrides[id].weight`); old profiles stay backward-compatible
   because missing fields are simply `null`.
-- new globals modes: extend `StackSizeGlobal` -- the resolver picks
+- new globals modes: extend `StackSizeGlobal` - the resolver picks
   `Absolute` over `Multiplier` already; add new branches as needed.
 
 User profiles live at `Profiles\<id>.json` (gitignored). Builtins live at
@@ -252,7 +252,7 @@ Stack Size\
 | `CUE4Parse submodule is not initialized` | First clone forgot the submodule | `git submodule update --init Tools/CUE4Parse` |
 | `No *.usmap file found` | Icon extractor needs a UE5 mappings file | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
-| `Profile produces no changes -- nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
+| `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
 | `Builtin profiles cannot be modified` | Tried to edit a built-in profile in the GUI | Click `Duplicate` first; user copies are editable |
 
 ---
