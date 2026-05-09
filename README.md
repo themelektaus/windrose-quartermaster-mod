@@ -20,10 +20,10 @@ For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
 - **Windrose installed via Steam** - auto-detected via the registry +
   `libraryfolders.vdf`. Dedicated-server / non-Steam installs work too,
   you just need to point at a pak path.
-- **CUE4Parse submodule** - needed by the icon extractor:
-  ```powershell
-  git submodule update --init Tools/CUE4Parse
-  ```
+- **Git** on the PATH - the configurator transparently runs
+  `git submodule update --init Tools/CUE4Parse` on first use to pull the
+  CUE4Parse reader the icon extractor needs. (No need to do it yourself,
+  but the binary has to be reachable.)
 - **A UE5 `*.usmap` file in the mod root** - generated once by UE4SS via
   the built-in dumper. With UE4SS' Keybinds mod active, press
   `Ctrl+Num6` in-game; the dumper writes a file like

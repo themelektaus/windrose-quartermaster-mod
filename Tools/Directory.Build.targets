@@ -1,0 +1,29 @@
+<Project>
+
+  <!--
+    Skip the CUE4Parse-Natives cmake build.
+
+    The CUE4Parse submodule (Tools/CUE4Parse/CUE4Parse/CUE4Parse.csproj)
+    defines a `Build-Natives` target with `BeforeTargets="BeforeBuild"`
+    that shells out to cmake to compile the Oodle/ACL/ZSTD decompression
+    DLL. cmake is NOT a typical Windows install, so most users hit a
+    confusing 'cmake not found' message during `dotnet publish`. The
+    submodule is graceful about it (IgnoreExitCode + "Continuing without
+    it" message), but the noise is annoying and the natives aren't
+    actually needed for the Quartermaster icon-extraction path: we
+    only read Windrose UTexture2D + localized strings, both of which
+    the managed CUE4Parse code handles.
+
+    MSBuild loads `Directory.Build.targets` AFTER the body of the
+    project file, so a same-named target here overrides the one defined
+    in CUE4Parse.csproj. Side-effect on other Tools/* projects is nil
+    (they don't define `Build-Natives`, so the empty target is a
+    no-op for them).
+
+    If you ever do need the natives (e.g. a pak that uses Oodle blocks),
+    remove this file or comment out the target below; cmake will be
+    called again as the upstream submodule intended.
+  -->
+  <Target Name="Build-Natives" />
+
+</Project>

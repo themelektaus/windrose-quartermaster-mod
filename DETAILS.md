@@ -12,9 +12,9 @@ of your server or client.
 | What | Why | Required? |
 |---|---|---|
 | **.NET 10 SDK** (preview) | Builds the GUI + QuartermasterCore + IconExtractor | yes |
-| **Internet access** (one-time) | Auto-downloads `repak.exe` v0.2.3 from [trumank/repak](https://github.com/trumank/repak/releases) on first use; CUE4Parse pulls Oodle from Epic's CDN as well | yes (first run only) |
+| **Internet access** (one-time) | Auto-downloads `repak.exe` v0.2.3 from [trumank/repak](https://github.com/trumank/repak/releases) and clones the CUE4Parse submodule on first use | yes (first run only) |
+| **Git** on PATH | Used by the icon-extractor preflight to pull the CUE4Parse submodule transparently (`git submodule update --init Tools/CUE4Parse`) | yes (icons only) |
 | **Windrose game/server install** | Source for the vanilla pak | yes |
-| **CUE4Parse submodule** | Read UE5 IoStore containers when extracting icons | yes (icons only) |
 | **UE4SS** in the game | Generate the `.usmap` file CUE4Parse needs | yes (icons only) |
 
 The Steam install of Windrose is auto-detected via the Windows registry
@@ -32,15 +32,14 @@ one used by every other Windrose modding tool.
 ## 2. Setup after cloning
 
 ```powershell
-git clone <repo-url> 'E:\Windrose\Mods\Stack Size'
-cd 'E:\Windrose\Mods\Stack Size'
-
-# CUE4Parse submodule (needed by the icon extractor only)
-git submodule update --init Tools/CUE4Parse
+git clone <repo-url> 'E:\Windrose\Mods\Quartermaster'
+cd 'E:\Windrose\Mods\Quartermaster'
 ```
 
-That's it. **No PowerShell scripts to run** - the first time you start
-the GUI it auto-runs the dump + icon extraction:
+That's it. The CUE4Parse submodule is fetched automatically on first
+icon-extraction run -- no need for `git submodule update --init` by
+hand. **No PowerShell scripts to run** - the first time you start the
+GUI it auto-runs the dump + icon extraction:
 
 ```powershell
 cd .\GUI
@@ -249,7 +248,8 @@ Stack Size\
 |---|---|---|
 | `SHA256 mismatch for repak_cli-*.zip` | Download corrupted, or trumank rotated the pinned release | Delete `repak.exe` and retry; if it persists, bump `PinnedVersion` in `Tools\QuartermasterCore\RepakResolver.cs` |
 | `Could not find a Windrose vanilla pak under any Steam library` | Windrose isn't installed via Steam, or it's in a non-standard location Steam doesn't track | Install Windrose, or pass an explicit pak path through the API/CLI |
-| `CUE4Parse submodule is not initialized` | First clone forgot the submodule | `git submodule update --init Tools/CUE4Parse` |
+| `git not found in PATH` during icon setup | Auto-init of the CUE4Parse submodule needs git | Install Git for Windows from https://git-scm.com/download/win, or run `git submodule update --init Tools/CUE4Parse` from another machine and copy the result over |
+| `Cannot auto-initialize the CUE4Parse submodule` (no .git directory) | The mod root was downloaded as a zip, not cloned via git | Re-clone the repo (`git clone --recursive ...`) or download CUE4Parse manually from https://github.com/FabianFG/CUE4Parse and place it under `Tools/CUE4Parse/` |
 | `No *.usmap file found` | Icon extractor needs a UE5 mappings file | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
 | `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |

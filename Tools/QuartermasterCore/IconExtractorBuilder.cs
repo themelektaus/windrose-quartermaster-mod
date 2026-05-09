@@ -41,17 +41,16 @@ namespace Windrose.Quartermaster.Core
                     "IconExtractor project not found: " + csproj);
             }
 
-            // CUE4Parse submodule preflight -- give a useful hint instead
-            // of letting `dotnet publish` fail with a cryptic NU1100.
+            // CUE4Parse submodule preflight -- transparently `git submodule
+            // update --init` if the submodule isn't checked out yet, so a
+            // fresh clone "just works" without the user knowing about
+            // submodules. If git itself isn't on PATH or the repo isn't a
+            // clone (e.g. zip download), surface a clear hint.
             var cue4parseCsproj = Path.Combine(_modRoot, "Tools", "CUE4Parse",
                 "CUE4Parse", "CUE4Parse.csproj");
             if (!File.Exists(cue4parseCsproj))
             {
-                throw new FileNotFoundException(
-                    "CUE4Parse submodule is not initialized: " + cue4parseCsproj +
-                    " is missing.\nRun this once from the modding root:\n\n" +
-                    "  git submodule update --init Tools/CUE4Parse\n\n" +
-                    "(Or pass --recursive on the original `git clone`.)");
+                EnsureCUE4ParseSubmodule(cue4parseCsproj);
             }
 
             LogLine("csproj : " + csproj);
@@ -66,6 +65,79 @@ namespace Windrose.Quartermaster.Core
             }
             LogLine("Built: " + exePath);
             return exePath;
+        }
+
+        // Initializes the CUE4Parse git submodule into Tools/CUE4Parse/.
+        // Mirrors `git submodule update --init Tools/CUE4Parse` run from the
+        // mod root. Streams git's output through the Log callback so the
+        // setup overlay shows the clone progress live. Throws with an
+        // actionable message when git isn't on PATH or when the mod root
+        // isn't actually a git clone.
+        void EnsureCUE4ParseSubmodule(string expectedCsproj)
+        {
+            LogLine("CUE4Parse submodule not initialized -- running git submodule update --init");
+
+            var dotGit = Path.Combine(_modRoot, ".git");
+            if (!Directory.Exists(dotGit) && !File.Exists(dotGit))
+            {
+                throw new InvalidOperationException(
+                    "Cannot auto-initialize the CUE4Parse submodule: " + _modRoot +
+                    " is not a git clone (no .git directory).\n\n" +
+                    "Either re-clone the repository with `git clone --recursive ...`, " +
+                    "or download CUE4Parse manually from " +
+                    "https://github.com/FabianFG/CUE4Parse and place it under " +
+                    "Tools/CUE4Parse/.");
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = _modRoot,
+            };
+            psi.ArgumentList.Add("submodule");
+            psi.ArgumentList.Add("update");
+            psi.ArgumentList.Add("--init");
+            psi.ArgumentList.Add("--progress");
+            psi.ArgumentList.Add("Tools/CUE4Parse");
+
+            Process proc;
+            try
+            {
+                proc = Process.Start(psi);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "git not found in PATH. Install Git for Windows from " +
+                    "https://git-scm.com/download/win, or initialize the " +
+                    "submodule manually:\n\n" +
+                    "  git submodule update --init Tools/CUE4Parse",
+                    ex);
+            }
+
+            proc.OutputDataReceived += (s, e) => { if (e.Data != null) LogLine(e.Data); };
+            proc.ErrorDataReceived  += (s, e) => { if (e.Data != null) LogLine(e.Data); };
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            proc.WaitForExit();
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    "git submodule update --init Tools/CUE4Parse failed (exit "
+                    + proc.ExitCode + "). Check the log above for details.");
+            }
+
+            if (!File.Exists(expectedCsproj))
+            {
+                throw new InvalidOperationException(
+                    "git submodule update completed, but " + expectedCsproj +
+                    " is still missing. The .gitmodules entry may be out of date.");
+            }
+            LogLine("CUE4Parse submodule initialized.");
         }
 
         void RunDotnetPublish(string csproj, string publishDir)
