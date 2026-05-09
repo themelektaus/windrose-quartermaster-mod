@@ -74,8 +74,26 @@ public static class Program
             : Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "../.."));
         var iconsDir = Path.Combine(resolvedRoot, "Icons");
 
-        app.UseDefaultFiles();
-        app.UseStaticFiles();
+        // Static files: by default UseStaticFiles serves from
+        // ContentRoot/wwwroot. For `dotnet run --project GUI/Web`,
+        // ContentRoot = GUI/Web/, so the default works. For the WPF wrapper,
+        // ContentRoot = the App's bin directory, so we have to point the
+        // file provider at the Web project's wwwroot explicitly -- otherwise
+        // the WebView2 lands on a 404.
+        var webRootOverride = !string.IsNullOrEmpty(repoRoot)
+            ? Path.Combine(resolvedRoot, "GUI", "Web", "wwwroot")
+            : null;
+        if (webRootOverride != null && Directory.Exists(webRootOverride))
+        {
+            var webFp = new PhysicalFileProvider(webRootOverride);
+            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = webFp });
+            app.UseStaticFiles(new StaticFileOptions { FileProvider = webFp });
+        }
+        else
+        {
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+        }
 
         // Icons live outside wwwroot (they're produced by IconExtractor.exe
         // into the repo's Icons/ folder). Mount them at /Icons/* so the
