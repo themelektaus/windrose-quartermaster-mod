@@ -807,13 +807,44 @@ function filterLootTables() {
     const chg = document.getElementById('lt-filter-changed').value;
 
     return state.lootTables.filter(lt => {
-        if (q && !lt.id.toLowerCase().includes(q)) return false;
+        if (q && !ltMatchesQuery(lt, q)) return false;
         if (fc && lt.category !== fc) return false;
         if (ft && lt.type !== ft) return false;
         if (chg === 'changed'    && !computeLtChanged(lt))    return false;
         if (chg === 'overridden' && !computeLtOverridden(lt)) return false;
         return true;
     });
+}
+
+// LT search matches the table id itself plus what the user actually sees
+// rendered inside the table: each entry's item id + display name (so typing
+// "banana" finds every chest/foliage/mob that drops it) and each sub-table
+// reference id (so typing a sub-table name finds the orchestrator tables
+// pulling it in). Added entries from the current profile are searched too,
+// so a freshly-added drop is discoverable without rebuilding the index.
+function ltMatchesQuery(lt, q) {
+    if (lt.id.toLowerCase().includes(q)) return true;
+    for (const e of lt.entries || []) {
+        if (entryMatchesQuery(e, q)) return true;
+    }
+    const ovr = state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id];
+    if (ovr && ovr.added) {
+        for (const a of ovr.added) {
+            if (entryMatchesQuery(a, q)) return true;
+        }
+    }
+    return false;
+}
+
+function entryMatchesQuery(e, q) {
+    if (e.lootItemId && e.lootItemId.toLowerCase().includes(q)) return true;
+    if (e.lootTableId && e.lootTableId.toLowerCase().includes(q)) return true;
+    if (e.lootItemId) {
+        const item = state.itemsById && state.itemsById.get(e.lootItemId);
+        const name = item && item.meta && item.meta.name;
+        if (name && name.toLowerCase().includes(q)) return true;
+    }
+    return false;
 }
 
 function renderLootTables() {
@@ -1060,8 +1091,6 @@ function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
                 (isReadonly ? ' disabled' : '') + '>' +
             '<span class="vanilla-hint">new</span>' +
             '<div class="row-actions">' +
-                '<button type="button" data-confirm-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                    (isReadonly ? ' disabled' : '') + '>set</button>' +
                 '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
                     (isReadonly ? ' disabled' : '') + '>x</button>' +
             '</div>' +
@@ -1238,8 +1267,10 @@ function openPicker(input, ltId, addedIndex, mode) {
     closePicker();
     state.picker = { input, ltId, addedIndex, type: mode };
     populatePicker(input.value);
-    positionPicker(input);
+    // Unhide BEFORE positioning so getBoundingClientRect() reports real
+    // dimensions (the [hidden] CSS rule sets display:none -> rect would be 0).
     document.getElementById('picker-dropdown').hidden = false;
+    positionPicker(input);
 }
 
 function closePicker() {
@@ -1255,11 +1286,24 @@ function positionPicker(input) {
     const dd = document.getElementById('picker-dropdown');
     if (!dd || !input) return;
     const rect = input.getBoundingClientRect();
-    dd.style.left = rect.left + 'px';
-    dd.style.top  = (rect.bottom + 2) + 'px';
     dd.style.minWidth = Math.max(rect.width, 320) + 'px';
 
-    // Don't go off the right edge of the viewport.
+    // Measure required height now that content + minWidth are set. Reset top
+    // first so measurement isn't skewed by a previous position.
+    dd.style.top = '0px';
+    const ddHeight = dd.getBoundingClientRect().height;
+
+    // Flip up if there's not enough room below the input but more above.
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    const flipUp = ddHeight > spaceBelow && spaceAbove > spaceBelow;
+    dd.style.top = (flipUp
+        ? Math.max(8, rect.top - ddHeight - 2)
+        : rect.bottom + 2) + 'px';
+
+    // Horizontal: anchor under the input, then nudge left if it would
+    // overshoot the right viewport edge.
+    dd.style.left = rect.left + 'px';
     const ddRect = dd.getBoundingClientRect();
     const overshootRight = ddRect.right - window.innerWidth + 8;
     if (overshootRight > 0) {
@@ -1274,12 +1318,10 @@ function populatePicker(query) {
     const dd = document.getElementById('picker-dropdown');
     if (!dd || !state.picker) return;
     const q = (query || '').toLowerCase().trim();
-    const MAX = 100;
     const rows = [];
 
     if (state.picker.type === 'table') {
         for (const lt of state.lootTables) {
-            if (rows.length >= MAX) break;
             if (q && !lt.id.toLowerCase().includes(q)) continue;
             const subtitle =
                 (lt.category || '') +
@@ -1299,7 +1341,6 @@ function populatePicker(query) {
         // them). Every item has an asset path (server derives it from the
         // on-disk source layout), so we can serialize any pick the user makes.
         for (const item of state.items) {
-            if (rows.length >= MAX) break;
             if (!state.itemPathsByItemId.has(item.id)) continue; // safety net for items without a derivable path
             const name = (item.meta && item.meta.name) || '';
             if (q && !item.id.toLowerCase().includes(q) && !name.toLowerCase().includes(q)) continue;
@@ -1330,17 +1371,10 @@ function populatePicker(query) {
     }
 }
 
-// Picks the highlighted entry into the active picker's input. Caller is
-// responsible for closing the picker afterwards.
-function pickPickerOption(id) {
-    if (!state.picker || !id) return;
-    state.picker.input.value = id;
-    state.picker.input.focus();
-}
-
 // Reflects the current picker-type select state into the target input:
 // switches data-picker-mode, updates placeholder, and (for nodrop) hides
-// the input entirely since there's nothing to type.
+// the input entirely since there's nothing to type. "No drop" auto-confirms
+// the entry on selection -- there's nothing to pick from a list.
 function syncPickerInputToType(selectEl) {
     const wrap = selectEl.closest('.picker-row');
     if (!wrap) return;
@@ -1349,17 +1383,26 @@ function syncPickerInputToType(selectEl) {
     const mode = selectEl.value;
     input.dataset.pickerMode = mode;
     input.value = '';
+
     if (mode === 'nodrop') {
-        input.hidden = true;
-    } else {
-        input.hidden = false;
-        input.placeholder = mode === 'table'
-            ? 'Search sub-tables by id...'
-            : 'Search items by name or id...';
+        // Auto-confirm: there's no list to pick from. Close any open picker
+        // and write through to the override. This re-renders the row, so
+        // we don't need to keep updating the (about-to-be-replaced) input.
+        closePicker();
+        const ltId = input.dataset.addFormTarget;
+        const idx  = parseInt(input.dataset.addedIndex, 10);
+        confirmAddedEntry(ltId, idx, 'nodrop', '');
+        return;
     }
-    // If the dropdown is open for this same input, refresh it; if it's open
-    // for another input (or 'nodrop' was just chosen), close it.
-    if (state.picker && state.picker.input === input && mode !== 'nodrop') {
+
+    input.hidden = false;
+    input.placeholder = mode === 'table'
+        ? 'Search sub-tables by id...'
+        : 'Search items by name or id...';
+
+    // If the dropdown is open for this same input, refresh it; otherwise
+    // leave it closed (focusin will reopen).
+    if (state.picker && state.picker.input === input) {
         populatePicker(input.value);
         positionPicker(input);
     } else {
@@ -1685,23 +1728,6 @@ function onLtListClick(e) {
         return;
     }
 
-    // Confirm a freshly-typed picker (resolves id -> asset path).
-    if (t.dataset.confirmAdded) {
-        const ltId = t.dataset.confirmAdded;
-        const idx  = parseInt(t.dataset.addedIndex, 10);
-        const row  = t.closest('.lt-entry');
-        const sel  = row.querySelector('select[data-add-form-type]');
-        const inp  = row.querySelector('input[data-add-form-target]');
-        const type = sel ? sel.value : 'item';
-        const ok = confirmAddedEntry(ltId, idx, type, inp ? inp.value : '');
-        if (!ok && inp && type !== 'nodrop') {
-            inp.style.borderColor = 'var(--danger)';
-            setTimeout(() => { inp.style.borderColor = ''; }, 1200);
-        }
-        closePicker();
-        return;
-    }
-
     // Delete an added entry outright.
     if (t.dataset.deleteAdded) {
         deleteAddedEntry(t.dataset.deleteAdded, parseInt(t.dataset.addedIndex, 10));
@@ -1732,6 +1758,8 @@ function onLtListInput(e) {
     // Picker-target input: refresh the autocomplete dropdown live.
     if (t.dataset.addFormTarget && state.picker && state.picker.input === t) {
         populatePicker(t.value);
+        // Content height likely changed -> re-evaluate flip-up / overflow.
+        positionPicker(t);
     }
 }
 
@@ -1754,15 +1782,19 @@ function onLtListFocusIn(e) {
     openPicker(t, ltId, idx, mode);
 }
 
-// Click on a row in the picker dropdown -> write the id back into the input.
-// We use mousedown (not click) so we fire BEFORE the input loses focus to the
-// document-level click handler that would otherwise close the picker.
+// Click on a row in the picker dropdown -> resolve the id directly into the
+// canonical UE asset path and persist it. No intermediate "set" step: pick is
+// confirm. We use mousedown (not click) so we fire BEFORE the input loses
+// focus to the document-level click handler that would otherwise close the
+// picker.
 function onPickerClick(e) {
     const li = e.target.closest && e.target.closest('.picker-option');
     if (!li || !li.dataset.pickId) return;
-    e.preventDefault();  // keep input focused
-    pickPickerOption(li.dataset.pickId);
-    closePicker();
+    if (!state.picker) return;
+    e.preventDefault();
+    const { ltId, addedIndex, type } = state.picker;
+    closePicker();  // close before confirm; confirm re-renders the row
+    confirmAddedEntry(ltId, addedIndex, type, li.dataset.pickId);
 }
 
 // Any click outside the picker or its anchor input closes the dropdown.
