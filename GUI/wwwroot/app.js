@@ -87,9 +87,16 @@ async function loadAppData() {
 //     reuse when adding sub-table refs).
 //   * enumerate distinct categories + types for the filter dropdowns and
 //     the per-category multiplier rows in the globals panel.
+//
+// Item paths are seeded from /api/items (item.path is derived server-side
+// from the on-disk source layout, so every item has one). Vanilla LT
+// entries provide a redundant fallback for items predating the path field.
 function indexLootCrossReferences() {
     state.itemPathsByItemId = new Map();
     state.tablePathsByLtId  = new Map();
+    for (const item of state.items) {
+        if (item.path) state.itemPathsByItemId.set(item.id, item.path);
+    }
     const categoryCounts = new Map();
     const types = new Set();
     for (const lt of state.lootTables) {
@@ -1289,18 +1296,19 @@ function populatePicker(query) {
         }
     } else {
         // Items: iterate state.items (already sorted as the server returned
-        // them) but skip anything that doesn't have a known path -- the user
-        // can't reference items we don't know how to serialize.
+        // them). Every item has an asset path (server derives it from the
+        // on-disk source layout), so we can serialize any pick the user makes.
         for (const item of state.items) {
             if (rows.length >= MAX) break;
-            if (!state.itemPathsByItemId.has(item.id)) continue;
+            if (!state.itemPathsByItemId.has(item.id)) continue; // safety net for items without a derivable path
             const name = (item.meta && item.meta.name) || '';
             if (q && !item.id.toLowerCase().includes(q) && !name.toLowerCase().includes(q)) continue;
             const displayName = name || item.id;
             const subtitle =
                 item.id +
                 (item.itemClass ? ' · ' + item.itemClass : '') +
-                (item.category  ? ' · ' + item.category  : '');
+                (item.category  ? ' · ' + item.category  : '') +
+                (item.rarity   ? ' · ' + item.rarity   : '');
             const iconHtml = item.icon
                 ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
                 : '<div class="placeholder-icon">?</div>';

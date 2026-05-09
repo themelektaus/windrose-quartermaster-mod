@@ -14,6 +14,11 @@ namespace Windrose.StackSize.Gui.Endpoints;
 // effects, when available).
 public static class ItemsEndpoint
 {
+    // Marker segment in the on-disk source path. Everything below
+    // ".../Plugins/<Plugin>/Content/" maps 1:1 to the UE asset path
+    // "/<Plugin>/<rest>".
+    const string ContentSegment = "Content";
+
     public static void Map(WebApplication app, string repoRoot)
     {
         var sourcesDir = Path.Combine(repoRoot, "Sources", "Vanilla");
@@ -57,6 +62,31 @@ public static class ItemsEndpoint
         return result;
     }
 
+    // Convert a source path like
+    //   .../Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/InventoryItems/Consumables/Food/DA_CID_X.json
+    // into the canonical UE asset reference
+    //   /R5BusinessRules/InventoryItems/Consumables/Food/DA_CID_X.DA_CID_X
+    // Returns null if the path doesn't match the expected ".../Plugins/<Plugin>/Content/..." layout.
+    static string DerivePath(string jsonPath, string id)
+    {
+        var parts = jsonPath.Replace('\\', '/').Split('/');
+        // Find ".../Plugins/<Plugin>/Content/<rest>"
+        for (int i = 0; i + 2 < parts.Length; i++)
+        {
+            if (parts[i] == "Plugins" && parts[i + 2] == ContentSegment)
+            {
+                var plugin = parts[i + 1];
+                var rest = string.Join('/', parts, i + 3, parts.Length - (i + 3));
+                if (rest.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    rest = rest.Substring(0, rest.Length - ".json".Length);
+                }
+                return "/" + plugin + "/" + rest + "." + id;
+            }
+        }
+        return null;
+    }
+
     static async Task<ItemDto> TryParseItem(string iconsDir, string jsonPath, HashSet<string> availableIcons)
     {
         try
@@ -71,6 +101,7 @@ public static class ItemsEndpoint
 
             var item = new ItemDto { id = Path.GetFileNameWithoutExtension(jsonPath) };
             item.name = item.id;
+            item.path = DerivePath(jsonPath, item.id);
 
             if (root.TryGetProperty("InventoryItemGppData", out var gpp) && gpp.ValueKind == JsonValueKind.Object)
             {
