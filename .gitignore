@@ -14,6 +14,7 @@ Thumbs.db
 /Sources/
 /Testserver/
 /Tools/IconExtractor/**/
+/Tools/IconExtractor/*.zip
 /WindrosePlus/
 
 /repak.exe

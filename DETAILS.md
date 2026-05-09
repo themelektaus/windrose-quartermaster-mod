@@ -42,8 +42,7 @@ hand. **No PowerShell scripts to run** - the first time you start the
 GUI it auto-runs the dump + icon extraction:
 
 ```powershell
-cd .\GUI
-dotnet run -c Release
+dotnet run --project GUI\Web -c Release
 # -> http://localhost:17777
 ```
 
@@ -52,8 +51,8 @@ that streams live progress over Server-Sent Events. It will fail
 gracefully and explain the next step if a piece is missing (e.g. no
 `*.usmap` in the mod root, or Windrose isn't installed via Steam).
 
-For headless / CI use, `dotnet run --project GUI -- --setup` runs the
-same pipeline and prints to stdout. `--setup --force` re-runs every
+For headless / CI use, `dotnet run --project GUI\Web -- --setup` runs
+the same pipeline and prints to stdout. `--setup --force` re-runs every
 step regardless of cached state.
 
 The pipeline auto-resolves its tooling on first use:
@@ -62,21 +61,39 @@ The pipeline auto-resolves its tooling on first use:
   (`SteamLocator.cs`).
 - **`repak.exe`**: pinned v0.2.3, downloaded + SHA256-verified to
   `repak.exe` in the mod root (`RepakResolver.cs`).
-- **`IconExtractor.exe`**: `dotnet publish`'d into
+- **`IconExtractor.exe`**: in dev mode, `dotnet publish`'d into
   `Tools\IconExtractor\publish\IconExtractor.exe` from the CUE4Parse
-  submodule (`IconExtractorBuilder.cs`).
-- **`*.usmap`**: located via newest-mtime in the mod root
-  (`UsmapLocator.cs`). UE4SS dumps one when you press Ctrl+Num6 in-game.
+  submodule on first use (`IconExtractorBuilder.cs`). For deployed EXEs
+  the full `publish/` folder is shipped as an embedded zip resource and
+  extracted into `<DataRoot>\Tools\IconExtractor\publish\` on first run
+  (see `SeedIconExtractorIfMissing`) -- so an end-user machine doesn't
+  need .NET SDK / git / CUE4Parse source, just the .NET 8 desktop
+  runtime to run the framework-dependent extractor binary.
+- **`*.usmap`**: located via newest-mtime in the DataRoot
+  (`UsmapLocator.cs`). The single-file EXE ships an embedded copy that
+  gets seeded into `<DataRoot>\<filename>.usmap` on first run if the
+  data root has no usmap yet. After a game version bump, drop a fresh
+  Ctrl+Num6 dump into the data root -- the newer mtime wins, so it
+  silently supersedes the embedded fallback without any code change.
 
-Layout:
+Layout (relative to the **DataRoot** -- see Section 3 for resolution rules):
 
 ```
-.\Sources\Vanilla        ~1097 vanilla item JSONs       (gitignored)
-.\Icons                  per-item PNG + JSON sidecars   (gitignored)
-.\Profiles\_builtin      11 read-only profile templates (tracked)
-.\Profiles\<id>.json     user profiles                  (gitignored)
-.\Builds                 finished .pak files            (gitignored)
-.\.build-tmp             scratch dir for in-flight builds (gitignored)
+<DataRoot>\Sources\Vanilla         ~1097 vanilla item JSONs       (gitignored)
+<DataRoot>\Icons                   per-item PNG + JSON sidecars   (gitignored)
+<DataRoot>\Profiles\_builtin       11 read-only profile templates (tracked when DataRoot=repo;
+                                                                   seeded from embedded resources
+                                                                   when DataRoot=QuartermasterData\)
+<DataRoot>\Profiles\<id>.json      user profiles                  (gitignored)
+<DataRoot>\Builds                  legacy CLI .pak output         (gitignored, GUI builds go
+                                                                   direct to the game's ~mods/)
+<DataRoot>\.build-tmp              scratch dir for in-flight builds (gitignored)
+<DataRoot>\.webview2               WebView2 cache + cookies       (gitignored)
+<DataRoot>\Tools\IconExtractor\..  CUE4Parse-backed extractor     (built from source in dev mode;
+                                                                   seeded from embedded zip when
+                                                                   DataRoot=QuartermasterData\)
+<DataRoot>\*.usmap            UE5 mappings for CUE4Parse     (seeded from embedded on first
+                                                              run; user dump wins by mtime)
 ```
 
 ---
@@ -87,13 +104,15 @@ Two equivalent entry points share the same Kestrel host + frontend:
 
 ```powershell
 # (a) Desktop launcher (WPF + WebView2). Recommended for end users.
-cd .\App
-dotnet run -c Release
+dotnet run --project GUI\App -c Release
 
 # (b) Browser. Recommended when remote-developing or hacking the frontend.
-cd .\GUI
-dotnet run -c Release
+dotnet run --project GUI\Web -c Release
 # -> http://localhost:17777
+
+# (c) Single-file build (one .exe, ~74 MB, .NET + WebView2 native libs
+#     bundled). Output: GUI\App\bin\Publish\Quartermaster.exe.
+dotnet publish GUI\App -p:PublishProfile=win-x64
 ```
 
 The desktop launcher (`Quartermaster.exe`) hosts Kestrel **in-process** on
@@ -108,9 +127,80 @@ dialog (with the [evergreen installer URL](https://developer.microsoft.com/micro
 if the runtime is missing.
 
 Both entry points share the exact same `Program.CreateWebApp` builder --
-the WPF App project just links the GUI project, calls into it, and pins
-its own repo root via the optional `repoRoot` parameter (since the WPF
-binary's `ContentRoot` is its bin directory, not the repo root).
+the WPF App project just links the Web project, calls into it, and
+delegates DataRoot resolution to `Program.ResolveDataRoot()`. The
+resolver walks up from `AppContext.BaseDirectory` looking for a
+`Profiles\_builtin\` marker. If found, that's a dev/repo run and the
+matching ancestor folder becomes the DataRoot directly. If nothing
+matches up to the filesystem root, the EXE has been deployed somewhere
+outside its source tree, and DataRoot falls through to a sibling
+`QuartermasterData\` folder right next to the EXE -- so the data
+travels with the EXE (USB-stick portable, no per-user state hidden in
+`%APPDATA%`).
+
+We seed from `AppContext.BaseDirectory` rather than
+`Environment.CurrentDirectory` / ContentRoot on purpose: the latter
+follow whoever invoked the EXE (e.g. starting from a shell that lives
+inside the repo would give a false positive on the marker even after
+deploy). For a single-file EXE, `AppContext.BaseDirectory` is the
+launch directory (where the .exe physically sits), not the self-extract
+temp dir, which is exactly where we want `QuartermasterData\` to live.
+
+When `isDeployed=true`, the configurator copies every embedded
+`BuiltinProfile.*.json` resource into
+`<DataRoot>\Profiles\_builtin\` on every start (overwriting), so updates
+to the EXE always ship the canonical builtin set. Builtin writes are
+already 403-blocked at the API level (POST/PUT/DELETE on a builtin id
+returns Forbidden), so overwriting is safe -- no user data lives there.
+The embedded `*.usmap` resource gets a different treatment: it's only
+written if the DataRoot has no `*.usmap` yet, so a newer user-supplied
+dump (post game-update) is preserved. In dev mode (`isDeployed=false`)
+we skip both seeds: the on-disk files are git-tracked source-of-truth,
+and you're likely editing them.
+
+The frontend is similarly embedded:
+`GUI/Web/Quartermaster.Web.csproj` strips `wwwroot\**` from the
+default `<Content>` set and re-adds it as `<EmbeddedResource>`, with
+`<GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>`
+so a `ManifestEmbeddedFileProvider("/wwwroot")` resolves the original
+paths at runtime. `CreateWebApp` first probes
+`<ContentRoot>\wwwroot\index.html` -- if that exists (= `dotnet run
+--project GUI/Web`), it serves from disk so live CSS/JS edits show up
+on refresh. Otherwise it falls back to the embedded provider, which
+is the codepath every published EXE takes.
+
+The repo-root `*.usmap` file is embedded into Web.csproj alongside
+the wwwroot and builtin profiles, with `<LogicalName>Usmap.<filename>.usmap`.
+`SeedUsmapIfMissing()` reads that single resource on deployed runs.
+
+The CUE4Parse-backed icon extractor is embedded the same way -- but
+instead of a single resource we ship the entire publish output as a
+zip. `Quartermaster.Web.csproj` declares a `PublishIconExtractorForEmbed`
+target gated on `_IsPublishing`: during `dotnet publish` it runs
+`dotnet publish` against `Tools/IconExtractor/IconExtractor.csproj`,
+zips the resulting `publish/` folder into `IconExtractor.publish.zip`,
+and adds it as an `EmbeddedResource` from inside the same target (a
+top-level `<EmbeddedResource Condition="Exists(...)">` would evaluate
+the condition at project-load time, before the target had a chance to
+create the zip). On a deployed run, `SeedIconExtractorIfMissing` opens
+the zip from the assembly via `ZipArchive` and unpacks it into
+`<DataRoot>\Tools\IconExtractor\publish\` -- the existing
+`IconExtractorBuilder.Resolve()` short-circuits on the
+`IconExtractor.exe` file check and never tries to spawn `dotnet publish`
+on the end-user's machine. Plain `dotnet build` skips the pre-publish
+target entirely (so no SDK churn for everyday dev builds), and the
+in-tree `IconExtractorBuilder` keeps working as before whenever the
+source is available.
+
+The single-file publish profile lives at
+`GUI/App/Properties/PublishProfiles/win-x64.pubxml`. It enables
+`PublishSingleFile` + `IncludeNativeLibrariesForSelfExtract` (so the
+WebView2 native loader gets bundled into the .exe and self-extracted to
+a temp dir on first run) + `EnableCompressionInSingleFile` (~30%
+smaller .exe at the cost of slightly slower cold start). A
+post-publish target strips a few inevitable leftover files
+(WebView2 XML docs, Web project's deps.json/runtimeconfig.json) so the
+publish folder ends up with exactly **one** `Quartermaster.exe`.
 
 Top-level layout:
 
@@ -144,19 +234,19 @@ The GUI binary doubles as a CLI for headless / CI use:
 
 ```powershell
 # Run setup (dump + icon extraction). Skips steps that are already done.
-dotnet run --project GUI -- --setup
-dotnet run --project GUI -- --setup --force
+dotnet run --project GUI\Web -- --setup
+dotnet run --project GUI\Web -- --setup --force
 
 # Build a builtin (or any user profile, by id or display name)
-dotnet run --project GUI -- --test-patcher --profile x4
-dotnet run --project GUI -- --test-patcher --profile "My Stacks"
+dotnet run --project GUI\Web -- --test-patcher --profile x4
+dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
 
 # Direct one-shot without a profile (legacy multiplier semantics)
-dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
-dotnet run --project GUI -- --test-patcher --absolute 9999 --build-pak
+dotnet run --project GUI\Web -- --test-patcher --multiplier 4 --build-pak
+dotnet run --project GUI\Web -- --test-patcher --absolute 9999 --build-pak
 
 # Patch only (no pack), keep temp dir for inspection
-dotnet run --project GUI -- --test-patcher --multiplier 4 --out .\.build-tmp\inspect
+dotnet run --project GUI\Web -- --test-patcher --multiplier 4 --out .\.build-tmp\inspect
 ```
 
 ---
@@ -277,7 +367,7 @@ Stack Size\
 | `Could not find a Windrose vanilla pak under any Steam library` | Windrose isn't installed via Steam, or it's in a non-standard location Steam doesn't track | Install Windrose, or pass an explicit pak path through the API/CLI |
 | `git not found in PATH` during icon setup | Auto-init of the CUE4Parse submodule needs git | Install Git for Windows from https://git-scm.com/download/win, or run `git submodule update --init Tools/CUE4Parse` from another machine and copy the result over |
 | `Cannot auto-initialize the CUE4Parse submodule` (no .git directory) | The mod root was downloaded as a zip, not cloned via git | Re-clone the repo (`git clone --recursive ...`) or download CUE4Parse manually from https://github.com/FabianFG/CUE4Parse and place it under `Tools/CUE4Parse/` |
-| `No *.usmap file found` | Icon extractor needs a UE5 mappings file | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
+| `No *.usmap file found` | Icon extractor needs a UE5 mappings file. Should never happen on a deployed EXE -- one is seeded from embedded resource on first run. Only triggers in dev mode if the repo root has no `.usmap`. | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
 | `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
 | `Builtin profiles cannot be modified` | Tried to edit a built-in profile in the GUI | Click `Duplicate` first; user copies are editable |

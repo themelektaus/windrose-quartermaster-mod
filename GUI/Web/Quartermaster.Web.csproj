@@ -2,8 +2,120 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Windrose.Quartermaster.Web</RootNamespace>
+    <!--
+      Cascade self-contained when App publishes (which depends on this
+      project). _IsPublishing is set by the SDK during dotnet publish only,
+      so plain dotnet build/run keep the framework-dependent default and
+      stay symmetric with App.
+    -->
+    <SelfContained Condition="'$(_IsPublishing)' == 'true'">true</SelfContained>
+    <DebugType>embedded</DebugType>
+    <!--
+      Generate the Microsoft.Extensions.FileProviders manifest so the
+      ManifestEmbeddedFileProvider at runtime can resolve wwwroot paths
+      with their original directory structure (and we don't have to
+      reason about dot-vs-slash encoding in resource names).
+    -->
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Tools\QuartermasterCore\QuartermasterCore.csproj" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.0" />
+  </ItemGroup>
+  <!--
+    Embed wwwroot into the assembly so the single-file EXE serves the
+    frontend without needing wwwroot/ next to it on disk. ASP.NET's
+    Web SDK marks wwwroot/** as <Content> by default; we strip that
+    Content marker first so the same files end up only as embedded
+    resources (not duplicated).
+  -->
+  <ItemGroup>
+    <Content Remove="wwwroot\**" />
+    <EmbeddedResource Include="wwwroot\**" />
+  </ItemGroup>
+  <!--
+    Embed the read-only builtin profiles. They live in the repo at
+    /Profiles/_builtin/ but we ship them inside the EXE so a deployed
+    copy can seed them into <DataRoot>\Profiles\_builtin\ on first run.
+    LogicalName uses a flat "BuiltinProfile.<file>.json" naming so the
+    runtime enumeration is trivial.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Profiles\_builtin\*.json">
+      <LogicalName>BuiltinProfile.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
+    Embed the UE5 mappings file (.usmap) so a fresh copy of the EXE can
+    run setup without the user first dumping one via UE4SS Ctrl+Num6.
+    On deployed runs we write this into <DataRoot>\<filename>.usmap if
+    no .usmap is already there. Game-update story: drop a newer .usmap
+    next to the EXE in QuartermasterData\, UsmapLocator picks newest
+    by mtime so the embedded copy is silently superseded.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\*.usmap">
+      <LogicalName>Usmap.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
+    Embed a pre-published copy of IconExtractor (the CUE4Parse-backed
+    tool that turns vanilla pak entries into PNGs) so a deployed EXE can
+    seed it into <DataRoot>\Tools\IconExtractor\publish\ on first run.
+    No .NET SDK / git submodule init / CUE4Parse source needed on the
+    end-user's machine.
+
+    Build pipeline:
+      1. PublishIconExtractorForEmbed (BeforeTargets="PrepareForBuild")
+         runs `dotnet publish` on the IconExtractor project and packs
+         the publish/ folder into IconExtractor.publish.zip.
+         Only runs during `dotnet publish` of THIS project (gated by
+         _IsPublishing) so plain `dotnet build` stays cheap.
+      2. The resulting .zip is added to EmbeddedResource items inside
+         the same target so it makes it into the assembly.
+      3. At runtime in deployed mode, Program.SeedIconExtractorIfMissing
+         extracts the .zip into <DataRoot>\Tools\IconExtractor\publish\.
+
+    On a plain dev build the .zip might still exist from a prior publish.
+    We embed it anyway (cheap, ~10 MB compressed) so the cycle stays
+    consistent and the dev binaries can also serve as a portable test.
+  -->
+  <PropertyGroup>
+    <_IconExtractorProj>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\IconExtractor.csproj</_IconExtractorProj>
+    <_IconExtractorPublishDir>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\publish</_IconExtractorPublishDir>
+    <_IconExtractorZipPath>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\IconExtractor.publish.zip</_IconExtractorZipPath>
+  </PropertyGroup>
+  <Target Name="PublishIconExtractorForEmbed"
+          BeforeTargets="PrepareForBuild;BeforeCompile;CoreCompile"
+          Condition="'$(_IsPublishing)' == 'true'">
+    <Message Importance="high" Text="[Quartermaster] Publishing IconExtractor for embedding..." />
+    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained false -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
+    <Delete Files="$(_IconExtractorZipPath)" Condition="Exists('$(_IconExtractorZipPath)')" />
+    <ZipDirectory SourceDirectory="$(_IconExtractorPublishDir)" DestinationFile="$(_IconExtractorZipPath)" />
+    <Message Importance="high" Text="[Quartermaster] IconExtractor.publish.zip created at $(_IconExtractorZipPath)" />
+    <!--
+      Add the EmbeddedResource INSIDE the target. A Condition="Exists(...)"
+      on a top-level ItemGroup evaluates at project-load time, which is
+      before this target runs to create the zip, so the item would be
+      empty. Adding it here, after we've just produced the zip, gets it
+      picked up by the resource compile step that runs after BeforeCompile.
+    -->
+    <ItemGroup>
+      <EmbeddedResource Include="$(_IconExtractorZipPath)">
+        <LogicalName>IconExtractor.publish.zip</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+  <!--
+    Plain `dotnet build` path: if a zip happens to already exist (e.g.
+    from a prior publish) embed it too, so the dev-built Web.dll can
+    serve as a portable test without re-running publish. Conditions on
+    item-group items are evaluated at project load, which is fine here
+    because we don't expect this target to produce the zip.
+  -->
+  <ItemGroup Condition="'$(_IsPublishing)' != 'true' AND Exists('$(_IconExtractorZipPath)')">
+    <EmbeddedResource Include="$(_IconExtractorZipPath)">
+      <LogicalName>IconExtractor.publish.zip</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

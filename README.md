@@ -24,11 +24,12 @@ For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
   `git submodule update --init Tools/CUE4Parse` on first use to pull the
   CUE4Parse reader the icon extractor needs. (No need to do it yourself,
   but the binary has to be reachable.)
-- **A UE5 `*.usmap` file in the mod root** - generated once by UE4SS via
-  the built-in dumper. With UE4SS' Keybinds mod active, press
-  `Ctrl+Num6` in-game; the dumper writes a file like
-  `R5-5.6.1-0+UE5-<hash>.usmap` next to `UE4SS.exe`. Copy that file into
-  the mod root.
+- **A UE5 `*.usmap` file** -- only needed when running from the source
+  tree. The single-file EXE ships an embedded copy and seeds it into
+  `QuartermasterData\` automatically, so end users don't need this. For
+  game updates (UE-version bump), regenerate one with UE4SS Keybinds
+  (Ctrl+Num6 in-game) and drop it into the data root -- newest mtime
+  wins, so it transparently supersedes the embedded copy.
 
 `repak.exe` is auto-downloaded (pinned v0.2.3, SHA256-verified) on first
 use. There are no PowerShell scripts left - everything runs through the
@@ -43,8 +44,7 @@ Two equivalent ways: a desktop window (recommended) or a browser tab.
 ### Desktop launcher (WPF + WebView2)
 
 ```powershell
-cd .\App
-dotnet run -c Release
+dotnet run --project GUI\App -c Release
 ```
 
 Opens a single Quartermaster window backed by Microsoft Edge WebView2.
@@ -57,11 +57,52 @@ Windows 11 and recent Windows 10 builds. If missing, the launcher links
 to the
 [evergreen installer](https://developer.microsoft.com/microsoft-edge/webview2/).
 
+### Single-file build (one .exe to share)
+
+```powershell
+dotnet publish GUI\App -p:PublishProfile=win-x64
+```
+
+Produces a single self-contained `Quartermaster.exe` (~94 MB, all .NET +
+WebView2 native libs + frontend + builtin profiles + a default UE5
+`.usmap` + the CUE4Parse-backed icon extractor bundled, compressed) at
+`GUI\App\bin\Publish\Quartermaster.exe`. You can drop it **anywhere** --
+desktop, USB stick, `C:\Tools\`, doesn't matter. On first run a sibling
+`QuartermasterData\` folder is created **next to the EXE** so the data
+travels with it (USB-stick portable):
+
+```
+<wherever>\Quartermaster.exe
+<wherever>\QuartermasterData\
+  .webview2\                     <- WebView2 cache/cookies
+  Profiles\_builtin\             <- seeded from embedded resources every start
+  Profiles\<id>.json             <- user profiles you create
+  Sources\Vanilla\               <- extracted by setup (1097 item JSONs)
+  Icons\                         <- extracted by setup (1097 PNGs)
+  Tools\IconExtractor\publish\   <- seeded from embedded zip on first run
+  Tools\repak.exe                <- auto-downloaded from GitHub on first setup
+  *.usmap                        <- seeded from embedded resource on first run;
+                                    drop a newer one here after game updates
+```
+
+When you launch the EXE from inside the source repo (or any ancestor
+folder containing `Profiles\_builtin\`), it stays in "dev mode" and
+reads/writes against the repo paths instead. That way the standard
+`dotnet run` workflow keeps using the tracked `Profiles\_builtin\`
+files as the source of truth.
+
+> **End-user prerequisites for the portable EXE**: the .NET **8 desktop
+> runtime** must be installed (the bundled icon extractor is a
+> framework-dependent net8.0 process; the WPF host itself ships its own
+> .NET 10 runtime). Most modern Windows machines already have it via
+> Windows Update or other apps; the runtime installer is a free
+> ~70 MB download from <https://dotnet.microsoft.com/download/dotnet/8.0>.
+> No SDK, Git, or CUE4Parse source needed any more.
+
 ### Browser
 
 ```powershell
-cd .\GUI
-dotnet run -c Release
+dotnet run --project GUI\Web -c Release
 ```
 
 Then open <http://localhost:17777>.
@@ -85,7 +126,7 @@ For each profile you can:
   items that are normally locked at stack=1 (Equipment, NPCs, Ship cannons,
   Quest tokens).
 - Press **Build .pak** to run the patch + pack pipeline. The finished
-  `_P.pak` lands in `Builds\` after roughly a second.
+  `_P.pak` lands directly in the game's `~mods` folder, ready to play.
 
 User profiles persist as `Profiles\<id>.json` (gitignored). Builtins live
 under `Profiles\_builtin\` (tracked).
@@ -97,25 +138,24 @@ Same pipeline without the browser:
 ```powershell
 # One-time setup (dump vanilla JSONs + extract icons). Skips steps that
 # are already done; pass --force to re-run everything.
-dotnet run --project GUI -- --setup
+dotnet run --project GUI\Web -- --setup
 
 # Build a builtin
-dotnet run --project GUI -- --test-patcher --profile x4
+dotnet run --project GUI\Web -- --test-patcher --profile x4
 
 # Build a user profile (by id or name)
-dotnet run --project GUI -- --test-patcher --profile "My Stacks"
+dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
 
 # Direct multiplier without a profile
-dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
+dotnet run --project GUI\Web -- --test-patcher --multiplier 4 --build-pak
 ```
 
 ## Install a pak
 
-Copy the produced `.pak` into the `~mods` folder of your server or client:
+Builds from the GUI land directly in `<Windrose>\R5\Content\Paks\~mods\`,
+nothing to copy. CLI builds (`--build-pak`) still write to the `Builds\`
+folder so smoke tests don't touch the live game; copy from there manually
+if you want a CLI-built pak in-game.
 
-```powershell
-Copy-Item .\Builds\Quartermaster_x4_P.pak `
-  'E:\Games\steamapps\common\Windrose\R5\Content\Paks\~mods\' -Force
-```
-
-Only **one** `Quartermaster_*.pak` per `~mods` folder -- remove any older one first.
+Only **one** `Quartermaster_*.pak` per `~mods` folder -- remove any older
+one first (the **Mods** tab handles this with a single click).

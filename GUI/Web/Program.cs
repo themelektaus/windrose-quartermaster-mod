@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
@@ -26,13 +30,13 @@ public static class Program
         //                          Extract-Icons.ps1 wrappers).
         if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--test-loot-patcher" || args[0] == "--setup"))
         {
-            // AppContext.BaseDirectory = GUI/Web/bin/<cfg>/<tfm>/ -- five ups
-            // gets us to the repo root.
-            var repoRootCli = Path.GetFullPath(
-                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            // Use the same data-root resolver as the WebApplication path:
+            // dev runs (`dotnet run --project GUI/Web`) walk up to the repo,
+            // deployed/copied EXEs land at <exe-dir>\QuartermasterData\.
+            var (cliRoot, _) = ResolveDataRoot();
             if (args[0] == "--setup")
-                return PatcherCli.RunSetup(args, repoRootCli);
-            return PatcherCli.Run(args, repoRootCli);
+                return PatcherCli.RunSetup(args, cliRoot);
+            return PatcherCli.Run(args, cliRoot);
         }
 
         var app = CreateWebApp(args, "http://localhost:17777");
@@ -47,13 +51,15 @@ public static class Program
     /// <c>http://127.0.0.1:0</c> for a dynamic port and starts the app via
     /// <c>app.StartAsync()</c> in-process behind a WebView2).
     /// </summary>
-    /// <param name="repoRoot">
-    /// Explicit repo root for the wrapper to override the
-    /// <c>ContentRoot/..</c> default. The default convention works for
-    /// <c>dotnet run --project GUI</c> (ContentRoot = GUI/, parent = repo)
-    /// but breaks for the WPF wrapper whose ContentRoot is its bin directory.
+    /// <param name="dataRoot">
+    /// Explicit data root to override the auto-resolver. The default
+    /// (<see cref="ResolveDataRoot"/>) walks up from <c>AppContext.BaseDirectory</c>
+    /// looking for a <c>Profiles\_builtin</c> marker (= dev / repo run) and
+    /// falls back to <c>&lt;exe-dir&gt;\QuartermasterData\</c> for a deployed
+    /// EXE that's been copied somewhere outside the source tree -- so the
+    /// data folder travels with the EXE (USB-stick portable).
     /// </param>
-    public static WebApplication CreateWebApp(string[] args, string url, string repoRoot = "")
+    public static WebApplication CreateWebApp(string[] args, string url, string dataRoot = "")
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<JsonOptions>(opts =>
@@ -69,38 +75,54 @@ public static class Program
 
         var app = builder.Build();
 
-        var resolvedRoot = !string.IsNullOrEmpty(repoRoot)
-            ? repoRoot
-            : Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "../.."));
-        var iconsDir = Path.Combine(resolvedRoot, "Icons");
+        var (resolvedRoot, isDeployed) = !string.IsNullOrEmpty(dataRoot)
+            ? (Path.GetFullPath(dataRoot), !LooksLikeDevRepo(dataRoot))
+            : ResolveDataRoot();
 
-        // Static files: by default UseStaticFiles serves from
-        // ContentRoot/wwwroot. For `dotnet run --project GUI/Web`,
-        // ContentRoot = GUI/Web/, so the default works. For the WPF wrapper,
-        // ContentRoot = the App's bin directory, so we have to point the
-        // file provider at the Web project's wwwroot explicitly -- otherwise
-        // the WebView2 lands on a 404.
-        var webRootOverride = !string.IsNullOrEmpty(repoRoot)
-            ? Path.Combine(resolvedRoot, "GUI", "Web", "wwwroot")
-            : null;
-        if (webRootOverride != null && Directory.Exists(webRootOverride))
+        // Make sure the data layout exists. Dev/repo runs already have these;
+        // deployed runs need them created on first launch in QuartermasterData/.
+        Directory.CreateDirectory(resolvedRoot);
+        var iconsDir = Path.Combine(resolvedRoot, "Icons");
+        Directory.CreateDirectory(iconsDir);
+        Directory.CreateDirectory(Path.Combine(resolvedRoot, "Profiles"));
+
+        // Deployed EXE: seed the builtin profiles from embedded resources so
+        // the dropdown isn't empty, plus the embedded UE5 *.usmap so setup
+        // works without the user first dumping one via UE4SS. We re-seed
+        // builtins every start (overwriting) -- they're the canonical
+        // source of truth -- but only seed the usmap when none is present
+        // so a user-supplied newer dump (e.g. after a game update) wins.
+        // Dev mode skips both: the on-disk files are the source of truth
+        // and you're probably editing them.
+        if (isDeployed)
         {
-            var webFp = new PhysicalFileProvider(webRootOverride);
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = webFp });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = webFp });
+            SeedBuiltinProfiles(Path.Combine(resolvedRoot, "Profiles", "_builtin"));
+            SeedUsmapIfMissing(resolvedRoot);
+            SeedIconExtractorIfMissing(Path.Combine(resolvedRoot, "Tools", "IconExtractor"));
+        }
+
+        // Static files: prefer the on-disk wwwroot if it sits next to the
+        // ContentRoot (= dev run via `dotnet run --project GUI/Web`, where
+        // editing app.css/app.js shows up immediately on refresh). Otherwise
+        // fall back to the manifest embedded provider so the single-file EXE
+        // serves the frontend straight from its own assembly.
+        var diskWebRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+        IFileProvider webFileProvider;
+        if (Directory.Exists(diskWebRoot) && File.Exists(Path.Combine(diskWebRoot, "index.html")))
+        {
+            webFileProvider = new PhysicalFileProvider(diskWebRoot);
         }
         else
         {
-            app.UseDefaultFiles();
-            app.UseStaticFiles();
+            webFileProvider = new ManifestEmbeddedFileProvider(
+                typeof(Program).Assembly, "/wwwroot");
         }
+        app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = webFileProvider });
+        app.UseStaticFiles(new StaticFileOptions { FileProvider = webFileProvider });
 
         // Icons live outside wwwroot (they're produced by IconExtractor.exe
-        // into the repo's Icons/ folder). Mount them at /Icons/* so the
-        // frontend can reference them directly without us proxying. We
-        // create the folder upfront so the first-run setup can populate
-        // it without restarting the GUI.
-        Directory.CreateDirectory(iconsDir);
+        // into the data root's Icons/ folder). Mount them at /Icons/* so the
+        // frontend can reference them directly without us proxying.
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(iconsDir),
@@ -115,5 +137,164 @@ public static class Program
         ModsEndpoint.Map(app, resolvedRoot);
 
         return app;
+    }
+
+    /// <summary>
+    /// Resolves the data root for runtime files (Profiles, Sources, Icons,
+    /// Tools, Builds). Walks up from <see cref="AppContext.BaseDirectory"/>
+    /// looking for a <c>Profiles\_builtin</c> marker -- if found, that's a
+    /// dev/repo run and we use it directly. Otherwise the EXE has been
+    /// deployed somewhere outside its source tree, and we route reads/writes
+    /// to a sibling folder <c>QuartermasterData\</c> next to the EXE -- so
+    /// the data travels with the EXE (USB-stick portable).
+    /// </summary>
+    /// <remarks>
+    /// We seed the walk from <see cref="AppContext.BaseDirectory"/> rather
+    /// than <see cref="Environment.CurrentDirectory"/> / ContentRootPath on
+    /// purpose: the latter depends on whoever invoked the EXE (e.g. starting
+    /// from a shell that happens to live inside the repo would give a false
+    /// positive on the marker). BaseDirectory is the actual binary location
+    /// -- for a single-file EXE this is the launch directory (where the
+    /// .exe physically sits), not the self-extract temp dir, which is
+    /// exactly where we want <c>QuartermasterData\</c> to live.
+    /// </remarks>
+    /// <returns>
+    /// (<c>path</c>, <c>isDeployed</c>) -- callers use the second flag to
+    /// gate "seed-from-embedded" behavior so dev edits aren't clobbered.
+    /// </returns>
+    public static (string Path, bool IsDeployed) ResolveDataRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        for (int i = 0; i < 10 && current is not null; i++)
+        {
+            var marker = Path.Combine(current.FullName, "Profiles", "_builtin");
+            if (Directory.Exists(marker))
+                return (current.FullName, false);
+            current = current.Parent;
+        }
+        var deployed = Path.Combine(AppContext.BaseDirectory, "QuartermasterData");
+        return (deployed, true);
+    }
+
+    static bool LooksLikeDevRepo(string root)
+    {
+        return Directory.Exists(Path.Combine(root, "Profiles", "_builtin"));
+    }
+
+    /// <summary>
+    /// Writes every embedded <c>BuiltinProfile.*.json</c> resource into
+    /// <paramref name="targetDir"/>, overwriting existing files. Builtins
+    /// are read-only via the API (POST/PUT/DELETE on a builtin returns 403),
+    /// so overwriting is safe -- no user data lives there.
+    /// </summary>
+    static void SeedBuiltinProfiles(string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        var asm = typeof(Program).Assembly;
+        const string prefix = "BuiltinProfile.";
+        var resources = asm.GetManifestResourceNames()
+            .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
+            .ToList();
+        foreach (var resourceName in resources)
+        {
+            // Resource name shape: "BuiltinProfile.<filename>.json"
+            // Strip prefix to get the original filename (with spaces).
+            var filename = resourceName.Substring(prefix.Length);
+            var targetPath = Path.Combine(targetDir, filename);
+            using var src = asm.GetManifestResourceStream(resourceName);
+            if (src == null) continue;
+            using var dst = File.Create(targetPath);
+            src.CopyTo(dst);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the embedded <c>IconExtractor.publish.zip</c> resource into
+    /// <paramref name="iconExtractorDir"/><c>\publish\</c> if no
+    /// <c>IconExtractor.exe</c> is already there. Mirrors what
+    /// <see cref="Windrose.Quartermaster.Core.IconExtractorBuilder"/> does
+    /// for dev builds (where it runs <c>dotnet publish</c> against the
+    /// CUE4Parse submodule on demand) -- the deployed EXE skips the build
+    /// step entirely because the publish output was baked into the
+    /// assembly at <c>dotnet publish</c> time.
+    /// <para>
+    /// Game-update story: if a future CUE4Parse / IconExtractor change
+    /// requires a new tool build, the user just pulls a fresh EXE; the
+    /// older extracted files at <c>publish\</c> are overwritten by the
+    /// next start (we delete the existing <c>publish\</c> dir first).
+    /// </para>
+    /// </summary>
+    static void SeedIconExtractorIfMissing(string iconExtractorDir)
+    {
+        var asm = typeof(Program).Assembly;
+        const string resourceName = "IconExtractor.publish.zip";
+        var publishDir = Path.Combine(iconExtractorDir, "publish");
+        var exePath = Path.Combine(publishDir, "IconExtractor.exe");
+
+        // Already extracted -- nothing to do. The IconExtractorBuilder will
+        // pick the existing exe up via its short-circuit path.
+        if (File.Exists(exePath)) return;
+
+        using var src = asm.GetManifestResourceStream(resourceName);
+        if (src == null)
+        {
+            // Embedded resource missing -- happens for plain `dotnet build`
+            // outputs where the pre-publish target didn't run. The
+            // IconExtractorBuilder will fall back to building from source
+            // (works in dev runs since the Tools/IconExtractor/ folder is
+            // there). Deployed EXEs always have the resource because
+            // PublishIconExtractorForEmbed is gated on _IsPublishing.
+            return;
+        }
+
+        Directory.CreateDirectory(iconExtractorDir);
+        // Wipe any partial / stale publish dir from a prior version of the
+        // EXE so we never end up with mixed-version DLLs (different SkiaSharp
+        // build, etc.). Safe because publish/ is a derived artifact -- nothing
+        // user-authored lives there.
+        if (Directory.Exists(publishDir))
+        {
+            try { Directory.Delete(publishDir, recursive: true); }
+            catch { /* best-effort -- ZipArchive.ExtractToDirectory will fail
+                       loudly below if it really can't replace the files. */ }
+        }
+        Directory.CreateDirectory(publishDir);
+
+        using var zip = new ZipArchive(src, ZipArchiveMode.Read);
+        zip.ExtractToDirectory(publishDir, overwriteFiles: true);
+    }
+
+    /// <summary>
+    /// Writes the embedded UE5 mappings file (<c>Usmap.*.usmap</c> resource)
+    /// into <paramref name="dataRoot"/>, but only if no <c>*.usmap</c> is
+    /// already there. Newer dumps -- e.g. one the user grabbed via UE4SS
+    /// Ctrl+Num6 after a game update -- are preserved (and win in
+    /// <see cref="UsmapLocator"/> by mtime). The embedded copy is a
+    /// "good-enough default" so a fresh EXE drop can run setup without
+    /// any external prerequisites.
+    /// </summary>
+    static void SeedUsmapIfMissing(string dataRoot)
+    {
+        // Bail if any *.usmap is already at the data root -- user-supplied
+        // dumps take precedence over our embedded fallback.
+        if (Directory.EnumerateFiles(dataRoot, "*.usmap", SearchOption.TopDirectoryOnly).Any())
+            return;
+
+        var asm = typeof(Program).Assembly;
+        const string prefix = "Usmap.";
+        var resourceName = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.StartsWith(prefix, StringComparison.Ordinal)
+                              && n.EndsWith(".usmap", StringComparison.OrdinalIgnoreCase));
+        if (resourceName == null) return;
+
+        // Resource name shape: "Usmap.<filename>.usmap" -- strip prefix
+        // for the on-disk name so an updated EXE can ship a different
+        // dump and the user sees the version-tagged filename.
+        var filename = resourceName.Substring(prefix.Length);
+        var targetPath = Path.Combine(dataRoot, filename);
+        using var src = asm.GetManifestResourceStream(resourceName);
+        if (src == null) return;
+        using var dst = File.Create(targetPath);
+        src.CopyTo(dst);
     }
 }

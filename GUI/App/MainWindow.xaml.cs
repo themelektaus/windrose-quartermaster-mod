@@ -8,11 +8,13 @@ namespace Windrose.Quartermaster.App;
 public partial class MainWindow : Window
 {
     private readonly string _url;
+    private readonly string _dataRoot;
 
-    public MainWindow(string url)
+    public MainWindow(string url, string dataRoot)
     {
         InitializeComponent();
         _url = url;
+        _dataRoot = dataRoot;
         ApplyStartupBounds();
         Loaded += OnLoadedAsync;
     }
@@ -33,11 +35,13 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Keep the WebView2 user-data folder out of %TEMP% / Program Files
-            // -- a stable location next to the exe means cookies/cache survive
-            // across runs and we don't need write access to user-profile dirs.
-            var userDataFolder = Path.Combine(
-                AppContext.BaseDirectory, ".webview2");
+            // Keep the WebView2 user-data folder inside the DataRoot so that
+            // (a) cookies/cache survive across runs without needing write
+            // access to %ProgramFiles%, (b) the portable EXE doesn't litter
+            // its drop folder with hidden state -- everything mutable lives
+            // inside QuartermasterData/ next to or under the EXE depending
+            // on dev-vs-deployed mode.
+            var userDataFolder = Path.Combine(_dataRoot, ".webview2");
             Directory.CreateDirectory(userDataFolder);
 
             var env = await CoreWebView2Environment.CreateAsync(

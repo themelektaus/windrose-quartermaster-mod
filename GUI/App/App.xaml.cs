@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,17 +32,18 @@ public partial class App : Application
             // avoids hard-coded port collisions if 17777 is busy and lets the
             // user run multiple desktop instances side-by-side.
             //
-            // Repo root: walk up from the App's bin directory (5 levels gets
-            // us out of GUI/App/bin/<cfg>/<tfm>/). Fall back to the exe directory
-            // if that doesn't look like a repo root, so a future self-contained
-            // publish next to the data folders still works.
-            var repoRoot = ResolveRepoRoot();
-            _webApp = Program.CreateWebApp(e.Args, "http://127.0.0.1:0", repoRoot);
+            // Data root: defer to Program.ResolveDataRoot() so the WPF wrapper
+            // and the standalone Web entry point share the exact same
+            // resolution rules. Dev runs find the repo via the
+            // Profiles/_builtin marker; deployed/copied EXEs land at
+            // %LOCALAPPDATA%\Quartermaster\.
+            var (dataRoot, _) = Program.ResolveDataRoot();
+            _webApp = Program.CreateWebApp(e.Args, "http://127.0.0.1:0", dataRoot);
             await _webApp.StartAsync();
 
             var url = ResolveBoundUrl(_webApp);
 
-            var win = new MainWindow(url);
+            var win = new MainWindow(url, dataRoot);
             win.Show();
         }
         catch (Exception ex)
@@ -76,17 +76,6 @@ public partial class App : Application
             }
         }
         base.OnExit(e);
-    }
-
-    private static string ResolveRepoRoot()
-    {
-        var exeDir = AppContext.BaseDirectory;
-        // Dev layout: <repo>/GUI/App/bin/<cfg>/<tfm>/Quartermaster.exe
-        var candidate = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", ".."));
-        if (Directory.Exists(Path.Combine(candidate, "Profiles")))
-            return candidate;
-        // Deployed layout: Quartermaster.exe alongside Profiles/, Sources/, etc.
-        return exeDir;
     }
 
     private static string ResolveBoundUrl(WebApplication app)
