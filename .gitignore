@@ -7,8 +7,8 @@
 /Testserver/
 /WindrosePlus/
 /Tools/IconExtractor/**/
-/Tools/StackSizeCore/bin/
-/Tools/StackSizeCore/obj/
+/Tools/QuartermasterCore/bin/
+/Tools/QuartermasterCore/obj/
 /GUI/bin/
 /GUI/obj/
 /.build-tmp/

@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Builds Tools/IconExtractor/IconExtractor.exe via `dotnet publish` on
     // first use. Cached output lives at Tools/IconExtractor/publish/

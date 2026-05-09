@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Item-centric profile: per-item overrides hold ALL the modifications for
     // a single item (`overrides[itemId] = { stackSize, ..., future props }`),

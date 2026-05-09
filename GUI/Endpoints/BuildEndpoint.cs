@@ -4,9 +4,9 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Windrose.StackSize.Core;
+using Windrose.Quartermaster.Core;
 
-namespace Windrose.StackSize.Gui.Endpoints;
+namespace Windrose.Quartermaster.Gui.Endpoints;
 
 // POST /api/build  body: { profileId: "...", keepTemp: false }
 //

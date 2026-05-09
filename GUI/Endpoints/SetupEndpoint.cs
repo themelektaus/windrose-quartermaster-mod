@@ -5,11 +5,11 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Windrose.StackSize.Core;
+using Windrose.Quartermaster.Core;
 
-namespace Windrose.StackSize.Gui.Endpoints;
+namespace Windrose.Quartermaster.Gui.Endpoints;
 
-// Two endpoints that wrap StackSizeCore.SetupRunner:
+// Two endpoints that wrap QuartermasterCore.SetupRunner:
 //
 //   GET  /api/setup/status   ->  fast, returns SetupStatus as JSON. Used
 //                                by the frontend on first load to decide

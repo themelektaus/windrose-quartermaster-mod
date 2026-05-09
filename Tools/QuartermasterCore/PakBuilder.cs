@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Wraps `repak pack` as a subprocess. Defaults match every Windrose mod
     // examined so far: MountPoint '../../../' lands pak entries at the game

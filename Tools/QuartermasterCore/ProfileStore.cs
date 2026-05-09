@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Disk persistence for Profiles. Built-in profiles live in
     // Profiles/_builtin/ (tracked in git, read-only) and user profiles in

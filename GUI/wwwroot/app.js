@@ -1,6 +1,6 @@
 'use strict';
 
-// Windrose Stack Size Configurator -- vanilla JS, no framework.
+// Windrose Quartermaster -- vanilla JS, no framework.
 // State lives in a single object; the few mutators that change it call the
 // affected render functions explicitly.
 

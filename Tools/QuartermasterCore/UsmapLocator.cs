@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Locates a UE5 mappings file (.usmap) in the mod root.
     // CUE4Parse needs this to deserialize unversioned property layouts on

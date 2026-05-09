@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Windrose.StackSize.Gui;
+namespace Windrose.Quartermaster.Gui;
 
 // Wire-format for /api/loot-tables. Mirrors the in-pak Vanilla LT JSON
 // shape one-to-one but with the long UE asset paths reduced to

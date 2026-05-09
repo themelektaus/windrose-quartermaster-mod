@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     public sealed class PatchResult
     {

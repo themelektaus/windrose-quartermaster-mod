@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
-using Windrose.StackSize.Gui.Endpoints;
+using Windrose.Quartermaster.Gui.Endpoints;
 
-namespace Windrose.StackSize.Gui;
+namespace Windrose.Quartermaster.Gui;
 
 public static class Program
 {

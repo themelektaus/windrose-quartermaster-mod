@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Runs the full icon-extraction pipeline:
     //   1. Resolve all the moving pieces (Sources/, Icons/, paks dir,

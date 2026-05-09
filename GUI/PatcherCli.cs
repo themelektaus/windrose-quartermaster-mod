@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Windrose.StackSize.Core;
+using Windrose.Quartermaster.Core;
 
-namespace Windrose.StackSize.Gui
+namespace Windrose.Quartermaster.Gui
 {
     // Headless CLI shim that lets us drive the patcher from the command line:
     //

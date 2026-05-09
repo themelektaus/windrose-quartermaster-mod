@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Probes the mod root for the artifacts the GUI needs at runtime
     // (vanilla JSONs + icons + .usmap + repak + IconExtractor build) and

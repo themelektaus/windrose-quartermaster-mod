@@ -1,4 +1,4 @@
-# Windrose Stack Size Mod -- Details
+# Windrose Quartermaster -- Details
 
 Configurator + build pipeline for JSON-based Windrose mods (item stack
 sizes etc.) from a vanilla snapshot extracted out of the game's main pak.
@@ -11,7 +11,7 @@ of your server or client.
 
 | What | Why | Required? |
 |---|---|---|
-| **.NET 10 SDK** (preview) | Builds the GUI + StackSizeCore + IconExtractor | yes |
+| **.NET 10 SDK** (preview) | Builds the GUI + QuartermasterCore + IconExtractor | yes |
 | **Internet access** (one-time) | Auto-downloads `repak.exe` v0.2.3 from [trumank/repak](https://github.com/trumank/repak/releases) on first use; CUE4Parse pulls Oodle from Epic's CDN as well | yes (first run only) |
 | **Windrose game/server install** | Source for the vanilla pak | yes |
 | **CUE4Parse submodule** | Read UE5 IoStore containers when extracting icons | yes (icons only) |
@@ -24,7 +24,7 @@ The Steam install of Windrose is auto-detected via the Windows registry
 outside Steam) are supported via an explicit pak path.
 
 The pak is AES-encrypted; the public game key is hardcoded in
-`Tools\StackSizeCore\WindroseGameSecrets.cs` and is identical to the
+`Tools\QuartermasterCore\WindroseGameSecrets.cs` and is identical to the
 one used by every other Windrose modding tool.
 
 ---
@@ -209,7 +209,7 @@ User profiles live at `Profiles\<id>.json` (gitignored). Builtins live at
 ```
 Stack Size\
 +-- Tools\
-|   +-- StackSizeCore\             C# class library:
+|   +-- QuartermasterCore\         C# class library:
 |   |   +-- Profile / ProfileStore / StackPatcher / PakBuilder / RepakResolver
 |   |   +-- BuildPipeline          (patch -> pack -> cleanup)
 |   |   +-- SetupRunner            (dump + icon extraction with progress callbacks)
@@ -247,7 +247,7 @@ Stack Size\
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `SHA256 mismatch for repak_cli-*.zip` | Download corrupted, or trumank rotated the pinned release | Delete `repak.exe` and retry; if it persists, bump `PinnedVersion` in `Tools\StackSizeCore\RepakResolver.cs` |
+| `SHA256 mismatch for repak_cli-*.zip` | Download corrupted, or trumank rotated the pinned release | Delete `repak.exe` and retry; if it persists, bump `PinnedVersion` in `Tools\QuartermasterCore\RepakResolver.cs` |
 | `Could not find a Windrose vanilla pak under any Steam library` | Windrose isn't installed via Steam, or it's in a non-standard location Steam doesn't track | Install Windrose, or pass an explicit pak path through the API/CLI |
 | `CUE4Parse submodule is not initialized` | First clone forgot the submodule | `git submodule update --init Tools/CUE4Parse` |
 | `No *.usmap file found` | Icon extractor needs a UE5 mappings file | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
@@ -264,5 +264,5 @@ Stack Size\
 - **No `.uasset` mods.** This pipeline targets JSON-based R5BusinessRules
   mods. Mesh / material / animation mods need different tools (FModel,
   UAssetGUI, repak unpack/repack).
-- **No multi-mod orchestration.** Only one `StackSize_*.pak` should live
+- **No multi-mod orchestration.** Only one `Quartermaster_*.pak` should live
   in `~mods` at a time; remove the previous build before installing a new one.

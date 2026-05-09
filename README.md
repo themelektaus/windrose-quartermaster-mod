@@ -1,10 +1,10 @@
-# Windrose Stack Size Mod
+# Windrose Quartermaster
 
-Configurator + build pipeline for stack-size paks for
+Configurator + build pipeline for JSON-based mods for
 [Windrose](https://www.nexusmods.com/windrose). A small web GUI lets you
-edit profiles -- a profile is a global stack-size policy (multiplier or
-absolute value) plus a list of per-item overrides -- and produces a
-finished `_P.pak` you drop into the `~mods` folder.
+edit profiles -- a profile bundles item-stack-size tweaks and loot-table
+edits (with more domains to come) -- and produces a single `_P.pak` you
+drop into the `~mods` folder.
 
 Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) -- no external
@@ -93,8 +93,8 @@ dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
 Copy the produced `.pak` into the `~mods` folder of your server or client:
 
 ```powershell
-Copy-Item .\Builds\StackSize_x4_P.pak `
+Copy-Item .\Builds\Quartermaster_x4_P.pak `
   'E:\Games\steamapps\common\Windrose\R5\Content\Paks\~mods\' -Force
 ```
 
-Only **one** `StackSize_*.pak` per `~mods` folder -- remove any older one first.
+Only **one** `Quartermaster_*.pak` per `~mods` folder -- remove any older one first.

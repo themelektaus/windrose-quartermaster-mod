@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Resolves the Steam install path and the Windrose vanilla pak by
     // walking libraryfolders.vdf -- the same logic Library/Common.ps1

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
-namespace Windrose.StackSize.Gui.Endpoints;
+namespace Windrose.Quartermaster.Gui.Endpoints;
 
 // GET /api/items -> all R5BLInventoryItem JSONs in Sources/Vanilla, merged
 // with the per-item Icons/<id>.json sidecar (localized name + description +

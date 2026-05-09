@@ -1,4 +1,4 @@
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Shared constants used by the dump + icon pipelines.
     // The AES key is the public game key (NOT a secret -- it's used by

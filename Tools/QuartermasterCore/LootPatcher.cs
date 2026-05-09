@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Reads vanilla LootTable JSONs and writes a parallel directory
     // containing only the LTs that changed under a given Profile. Output

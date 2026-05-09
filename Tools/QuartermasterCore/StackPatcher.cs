@@ -5,7 +5,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Reads vanilla item JSONs and writes a parallel directory containing only
     // the items that changed under a given Profile. The output directory is

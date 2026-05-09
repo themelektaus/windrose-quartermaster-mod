@@ -8,12 +8,12 @@ Multiplier values are calculated against an actual vanilla snapshot, so a "x4" p
 [size=4][b]Installation instructions[/b][/size]
 
 [list]
-[*][b]1. [/b]Pick exactly [b]one[/b] of the StackSize_*.pak files (e.g. [i]StackSize_x4_P.pak[/i]).
+[*][b]1. [/b]Pick exactly [b]one[/b] of the Quartermaster_*.pak files (e.g. [i]Quartermaster_x4_P.pak[/i]).
 [*][b]2. [/b]Copy it into your [code]~mods[/code] folder:
   [b]Client:[/b] [code]<Steam>\steamapps\common\Windrose\R5\Content\Paks\~mods\[/code]
 
   [b]Server:[/b] [code]<Server-Root>\R5\Content\Paks\~mods\[/code]
-[*][b]3. [/b]If you previously installed another StackSize_*.pak, [b]remove it first[/b]. Only one variant should ever live in [code] ~mods [/code] at a time.
+[*][b]3. [/b]If you previously installed another Quartermaster_*.pak, [b]remove it first[/b]. Only one variant should ever live in [code] ~mods [/code] at a time.
 [*][b]4. [/b]Launch the game (or restart the server). New stack limits apply immediately - existing inventories are not affected retroactively, but new picks-up and crafted items will stack up to the new limit.
 [/list]
 

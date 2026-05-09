@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
     // pak via repak.exe. Replaces Library/Dump.ps1 +

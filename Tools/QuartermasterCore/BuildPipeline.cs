@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Orchestrates the full build for a given Profile:
     //   Vanilla/  --(StackPatcher)-->  .build-tmp/<profile-id>/  --(PakBuilder)-->  Builds/<name>_P.pak
@@ -39,7 +39,7 @@ namespace Windrose.StackSize.Core
                     + " -- run Dump-WindroseVanilla.ps1 first to extract it from the game pak");
 
             var safeName = SanitizeForFileName(profile.Name);
-            var pakName = "StackSize_" + safeName + "_P.pak";
+            var pakName = "Quartermaster_" + safeName + "_P.pak";
             var outPakPath = Path.Combine(_paths.Builds, pakName);
             var tmpDir = Path.Combine(_paths.BuildTmp, profile.Id);
 
@@ -146,7 +146,7 @@ namespace Windrose.StackSize.Core
             return false;
         }
 
-        // Profile.Name -> filename component for "StackSize_<name>_P.pak".
+        // Profile.Name -> filename component for "Quartermaster_<name>_P.pak".
         // Stay strict (alnum + dash + underscore) so the pak filename works
         // on every Windows / Linux server config the user might drop it on.
         // Spaces collapse to dashes; other chars are dropped.

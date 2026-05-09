@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Windrose.StackSize.Gui</RootNamespace>
+    <RootNamespace>Windrose.Quartermaster.Gui</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Tools\StackSizeCore\StackSizeCore.csproj" />
+    <ProjectReference Include="..\Tools\QuartermasterCore\QuartermasterCore.csproj" />
   </ItemGroup>
 </Project>

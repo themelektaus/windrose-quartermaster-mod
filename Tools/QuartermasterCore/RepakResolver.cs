@@ -7,7 +7,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Resolves repak.exe in the mod root. Downloads and SHA256-verifies a
     // pinned release on first use; subsequent calls just return the cached
@@ -67,7 +67,7 @@ namespace Windrose.StackSize.Core
                 {
                     http.Timeout = TimeSpan.FromMinutes(2);
                     http.DefaultRequestHeaders.UserAgent.Add(
-                        new ProductInfoHeaderValue("Windrose-StackSize-GUI", "1.0"));
+                        new ProductInfoHeaderValue("Windrose-Quartermaster-GUI", "1.0"));
                     DownloadTo(http, url, zipPath);
                     DownloadTo(http, url + ".sha256", shaPath);
                 }

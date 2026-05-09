@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace Windrose.StackSize.Core
+namespace Windrose.Quartermaster.Core
 {
     // Walks Sources/Vanilla and emits the manifest JSON that
     // IconExtractor.exe consumes. Mirrors the PowerShell logic that lived

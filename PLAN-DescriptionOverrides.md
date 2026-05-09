@@ -179,7 +179,7 @@ Damit haben wir bewiesen, dass unser Writer-Verständnis des Formats korrekt ist
 
 ### Phase 2: Override-Builder
 
-Klasse `LocResWriter` (in `Tools/StackSizeCore/`):
+Klasse `LocResWriter` (in `Tools/QuartermasterCore/`):
 
 ```csharp
 public sealed class LocResWriter
