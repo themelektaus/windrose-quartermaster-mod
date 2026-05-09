@@ -26,8 +26,10 @@ public static class Program
         //                          Extract-Icons.ps1 wrappers).
         if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--test-loot-patcher" || args[0] == "--setup"))
         {
+            // AppContext.BaseDirectory = GUI/Web/bin/<cfg>/<tfm>/ -- five ups
+            // gets us to the repo root.
             var repoRootCli = Path.GetFullPath(
-                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
             if (args[0] == "--setup")
                 return PatcherCli.RunSetup(args, repoRootCli);
             return PatcherCli.Run(args, repoRootCli);

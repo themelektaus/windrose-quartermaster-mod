@@ -20,7 +20,7 @@ namespace Windrose.Quartermaster.App;
 /// </summary>
 public partial class App : Application
 {
-    private WebApplication? _webApp;
+    private WebApplication _webApp;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -33,8 +33,8 @@ public partial class App : Application
             // avoids hard-coded port collisions if 17777 is busy and lets the
             // user run multiple desktop instances side-by-side.
             //
-            // Repo root: walk up from the App's bin directory (4 levels gets
-            // us out of App/bin/<cfg>/<tfm>/). Fall back to the exe directory
+            // Repo root: walk up from the App's bin directory (5 levels gets
+            // us out of GUI/App/bin/<cfg>/<tfm>/). Fall back to the exe directory
             // if that doesn't look like a repo root, so a future self-contained
             // publish next to the data folders still works.
             var repoRoot = ResolveRepoRoot();
@@ -81,8 +81,8 @@ public partial class App : Application
     private static string ResolveRepoRoot()
     {
         var exeDir = AppContext.BaseDirectory;
-        // Dev layout: <repo>/App/bin/<cfg>/<tfm>/Quartermaster.exe
-        var candidate = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", ".."));
+        // Dev layout: <repo>/GUI/App/bin/<cfg>/<tfm>/Quartermaster.exe
+        var candidate = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", ".."));
         if (Directory.Exists(Path.Combine(candidate, "Profiles")))
             return candidate;
         // Deployed layout: Quartermaster.exe alongside Profiles/, Sources/, etc.
