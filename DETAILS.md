@@ -83,11 +83,34 @@ Layout:
 
 ## 3. Run the GUI
 
+Two equivalent entry points share the same Kestrel host + frontend:
+
 ```powershell
+# (a) Desktop launcher (WPF + WebView2). Recommended for end users.
+cd .\App
+dotnet run -c Release
+
+# (b) Browser. Recommended when remote-developing or hacking the frontend.
 cd .\GUI
 dotnet run -c Release
 # -> http://localhost:17777
 ```
+
+The desktop launcher (`Quartermaster.exe`) hosts Kestrel **in-process** on
+a free TCP port (`http://127.0.0.1:0` -> OS-picked port), then opens a
+single WPF window with a WebView2 control navigated to that port. Closing
+the window calls `IHost.StopAsync` with a 2-second drain, then exits. No
+fixed-port collision, multiple instances can run side-by-side.
+
+Requires the **Microsoft Edge WebView2 Runtime** -- preinstalled on
+Windows 11 and most Windows 10 builds. The launcher pops a clear error
+dialog (with the [evergreen installer URL](https://developer.microsoft.com/microsoft-edge/webview2/))
+if the runtime is missing.
+
+Both entry points share the exact same `Program.CreateWebApp` builder --
+the WPF App project just links the GUI project, calls into it, and pins
+its own repo root via the optional `repoRoot` parameter (since the WPF
+binary's `ContentRoot` is its bin directory, not the repo root).
 
 Top-level layout:
 
@@ -229,6 +252,10 @@ Stack Size\
 |   +-- ItemDto.cs, PatcherCli.cs  ...
 |   +-- wwwroot\                   index.html (configurator + setup overlay),
 |                                  items-test.html (raw debug view), app.css, app.js
++-- App\
+|   +-- Quartermaster.App.csproj   WPF + WebView2 desktop wrapper (net10.0-windows)
+|   +-- App.xaml(.cs)              Hosts Kestrel in-process via Program.CreateWebApp
+|   +-- MainWindow.xaml(.cs)       WebView2 navigated to the dynamic localhost URL
 +-- Profiles\
 |   +-- _builtin\                  x2..x10, 999, 9999 (tracked, read-only)
 |   +-- <id>.json                  user profiles (gitignored)
@@ -254,6 +281,7 @@ Stack Size\
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
 | `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
 | `Builtin profiles cannot be modified` | Tried to edit a built-in profile in the GUI | Click `Duplicate` first; user copies are editable |
+| Desktop launcher fails with "Failed to initialize WebView2" | Microsoft Edge WebView2 Runtime missing (rare on Win11, possible on stripped Win10) | Install the [evergreen WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (~1.6 MB bootstrapper) and relaunch |
 
 ---
 

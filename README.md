@@ -38,6 +38,27 @@ GUI or the headless CLI shim.
 
 ## Run the configurator
 
+Two equivalent ways: a desktop window (recommended) or a browser tab.
+
+### Desktop launcher (WPF + WebView2)
+
+```powershell
+cd .\App
+dotnet run -c Release
+```
+
+Opens a single Quartermaster window backed by Microsoft Edge WebView2.
+Kestrel is hosted in-process on a free port (no fixed `:17777` collision,
+multiple instances can run side-by-side). Closing the window stops the
+server cleanly.
+
+Requires the **Microsoft Edge WebView2 Runtime** -- preinstalled on
+Windows 11 and recent Windows 10 builds. If missing, the launcher links
+to the
+[evergreen installer](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+### Browser
+
 ```powershell
 cd .\GUI
 dotnet run -c Release

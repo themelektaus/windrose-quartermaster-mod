@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
 
-namespace Windrose.Quartermaster.Gui.Endpoints;
+namespace Windrose.Quartermaster.Web.Endpoints;
 
 // Two endpoints that wrap QuartermasterCore.SetupRunner:
 //

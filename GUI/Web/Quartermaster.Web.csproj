@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>Windrose.Quartermaster.Gui</RootNamespace>
+    <RootNamespace>Windrose.Quartermaster.Web</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Tools\QuartermasterCore\QuartermasterCore.csproj" />
+    <ProjectReference Include="..\..\Tools\QuartermasterCore\QuartermasterCore.csproj" />
   </ItemGroup>
 </Project>

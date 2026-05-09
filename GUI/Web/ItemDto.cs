@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace Windrose.Quartermaster.Gui;
+namespace Windrose.Quartermaster.Web;
 
 sealed class ItemDto
 {

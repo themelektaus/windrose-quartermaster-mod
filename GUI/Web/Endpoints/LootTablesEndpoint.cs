@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
 
-namespace Windrose.Quartermaster.Gui.Endpoints;
+namespace Windrose.Quartermaster.Web.Endpoints;
 
 // GET /api/loot-tables -> all R5BLLootParams JSONs in
 // Sources/Vanilla/.../LootTables/, projected to a wire-friendly shape

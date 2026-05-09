@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
 
-namespace Windrose.Quartermaster.Gui.Endpoints;
+namespace Windrose.Quartermaster.Web.Endpoints;
 
 // POST /api/build  body: { profileId: "...", keepTemp: false }
 //

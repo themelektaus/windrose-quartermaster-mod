@@ -7,9 +7,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
-using Windrose.Quartermaster.Gui.Endpoints;
+using Windrose.Quartermaster.Web.Endpoints;
 
-namespace Windrose.Quartermaster.Gui;
+namespace Windrose.Quartermaster.Web;
 
 public static class Program
 {
@@ -33,6 +33,26 @@ public static class Program
             return PatcherCli.Run(args, repoRootCli);
         }
 
+        var app = CreateWebApp(args, "http://localhost:17777");
+        app.Run();
+        return 0;
+    }
+
+    /// <summary>
+    /// Build the configurator's <see cref="WebApplication"/>. Used by both the
+    /// CLI entry point above (which passes the fixed <c>17777</c> URL and runs
+    /// blocking via <c>app.Run()</c>) and by the WPF wrapper (which passes
+    /// <c>http://127.0.0.1:0</c> for a dynamic port and starts the app via
+    /// <c>app.StartAsync()</c> in-process behind a WebView2).
+    /// </summary>
+    /// <param name="repoRoot">
+    /// Explicit repo root for the wrapper to override the
+    /// <c>ContentRoot/..</c> default. The default convention works for
+    /// <c>dotnet run --project GUI</c> (ContentRoot = GUI/, parent = repo)
+    /// but breaks for the WPF wrapper whose ContentRoot is its bin directory.
+    /// </param>
+    public static WebApplication CreateWebApp(string[] args, string url, string repoRoot = "")
+    {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<JsonOptions>(opts =>
         {
@@ -43,12 +63,14 @@ public static class Program
             opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             opts.SerializerOptions.WriteIndented = false;
         });
-        builder.WebHost.UseUrls("http://localhost:17777");
+        builder.WebHost.UseUrls(url);
 
         var app = builder.Build();
 
-        var repoRoot = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, ".."));
-        var iconsDir = Path.Combine(repoRoot, "Icons");
+        var resolvedRoot = !string.IsNullOrEmpty(repoRoot)
+            ? repoRoot
+            : Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "../.."));
+        var iconsDir = Path.Combine(resolvedRoot, "Icons");
 
         app.UseDefaultFiles();
         app.UseStaticFiles();
@@ -65,13 +87,12 @@ public static class Program
             RequestPath = "/Icons"
         });
 
-        ItemsEndpoint.Map(app, repoRoot);
-        LootTablesEndpoint.Map(app, repoRoot);
-        ProfilesEndpoint.Map(app, repoRoot);
-        BuildEndpoint.Map(app, repoRoot);
-        SetupEndpoint.Map(app, repoRoot);
+        ItemsEndpoint.Map(app, resolvedRoot);
+        LootTablesEndpoint.Map(app, resolvedRoot);
+        ProfilesEndpoint.Map(app, resolvedRoot);
+        BuildEndpoint.Map(app, resolvedRoot);
+        SetupEndpoint.Map(app, resolvedRoot);
 
-        app.Run();
-        return 0;
+        return app;
     }
 }

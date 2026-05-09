@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using Windrose.Quartermaster.Core;
 
-namespace Windrose.Quartermaster.Gui
+namespace Windrose.Quartermaster.Web
 {
     // Headless CLI shim that lets us drive the patcher from the command line:
     //
