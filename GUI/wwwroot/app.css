@@ -642,8 +642,6 @@ footer.collapsed .footer-body {
   color: var(--builtin);
 }
 
-/* ---------- Tabs ----------------------------------------------------- */
-
 .tabs {
   display: flex;
   gap: .25em;
@@ -676,8 +674,6 @@ footer.collapsed .footer-body {
   color: var(--text-dim);
 }
 
-/* ---------- Loot Globals (per-category multiplier rows) -------------- */
-
 .loot-globals {
   display: grid;
   grid-template-columns: 1fr 6em auto;
@@ -706,8 +702,6 @@ footer.collapsed .footer-body {
   font-size: var(--font-size-small);
   padding: .15em .5em;
 }
-
-/* ---------- Loot Tables List ----------------------------------------- */
 
 .lt-list {
   list-style: none;
@@ -746,8 +740,7 @@ footer.collapsed .footer-body {
   grid-template-columns: 1.5em 1fr auto auto;
   align-items: center;
   gap: .5em;
-  cursor: pointer;
-  user-select: none;
+  cursor: default;
   padding: .25em 0;
 }
 
@@ -920,12 +913,12 @@ footer.collapsed .footer-body {
 .lt-add-row .add-btn {
   grid-column: 1 / -1;
   background: transparent;
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   color: var(--text-dim);
-  padding: .25em;
 }
 
 .lt-add-row .add-btn:hover:not(:disabled) {
+  background: transparent;
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -954,10 +947,6 @@ footer.collapsed .footer-body {
   font-size: var(--monospace-size);
 }
 
-/* ---------- Picker dropdown (custom autocomplete) -------------------- */
-
-/* Floating panel anchored under the active picker-target input via fixed
-   coords from openPicker(). One shared element across all add-entry forms. */
 .picker-dropdown {
   position: fixed;
   z-index: 100;
@@ -969,22 +958,21 @@ footer.collapsed .footer-body {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--border-radius);
-  box-shadow: 0 .5em 1em rgba(0, 0, 0, .35);
+  box-shadow: 0 .5em 1em rgba(0, 0, 0, .5);
 }
 
 .picker-dropdown[hidden] {
   display: none;
 }
 
-/* Row layout mirrors .item from the items page: icon, two-line text block. */
 .picker-option {
   display: grid;
   grid-template-columns: 2.5em 1fr;
   align-items: center;
   gap: .5em;
-  padding: .25em .35em;
+  padding: .25em .5em;
   border-radius: var(--border-radius);
-  cursor: pointer;
+  cursor: default;
 }
 
 .picker-option:hover {
