@@ -59,6 +59,25 @@
     </EmbeddedResource>
   </ItemGroup>
   <!--
+    Embed the pre-baked Pickup-Radius mod triplet (.pak/.ucas/.utoc).
+    The build pipeline drops these next to the main Quartermaster pak in
+    ~mods/ when a profile has globals.pickupRadius.doubled = true. The
+    mod doubles the auto-pickup MagnetRadius (vanilla 400cm -> 800cm).
+    Stored under Resources\PickupRadius\ in the repo; addressed at
+    runtime via "PickupRadius.<ext>" logical names.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.pak">
+      <LogicalName>PickupRadius.pak</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.ucas">
+      <LogicalName>PickupRadius.ucas</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.utoc">
+      <LogicalName>PickupRadius.utoc</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
     Embed a pre-published copy of IconExtractor (the CUE4Parse-backed
     tool that turns vanilla pak entries into PNGs) so a deployed EXE can
     seed it into <DataRoot>\Tools\IconExtractor\publish\ on first run.

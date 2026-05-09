@@ -257,6 +257,22 @@ fieldset .indent input[type="number"] {
   color: var(--accent);
 }
 
+.check-row {
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  margin: .25em 0;
+}
+
+.check-row input[type="checkbox"]:disabled + * {
+  opacity: .6;
+}
+
+.pickup-hint {
+  margin-top: .5em;
+}
+
 dl {
   display: grid;
   grid-template-columns: 1fr auto;

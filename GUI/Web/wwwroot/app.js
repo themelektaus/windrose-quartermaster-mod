@@ -411,7 +411,12 @@ function applyProfileToUI() {
     document.getElementById('ss-mult').value = ss.multiplier == null ? 4 : ss.multiplier;
     document.getElementById('ss-cap').value  = ss.cap        == null ? 0 : ss.cap;
     document.getElementById('ss-abs').value  = ss.absolute   == null ? 999 : ss.absolute;
+    // Pickup-radius: a single checkbox bound to globals.pickupRadius.doubled.
+    // Missing block / null / false all map to "off".
+    const pickupOn = !!(p.globals && p.globals.pickupRadius && p.globals.pickupRadius.doubled);
+    document.getElementById('pickup-doubled').checked = pickupOn;
     syncStackSizeInputsState();
+    syncPickupInputState();
     renderProfileMeta();
 }
 
@@ -434,6 +439,13 @@ function syncStackSizeInputsState() {
     for (const r of document.querySelectorAll('input[name="ssmode"]')) {
         r.disabled = isReadonly;
     }
+}
+
+// Pickup-radius toggle is read-only on builtins (consistent with stack-size /
+// loot globals): user must duplicate to a custom profile to change it.
+function syncPickupInputState() {
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    document.getElementById('pickup-doubled').disabled = isReadonly;
 }
 
 function populateProfileSelect() {
@@ -1472,6 +1484,21 @@ function setStackSizeFromUI() {
     renderItems();
 }
 
+// Pickup-radius lives in globals.pickupRadius.doubled. Off (= unchecked /
+// unset) drops the whole subtree so the JSON stays clean ({} on disk for
+// profiles that don't touch pickup).
+function setPickupRadiusFromUI() {
+    if (!state.current) return;
+    const on = document.getElementById('pickup-doubled').checked;
+    state.current.globals = state.current.globals || {};
+    if (on) {
+        state.current.globals.pickupRadius = { doubled: true };
+    } else {
+        delete state.current.globals.pickupRadius;
+    }
+    markDirty();
+}
+
 function setOverrideFromInput(itemId, rawValue) {
     if (!state.current) return;
     state.current.overrides = state.current.overrides || {};
@@ -1807,6 +1834,7 @@ function bindHandlers() {
     document.getElementById('ss-mult').addEventListener('input', setStackSizeFromUI);
     document.getElementById('ss-cap').addEventListener('input',  setStackSizeFromUI);
     document.getElementById('ss-abs').addEventListener('input',  setStackSizeFromUI);
+    document.getElementById('pickup-doubled').addEventListener('change', setPickupRadiusFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);

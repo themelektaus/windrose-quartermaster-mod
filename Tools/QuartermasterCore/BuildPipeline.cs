@@ -26,6 +26,16 @@ namespace Windrose.Quartermaster.Core
         // never touch the live game install.
         public string OutputDir;
 
+        // Optional source of the pre-baked Pickup-Radius mod triplet
+        // (.pak/.ucas/.utoc). Called with one of "pak", "ucas", "utoc" --
+        // returns a readable Stream containing that file's bytes, or null if
+        // the asset is unavailable. When null, profiles asking for the
+        // pickup-radius mod can't be built (the pipeline raises a clear
+        // error). The Web layer wires this to the embedded resources in
+        // Quartermaster.Web.dll; the CLI leaves it null since CLI smoke
+        // tests don't need the Blueprint patch.
+        public Func<string, Stream> PickupRadiusAssetProvider;
+
         public BuildPipeline(WindrosePaths paths)
         {
             if (paths == null) throw new ArgumentNullException("paths");
@@ -91,26 +101,51 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 int totalWritten = patchResult.Written + (lootResult != null ? lootResult.Written : 0);
-                if (totalWritten == 0)
+                bool pickupActive = profile.Globals != null
+                                    && profile.Globals.PickupRadius != null
+                                    && profile.Globals.PickupRadius.Doubled == true;
+                if (totalWritten == 0 && !pickupActive)
                 {
                     throw new InvalidOperationException(
                         "Profile produces no changes -- nothing to pack. "
                         + "Adjust globals or add per-item / per-loot-table overrides.");
                 }
 
-                LogLine("Resolving repak.exe...");
-                _repakResolver.Log = Log;
-                var repakExe = _repakResolver.Resolve();
+                PakBuildResult pakResult = null;
+                string pakPath = null;
+                if (totalWritten > 0)
+                {
+                    LogLine("Resolving repak.exe...");
+                    _repakResolver.Log = Log;
+                    var repakExe = _repakResolver.Resolve();
 
-                LogLine("Packing -> " + outPakPath);
-                Directory.CreateDirectory(outDir);
-                var builder = new PakBuilder(repakExe);
-                builder.Log = Log;
-                var pakResult = builder.Build(tmpDir, outPakPath, overwrite: true);
+                    LogLine("Packing -> " + outPakPath);
+                    Directory.CreateDirectory(outDir);
+                    var builder = new PakBuilder(repakExe);
+                    builder.Log = Log;
+                    pakResult = builder.Build(tmpDir, outPakPath, overwrite: true);
+                    pakPath = outPakPath;
 
-                LogLine("Pak built: " + outPakPath
-                        + " (" + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB, "
-                        + pakResult.FileCount + " files)");
+                    LogLine("Pak built: " + outPakPath
+                            + " (" + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB, "
+                            + pakResult.FileCount + " files)");
+                }
+                else
+                {
+                    LogLine("No item / loot changes -- main pak skipped (pickup-radius-only build).");
+                }
+
+                string pickupPak = null, pickupUcas = null, pickupUtoc = null;
+                if (pickupActive)
+                {
+                    Directory.CreateDirectory(outDir);
+                    var pickupBase = Path.Combine(outDir,
+                        "Quartermaster_" + safeName + "_PickupRadius_P");
+                    pickupPak  = WritePickupAsset(pickupBase + ".pak",  "pak");
+                    pickupUcas = WritePickupAsset(pickupBase + ".ucas", "ucas");
+                    pickupUtoc = WritePickupAsset(pickupBase + ".utoc", "utoc");
+                    LogLine("Pickup-radius triplet written next to the main pak");
+                }
 
                 return new BuildPipelineResult
                 {
@@ -118,7 +153,10 @@ namespace Windrose.Quartermaster.Core
                     PatchResult = patchResult,
                     LootPatchResult = lootResult,
                     PakResult = pakResult,
-                    PakPath = outPakPath,
+                    PakPath = pakPath,
+                    PickupPakPath = pickupPak,
+                    PickupUcasPath = pickupUcas,
+                    PickupUtocPath = pickupUtoc,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -181,6 +219,33 @@ namespace Windrose.Quartermaster.Core
             return collapsed.ToString().Trim('-', '_');
         }
 
+        // Streams the named extension ("pak"/"ucas"/"utoc") from the
+        // injected provider and writes it to disk. Throws a clear error if
+        // the provider isn't wired up at all (= GUI didn't pass one) or
+        // doesn't carry the asset (= mismatched ship).
+        string WritePickupAsset(string outPath, string extension)
+        {
+            if (PickupRadiusAssetProvider == null)
+            {
+                throw new InvalidOperationException(
+                    "Profile requests the pickup-radius mod but no asset provider is wired up. "
+                    + "This is a build-host configuration error -- only the GUI build path supports it.");
+            }
+            using (var src = PickupRadiusAssetProvider(extension))
+            {
+                if (src == null)
+                {
+                    throw new InvalidOperationException(
+                        "Pickup-radius asset provider returned null for extension '" + extension + "'.");
+                }
+                using (var dst = File.Create(outPath))
+                {
+                    src.CopyTo(dst);
+                }
+            }
+            return outPath;
+        }
+
         void LogLine(string msg)
         {
             if (Log != null) Log(msg);
@@ -192,8 +257,14 @@ namespace Windrose.Quartermaster.Core
         public Profile Profile;
         public PatchResult PatchResult;
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
-        public PakBuildResult PakResult;
-        public string PakPath;
+        public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
+        public string PakPath;                    // null if pickup-only build
+        // Set when the profile asked for the pickup-radius patch. The
+        // engine needs all three files together (Pak1 stub + IoStore data
+        // + IoStore directory); ModsEndpoint groups them as one entry.
+        public string PickupPakPath;
+        public string PickupUcasPath;
+        public string PickupUtocPath;
         public string TmpDir;
         public bool Success;
     }

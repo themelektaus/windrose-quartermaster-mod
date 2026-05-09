@@ -38,6 +38,7 @@ namespace Windrose.Quartermaster.Core
     {
         public StackSizeGlobal StackSize;
         public LootGlobal Loot;
+        public PickupRadiusGlobal PickupRadius;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -58,6 +59,17 @@ namespace Windrose.Quartermaster.Core
         // rounded AwayFromZero. Missing bucket = 1.0 (vanilla). Use "*" as
         // a wildcard fallback for un-listed buckets.
         public Dictionary<string, double> ByCategory;
+    }
+
+    // Pickup-radius is delivered as a pre-baked Blueprint mod (the
+    // GA_Loot_AutoPickup CDO with MagnetRadius patched from 400 to 800,
+    // shipped as a triplet next to the main Quartermaster pak). Phase 1
+    // is a single bool (off / 2x); future: a discrete preset enum or a
+    // float multiplier once we ship more pre-baked variants or move to
+    // a real Blueprint property writer.
+    public sealed class PickupRadiusGlobal
+    {
+        public bool? Doubled;
     }
 
     public sealed class ItemOverride

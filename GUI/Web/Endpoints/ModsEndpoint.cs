@@ -29,6 +29,11 @@ public static class ModsEndpoint
     // hardcoded "Quartermaster_<safe>_P.pak" template.
     public const string OwnedPrefix = "Quartermaster_";
     public const string OwnedSuffix = "_P.pak";
+    // Inner suffix that distinguishes the pickup-radius companion pak
+    // from the main pak. "Quartermaster_x4_PickupRadius_P.pak" carries
+    // the pre-baked Blueprint patch; "Quartermaster_x4_P.pak" carries
+    // the patched JSON tree.
+    const string PickupInnerSuffix = "_PickupRadius";
 
     public static void Map(WebApplication app, string repoRoot)
     {
@@ -56,16 +61,34 @@ public static class ModsEndpoint
                 {
                     var fi = new FileInfo(path);
                     var owned = IsQuartermasterPak(fi.Name);
+                    // For our own paks: total size includes the IoStore
+                    // companions (.ucas/.utoc) that ship next to the .pak
+                    // -- otherwise the pickup-radius triplet looks
+                    // misleadingly tiny (the .pak alone is ~350 bytes).
+                    long totalSize = fi.Length;
+                    if (owned)
+                    {
+                        var basePath = path.Substring(0, path.Length - ".pak".Length);
+                        foreach (var ext in new[] { ".ucas", ".utoc" })
+                        {
+                            var companion = basePath + ext;
+                            if (File.Exists(companion)) totalSize += new FileInfo(companion).Length;
+                        }
+                    }
                     files.Add(new
                     {
                         filename = fi.Name,
-                        sizeBytes = fi.Length,
+                        sizeBytes = totalSize,
                         modifiedUtc = fi.LastWriteTimeUtc.ToString("o"),
                         isQuartermaster = owned,
                         // Strip the prefix/suffix so the UI can show a
                         // friendly "x4" instead of "Quartermaster_x4_P.pak"
                         // for our own paks. null for foreign mods.
                         displayName = owned ? StripOwnedAffixes(fi.Name) : null,
+                        // "main" = the patched JSON tree; "pickupRadius" =
+                        // the pre-baked Blueprint companion. Frontend uses
+                        // this to render a different badge.
+                        kind = owned ? ClassifyOwned(fi.Name) : "foreign",
                     });
                 }
             }
@@ -131,6 +154,15 @@ public static class ModsEndpoint
                 return Results.NotFound(new { error = "File not found", filename });
             }
 
+            // Some Quartermaster paks ship with sibling IoStore files
+            // (.ucas/.utoc) that the engine treats as one logical mod
+            // alongside the .pak (e.g. the pre-baked pickup-radius
+            // Blueprint patch). Recycle them together so the user can't
+            // end up with a half-deleted triplet that confuses the engine
+            // on next mount.
+            var basePath = fullPath.Substring(0, fullPath.Length - ".pak".Length);
+            var companions = new[] { ".ucas", ".utoc" };
+            var recycled = new List<string> { filename };
             try
             {
                 // Send to the Windows recycle bin instead of File.Delete so
@@ -144,6 +176,19 @@ public static class ModsEndpoint
                     Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
                     Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
                     Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+                foreach (var ext in companions)
+                {
+                    var companionPath = basePath + ext;
+                    if (File.Exists(companionPath))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                            companionPath,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
+                            Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+                        recycled.Add(Path.GetFileName(companionPath));
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -159,6 +204,7 @@ public static class ModsEndpoint
                 success = true,
                 filename,
                 action = "recycled",
+                recycled,
             });
         });
     }
@@ -173,8 +219,27 @@ public static class ModsEndpoint
     static string StripOwnedAffixes(string filename)
     {
         if (!IsQuartermasterPak(filename)) return filename;
-        return filename.Substring(
+        var inner = filename.Substring(
             OwnedPrefix.Length,
             filename.Length - OwnedPrefix.Length - OwnedSuffix.Length);
+        // Pickup-radius triplet: "<safeName>_PickupRadius" -> "<safeName>
+        // (Pickup Radius)" so it reads obviously next to its main pak.
+        if (inner.EndsWith(PickupInnerSuffix, StringComparison.Ordinal))
+        {
+            var stem = inner.Substring(0, inner.Length - PickupInnerSuffix.Length);
+            return stem + " (Pickup Radius)";
+        }
+        return inner;
+    }
+
+    static string ClassifyOwned(string filename)
+    {
+        if (!IsQuartermasterPak(filename)) return "foreign";
+        var inner = filename.Substring(
+            OwnedPrefix.Length,
+            filename.Length - OwnedPrefix.Length - OwnedSuffix.Length);
+        return inner.EndsWith(PickupInnerSuffix, StringComparison.Ordinal)
+            ? "pickupRadius"
+            : "main";
     }
 }

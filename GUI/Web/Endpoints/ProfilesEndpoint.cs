@@ -168,6 +168,12 @@ public static class ProfilesEndpoint
                         ? null
                         : new Dictionary<string, double>(g.Loot.ByCategory),
                 },
+            PickupRadius = g.PickupRadius == null
+                ? null
+                : new PickupRadiusGlobal
+                {
+                    Doubled = g.PickupRadius.Doubled,
+                },
         };
     }
 
@@ -237,6 +243,8 @@ public static class ProfilesEndpoint
             hasGlobalLoot = p.Globals != null && p.Globals.Loot != null
                             && p.Globals.Loot.ByCategory != null
                             && p.Globals.Loot.ByCategory.Count > 0,
+            hasGlobalPickupRadius = p.Globals != null && p.Globals.PickupRadius != null
+                                    && p.Globals.PickupRadius.Doubled == true,
         };
     }
 

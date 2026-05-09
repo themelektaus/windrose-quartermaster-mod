@@ -11,7 +11,9 @@ Thumbs.db
 /Builds/
 /Icons/
 /Profiles/*.json
+/References/
 /Sources/
+/Test/
 /Testserver/
 /Tools/IconExtractor/**/
 /Tools/IconExtractor/*.zip
