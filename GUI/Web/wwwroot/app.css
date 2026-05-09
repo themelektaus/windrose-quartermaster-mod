@@ -257,18 +257,18 @@ fieldset .indent input[type="number"] {
   color: var(--accent);
 }
 
-dl#status-summary {
+dl {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: .25em;
   margin: 0;
 }
 
-dl#status-summary dt {
+dl dt {
   color: var(--text-dim);
 }
 
-dl#status-summary dd {
+dl dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
   text-align: right;
