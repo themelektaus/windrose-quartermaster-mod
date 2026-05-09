@@ -132,5 +132,19 @@ namespace Windrose.Quartermaster.Core
         {
             return Path.GetDirectoryName(FindVanillaPak());
         }
+
+        // Returns the absolute path to Windrose's user-mods folder
+        //   <SteamLib>\steamapps\common\Windrose\R5\Content\Paks\~mods
+        // which is where the engine picks up loose .pak files at startup.
+        // The folder is created if it does not exist (fresh installs ship
+        // without it). Throws via FindVanillaPak when the game itself can't
+        // be located so callers can surface a single uniform error.
+        public static string FindModsDir()
+        {
+            var paks = FindVanillaPaksDir();
+            var mods = Path.Combine(paks, "~mods");
+            Directory.CreateDirectory(mods);
+            return mods;
+        }
     }
 }

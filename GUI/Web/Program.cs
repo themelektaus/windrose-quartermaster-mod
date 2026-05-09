@@ -112,6 +112,7 @@ public static class Program
         ProfilesEndpoint.Map(app, resolvedRoot);
         BuildEndpoint.Map(app, resolvedRoot);
         SetupEndpoint.Map(app, resolvedRoot);
+        ModsEndpoint.Map(app, resolvedRoot);
 
         return app;
     }

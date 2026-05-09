@@ -20,6 +20,16 @@ const state = {
     isDirty: false,
     activeTab: 'items',
 
+    // Windrose ~mods/ folder snapshot (lazy-loaded the first time the
+    // Mods tab is shown, then refreshed after every successful build and
+    // on explicit user action via the Refresh button).
+    mods: {
+        loaded: false,
+        modsDir: null,
+        files: [],     // [{filename, sizeBytes, modifiedUtc, isQuartermaster, displayName}]
+        error: null,   // human-readable error string from the GET, or null
+    },
+
     // Currently-open picker dropdown (loot add-entry autocomplete).
     // null when no picker is open. Holds the input element so we can reposition
     // on scroll / write the chosen id back, plus the address of the added entry
@@ -357,6 +367,16 @@ function setActiveTab(tab) {
         renderLootGlobals();
         renderLootTables();
         renderLootStatus();
+    }
+    if (tab === 'mods') {
+        // First view: kick off a load. Subsequent visits show the cached
+        // snapshot immediately and the user can hit Refresh to re-fetch.
+        if (!state.mods.loaded) {
+            loadMods();
+        } else {
+            renderMods();
+            renderModsStatus();
+        }
     }
 }
 
@@ -1592,6 +1612,12 @@ async function onBuild() {
             lines.push({ kind: 'err', msg: 'ERROR: ' + (data.error || 'unknown') });
         }
         setBuildLog(lines);
+        // The pak just landed in (or got overwritten in) ~mods/ -- refresh
+        // the snapshot so the Mods tab reflects reality next time it's
+        // opened (or right now, if it's already the active tab).
+        if (data.success) {
+            await loadMods();
+        }
     } catch (e) {
         setBuildLog([{ kind: 'err', msg: 'NETWORK ERROR: ' + e.message }]);
     } finally {
@@ -1604,6 +1630,144 @@ function setBuildLog(lines) {
     out.innerHTML = lines.map(l =>
         '<span class="' + l.kind + '">[' + l.kind.toUpperCase() + ']</span> ' + esc(l.msg)
     ).join('\n');
+}
+
+// ---------- Mods page ----------------------------------------------------
+
+async function loadMods() {
+    const dirEl = document.getElementById('mods-dir');
+    dirEl.textContent = 'Loading...';
+    try {
+        const r = await fetch('/api/mods');
+        const data = await r.json();
+        if (!r.ok || data.error) {
+            state.mods.loaded = true;
+            state.mods.modsDir = data && data.modsDir ? data.modsDir : null;
+            state.mods.files = [];
+            state.mods.error = (data && data.error) || ('HTTP ' + r.status);
+        } else {
+            state.mods.loaded = true;
+            state.mods.modsDir = data.modsDir;
+            state.mods.files = data.files || [];
+            state.mods.error = null;
+        }
+    } catch (e) {
+        state.mods.loaded = true;
+        state.mods.error = 'Network error: ' + e.message;
+        state.mods.files = [];
+        state.mods.modsDir = null;
+    }
+    renderMods();
+    renderModsStatus();
+}
+
+function renderMods() {
+    const dirEl = document.getElementById('mods-dir');
+    dirEl.textContent = state.mods.modsDir || '(unknown)';
+
+    const errEl = document.getElementById('mods-error');
+    if (state.mods.error) {
+        errEl.textContent = state.mods.error;
+        errEl.hidden = false;
+    } else {
+        errEl.hidden = true;
+    }
+
+    const list  = document.getElementById('mods-list');
+    const filtered = filterMods();
+
+    if (filtered.length === 0) {
+        const msg = state.mods.files.length === 0
+            ? 'No .pak files in this folder yet. Build a profile to drop one here.'
+            : 'No mods match the current filter.';
+        list.innerHTML = '<li class="mods-empty">' + esc(msg) + '</li>';
+    } else {
+        list.innerHTML = filtered.map(buildModRowHtml).join('');
+    }
+
+    document.getElementById('mods-count').textContent =
+        filtered.length + ' / ' + state.mods.files.length + ' mods';
+}
+
+function filterMods() {
+    const q = (document.getElementById('mods-filter').value || '').trim().toLowerCase();
+    const src = document.getElementById('mods-filter-source').value;
+    const out = [];
+    for (const f of state.mods.files) {
+        if (src === 'owned'   && !f.isQuartermaster) continue;
+        if (src === 'foreign' &&  f.isQuartermaster) continue;
+        if (q) {
+            const hay = (f.filename + ' ' + (f.displayName || '')).toLowerCase();
+            if (!hay.includes(q)) continue;
+        }
+        out.push(f);
+    }
+    return out;
+}
+
+function buildModRowHtml(f) {
+    const cls = f.isQuartermaster ? 'mod owned' : 'mod foreign';
+    const marker = f.isQuartermaster ? 'Q' : '*';
+    const sizeKb = (f.sizeBytes / 1024).toFixed(1);
+    const when = formatModifiedDate(f.modifiedUtc);
+    const nameBlock = f.isQuartermaster
+        ? ('<span class="display">' + esc(f.displayName || f.filename) + '</span>'
+           + '<span class="filename">' + esc(f.filename) + '</span>')
+        : ('<span class="filename">' + esc(f.filename) + '</span>');
+    const actions = f.isQuartermaster
+        ? '<button type="button" class="danger" data-delete-mod="' + esc(f.filename) + '" title="Move to recycle bin">Delete</button>'
+        : '<span class="lock" title="Foreign mod -- managed externally">read-only</span>';
+    return '<li class="' + cls + '">'
+         +   '<span class="mod-marker" title="' + (f.isQuartermaster ? 'Built by Quartermaster' : 'External mod') + '">' + marker + '</span>'
+         +   '<div class="mod-name">' + nameBlock + '</div>'
+         +   '<div class="mod-meta"><span>' + esc(sizeKb) + ' KB</span><span>' + esc(when) + '</span></div>'
+         +   '<div class="mod-actions">' + actions + '</div>'
+         + '</li>';
+}
+
+function formatModifiedDate(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        // Locale-sensitive but compact: "2026-05-09 17:42"
+        const pad = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+             + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch (e) {
+        return '';
+    }
+}
+
+function renderModsStatus() {
+    const total   = state.mods.files.length;
+    const owned   = state.mods.files.filter(f => f.isQuartermaster).length;
+    const foreign = total - owned;
+    document.getElementById('mods-stat-total').textContent   = total;
+    document.getElementById('mods-stat-owned').textContent   = owned;
+    document.getElementById('mods-stat-foreign').textContent = foreign;
+}
+
+async function deleteMod(filename) {
+    // Server-side guard already refuses non-Quartermaster files, but the
+    // client shouldn't even ask. Also: we lean on the recycle bin for
+    // recoverability (per /api/mods DELETE), so the confirm prompt
+    // explicitly says "recycle bin" rather than "delete".
+    const file = state.mods.files.find(f => f.filename === filename);
+    if (!file || !file.isQuartermaster) return;
+    if (!confirm('Move "' + filename + '" to the recycle bin?')) return;
+    try {
+        const r = await fetch('/api/mods/' + encodeURIComponent(filename), { method: 'DELETE' });
+        const data = await r.json();
+        if (!r.ok || !data.success) {
+            alert('Delete failed: ' + (data.error || ('HTTP ' + r.status)));
+            return;
+        }
+    } catch (e) {
+        alert('Network error: ' + e.message);
+        return;
+    }
+    await loadMods();
 }
 
 function setFooterCollapsed(collapsed) {
@@ -1676,6 +1840,19 @@ function bindHandlers() {
     document.getElementById('lt-filter-category').addEventListener('change', renderLootTables);
     document.getElementById('lt-filter-type').addEventListener('change',     renderLootTables);
     document.getElementById('lt-filter-changed').addEventListener('change',  renderLootTables);
+
+    // Mods page: filter inputs re-render the cached list locally; the
+    // refresh button re-fetches from the server. Delete is delegated from
+    // the list root so we don't have to re-bind on each render.
+    document.getElementById('mods-filter').addEventListener('input',          renderMods);
+    document.getElementById('mods-filter-source').addEventListener('change',  renderMods);
+    document.getElementById('mods-refresh').addEventListener('click',         loadMods);
+    document.getElementById('mods-list').addEventListener('click', e => {
+        const t = e.target;
+        if (t && t.dataset && t.dataset.deleteMod) {
+            deleteMod(t.dataset.deleteMod);
+        }
+    });
 
     // Delegated handlers on the LT list -- one set covers expand/collapse,
     // per-entry edits, removals, and add-form interactions.

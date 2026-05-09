@@ -48,6 +48,24 @@ public static class BuildEndpoint
             // only read it from the same thread (Task.Run completion below).
             pipeline.Log = m => log.Add(m);
 
+            // Redirect the pak straight into Windrose's ~mods/ folder so
+            // the engine picks it up without a manual copy step. SteamLocator
+            // throws a descriptive error if the install can't be found --
+            // surface that as a 500 with the same shape as a build failure.
+            try
+            {
+                pipeline.OutputDir = SteamLocator.FindModsDir();
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new
+                {
+                    success = false,
+                    error = "Could not locate Windrose ~mods folder: " + ex.Message,
+                    log,
+                }, statusCode: 500);
+            }
+
             try
             {
                 var result = await Task.Run(() => pipeline.Build(profile, keepTemp: body.KeepTemp));

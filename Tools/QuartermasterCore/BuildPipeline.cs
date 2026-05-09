@@ -19,6 +19,13 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
+        // When set, overrides the default ${ModRoot}/Builds output target.
+        // The GUI sets this to Windrose's ~mods/ folder so a successful
+        // build lands directly in the location the engine reads from. CLI
+        // smoke tests leave this null so they keep landing in Builds/ and
+        // never touch the live game install.
+        public string OutputDir;
+
         public BuildPipeline(WindrosePaths paths)
         {
             if (paths == null) throw new ArgumentNullException("paths");
@@ -40,7 +47,8 @@ namespace Windrose.Quartermaster.Core
 
             var safeName = SanitizeForFileName(profile.Name);
             var pakName = "Quartermaster_" + safeName + "_P.pak";
-            var outPakPath = Path.Combine(_paths.Builds, pakName);
+            var outDir = !string.IsNullOrEmpty(OutputDir) ? OutputDir : _paths.Builds;
+            var outPakPath = Path.Combine(outDir, pakName);
             var tmpDir = Path.Combine(_paths.BuildTmp, profile.Id);
 
             try
@@ -95,7 +103,7 @@ namespace Windrose.Quartermaster.Core
                 var repakExe = _repakResolver.Resolve();
 
                 LogLine("Packing -> " + outPakPath);
-                Directory.CreateDirectory(_paths.Builds);
+                Directory.CreateDirectory(outDir);
                 var builder = new PakBuilder(repakExe);
                 builder.Log = Log;
                 var pakResult = builder.Build(tmpDir, outPakPath, overwrite: true);
