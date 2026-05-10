@@ -1671,11 +1671,16 @@ async function onBuild() {
             }
             if (data.pickupRadius) {
                 const pr = data.pickupRadius;
+                // When the main pak is also built, pickup's pakPath is
+                // null (the main pak overwrites the stub at the same
+                // basename); only the .ucas/.utoc are uniquely pickup.
+                // Pickup-only builds report a real pakPath.
                 const totalKb = ((pr.pakSize + pr.ucasSize + pr.utocSize) / 1024).toFixed(1);
+                const target = pr.pakPath || pr.ucasPath;
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- pickup-radius triplet (' + (pr.multiplier || '?').toFixed(1) + 'x, '
+                    'DONE -- pickup-radius patch (' + (pr.multiplier || '?').toFixed(1) + 'x, '
                     + 'MagnetRadius=' + pr.magnetRadius + ', ' + totalKb + ' KB) -> '
-                    + pr.pakPath });
+                    + target });
             }
             if (!data.pakPath && !data.pickupRadius) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });

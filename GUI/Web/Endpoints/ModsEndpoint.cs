@@ -19,11 +19,13 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //                                     return 403 so we can never delete a
 //                                     mod the user installed elsewhere.
 //
-// Pickup-radius is shipped as an IoStore mod triplet (.pak + .ucas + .utoc)
-// next to the main pak. The list-view treats the triplet as one logical
-// entity by aggregating sibling sizes, and the delete endpoint recycles
-// all three files together so the user can't end up with a half-deleted
-// triplet that confuses UE5 on next mount.
+// A Quartermaster build can ship as one .pak (JSON patches only) or as
+// a .pak / .ucas / .utoc triplet sharing the same basename when the
+// profile also enables the pickup-radius patch. UE5 mounts triplets
+// with a matching basename as one logical container, so we treat them
+// as one entity here too: list-view aggregates sibling sizes, delete
+// endpoint recycles all three files together so the user can't end up
+// with a half-deleted triplet that confuses UE5 on next mount.
 //
 // The recycle-bin step uses Microsoft.VisualBasic.FileIO.FileSystem; the
 // assembly ships with the .NET runtime on Windows so no extra NuGet ref
@@ -35,11 +37,6 @@ public static class ModsEndpoint
     // hardcoded "Quartermaster_<safe>_P.pak" template.
     public const string OwnedPrefix = "Quartermaster_";
     public const string OwnedSuffix = "_P.pak";
-    // Inner suffix that distinguishes the pickup-radius triplet pak
-    // from the main pak. "Quartermaster_x4_PickupRadius_P.pak" carries
-    // the IoStore Blueprint patch; "Quartermaster_x4_P.pak" carries
-    // the patched JSON tree.
-    const string PickupInnerSuffix = "_PickupRadius";
 
     public static void Map(WebApplication app, string repoRoot)
     {
@@ -91,10 +88,6 @@ public static class ModsEndpoint
                         // friendly "x4" instead of "Quartermaster_x4_P.pak"
                         // for our own paks. null for foreign mods.
                         displayName = owned ? StripOwnedAffixes(fi.Name) : null,
-                        // "main" = the patched JSON tree; "pickupRadius" =
-                        // the IoStore Blueprint companion. Frontend uses
-                        // this to render a different badge.
-                        kind = owned ? ClassifyOwned(fi.Name) : "foreign",
                     });
                 }
             }
@@ -224,27 +217,8 @@ public static class ModsEndpoint
     static string StripOwnedAffixes(string filename)
     {
         if (!IsQuartermasterPak(filename)) return filename;
-        var inner = filename.Substring(
+        return filename.Substring(
             OwnedPrefix.Length,
             filename.Length - OwnedPrefix.Length - OwnedSuffix.Length);
-        // Pickup-radius triplet: "<safeName>_PickupRadius" -> "<safeName>
-        // (Pickup Radius)" so it reads obviously next to its main pak.
-        if (inner.EndsWith(PickupInnerSuffix, StringComparison.Ordinal))
-        {
-            var stem = inner.Substring(0, inner.Length - PickupInnerSuffix.Length);
-            return stem + " (Pickup Radius)";
-        }
-        return inner;
-    }
-
-    static string ClassifyOwned(string filename)
-    {
-        if (!IsQuartermasterPak(filename)) return "foreign";
-        var inner = filename.Substring(
-            OwnedPrefix.Length,
-            filename.Length - OwnedPrefix.Length - OwnedSuffix.Length);
-        return inner.EndsWith(PickupInnerSuffix, StringComparison.Ordinal)
-            ? "pickupRadius"
-            : "main";
     }
 }

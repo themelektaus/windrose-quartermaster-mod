@@ -108,16 +108,22 @@ public static class BuildEndpoint
                 // loot changes -> no main pak written). The frontend treats
                 // both null shapes as "this domain wasn't built" rather
                 // than "domain build failed".
+                //
+                // When BOTH are built, pickup's PakPath is null because
+                // the main pak overwrites the would-be pickup .pak stub
+                // at the same path -- only the .ucas/.utoc are uniquely
+                // pickup-owned. The shared on-disk basename is reported
+                // via result.PakPath in that case.
                 object pickupRadiusInfo = null;
                 if (result.PickupResult != null)
                 {
                     var pr = result.PickupResult;
                     pickupRadiusInfo = new
                     {
-                        pakPath = pr.PakPath,
+                        pakPath = pr.PakPath,        // null when main was built
                         ucasPath = pr.UcasPath,
                         utocPath = pr.UtocPath,
-                        pakSize = pr.PakSize,
+                        pakSize = pr.PakSize,        // 0 when main was built
                         ucasSize = pr.UcasSize,
                         utocSize = pr.UtocSize,
                         magnetRadius = pr.MagnetRadius,

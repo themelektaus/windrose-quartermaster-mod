@@ -72,6 +72,16 @@ namespace Windrose.Quartermaster.Core
             var pakName = "Quartermaster_" + safeName + "_P.pak";
             var outDir = !string.IsNullOrEmpty(OutputDir) ? OutputDir : _paths.Builds;
             var outPakPath = Path.Combine(outDir, pakName);
+            // Base name (no extension) shared by the main pak and the
+            // pickup-radius IoStore companions (.ucas/.utoc). UE5 mounts
+            // .pak/.ucas/.utoc with a matching basename as one logical
+            // container, so consolidating under one prefix lets us ship
+            // a single mod that combines JSON patches AND the patched
+            // Blueprint -- instead of the two separate "main" + "_PickupRadius"
+            // mods we used to produce.
+            var sharedBaseName = "Quartermaster_" + safeName + "_P";
+            var sharedUcasPath = Path.Combine(outDir, sharedBaseName + ".ucas");
+            var sharedUtocPath = Path.Combine(outDir, sharedBaseName + ".utoc");
             var tmpDir = Path.Combine(_paths.BuildTmp, profile.Id);
 
             try
@@ -79,6 +89,20 @@ namespace Windrose.Quartermaster.Core
                 // Wipe the temp dir before patching: a stale tree from a
                 // previous run could otherwise leak files into the new pak.
                 if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, true);
+
+                // Pre-clear stale outputs at the target paths. Without this,
+                // a previous build that produced .ucas/.utoc would leave
+                // them lingering when the user disables pickup-radius for
+                // the next build -- and stale IoStore companions would
+                // still get mounted by the engine. Done before any work
+                // so a half-finished build leaves the user no worse off.
+                if (Directory.Exists(outDir))
+                {
+                    foreach (var p in new[] { outPakPath, sharedUcasPath, sharedUtocPath })
+                    {
+                        if (File.Exists(p)) File.Delete(p);
+                    }
+                }
 
                 // The two patchers write into the SAME temp directory but
                 // into disjoint subtrees (InventoryItems/ vs LootTables/),
@@ -123,6 +147,24 @@ namespace Windrose.Quartermaster.Core
                         + "Adjust globals or add per-item / per-loot-table overrides.");
                 }
 
+                // Build pickup triplet FIRST (into a staging dir), so that
+                // when repak runs afterwards it overwrites the tiny .pak
+                // stub retoc produces with the real Pak1 content. The
+                // .ucas / .utoc are then copied to outDir under the shared
+                // basename, sharing the prefix with the main pak.
+                //
+                // For pickup-only builds (no item/loot changes), repak is
+                // skipped entirely and we copy all three triplet files
+                // (including the stub .pak) to outDir -- the engine still
+                // needs the .pak as the IoStore container's marker file.
+                PickupTripletResult pickupResult = null;
+                if (pickupActive)
+                {
+                    pickupResult = BuildPickupTriplet(
+                        profile, safeName, outDir, tmpDir, pickupMultiplier,
+                        sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
+                }
+
                 PakBuildResult pakResult = null;
                 string pakPath = null;
                 if (totalWritten > 0)
@@ -135,6 +177,10 @@ namespace Windrose.Quartermaster.Core
                     Directory.CreateDirectory(outDir);
                     var builder = new PakBuilder(repakExe);
                     builder.Log = Log;
+                    // repak builds tmpDir recursively. The pickup-triplet
+                    // staging is in tmpDir/_pickup-out/ which would leak
+                    // its retoc artefacts into the main pak. Skip the
+                    // staging tree when building.
                     pakResult = builder.Build(tmpDir, outPakPath, overwrite: true);
                     pakPath = outPakPath;
 
@@ -142,15 +188,9 @@ namespace Windrose.Quartermaster.Core
                             + " (" + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB, "
                             + pakResult.FileCount + " files)");
                 }
-                else
+                else if (!pickupActive)
                 {
                     LogLine("No item / loot changes -- main pak skipped (pickup-radius-only build).");
-                }
-
-                PickupTripletResult pickupResult = null;
-                if (pickupActive)
-                {
-                    pickupResult = BuildPickupTriplet(profile, safeName, outDir, tmpDir, pickupMultiplier);
                 }
 
                 return new BuildPipelineResult
@@ -168,27 +208,50 @@ namespace Windrose.Quartermaster.Core
             }
             finally
             {
-                if (!keepTemp && Directory.Exists(tmpDir))
+                if (!keepTemp)
                 {
-                    try { Directory.Delete(tmpDir, true); }
-                    catch (Exception ex)
+                    foreach (var dir in new[]
                     {
-                        // Failure to clean up is annoying but not fatal --
-                        // surface it in the log so the user can clean by hand.
-                        LogLine("Warning: temp dir cleanup failed: " + ex.Message);
+                        tmpDir,
+                        Path.Combine(_paths.BuildTmp, profile.Id + "__pickup"),
+                    })
+                    {
+                        if (!Directory.Exists(dir)) continue;
+                        try { Directory.Delete(dir, true); }
+                        catch (Exception ex)
+                        {
+                            // Failure to clean up is annoying but not fatal --
+                            // surface it in the log so the user can clean by hand.
+                            LogLine("Warning: temp dir cleanup failed for " + dir + ": " + ex.Message);
+                        }
                     }
                 }
             }
         }
 
-        // Builds the IoStore triplet for the pickup-radius mod and writes
-        // it next to the main pak as Quartermaster_<name>_PickupRadius_P.{pak,ucas,utoc}.
+        // Builds the IoStore triplet for the pickup-radius mod into a
+        // staging directory and then publishes the relevant pieces to
+        // outDir under the SHARED basename Quartermaster_<safeName>_P.*.
+        //
+        // Publishing rules:
+        //   - Always copy .ucas + .utoc (the IoStore container payload).
+        //   - Copy the .pak only when no main pak is being built; if
+        //     mainPakWillBeBuilt=true, the subsequent repak step writes
+        //     the real Pak1 content at the same path and the stub would
+        //     just be overwritten anyway.
+        //
+        // The retoc work happens in <_paths.BuildTmp>/<profileId>__pickup/
+        // -- a SIBLING of the JSON-patch tmpDir, NOT a child. If we put it
+        // inside tmpDir, repak's recursive scan would sweep the retoc
+        // artefacts into the main pak.
+        //
         // Surfaces a clear error if the GUI didn't supply a paks-dir
         // locator -- a CLI build with pickup-radius enabled is currently
         // unsupported (CLI doesn't talk to the Steam install).
         PickupTripletResult BuildPickupTriplet(
             Profile profile, string safeName, string outDir,
-            string tmpDir, double multiplier)
+            string tmpDir, double multiplier,
+            string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
             {
@@ -211,34 +274,69 @@ namespace Windrose.Quartermaster.Core
             var retocExe = _retocResolver.Resolve();
 
             Directory.CreateDirectory(outDir);
-            var pickupBaseName = "Quartermaster_" + safeName + "_PickupRadius_P.pak";
-            var outPakPath = Path.Combine(outDir, pickupBaseName);
-            var pickupTmp = Path.Combine(tmpDir, "_pickup");
+
+            // Pickup work area: sibling of tmpDir (so repak's recursive
+            // scan doesn't leak retoc artefacts into the main pak). Wiped
+            // at the start of each build the same way tmpDir is.
+            var pickupRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__pickup");
+            if (Directory.Exists(pickupRoot)) Directory.Delete(pickupRoot, true);
+            Directory.CreateDirectory(pickupRoot);
+            var stagingPak = Path.Combine(pickupRoot, "out", sharedBaseName + ".pak");
+            var legacyTmp = Path.Combine(pickupRoot, "legacy");
             float magnetRadius = (float)(VanillaMagnetRadius * multiplier);
 
             LogLine("Building pickup-radius triplet (multiplier=" + multiplier
-                    + ", MagnetRadius=" + magnetRadius + "cm) -> " + outPakPath);
+                    + ", MagnetRadius=" + magnetRadius + "cm) -> staging");
 
             var triplet = new PickupTripletBuilder { Log = Log };
-            var result = triplet.Build(new PickupTripletRequest
+            var stagingResult = triplet.Build(new PickupTripletRequest
             {
                 RetocExe = retocExe,
                 GamePaksDir = gamePaksDir,
                 UsmapPath = usmapPath,
-                OutputPakPath = outPakPath,
+                OutputPakPath = stagingPak,
                 MagnetRadius = magnetRadius,
-                TempDir = pickupTmp,
+                TempDir = legacyTmp,
                 Overwrite = true,
             });
 
-            LogLine("Pickup triplet written: "
-                    + Path.GetFileName(result.PakPath) + " ("
-                    + result.PakSize + " B) + "
-                    + Path.GetFileName(result.UcasPath) + " ("
-                    + result.UcasSize + " B) + "
-                    + Path.GetFileName(result.UtocPath) + " ("
-                    + result.UtocSize + " B)");
-            return result;
+            // Publish to outDir under the shared basename. .ucas + .utoc
+            // always, .pak only if the main pipeline isn't going to write
+            // a real Pak1 there afterwards.
+            var finalPak  = Path.Combine(outDir, sharedBaseName + ".pak");
+            var finalUcas = Path.Combine(outDir, sharedBaseName + ".ucas");
+            var finalUtoc = Path.Combine(outDir, sharedBaseName + ".utoc");
+            File.Copy(stagingResult.UcasPath, finalUcas, true);
+            File.Copy(stagingResult.UtocPath, finalUtoc, true);
+            if (!mainPakWillBeBuilt)
+            {
+                File.Copy(stagingResult.PakPath, finalPak, true);
+            }
+
+            LogLine("Pickup triplet published: "
+                    + sharedBaseName + ".{ucas,utoc}"
+                    + (mainPakWillBeBuilt ? "" : ",pak")
+                    + " -> " + outDir
+                    + " (.ucas=" + stagingResult.UcasSize + " B, "
+                    + ".utoc=" + stagingResult.UtocSize + " B"
+                    + (mainPakWillBeBuilt ? "" : ", .pak=" + stagingResult.PakSize + " B")
+                    + ")");
+
+            // Rewrite paths in the result object so the response and
+            // build log report the actual on-disk locations the user
+            // can look at, not the internal staging dir.
+            return new PickupTripletResult
+            {
+                PakPath  = mainPakWillBeBuilt ? null : finalPak,
+                UcasPath = finalUcas,
+                UtocPath = finalUtoc,
+                PakSize  = mainPakWillBeBuilt ? 0 : stagingResult.PakSize,
+                UcasSize = stagingResult.UcasSize,
+                UtocSize = stagingResult.UtocSize,
+                MagnetRadius = stagingResult.MagnetRadius,
+                PatchResult = stagingResult.PatchResult,
+                LegacyTempDir = stagingResult.LegacyTempDir,
+            };
         }
 
         // Resolves the effective multiplier the build should use, with the
