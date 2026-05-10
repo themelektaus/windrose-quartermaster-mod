@@ -54,10 +54,11 @@ public static class Program
     /// <param name="dataRoot">
     /// Explicit data root to override the auto-resolver. The default
     /// (<see cref="ResolveDataRoot"/>) walks up from <c>AppContext.BaseDirectory</c>
-    /// looking for a <c>Profiles\_builtin</c> marker (= dev / repo run) and
-    /// falls back to <c>&lt;exe-dir&gt;\QuartermasterData\</c> for a deployed
-    /// EXE that's been copied somewhere outside the source tree -- so the
-    /// data folder travels with the EXE (USB-stick portable).
+    /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
+    /// marker (= dev / repo run) and falls back to
+    /// <c>&lt;exe-dir&gt;\QuartermasterData\</c> for a deployed EXE that's
+    /// been copied somewhere outside the source tree -- so the data folder
+    /// travels with the EXE (USB-stick portable).
     /// </param>
     public static WebApplication CreateWebApp(string[] args, string url, string dataRoot = "")
     {
@@ -86,17 +87,13 @@ public static class Program
         Directory.CreateDirectory(iconsDir);
         Directory.CreateDirectory(Path.Combine(resolvedRoot, "Profiles"));
 
-        // Deployed EXE: seed the builtin profiles from embedded resources so
-        // the dropdown isn't empty, plus the embedded UE5 *.usmap so setup
-        // works without the user first dumping one via UE4SS. We re-seed
-        // builtins every start (overwriting) -- they're the canonical
-        // source of truth -- but only seed the usmap when none is present
-        // so a user-supplied newer dump (e.g. after a game update) wins.
-        // Dev mode skips both: the on-disk files are the source of truth
-        // and you're probably editing them.
+        // Deployed EXE: seed the embedded UE5 *.usmap so setup works without
+        // the user first dumping one via UE4SS. Only seed when none is
+        // present so a user-supplied newer dump (e.g. after a game update)
+        // wins. Dev mode skips this: the on-disk file is the source of
+        // truth and you're probably editing it.
         if (isDeployed)
         {
-            SeedBuiltinProfiles(Path.Combine(resolvedRoot, "Profiles", "_builtin"));
             SeedUsmapIfMissing(resolvedRoot);
             SeedIconExtractorIfMissing(Path.Combine(resolvedRoot, "Tools", "IconExtractor"));
         }
@@ -142,11 +139,12 @@ public static class Program
     /// <summary>
     /// Resolves the data root for runtime files (Profiles, Sources, Icons,
     /// Tools, Builds). Walks up from <see cref="AppContext.BaseDirectory"/>
-    /// looking for a <c>Profiles\_builtin</c> marker -- if found, that's a
-    /// dev/repo run and we use it directly. Otherwise the EXE has been
-    /// deployed somewhere outside its source tree, and we route reads/writes
-    /// to a sibling folder <c>QuartermasterData\</c> next to the EXE -- so
-    /// the data travels with the EXE (USB-stick portable).
+    /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
+    /// marker -- if found, that's a dev/repo run and we use it directly.
+    /// Otherwise the EXE has been deployed somewhere outside its source
+    /// tree, and we route reads/writes to a sibling folder
+    /// <c>QuartermasterData\</c> next to the EXE -- so the data travels
+    /// with the EXE (USB-stick portable).
     /// </summary>
     /// <remarks>
     /// We seed the walk from <see cref="AppContext.BaseDirectory"/> rather
@@ -167,8 +165,7 @@ public static class Program
         var current = new DirectoryInfo(AppContext.BaseDirectory);
         for (int i = 0; i < 10 && current is not null; i++)
         {
-            var marker = Path.Combine(current.FullName, "Profiles", "_builtin");
-            if (Directory.Exists(marker))
+            if (LooksLikeDevRepo(current.FullName))
                 return (current.FullName, false);
             current = current.Parent;
         }
@@ -178,34 +175,10 @@ public static class Program
 
     static bool LooksLikeDevRepo(string root)
     {
-        return Directory.Exists(Path.Combine(root, "Profiles", "_builtin"));
-    }
-
-    /// <summary>
-    /// Writes every embedded <c>BuiltinProfile.*.json</c> resource into
-    /// <paramref name="targetDir"/>, overwriting existing files. Builtins
-    /// are read-only via the API (POST/PUT/DELETE on a builtin returns 403),
-    /// so overwriting is safe -- no user data lives there.
-    /// </summary>
-    static void SeedBuiltinProfiles(string targetDir)
-    {
-        Directory.CreateDirectory(targetDir);
-        var asm = typeof(Program).Assembly;
-        const string prefix = "BuiltinProfile.";
-        var resources = asm.GetManifestResourceNames()
-            .Where(n => n.StartsWith(prefix, StringComparison.Ordinal))
-            .ToList();
-        foreach (var resourceName in resources)
-        {
-            // Resource name shape: "BuiltinProfile.<filename>.json"
-            // Strip prefix to get the original filename (with spaces).
-            var filename = resourceName.Substring(prefix.Length);
-            var targetPath = Path.Combine(targetDir, filename);
-            using var src = asm.GetManifestResourceStream(resourceName);
-            if (src == null) continue;
-            using var dst = File.Create(targetPath);
-            src.CopyTo(dst);
-        }
+        // Marker file that only exists in the source tree (not in the
+        // deployed EXE bundle nor in <DataRoot>\QuartermasterData\).
+        return File.Exists(Path.Combine(root, "Tools", "QuartermasterCore",
+                                              "QuartermasterCore.csproj"));
     }
 
     /// <summary>

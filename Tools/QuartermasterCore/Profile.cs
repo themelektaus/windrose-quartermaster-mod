@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
 
 namespace Windrose.Quartermaster.Core
 {
@@ -27,11 +26,6 @@ namespace Windrose.Quartermaster.Core
         // "Mobs/DA_LT_Mob_BlackBeard_Sergeant_Final"). Null = no loot
         // overrides for this profile.
         public Dictionary<string, LootTableOverride> LootOverrides;
-
-        // Runtime-only flag, populated by ProfileStore after loading from
-        // Profiles/_builtin/. Never written back to disk (profiles in the
-        // _builtin dir simply ARE builtin).
-        [JsonIgnore] public bool IsBuiltin;
     }
 
     public sealed class ProfileGlobals

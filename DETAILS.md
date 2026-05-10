@@ -81,10 +81,7 @@ Layout (relative to the **DataRoot** -- see Section 3 for resolution rules):
 ```
 <DataRoot>\Sources\Vanilla         ~1097 vanilla item JSONs       (gitignored)
 <DataRoot>\Icons                   per-item PNG + JSON sidecars   (gitignored)
-<DataRoot>\Profiles\_builtin       11 read-only profile templates (tracked when DataRoot=repo;
-                                                                   seeded from embedded resources
-                                                                   when DataRoot=QuartermasterData\)
-<DataRoot>\Profiles\<id>.json      user profiles                  (gitignored)
+<DataRoot>\Profiles\<id>.json      profiles                       (gitignored)
 <DataRoot>\Builds                  legacy CLI .pak output         (gitignored, GUI builds go
                                                                    direct to the game's ~mods/)
 <DataRoot>\.build-tmp              scratch dir for in-flight builds (gitignored)
@@ -130,13 +127,13 @@ Both entry points share the exact same `Program.CreateWebApp` builder --
 the WPF App project just links the Web project, calls into it, and
 delegates DataRoot resolution to `Program.ResolveDataRoot()`. The
 resolver walks up from `AppContext.BaseDirectory` looking for a
-`Profiles\_builtin\` marker. If found, that's a dev/repo run and the
-matching ancestor folder becomes the DataRoot directly. If nothing
-matches up to the filesystem root, the EXE has been deployed somewhere
-outside its source tree, and DataRoot falls through to a sibling
-`QuartermasterData\` folder right next to the EXE -- so the data
-travels with the EXE (USB-stick portable, no per-user state hidden in
-`%APPDATA%`).
+`Tools\QuartermasterCore\QuartermasterCore.csproj` marker. If found,
+that's a dev/repo run and the matching ancestor folder becomes the
+DataRoot directly. If nothing matches up to the filesystem root, the
+EXE has been deployed somewhere outside its source tree, and DataRoot
+falls through to a sibling `QuartermasterData\` folder right next to
+the EXE -- so the data travels with the EXE (USB-stick portable, no
+per-user state hidden in `%APPDATA%`).
 
 We seed from `AppContext.BaseDirectory` rather than
 `Environment.CurrentDirectory` / ContentRoot on purpose: the latter
@@ -146,17 +143,13 @@ deploy). For a single-file EXE, `AppContext.BaseDirectory` is the
 launch directory (where the .exe physically sits), not the self-extract
 temp dir, which is exactly where we want `QuartermasterData\` to live.
 
-When `isDeployed=true`, the configurator copies every embedded
-`BuiltinProfile.*.json` resource into
-`<DataRoot>\Profiles\_builtin\` on every start (overwriting), so updates
-to the EXE always ship the canonical builtin set. Builtin writes are
-already 403-blocked at the API level (POST/PUT/DELETE on a builtin id
-returns Forbidden), so overwriting is safe -- no user data lives there.
-The embedded `*.usmap` resource gets a different treatment: it's only
-written if the DataRoot has no `*.usmap` yet, so a newer user-supplied
-dump (post game-update) is preserved. In dev mode (`isDeployed=false`)
-we skip both seeds: the on-disk files are git-tracked source-of-truth,
-and you're likely editing them.
+When `isDeployed=true`, the embedded `*.usmap` resource is written to
+the DataRoot if no `*.usmap` is already there, so a fresh EXE drop can
+run setup without the user first dumping one via UE4SS. A newer
+user-supplied dump (post game-update) is preserved (UsmapLocator picks
+the newest by mtime). In dev mode (`isDeployed=false`) we skip the
+seed: the on-disk file is the source of truth and you're likely
+editing it.
 
 The frontend is similarly embedded:
 `GUI/Web/Quartermaster.Web.csproj` strips `wwwroot\**` from the
@@ -170,7 +163,7 @@ on refresh. Otherwise it falls back to the embedded provider, which
 is the codepath every published EXE takes.
 
 The repo-root `*.usmap` file is embedded into Web.csproj alongside
-the wwwroot and builtin profiles, with `<LogicalName>Usmap.<filename>.usmap`.
+the wwwroot, with `<LogicalName>Usmap.<filename>.usmap`.
 `SeedUsmapIfMissing()` reads that single resource on deployed runs.
 
 The CUE4Parse-backed icon extractor is embedded the same way -- but
@@ -285,7 +278,7 @@ A simple-flight guard prevents concurrent setup runs: a second
 
 ---
 
-## 6. Profile schema (Profiles\_builtin\x4.json)
+## 6. Profile schema (Profiles\<id>.json)
 
 ```json
 {
@@ -311,8 +304,7 @@ grow:
 - new globals modes: extend `StackSizeGlobal` - the resolver picks
   `Absolute` over `Multiplier` already; add new branches as needed.
 
-User profiles live at `Profiles\<id>.json` (gitignored). Builtins live at
-`Profiles\_builtin\<slug>.json` (tracked, read-only).
+Profiles live at `Profiles\<id>.json` (gitignored).
 
 ---
 
@@ -347,8 +339,7 @@ Stack Size\
 |   +-- App.xaml(.cs)              Hosts Kestrel in-process via Program.CreateWebApp
 |   +-- MainWindow.xaml(.cs)       WebView2 navigated to the dynamic localhost URL
 +-- Profiles\
-|   +-- _builtin\                  x2..x10, 999, 9999 (tracked, read-only)
-|   +-- <id>.json                  user profiles (gitignored)
+|   +-- <id>.json                  profiles (gitignored)
 +-- Sources\Vanilla\               extracted vanilla JSONs (gitignored, auto-extracted)
 +-- Icons\                         per-item PNG + sidecar JSON (gitignored, auto-extracted)
 +-- Builds\                        finished .pak files (gitignored)

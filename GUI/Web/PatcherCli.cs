@@ -326,14 +326,12 @@ namespace Windrose.Quartermaster.Web
                 Console.Error.WriteLine("Available:");
                 foreach (var p in all)
                 {
-                    Console.Error.WriteLine("  " + (p.IsBuiltin ? "[builtin] " : "[user]    ")
-                                            + p.Name + "  (" + p.Id + ")");
+                    Console.Error.WriteLine("  " + p.Name + "  (" + p.Id + ")");
                 }
                 return 3;
             }
 
-            Console.WriteLine("Profile : " + profile.Name + (profile.IsBuiltin ? " [builtin]" : "")
-                              + "  (" + profile.Id + ")");
+            Console.WriteLine("Profile : " + profile.Name + "  (" + profile.Id + ")");
 
             var pipeline = new BuildPipeline(paths);
             pipeline.Log = m => Console.WriteLine("  " + m);

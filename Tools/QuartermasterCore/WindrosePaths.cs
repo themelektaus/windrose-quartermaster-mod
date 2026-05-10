@@ -16,7 +16,6 @@ namespace Windrose.Quartermaster.Core
         public string VanillaBuildingLimits;
         public string Builds;
         public string Profiles;
-        public string ProfilesBuiltin;
         public string BuildTmp;
         public string Tools;
         // Folder containing reference mods we adopt 1:1 (.pak/.ucas/.utoc
@@ -54,7 +53,6 @@ namespace Windrose.Quartermaster.Core
                 VanillaBuildingLimits = vanillaBuildLimits,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
-                ProfilesBuiltin = Path.Combine(modRoot, "Profiles", "_builtin"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),
                 Tools = Path.Combine(modRoot, "Tools"),
                 References = Path.Combine(modRoot, "References"),

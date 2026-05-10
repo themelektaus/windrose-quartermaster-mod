@@ -64,8 +64,8 @@ dotnet publish GUI\App -p:PublishProfile=win-x64
 ```
 
 Produces a single self-contained `Quartermaster.exe` (~94 MB, all .NET +
-WebView2 native libs + frontend + builtin profiles + a default UE5
-`.usmap` + the CUE4Parse-backed icon extractor bundled, compressed) at
+WebView2 native libs + frontend + a default UE5 `.usmap` + the
+CUE4Parse-backed icon extractor bundled, compressed) at
 `GUI\App\bin\Publish\Quartermaster.exe`. You can drop it **anywhere** --
 desktop, USB stick, `C:\Tools\`, doesn't matter. On first run a sibling
 `QuartermasterData\` folder is created **next to the EXE** so the data
@@ -75,8 +75,7 @@ travels with it (USB-stick portable):
 <wherever>\Quartermaster.exe
 <wherever>\QuartermasterData\
   .webview2\                     <- WebView2 cache/cookies
-  Profiles\_builtin\             <- seeded from embedded resources every start
-  Profiles\<id>.json             <- user profiles you create
+  Profiles\<id>.json             <- profiles you create (empty on first run)
   Sources\Vanilla\               <- extracted by setup (1097 item JSONs)
   Icons\                         <- extracted by setup (1097 PNGs)
   Tools\IconExtractor\publish\   <- seeded from embedded zip on first run
@@ -86,10 +85,10 @@ travels with it (USB-stick portable):
 ```
 
 When you launch the EXE from inside the source repo (or any ancestor
-folder containing `Profiles\_builtin\`), it stays in "dev mode" and
-reads/writes against the repo paths instead. That way the standard
-`dotnet run` workflow keeps using the tracked `Profiles\_builtin\`
-files as the source of truth.
+folder containing `Tools\QuartermasterCore\QuartermasterCore.csproj`),
+it stays in "dev mode" and reads/writes against the repo paths instead.
+That way the standard `dotnet run` workflow uses the tracked profiles
+under `Profiles\` as the source of truth.
 
 > **End-user prerequisites for the portable EXE**: the .NET **8 desktop
 > runtime** must be installed (the bundled icon extractor is a
@@ -114,10 +113,7 @@ auto-runs the dump + icon-extraction pipeline and streams the live
 log into the page. ~30-90 seconds total. Subsequent launches skip
 straight into the configurator.
 
-The dropdown shows 11 built-in profiles (`x2`...`x10`, `999`, `9999`)
-that reproduce the legacy variant grid. Built-ins are read-only - click
-**Duplicate** to create an editable copy.
-
+Click **New** to create a profile, or **Duplicate** an existing one.
 For each profile you can:
 
 - Pick a **global stack-size mode**: None, `vanilla * Multiplier` (with
@@ -128,8 +124,7 @@ For each profile you can:
 - Press **Build .pak** to run the patch + pack pipeline. The finished
   `_P.pak` lands directly in the game's `~mods` folder, ready to play.
 
-User profiles persist as `Profiles\<id>.json` (gitignored). Builtins live
-under `Profiles\_builtin\` (tracked).
+Profiles persist as `Profiles\<id>.json` (gitignored).
 
 ## Headless CLI
 
@@ -140,10 +135,7 @@ Same pipeline without the browser:
 # are already done; pass --force to re-run everything.
 dotnet run --project GUI\Web -- --setup
 
-# Build a builtin
-dotnet run --project GUI\Web -- --test-patcher --profile x4
-
-# Build a user profile (by id or name)
+# Build a profile (by id or name)
 dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
 
 # Direct multiplier without a profile

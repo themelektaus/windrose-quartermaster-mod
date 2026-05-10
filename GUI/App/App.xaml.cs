@@ -35,8 +35,8 @@ public partial class App : Application
             // Data root: defer to Program.ResolveDataRoot() so the WPF wrapper
             // and the standalone Web entry point share the exact same
             // resolution rules. Dev runs find the repo via the
-            // Profiles/_builtin marker; deployed/copied EXEs land at
-            // %LOCALAPPDATA%\Quartermaster\.
+            // QuartermasterCore.csproj marker; deployed/copied EXEs land
+            // alongside the EXE in QuartermasterData\.
             var (dataRoot, _) = Program.ResolveDataRoot();
             _webApp = Program.CreateWebApp(e.Args, "http://127.0.0.1:0", dataRoot);
             await _webApp.StartAsync();

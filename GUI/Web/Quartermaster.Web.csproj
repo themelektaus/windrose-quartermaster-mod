@@ -34,18 +34,6 @@
     <EmbeddedResource Include="wwwroot\**" />
   </ItemGroup>
   <!--
-    Embed the read-only builtin profiles. They live in the repo at
-    /Profiles/_builtin/ but we ship them inside the EXE so a deployed
-    copy can seed them into <DataRoot>\Profiles\_builtin\ on first run.
-    LogicalName uses a flat "BuiltinProfile.<file>.json" naming so the
-    runtime enumeration is trivial.
-  -->
-  <ItemGroup>
-    <EmbeddedResource Include="..\..\Profiles\_builtin\*.json">
-      <LogicalName>BuiltinProfile.%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-  <!--
     Embed the UE5 mappings file (.usmap) so a fresh copy of the EXE can
     run setup without the user first dumping one via UE4SS Ctrl+Num6.
     On deployed runs we write this into <DataRoot>\<filename>.usmap if

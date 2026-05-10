@@ -24,8 +24,6 @@
   --success: #5dca8b;
   --warn: #e9b85c;
   --danger: #e16464;
-  --builtin: #b58cff;
-  --custom: #6cc;
   --border-radius: .25em;
   --font: inter, sans-serif;
   --font-size: 15px;
@@ -158,8 +156,6 @@ button.primary:hover:not(:disabled) {
   color: var(--text-dim);
 }
 
-.profile-meta .builtin-badge,
-.profile-meta .custom-badge,
 .profile-meta .dirty-badge {
   display: inline-block;
   color: var(--bg);
@@ -168,17 +164,6 @@ button.primary:hover:not(:disabled) {
   font-weight: bold;
   margin-right: .5em;
   font-size: var(--font-size-small);
-}
-
-.profile-meta .builtin-badge {
-  background: var(--builtin);
-}
-
-.profile-meta .custom-badge {
-  background: var(--custom);
-}
-
-.profile-meta .dirty-badge {
   background: var(--warn);
 }
 
@@ -312,7 +297,7 @@ fieldset .indent input[type="number"] {
   color: var(--text-dim);
 }
 
-/* Disabled slider when pickup-enabled is unchecked OR profile is builtin. */
+/* Disabled slider when pickup-enabled is unchecked. */
 .pickup-slider input[type="range"]:disabled,
 .pickup-slider:has(input[type="range"]:disabled) .pickup-readout {
   opacity: .5;
@@ -746,19 +731,6 @@ footer.collapsed .footer-body {
 
 .setup-actions {
   display: flex; gap: .5em;
-}
-
-.readonly-banner {
-  background: var(--bg-elev-2);
-  border: 1px solid var(--builtin);
-  border-radius: var(--border-radius);
-  padding: var(--button-padding);
-  margin-bottom: .5em;
-  color: var(--text);
-}
-
-.readonly-banner b {
-  color: var(--builtin);
 }
 
 .tabs {

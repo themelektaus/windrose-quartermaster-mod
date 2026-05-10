@@ -16,7 +16,7 @@ const state = {
     expandedLts: new Set(),          // ltIds currently expanded in the loot view
 
     profiles: [],    // summaries from /api/profiles
-    current: null,   // full profile, with .isBuiltin flag from server
+    current: null,   // full profile from /api/profiles/{id}
     isDirty: false,
     activeTab: 'items',
 
@@ -456,7 +456,7 @@ function renderProfileMeta() {
     const p = state.current;
     const out = document.getElementById('profile-meta');
     if (!p) { out.innerHTML = ''; return; }
-    let html = '<span class="' + (p.isBuiltin ? 'builtin' : 'custom') + '-badge">' + (p.isBuiltin ? 'BUILTIN' : 'CUSTOM') + '</span>';
+    let html = '';
     if (state.isDirty) html += '<span class="dirty-badge">UNSAVED</span>';
     html += esc(p.description) || `&nbsp;`;
     out.innerHTML = html;
@@ -464,52 +464,39 @@ function renderProfileMeta() {
 
 function syncStackSizeInputsState() {
     const mode = document.querySelector('input[name="ssmode"]:checked').value;
-    const isReadonly = !!(state.current && state.current.isBuiltin);
-    document.getElementById('ss-mult').disabled = mode !== 'multiplier' || isReadonly;
-    document.getElementById('ss-cap').disabled  = mode !== 'multiplier' || isReadonly;
-    document.getElementById('ss-abs').disabled  = mode !== 'absolute'   || isReadonly;
+    document.getElementById('ss-mult').disabled = mode !== 'multiplier';
+    document.getElementById('ss-cap').disabled  = mode !== 'multiplier';
+    document.getElementById('ss-abs').disabled  = mode !== 'absolute';
     for (const r of document.querySelectorAll('input[name="ssmode"]')) {
-        r.disabled = isReadonly;
+        r.disabled = false;
     }
 }
 
-// Pickup-radius controls are read-only on builtins (consistent with
-// stack-size / loot globals): user must duplicate to a custom profile to
-// change it. The slider is also disabled while the checkbox is off, so
-// "0.5x range" can't accidentally happen while the patch is supposedly off.
+// Pickup-radius slider is disabled while the checkbox is off so "0.5x range"
+// can't accidentally happen while the patch is supposedly off.
 function syncPickupInputState() {
-    const isReadonly = !!(state.current && state.current.isBuiltin);
     const enabled = document.getElementById('pickup-enabled');
     const slider  = document.getElementById('pickup-multiplier');
-    enabled.disabled = isReadonly;
-    slider.disabled  = isReadonly || !enabled.checked;
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
 }
 
-// Bell-cap inputs are read-only on builtins (consistent with stack-size /
-// pickup / loot globals). Locking is governed by isBuiltin alone -- both
-// inputs are always meaningful values, the user just can't pick "off".
+// Bell-cap inputs: always editable.
 function syncBellInputState() {
-    const isReadonly = !!(state.current && state.current.isBuiltin);
-    document.getElementById('bell-cap').disabled = isReadonly;
-    document.getElementById('signal-fire-cap').disabled = isReadonly;
+    document.getElementById('bell-cap').disabled = false;
+    document.getElementById('signal-fire-cap').disabled = false;
 }
 
-// Building-stability single toggle: only the read-only (builtin) status
-// gates the checkbox. There's no "indented slider" sub-control to disable
-// because the toggle itself has no parameters.
+// Building-stability single toggle: always editable.
 function syncBuildingStabilityInputState() {
-    const isReadonly = !!(state.current && state.current.isBuiltin);
-    document.getElementById('building-stability-enabled').disabled = isReadonly;
+    document.getElementById('building-stability-enabled').disabled = false;
 }
 
-// No-Smoke per-category toggles: read-only on builtins (consistent with
-// every other globals card). The three checkboxes are otherwise fully
-// independent so this just locks all of them when it locks one.
+// No-Smoke per-category toggles: always editable.
 function syncNoSmokeInputState() {
-    const isReadonly = !!(state.current && state.current.isBuiltin);
-    document.getElementById('nosmoke-campfire').disabled = isReadonly;
-    document.getElementById('nosmoke-furnace').disabled  = isReadonly;
-    document.getElementById('nosmoke-kiln').disabled     = isReadonly;
+    document.getElementById('nosmoke-campfire').disabled = false;
+    document.getElementById('nosmoke-furnace').disabled  = false;
+    document.getElementById('nosmoke-kiln').disabled     = false;
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -526,17 +513,12 @@ function syncPickupReadout() {
 
 function populateProfileSelect() {
     const sel = document.getElementById('profile-select');
-    state.profiles.sort((a, b) => {
-        // Custom profiles first so user-authored work is the default pick.
-        if (a.isBuiltin !== b.isBuiltin) return a.isBuiltin ? 1 : -1;
-        return a.name.localeCompare(b.name);
-    });
+    state.profiles.sort((a, b) => a.name.localeCompare(b.name));
     sel.innerHTML = '';
     for (const p of state.profiles) {
         const o = document.createElement('option');
         o.value = p.id;
-        // Star marks builtins so they're scannable in the dropdown.
-        o.textContent = (p.isBuiltin ? '★ ' : '') + p.name;
+        o.textContent = p.name;
         sel.appendChild(o);
     }
 }
@@ -684,7 +666,6 @@ function buildItemRow(item) {
     const description = item.meta?.description ?? ``
     const ov = state.current && state.current.overrides && state.current.overrides[item.id];
     const ovValue = ov && ov.stackSize != null ? ov.stackSize : '';
-    const isReadonly = !!(state.current && state.current.isBuiltin);
 
     const iconHtml = item.icon
         ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
@@ -699,8 +680,7 @@ function buildItemRow(item) {
         '</div>' +
         '<div class="compute">' + item.vanillaStack + ' → ' + target.html + '</div>' +
         '<input type="number" class="override-input" data-item-id="' + esc(item.id) + '" ' +
-               'value="' + esc(ovValue) + '" placeholder="' + target.target + '" min="0" step="1"' +
-               (isReadonly ? ' disabled' : '') + '>';
+               'value="' + esc(ovValue) + '" placeholder="' + target.target + '" min="0" step="1">';
     return li;
 }
 
@@ -755,7 +735,6 @@ function getLootGlobalForCategory(cat) {
 function renderLootGlobals() {
     const out = document.getElementById('loot-globals');
     if (!out) return;
-    const isReadonly = !!(state.current && state.current.isBuiltin);
     const rows = [];
     for (const c of state.lootCategories) {
         const v = getLootGlobalForCategory(c.name);
@@ -764,10 +743,8 @@ function renderLootGlobals() {
                 '<span class="cat-count">(' + c.count + ')</span></span>' +
             '<input type="number" min="0" step="0.5" placeholder="1.0" ' +
                 'data-loot-cat="' + esc(c.name) + '" ' +
-                'value="' + (v != null ? esc(v) : '') + '"' +
-                (isReadonly ? ' disabled' : '') + '>' +
-            '<button class="reset" type="button" data-reset-cat="' + esc(c.name) + '"' +
-                (isReadonly ? ' disabled' : '') + '>x</button>'
+                'value="' + (v != null ? esc(v) : '') + '">' +
+            '<button class="reset" type="button" data-reset-cat="' + esc(c.name) + '">x</button>'
         );
     }
     out.innerHTML = rows.join('');
@@ -792,7 +769,7 @@ function renderLootStatus() {
 }
 
 function setLootGlobalFromInput(cat, rawValue) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     state.current.globals = state.current.globals || {};
     state.current.globals.loot = state.current.globals.loot || { byCategory: {} };
     state.current.globals.loot.byCategory = state.current.globals.loot.byCategory || {};
@@ -816,7 +793,7 @@ function setLootGlobalFromInput(cat, rawValue) {
 }
 
 function resetLootGlobalCategory(cat) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     if (state.current.globals && state.current.globals.loot
         && state.current.globals.loot.byCategory) {
         if (!(cat in state.current.globals.loot.byCategory)) return;
@@ -1007,7 +984,6 @@ function buildLtRow(lt) {
 // expansion, not at initial list render -- 1500 LTs * ~5 entries each would
 // otherwise blow up the DOM.
 function renderLtBody(li, lt) {
-    const isReadonly = !!(state.current && state.current.isBuiltin);
     const body = li.querySelector('.lt-body');
     if (!body) return;
 
@@ -1015,24 +991,22 @@ function renderLtBody(li, lt) {
 
     // Vanilla entries (with edits/removal markers).
     for (const e of lt.entries) {
-        rows.push(buildLtEntryRowHtml(lt, e, isReadonly));
+        rows.push(buildLtEntryRowHtml(lt, e, false));
     }
 
     // Added (custom) entries.
     const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
     if (ovr && ovr.added) {
         for (let i = 0; i < ovr.added.length; i++) {
-            rows.push(buildLtAddedRowHtml(lt, ovr.added[i], i, isReadonly));
+            rows.push(buildLtAddedRowHtml(lt, ovr.added[i], i, false));
         }
     }
 
     // Add-entry button.
-    if (!isReadonly) {
-        rows.push(
-            '<div class="lt-add-row">' +
-                '<button type="button" class="add-btn" data-add-entry="' + esc(lt.id) + '">+ Add entry</button>' +
-            '</div>');
-    }
+    rows.push(
+        '<div class="lt-add-row">' +
+            '<button type="button" class="add-btn" data-add-entry="' + esc(lt.id) + '">+ Add entry</button>' +
+        '</div>');
 
     body.innerHTML = rows.join('');
 }
@@ -1252,7 +1226,7 @@ function pruneLootOverrideIfEmpty(ltId) {
 }
 
 function setLootEntryFieldFromInput(ltId, index, field, rawValue) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const ovr = getOrCreateLootOverride(ltId);
     const key = String(index);
     const cur = ovr.entries[key] || {};
@@ -1276,7 +1250,7 @@ function setLootEntryFieldFromInput(ltId, index, field, rawValue) {
 }
 
 function toggleLootEntryRemoved(ltId, index) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const ovr = getOrCreateLootOverride(ltId);
     const i = ovr.removed.indexOf(index);
     if (i >= 0) ovr.removed.splice(i, 1);
@@ -1288,7 +1262,7 @@ function toggleLootEntryRemoved(ltId, index) {
 }
 
 function addLootEntry(ltId) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const ovr = getOrCreateLootOverride(ltId);
     // Stub entry; the picker form lets the user pick item-or-table and id.
     ovr.added.push({ min: 1, max: 1, weight: 0 });
@@ -1298,7 +1272,7 @@ function addLootEntry(ltId) {
 }
 
 function setAddedEntryField(ltId, addedIndex, field, rawValue) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const ovr = getOrCreateLootOverride(ltId);
     const a = ovr.added[addedIndex];
     if (!a) return;
@@ -1319,7 +1293,7 @@ function setAddedEntryField(ltId, addedIndex, field, rawValue) {
 // type === 'nodrop' is special: it doesn't need a target -- both fields
 // are pinned to 'None' and the entry serializes as a plain empty slot.
 function confirmAddedEntry(ltId, addedIndex, type, target) {
-    if (!state.current || state.current.isBuiltin) return false;
+    if (!state.current) return false;
     const ovr = getOrCreateLootOverride(ltId);
     const a = ovr.added[addedIndex];
     if (!a) return false;
@@ -1356,7 +1330,7 @@ function confirmAddedEntry(ltId, addedIndex, type, target) {
 }
 
 function deleteAddedEntry(ltId, addedIndex) {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const ovr = state.current.lootOverrides && state.current.lootOverrides[ltId];
     if (!ovr || !ovr.added) return;
     ovr.added.splice(addedIndex, 1);
@@ -1667,10 +1641,9 @@ function markDirty() {
 
 function updateButtons() {
     const p = state.current;
-    const builtin = !!(p && p.isBuiltin);
-    document.getElementById('btn-save').disabled       = !p || builtin || !state.isDirty;
-    document.getElementById('btn-rename').disabled     = !p || builtin;
-    document.getElementById('btn-delete').disabled     = !p || builtin;
+    document.getElementById('btn-save').disabled       = !p || !state.isDirty;
+    document.getElementById('btn-rename').disabled     = !p;
+    document.getElementById('btn-delete').disabled     = !p;
     document.getElementById('btn-build').disabled      = !p;
     document.getElementById('btn-duplicate').disabled  = !p;
 }
@@ -1679,7 +1652,7 @@ function updateButtons() {
 
 async function onSave() {
     const p = state.current;
-    if (!p || p.isBuiltin) return;
+    if (!p) return;
     const body = {
         id: p.id, name: p.name, description: p.description,
         createdAt: p.createdAt,
@@ -1724,7 +1697,7 @@ async function onDuplicate() {
 }
 
 function onRename() {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     const newName = prompt('New name?', state.current.name);
     if (!newName || newName === state.current.name) return;
     state.current.name = newName;
@@ -1734,7 +1707,7 @@ function onRename() {
 }
 
 async function onDelete() {
-    if (!state.current || state.current.isBuiltin) return;
+    if (!state.current) return;
     if (!confirm('Delete profile "' + state.current.name + '"?')) return;
     await api('DELETE', '/api/profiles/' + encodeURIComponent(state.current.id));
     state.profiles = await api('GET', '/api/profiles');
@@ -1757,7 +1730,7 @@ async function onDelete() {
 
 async function onBuild() {
     if (!state.current) return;
-    if (state.isDirty && !state.current.isBuiltin) {
+    if (state.isDirty) {
         if (confirm('Save unsaved changes before building?')) {
             await onSave();
         }
