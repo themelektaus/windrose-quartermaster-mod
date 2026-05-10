@@ -291,8 +291,8 @@ internal static class Program
     }
 
     // For each shipped culture, swap the provider's localization dictionary
-    // and resolve every FText (TableId/Key) reference per manifest entry --
-    // name, description, vanityText, effects[], setEffects[].
+    // and resolve every FText (TableId/Key) reference per manifest entry
+    // - name, description, vanityText, effects[], setEffects[].
     // We accumulate results in memory and write one <itemId>.json per item
     // at the end, so each item gets a single file with all locales merged
     // (instead of one file per locale).

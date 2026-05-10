@@ -28,6 +28,6 @@ sealed class LootEntryDto
     public string lootItemPath;     // e.g. "/R5BusinessRules/InventoryItems/.../DA_DID_Resource_TeaLeaf_T04.DA_DID_Resource_TeaLeaf_T04"
     public string lootTableId;      // e.g. "Mobs/Rss/DA_LT_Mob_BlackBeard_Sergeant_BlackbeardSign"
     public string lootTablePath;    // e.g. "/R5BusinessRules/LootTables/Mobs/Rss/DA_LT_..."
-    // ItemAttributeModifiers is intentionally omitted from the wire format --
+    // ItemAttributeModifiers is intentionally omitted from the wire format.
     // Phase 1 is read-only on those, so the frontend doesn't need to see them.
 }

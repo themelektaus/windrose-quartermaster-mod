@@ -62,7 +62,7 @@ public static class BuildEndpoint
 
             // Redirect the pak straight into Windrose's ~mods/ folder so
             // the engine picks it up without a manual copy step. SteamLocator
-            // throws a descriptive error if the install can't be found --
+            // throws a descriptive error if the install can't be found.
             // surface that as a 500 with the same shape as a build failure.
             try
             {

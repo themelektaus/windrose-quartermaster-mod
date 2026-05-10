@@ -288,7 +288,7 @@ namespace Windrose.Quartermaster.Core
                         try { Directory.Delete(dir, true); }
                         catch (Exception ex)
                         {
-                            // Failure to clean up is annoying but not fatal --
+                            // Failure to clean up is annoying but not fatal,
                             // surface it in the log so the user can clean by hand.
                             LogLine("Warning: temp dir cleanup failed for " + dir + ": " + ex.Message);
                         }
@@ -614,7 +614,7 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
-        // True when the profile actually configures the loot domain --
+        // True when the profile actually configures the loot domain,
         // either via a per-bucket multiplier or per-LT override. Lets the
         // pipeline skip the loot patch step entirely for stack-only
         // profiles (e.g. all 11 builtins).

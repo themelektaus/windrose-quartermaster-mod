@@ -66,7 +66,7 @@ dotnet publish GUI\App -p:PublishProfile=win-x64
 Produces a single self-contained `Quartermaster.exe` (~94 MB, all .NET +
 WebView2 native libs + frontend + a default UE5 `.usmap` + the
 CUE4Parse-backed icon extractor bundled, compressed) at
-`GUI\App\bin\Publish\Quartermaster.exe`. You can drop it **anywhere** --
+`GUI\App\bin\Publish\Quartermaster.exe`. You can drop it **anywhere** -
 desktop, USB stick, `C:\Tools\`, doesn't matter. On first run a sibling
 `QuartermasterData\` folder is created **next to the EXE** so the data
 travels with it (USB-stick portable):

@@ -123,7 +123,7 @@ Windows 11 and most Windows 10 builds. The launcher pops a clear error
 dialog (with the [evergreen installer URL](https://developer.microsoft.com/microsoft-edge/webview2/))
 if the runtime is missing.
 
-Both entry points share the exact same `Program.CreateWebApp` builder --
+Both entry points share the exact same `Program.CreateWebApp` builder -
 the WPF App project just links the Web project, calls into it, and
 delegates DataRoot resolution to `Program.ResolveDataRoot()`. The
 resolver walks up from `AppContext.BaseDirectory` looking for a

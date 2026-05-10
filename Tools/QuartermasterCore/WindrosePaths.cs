@@ -4,7 +4,7 @@ using System.IO;
 namespace Windrose.Quartermaster.Core
 {
     // Resolves the standard Windrose mod-folder layout from a known root.
-    // The root is wherever the .ps1 build scripts (and now the GUI) live --
+    // The root is wherever the .ps1 build scripts (and now the GUI) live,
     // i.e. the directory that contains Sources/, Builds/, Profiles/ etc.
     public sealed class WindrosePaths
     {

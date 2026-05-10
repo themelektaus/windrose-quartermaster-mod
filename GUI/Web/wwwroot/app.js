@@ -563,7 +563,7 @@ function populateLootCategoryFilter() {
     }
 }
 
-// (The native <datalist> approach was replaced by a custom dropdown --
+// (The native <datalist> approach was replaced by a custom dropdown -
 // see openPicker / populatePicker further down. We need rich rows
 // (icon + name + class/category for items; id + category/type/entry count
 // for sub-tables) and per-mode data sources, neither of which a datalist

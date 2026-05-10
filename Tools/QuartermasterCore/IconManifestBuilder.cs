@@ -14,7 +14,7 @@ namespace Windrose.Quartermaster.Core
     // mistyped FText refs without try/catch chains).
     //
     // The shape of the per-entry record (and of the FText / curve nested
-    // records) MUST match WindroseIconExtractor.Program's ManifestEntry --
+    // records) MUST match WindroseIconExtractor.Program's ManifestEntry.
     // change both ends together if you touch this.
     public sealed class IconManifestBuilder
     {
@@ -274,7 +274,7 @@ namespace Windrose.Quartermaster.Core
 
     // ---- On-disk schema ---------------------------------------------------
     // Property names map to camelCase (see ManifestSerializerOptions). Keep
-    // these in sync with WindroseIconExtractor.Program's ManifestEntry --
+    // these in sync with WindroseIconExtractor.Program's ManifestEntry,
     // both ends serialize/deserialize the same on-disk shape.
 
     public sealed class ManifestEntry
