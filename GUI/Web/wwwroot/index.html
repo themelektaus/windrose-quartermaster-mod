@@ -200,6 +200,29 @@
           </label>
           <p class="hint">Single toggle: on bundles fixed values (BlockWeight=0, MaxLoad=10&thinsp;000&thinsp;000, MinIntersection=0); off ships nothing. Built-in profiles can't toggle this -- duplicate first.</p>
         </section>
+
+        <section class="card">
+          <h2>Globals - No Smoke</h2>
+          <p class="hint">Hide the smoke / flame Niagara FX on selected craft stations and campsites. Self-baked from vanilla: every EmitterHandle on the matching NiagaraSystem is flipped to disabled, then re-packed into the shared IoStore triplet.</p>
+          <div class="nosmoke-rows">
+            <label class="check-row">
+              <input type="checkbox" id="nosmoke-campfire">
+              Campfires &amp; bonfires
+              <span class="muted nosmoke-hint">(FX_Bonefire_Center, FX_Campfire_smoldering, FX_Campfire_stylized_small)</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" id="nosmoke-furnace">
+              Furnaces (T1 + T3)
+              <span class="muted nosmoke-hint">(FX_Flame_Furnace_T1, FX_Flame_Furnace_T3)</span>
+            </label>
+            <label class="check-row">
+              <input type="checkbox" id="nosmoke-kiln">
+              Kilns (T3 + Dop_T3)
+              <span class="muted nosmoke-hint">(FX_Smoke_Kiln_T3, FX_Smoke_Kiln_Dop_T3)</span>
+            </label>
+          </div>
+          <p class="hint">Categories are independent -- enable any combination. Built-in profiles can't toggle this -- duplicate first.</p>
+        </section>
       </aside>
     </div>
 

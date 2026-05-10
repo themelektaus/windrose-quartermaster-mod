@@ -438,10 +438,17 @@ function applyProfileToUI() {
     const bs = (p.globals && p.globals.buildingStability) || null;
     document.getElementById('building-stability-enabled').checked =
         !!(bs && bs.enabled === true);
+    // No-Smoke per-category toggles. Same null-folds-to-off semantics
+    // as building-stability; each flag is independent.
+    const ns = (p.globals && p.globals.noSmoke) || null;
+    document.getElementById('nosmoke-campfire').checked = !!(ns && ns.campfire === true);
+    document.getElementById('nosmoke-furnace').checked  = !!(ns && ns.furnace === true);
+    document.getElementById('nosmoke-kiln').checked     = !!(ns && ns.kiln === true);
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
     syncBuildingStabilityInputState();
+    syncNoSmokeInputState();
     renderProfileMeta();
 }
 
@@ -493,6 +500,16 @@ function syncBellInputState() {
 function syncBuildingStabilityInputState() {
     const isReadonly = !!(state.current && state.current.isBuiltin);
     document.getElementById('building-stability-enabled').disabled = isReadonly;
+}
+
+// No-Smoke per-category toggles: read-only on builtins (consistent with
+// every other globals card). The three checkboxes are otherwise fully
+// independent so this just locks all of them when it locks one.
+function syncNoSmokeInputState() {
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    document.getElementById('nosmoke-campfire').disabled = isReadonly;
+    document.getElementById('nosmoke-furnace').disabled  = isReadonly;
+    document.getElementById('nosmoke-kiln').disabled     = isReadonly;
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -1604,6 +1621,28 @@ function setBuildingStabilityFromUI() {
     markDirty();
 }
 
+// No-Smoke per-category toggles. All three off -> drop the whole noSmoke
+// subtree (clean JSON, mirrors the build pipeline's "no source contributes"
+// semantics). At least one on -> keep only the active flags as true; off
+// flags are omitted (null in the model = treated as false everywhere).
+function setNoSmokeFromUI() {
+    if (!state.current) return;
+    const c = document.getElementById('nosmoke-campfire').checked;
+    const f = document.getElementById('nosmoke-furnace').checked;
+    const k = document.getElementById('nosmoke-kiln').checked;
+    state.current.globals = state.current.globals || {};
+    if (!c && !f && !k) {
+        delete state.current.globals.noSmoke;
+    } else {
+        const ns = {};
+        if (c) ns.campfire = true;
+        if (f) ns.furnace = true;
+        if (k) ns.kiln = true;
+        state.current.globals.noSmoke = ns;
+    }
+    markDirty();
+}
+
 function setOverrideFromInput(itemId, rawValue) {
     if (!state.current) return;
     state.current.overrides = state.current.overrides || {};
@@ -1769,7 +1808,15 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE -- enhanced building stability bundled (787 DA_BI* assets)' });
             }
-            if (!data.pakPath && !data.pickupRadius && !data.buildingStability) {
+            if (data.noSmoke) {
+                const ns = data.noSmoke;
+                const cats = (ns.categories || []).join(', ') || '?';
+                lines.push({ kind: 'ok', msg:
+                    'DONE -- no-smoke patched (' + cats + '; '
+                    + ns.assetCount + ' assets, '
+                    + ns.flippedHandles + ' emitter handles silenced)' });
+            }
+            if (!data.pakPath && !data.pickupRadius && !data.buildingStability && !data.noSmoke) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -1977,6 +2024,9 @@ function bindHandlers() {
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('building-stability-enabled').addEventListener('change',
         setBuildingStabilityFromUI);
+    document.getElementById('nosmoke-campfire').addEventListener('change', setNoSmokeFromUI);
+    document.getElementById('nosmoke-furnace').addEventListener('change',  setNoSmokeFromUI);
+    document.getElementById('nosmoke-kiln').addEventListener('change',     setNoSmokeFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);

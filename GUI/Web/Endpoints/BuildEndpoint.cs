@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -163,6 +164,36 @@ public static class BuildEndpoint
                         enabled = result.StabilityResult.Enabled,
                     };
                 }
+                // NoSmoke surfaces the active categories + per-asset patch
+                // counts so the frontend can render "Campfire, Furnace
+                // (5 assets, 38 emitter handles silenced)". null = no
+                // NoSmoke category was active for this build.
+                object noSmokeInfo = null;
+                if (result.NoSmokeResult != null)
+                {
+                    var ns = result.NoSmokeResult;
+                    int totalFlipped = 0;
+                    if (ns.AssetResults != null)
+                    {
+                        foreach (var ar in ns.AssetResults) totalFlipped += ar.FlippedHandles;
+                    }
+                    noSmokeInfo = new
+                    {
+                        categories = ns.Categories == null
+                            ? new string[0]
+                            : ns.Categories.Select(c => c.ToString()).ToArray(),
+                        assetCount = ns.AssetResults == null ? 0 : ns.AssetResults.Count,
+                        flippedHandles = totalFlipped,
+                        assets = ns.AssetResults == null
+                            ? null
+                            : ns.AssetResults.Select(ar => new
+                            {
+                                path = ar.AssetPath,
+                                totalHandles = ar.TotalHandles,
+                                flippedHandles = ar.FlippedHandles,
+                            }).ToArray(),
+                    };
+                }
                 return Results.Json(new
                 {
                     success = true,
@@ -185,6 +216,7 @@ public static class BuildEndpoint
                     pickupRadius = pickupRadiusInfo,
                     bellLimits = bellLimitsInfo,
                     buildingStability = buildingStabilityInfo,
+                    noSmoke = noSmokeInfo,
                     log,
                 });
             }

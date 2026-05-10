@@ -187,6 +187,14 @@ public static class ProfilesEndpoint
                 {
                     Enabled = g.BuildingStability.Enabled,
                 },
+            NoSmoke = g.NoSmoke == null
+                ? null
+                : new NoSmokeGlobal
+                {
+                    Campfire = g.NoSmoke.Campfire,
+                    Furnace = g.NoSmoke.Furnace,
+                    Kiln = g.NoSmoke.Kiln,
+                },
         };
     }
 
@@ -272,7 +280,20 @@ public static class ProfilesEndpoint
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
+            // True when at least one NoSmoke category is on -- the build
+            // will then self-bake the relevant vanilla Niagara assets
+            // (silencing emitter handles) into the IoStore composite.
+            hasGlobalNoSmoke = HasAnyNoSmokeCategory(p),
         };
+    }
+
+    static bool HasAnyNoSmokeCategory(Profile p)
+    {
+        var n = p.Globals != null ? p.Globals.NoSmoke : null;
+        if (n == null) return false;
+        return n.Campfire.GetValueOrDefault(false)
+            || n.Furnace.GetValueOrDefault(false)
+            || n.Kiln.GetValueOrDefault(false);
     }
 
     static bool HasFastTravelBellsConfig(Profile p)

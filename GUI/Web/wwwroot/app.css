@@ -349,6 +349,29 @@ fieldset .indent input[type="number"] {
   color: var(--text-dim);
 }
 
+/* No-Smoke category toggles. Three checkboxes stacked vertically with
+   a small inline-hint listing the affected vanilla asset stems. Mirrors
+   .check-row styling but adds gap so the parenthetical hint reads as a
+   subtitle, not an inline continuation. */
+.nosmoke-rows {
+  display: flex;
+  flex-direction: column;
+  gap: .35em;
+}
+
+.nosmoke-rows .check-row {
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .35em;
+}
+
+.nosmoke-hint {
+  font-size: .85em;
+  color: var(--text-dim);
+  flex-basis: 100%;
+  margin-left: 1.6em;
+}
+
 dl {
   display: grid;
   grid-template-columns: 1fr auto;

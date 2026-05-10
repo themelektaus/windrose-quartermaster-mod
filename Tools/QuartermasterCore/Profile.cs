@@ -41,6 +41,7 @@ namespace Windrose.Quartermaster.Core
         public PickupRadiusGlobal PickupRadius;
         public FastTravelBellsGlobal FastTravelBells;
         public BuildingStabilityGlobal BuildingStability;
+        public NoSmokeGlobal NoSmoke;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -118,6 +119,30 @@ namespace Windrose.Quartermaster.Core
     public sealed class BuildingStabilityGlobal
     {
         public bool? Enabled;
+    }
+
+    // "No smoke" visual tweak: hides the smoke / flame Niagara FX on
+    // campfires, furnaces and kilns by setting every EmitterHandle's
+    // bIsEnabled = false on the corresponding NiagaraSystem export.
+    //
+    // Self-baked from vanilla via UAssetAPI (Niagara assets parse cleanly
+    // unlike DA_BI), so no reference mod is shipped -- the build pipeline
+    // extracts the live game's Niagara assets via retoc to-legacy, runs
+    // NoSmokePatcher on them, and re-packs into the IoStore composite.
+    //
+    // Three independent toggles map to three asset groups:
+    //   Campfire = FX_Bonefire_Center, FX_Campfire_smoldering, FX_Campfire_stylized_small
+    //   Furnace  = FX_Flame_Furnace_T1, FX_Flame_Furnace_T3
+    //   Kiln     = FX_Smoke_Kiln_T3, FX_Smoke_Kiln_Dop_T3
+    //
+    // null OR all three flags off/null -> no NoSmoke source contributes
+    // to the IoStore composite. Each flag independently controls whether
+    // its group's vanilla assets get patched and shipped.
+    public sealed class NoSmokeGlobal
+    {
+        public bool? Campfire;
+        public bool? Furnace;
+        public bool? Kiln;
     }
 
     public sealed class ItemOverride

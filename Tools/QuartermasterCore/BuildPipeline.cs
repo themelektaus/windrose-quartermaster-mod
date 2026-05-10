@@ -28,6 +28,14 @@ namespace Windrose.Quartermaster.Core
     //
     // Both share the basename of the main pak so UE5 mounts them as one
     // logical mod (.pak Pak1 + .ucas/.utoc IoStore companions).
+    //
+    // A third source -- NoSmoke -- self-bakes vanilla Niagara assets
+    // (FX_Bonefire/Campfire/Furnace/Kiln) and patches every
+    // EmitterHandle.bIsEnabled to false to silence the smoke / flame
+    // particle systems. Three independent toggles map to three asset
+    // groups (Campfire / Furnace / Kiln); active toggles' assets are
+    // pulled in a single to-legacy call (multi --filter) and patched in
+    // the AfterExtract callback.
     public sealed class BuildPipeline
     {
         readonly WindrosePaths _paths;
@@ -187,7 +195,9 @@ namespace Windrose.Quartermaster.Core
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
-                bool ioStoreActive = pickupActive || stabilityActive;
+                var noSmokeCategories = ResolveNoSmokeCategories(profile);
+                bool noSmokeActive = noSmokeCategories.Count > 0;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -208,13 +218,16 @@ namespace Windrose.Quartermaster.Core
                 // still needs the .pak as the IoStore container's marker.
                 PickupTripletResult pickupResult = null;
                 BuildingStabilityResult stabilityResult = null;
+                NoSmokeResult noSmokeResult = null;
                 if (ioStoreActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive, stabilityActive,
+                        noSmokeCategories,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     stabilityResult = compositeResult.Stability;
+                    noSmokeResult = compositeResult.NoSmoke;
                 }
 
                 PakBuildResult pakResult = null;
@@ -256,6 +269,7 @@ namespace Windrose.Quartermaster.Core
                     PickupResult = pickupResult,
                     PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
                     StabilityResult = stabilityResult,
+                    NoSmokeResult = noSmokeResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -305,6 +319,7 @@ namespace Windrose.Quartermaster.Core
         BuildIoStoreCompositeOutput BuildIoStoreComposite(
             Profile profile, string outDir,
             double pickupMultiplier, bool pickupActive, bool stabilityActive,
+            List<NoSmokeCategory> noSmokeCategories,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -423,6 +438,71 @@ namespace Windrose.Quartermaster.Core
                 stabilityOut = new BuildingStabilityResult { Enabled = true };
             }
 
+            NoSmokeResult noSmokeOut = null;
+            if (noSmokeCategories != null && noSmokeCategories.Count > 0)
+            {
+                // Self-bake: collect every Niagara asset in the active
+                // categories, pull them in a single retoc to-legacy call
+                // (multi --filter), then patch each one's NiagaraSystem
+                // export to disable every emitter handle. The composite
+                // builder picks them up from the shared staging tree
+                // along with any other sources.
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                var assetPaths = new List<string>();
+                var filterStems = new List<string>();
+                foreach (var cat in noSmokeCategories)
+                {
+                    string[] virtualPaths;
+                    if (!NoSmokePatcher.CategoryAssets.TryGetValue(cat, out virtualPaths))
+                        continue;
+                    foreach (var vp in virtualPaths)
+                    {
+                        assetPaths.Add(vp);
+                        filterStems.Add(Path.GetFileNameWithoutExtension(vp));
+                    }
+                }
+                LogLine("NoSmoke source: vanilla Niagara FX ("
+                        + string.Join(", ", noSmokeCategories)
+                        + " -> " + assetPaths.Count + " asset"
+                        + (assetPaths.Count == 1 ? "" : "s") + ")");
+                var perAssetResults = new List<NoSmokeAssetResult>();
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "no-smoke",
+                    InputDir = gamePaksDir,
+                    Filters = filterStems,
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new NoSmokePatcher { Log = Log };
+                        for (int i = 0; i < assetPaths.Count; i++)
+                        {
+                            var legacyAssetPath = Path.Combine(stagingDir,
+                                assetPaths[i].Replace('/', Path.DirectorySeparatorChar));
+                            if (!File.Exists(legacyAssetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    "retoc to-legacy did not produce the expected NoSmoke asset at "
+                                    + legacyAssetPath
+                                    + " -- the game container may have moved the asset, or "
+                                    + "the filter '" + filterStems[i] + "' is wrong.");
+                            }
+                            var pr = patcher.Patch(legacyAssetPath, usmapPath);
+                            perAssetResults.Add(new NoSmokeAssetResult
+                            {
+                                AssetPath = assetPaths[i],
+                                FlippedHandles = pr.FlippedHandles,
+                                TotalHandles = pr.TotalHandles,
+                            });
+                        }
+                    },
+                });
+                noSmokeOut = new NoSmokeResult
+                {
+                    Categories = new List<NoSmokeCategory>(noSmokeCategories),
+                    AssetResults = perAssetResults,
+                };
+            }
+
             LogLine("Building IoStore composite triplet -> staging ("
                     + sources.Count + " source" + (sources.Count == 1 ? "" : "s") + ")");
 
@@ -479,6 +559,7 @@ namespace Windrose.Quartermaster.Core
             {
                 Pickup = pickupOut,
                 Stability = stabilityOut,
+                NoSmoke = noSmokeOut,
             };
         }
 
@@ -487,12 +568,13 @@ namespace Windrose.Quartermaster.Core
         // keep the build offline-capable.
         const string StabilityReferenceFileName = "BetterStructureSupport_P";
 
-        // Internal carrier so BuildIoStoreComposite can return both
+        // Internal carrier so BuildIoStoreComposite can return all
         // feature-specific result objects to the caller without a tuple.
         sealed class BuildIoStoreCompositeOutput
         {
             public PickupTripletResult Pickup;
             public BuildingStabilityResult Stability;
+            public NoSmokeResult NoSmoke;
         }
 
         // Resolves the effective multiplier the build should use, with the
@@ -515,6 +597,21 @@ namespace Windrose.Quartermaster.Core
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;
             if (bs == null) return false;
             return bs.Enabled.GetValueOrDefault(false);
+        }
+
+        // Returns the list of NoSmoke categories the profile has actively
+        // enabled (in declaration order: Campfire, Furnace, Kiln). Empty
+        // list means no NoSmoke source contributes to the IoStore composite.
+        // Categories with null/false flags are omitted.
+        static List<NoSmokeCategory> ResolveNoSmokeCategories(Profile profile)
+        {
+            var result = new List<NoSmokeCategory>();
+            var ns = profile.Globals != null ? profile.Globals.NoSmoke : null;
+            if (ns == null) return result;
+            if (ns.Campfire.GetValueOrDefault(false)) result.Add(NoSmokeCategory.Campfire);
+            if (ns.Furnace.GetValueOrDefault(false))  result.Add(NoSmokeCategory.Furnace);
+            if (ns.Kiln.GetValueOrDefault(false))     result.Add(NoSmokeCategory.Kiln);
+            return result;
         }
 
         // True when the profile actually configures the loot domain --
@@ -601,6 +698,12 @@ namespace Windrose.Quartermaster.Core
         // shared basename if pickup was off and stability was the only
         // IoStore source).
         public BuildingStabilityResult StabilityResult;
+        // NoSmoke inclusion result. null when no NoSmoke category was
+        // active. When non-null, lists which categories were enabled and
+        // per-asset patch counts (handles flipped from enabled to
+        // disabled). The .ucas/.utoc payload is part of the same shared
+        // IoStore triplet as Pickup / Stability.
+        public NoSmokeResult NoSmokeResult;
         public string TmpDir;
         public bool Success;
     }
@@ -611,5 +714,27 @@ namespace Windrose.Quartermaster.Core
     public sealed class BuildingStabilityResult
     {
         public bool Enabled;
+    }
+
+    // Standalone summary of "no-smoke patches got included in this build".
+    // Carries the active categories plus per-asset patch counts so the
+    // build response can attribute totals back to the user-visible
+    // toggles ("3 campfires patched, 11+8 emitter handles silenced", ...).
+    public sealed class NoSmokeResult
+    {
+        public List<NoSmokeCategory> Categories;
+        public List<NoSmokeAssetResult> AssetResults;
+    }
+
+    public sealed class NoSmokeAssetResult
+    {
+        // Virtual content path of the patched asset (e.g.
+        // "R5/Content/FX/Particles/Environment/Fire/FX_Bonefire_Center.uasset").
+        public string AssetPath;
+        // Total EmitterHandles encountered on the asset's NiagaraSystem.
+        public int TotalHandles;
+        // Subset of TotalHandles that had bIsEnabled flipped from true to
+        // false. Handles already at false are not counted.
+        public int FlippedHandles;
     }
 }

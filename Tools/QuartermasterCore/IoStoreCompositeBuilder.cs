@@ -100,14 +100,24 @@ namespace Windrose.Quartermaster.Core
                         "Source '" + src.Name + "' input dir not found: " + src.InputDir);
 
                 var argv = new List<string> { "to-legacy", src.InputDir, stagingDir, "--version", "UE5_6" };
-                if (!string.IsNullOrEmpty(src.Filter))
+                var filters = new List<string>();
+                if (!string.IsNullOrEmpty(src.Filter)) filters.Add(src.Filter);
+                if (src.Filters != null)
+                {
+                    foreach (var f in src.Filters)
+                    {
+                        if (!string.IsNullOrEmpty(f)) filters.Add(f);
+                    }
+                }
+                foreach (var f in filters)
                 {
                     argv.Add("--filter");
-                    argv.Add(src.Filter);
+                    argv.Add(f);
                 }
 
                 LogLine("retoc to-legacy [" + src.Name + "]: "
-                        + src.InputDir + (string.IsNullOrEmpty(src.Filter) ? "" : " --filter " + src.Filter));
+                        + src.InputDir
+                        + (filters.Count == 0 ? "" : " --filter " + string.Join(" --filter ", filters)));
                 RunRetoc(req.RetocExe, argv.ToArray());
 
                 // Optional UAssetAPI patches that need to see the freshly
@@ -225,6 +235,11 @@ namespace Windrose.Quartermaster.Core
         // Optional --filter for retoc to-legacy. Empty means "extract every
         // asset in InputDir" -- only safe for tightly scoped mod extracts.
         public string Filter;
+        // Optional additional filters appended to Filter. retoc accepts
+        // repeated --filter flags and OR-matches them, so this lets one
+        // source pull N specific assets in a single to-legacy call (used
+        // by NoSmoke to extract up to 7 Niagara assets in one shot).
+        public List<string> Filters;
         // Optional callback invoked AFTER this source's to-legacy step. The
         // staging dir (where assets just landed) is passed in, and the
         // callback can mutate any of the freshly written .uasset/.uexp
