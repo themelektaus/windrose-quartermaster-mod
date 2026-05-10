@@ -40,6 +40,7 @@ namespace Windrose.Quartermaster.Core
         public LootGlobal Loot;
         public PickupRadiusGlobal PickupRadius;
         public FastTravelBellsGlobal FastTravelBells;
+        public BuildingStabilityGlobal BuildingStability;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -98,6 +99,25 @@ namespace Windrose.Quartermaster.Core
     {
         public int? BellCap;        // both bell variants; 10..1000
         public int? SignalFireCap;  // 3..1000
+    }
+
+    // "Enhanced building stability" toggle. When enabled, ships the 787
+    // pre-cooked DA_BI* DataAssets from the BetterStructureSupport
+    // reference mod (References/BetterStructureSupport_P.{pak,ucas,utoc})
+    // verbatim, alongside any other IoStore content for this profile.
+    //
+    // We do NOT patch the values ourselves because vanilla DA_BI assets
+    // serialize via UE5's tag-stream format that UAssetAPI cannot
+    // decode (loads as RawExport). The reference mod's variants ARE
+    // parseable but for a single on/off toggle we don't need to patch
+    // them anyway -- the bundled values (BlockWeight=0, MaxLoad=1e7,
+    // MinIntersection=0) match the "buildings never collapse" UX.
+    //
+    // null OR Enabled=false -> no stability assets shipped for this
+    // profile; the IoStore output omits the stability source entirely.
+    public sealed class BuildingStabilityGlobal
+    {
+        public bool? Enabled;
     }
 
     public sealed class ItemOverride

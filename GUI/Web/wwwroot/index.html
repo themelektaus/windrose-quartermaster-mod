@@ -190,6 +190,16 @@
           </div>
           <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak -- no extra files. Built-in profiles can't change this -- duplicate first.</p>
         </section>
+
+        <section class="card">
+          <h2>Globals - Building Stability</h2>
+          <p class="hint">Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing. Bakes the BetterStructureSupport reference mod's 787 DA_BI* DataAssets into the IoStore triplet alongside any other globals.</p>
+          <label class="check-row">
+            <input type="checkbox" id="building-stability-enabled">
+            Enhanced building stability
+          </label>
+          <p class="hint">Single toggle: on bundles fixed values (BlockWeight=0, MaxLoad=10&thinsp;000&thinsp;000, MinIntersection=0); off ships nothing. Built-in profiles can't toggle this -- duplicate first.</p>
+        </section>
       </aside>
     </div>
 

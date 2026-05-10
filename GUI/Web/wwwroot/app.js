@@ -432,9 +432,16 @@ function applyProfileToUI() {
         ftb && ftb.bellCap != null ? ftb.bellCap : 10;
     document.getElementById('signal-fire-cap').value =
         ftb && ftb.signalFireCap != null ? ftb.signalFireCap : 3;
+    // Building-stability single-toggle. Treated as off whenever the
+    // profile doesn't have it set (matches the build pipeline's
+    // ResolveStabilityEnabled, which folds null/missing into false).
+    const bs = (p.globals && p.globals.buildingStability) || null;
+    document.getElementById('building-stability-enabled').checked =
+        !!(bs && bs.enabled === true);
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
+    syncBuildingStabilityInputState();
     renderProfileMeta();
 }
 
@@ -478,6 +485,14 @@ function syncBellInputState() {
     const isReadonly = !!(state.current && state.current.isBuiltin);
     document.getElementById('bell-cap').disabled = isReadonly;
     document.getElementById('signal-fire-cap').disabled = isReadonly;
+}
+
+// Building-stability single toggle: only the read-only (builtin) status
+// gates the checkbox. There's no "indented slider" sub-control to disable
+// because the toggle itself has no parameters.
+function syncBuildingStabilityInputState() {
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    document.getElementById('building-stability-enabled').disabled = isReadonly;
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -1574,6 +1589,21 @@ function setBellLimitsFromUI() {
     markDirty();
 }
 
+// Building-stability single toggle. Off drops the whole subtree (clean
+// JSON for default profiles); on writes { enabled: true }. Mirrors the
+// pickup pattern of "default = no key in JSON at all".
+function setBuildingStabilityFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('building-stability-enabled').checked;
+    state.current.globals = state.current.globals || {};
+    if (enabled) {
+        state.current.globals.buildingStability = { enabled: true };
+    } else {
+        delete state.current.globals.buildingStability;
+    }
+    markDirty();
+}
+
 function setOverrideFromInput(itemId, rawValue) {
     if (!state.current) return;
     state.current.overrides = state.current.overrides || {};
@@ -1735,7 +1765,11 @@ async function onBuild() {
                     + bl.bellsPatched + ' bell + ' + bl.signalFiresPatched
                     + ' signal-fire entries)' });
             }
-            if (!data.pakPath && !data.pickupRadius) {
+            if (data.buildingStability && data.buildingStability.enabled) {
+                lines.push({ kind: 'ok', msg:
+                    'DONE -- enhanced building stability bundled (787 DA_BI* assets)' });
+            }
+            if (!data.pakPath && !data.pickupRadius && !data.buildingStability) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -1941,6 +1975,8 @@ function bindHandlers() {
     document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
     document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
+    document.getElementById('building-stability-enabled').addEventListener('change',
+        setBuildingStabilityFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);

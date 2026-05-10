@@ -151,6 +151,18 @@ public static class BuildEndpoint
                         unmatched = br.Unmatched,
                     };
                 }
+                // BuildingStability is a single-toggle feature: when on,
+                // the 787 reference-mod assets are baked into the IoStore
+                // composite; when off (or null), nothing is shipped. The
+                // frontend only needs the boolean.
+                object buildingStabilityInfo = null;
+                if (result.StabilityResult != null)
+                {
+                    buildingStabilityInfo = new
+                    {
+                        enabled = result.StabilityResult.Enabled,
+                    };
+                }
                 return Results.Json(new
                 {
                     success = true,
@@ -172,6 +184,7 @@ public static class BuildEndpoint
                     lootPatchResult,
                     pickupRadius = pickupRadiusInfo,
                     bellLimits = bellLimitsInfo,
+                    buildingStability = buildingStabilityInfo,
                     log,
                 });
             }

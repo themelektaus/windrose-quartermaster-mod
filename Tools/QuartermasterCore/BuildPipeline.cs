@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -11,13 +12,22 @@ namespace Windrose.Quartermaster.Core
     // after a successful pack -- callers can opt into keepTemp=true for
     // post-mortem debugging.
     //
-    // Pickup-radius is a separate IoStore mod triplet built alongside the
-    // main pak: we shell out to retoc to convert the vanilla
-    // GA_Loot_AutoPickup Blueprint to Legacy, patch MagnetRadius via
-    // UAssetAPI, then re-pack as IoStore. UE5 mounts our _P-suffixed
-    // triplet at higher mount priority than vanilla, so the patched
-    // value wins at runtime. See PickupTripletBuilder for the gritty
-    // details.
+    // IoStore content (pickup-radius patch + enhanced building stability)
+    // is built into a SHARED triplet that ships alongside the main Pak1.
+    // The IoStoreCompositeBuilder takes one or more "sources" -- each
+    // source contributes Legacy assets to a unified staging tree -- and
+    // produces one .ucas / .utoc / .pak-stub set with everything merged.
+    //
+    // Two source kinds today:
+    //   1. Pickup: vanilla GA_Loot_AutoPickup Blueprint extracted via
+    //      retoc to-legacy and then patched in-place via UAssetAPI to
+    //      add a serialized MagnetRadius FloatProperty.
+    //   2. Stability: the BetterStructureSupport reference mod's 787
+    //      pre-cooked DA_BI* DataAssets adopted 1:1 (single toggle, no
+    //      patch -- vanilla DA_BI cannot be UAssetAPI-parsed).
+    //
+    // Both share the basename of the main pak so UE5 mounts them as one
+    // logical mod (.pak Pak1 + .ucas/.utoc IoStore companions).
     public sealed class BuildPipeline
     {
         readonly WindrosePaths _paths;
@@ -37,10 +47,13 @@ namespace Windrose.Quartermaster.Core
         public string OutputDir;
 
         // Optional locator for the live game's Paks/ directory. Required
-        // ONLY for builds that activate the pickup-radius patch -- retoc's
-        // to-legacy step needs the vanilla IoStore container as input.
-        // The GUI wires this to SteamLocator.FindVanillaPaksDir; CLI smoke
-        // tests leave it null since CLI builds never enable pickup-radius.
+        // for builds that activate any IoStore feature (pickup-radius or
+        // building-stability) -- retoc's to-legacy step needs the vanilla
+        // IoStore container as input AND the game's global.utoc to resolve
+        // ScriptObjects, even for the stability source which only adopts
+        // bytes from a reference mod. The GUI wires this to
+        // SteamLocator.FindVanillaPaksDir; CLI smoke tests leave it null
+        // since CLI builds never enable IoStore features.
         public Func<string> GamePaksDirProvider;
 
         // Vanilla MagnetRadius value (cm) the patcher multiplies against
@@ -173,29 +186,35 @@ namespace Windrose.Quartermaster.Core
                     + (bellResult != null && bellResult.Written ? 1 : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
-                if (totalWritten == 0 && !pickupActive)
+                bool stabilityActive = ResolveStabilityEnabled(profile);
+                bool ioStoreActive = pickupActive || stabilityActive;
+                if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
                         "Profile produces no changes -- nothing to pack. "
                         + "Adjust globals or add per-item / per-loot-table overrides.");
                 }
 
-                // Build pickup triplet FIRST (into a staging dir), so that
-                // when repak runs afterwards it overwrites the tiny .pak
-                // stub retoc produces with the real Pak1 content. The
-                // .ucas / .utoc are then copied to outDir under the shared
-                // basename, sharing the prefix with the main pak.
+                // Build IoStore composite triplet FIRST (into a staging
+                // dir), so that when repak runs afterwards it overwrites
+                // the tiny .pak stub retoc produces with the real Pak1
+                // content. The .ucas / .utoc are then copied to outDir
+                // under the shared basename, sharing the prefix with the
+                // main pak.
                 //
-                // For pickup-only builds (no item/loot changes), repak is
-                // skipped entirely and we copy all three triplet files
-                // (including the stub .pak) to outDir -- the engine still
-                // needs the .pak as the IoStore container's marker file.
+                // For IoStore-only builds (no item/loot/bell changes),
+                // repak is skipped entirely and we copy all three triplet
+                // files (including the stub .pak) to outDir -- the engine
+                // still needs the .pak as the IoStore container's marker.
                 PickupTripletResult pickupResult = null;
-                if (pickupActive)
+                BuildingStabilityResult stabilityResult = null;
+                if (ioStoreActive)
                 {
-                    pickupResult = BuildPickupTriplet(
-                        profile, safeName, outDir, tmpDir, pickupMultiplier,
+                    var compositeResult = BuildIoStoreComposite(
+                        profile, outDir, pickupMultiplier, pickupActive, stabilityActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
+                    pickupResult = compositeResult.Pickup;
+                    stabilityResult = compositeResult.Stability;
                 }
 
                 PakBuildResult pakResult = null;
@@ -221,9 +240,9 @@ namespace Windrose.Quartermaster.Core
                             + " (" + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB, "
                             + pakResult.FileCount + " files)");
                 }
-                else if (!pickupActive)
+                else if (!ioStoreActive)
                 {
-                    LogLine("No item / loot changes -- main pak skipped (pickup-radius-only build).");
+                    LogLine("No item / loot changes -- main pak skipped (IoStore-only build).");
                 }
 
                 return new BuildPipelineResult
@@ -236,6 +255,7 @@ namespace Windrose.Quartermaster.Core
                     PakPath = pakPath,
                     PickupResult = pickupResult,
                     PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
+                    StabilityResult = stabilityResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -247,7 +267,7 @@ namespace Windrose.Quartermaster.Core
                     foreach (var dir in new[]
                     {
                         tmpDir,
-                        Path.Combine(_paths.BuildTmp, profile.Id + "__pickup"),
+                        Path.Combine(_paths.BuildTmp, profile.Id + "__iostore"),
                     })
                     {
                         if (!Directory.Exists(dir)) continue;
@@ -263,34 +283,34 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Builds the IoStore triplet for the pickup-radius mod into a
-        // staging directory and then publishes the relevant pieces to
-        // outDir under the SHARED basename Quartermaster_<safeName>_P.*.
+        // Builds the IoStore composite triplet (.ucas/.utoc + .pak stub)
+        // for whichever IoStore features the profile activated, and
+        // publishes the result to outDir under the shared basename
+        // Quartermaster_<safeName>_P.*.
         //
         // Publishing rules:
-        //   - Always copy .ucas + .utoc (the IoStore container payload).
+        //   - Always copy .ucas + .utoc (the IoStore payload).
         //   - Copy the .pak only when no main pak is being built; if
         //     mainPakWillBeBuilt=true, the subsequent repak step writes
         //     the real Pak1 content at the same path and the stub would
         //     just be overwritten anyway.
         //
-        // The retoc work happens in <_paths.BuildTmp>/<profileId>__pickup/
+        // The retoc work happens in <_paths.BuildTmp>/<profileId>__iostore/
         // -- a SIBLING of the JSON-patch tmpDir, NOT a child. If we put it
         // inside tmpDir, repak's recursive scan would sweep the retoc
         // artefacts into the main pak.
         //
         // Surfaces a clear error if the GUI didn't supply a paks-dir
-        // locator -- a CLI build with pickup-radius enabled is currently
-        // unsupported (CLI doesn't talk to the Steam install).
-        PickupTripletResult BuildPickupTriplet(
-            Profile profile, string safeName, string outDir,
-            string tmpDir, double multiplier,
+        // locator -- CLI builds can't enable IoStore features today.
+        BuildIoStoreCompositeOutput BuildIoStoreComposite(
+            Profile profile, string outDir,
+            double pickupMultiplier, bool pickupActive, bool stabilityActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
             {
                 throw new InvalidOperationException(
-                    "Profile requests the pickup-radius mod but no GamePaksDirProvider is wired up. "
+                    "Profile requests an IoStore feature but no GamePaksDirProvider is wired up. "
                     + "This is a build-host configuration error -- only the GUI build path "
                     + "can locate the live game's Paks directory.");
             }
@@ -298,10 +318,9 @@ namespace Windrose.Quartermaster.Core
             if (string.IsNullOrEmpty(gamePaksDir) || !Directory.Exists(gamePaksDir))
             {
                 throw new InvalidOperationException(
-                    "Pickup-radius patch needs the live game's Paks directory but the locator "
+                    "IoStore features need the live game's Paks directory but the locator "
                     + "returned an invalid path: " + (gamePaksDir ?? "<null>"));
             }
-            var usmapPath = UsmapLocator.Find(_paths.ModRoot);
 
             LogLine("Resolving retoc.exe...");
             _retocResolver.Log = Log;
@@ -309,29 +328,112 @@ namespace Windrose.Quartermaster.Core
 
             Directory.CreateDirectory(outDir);
 
-            // Pickup work area: sibling of tmpDir (so repak's recursive
+            // IoStore work area: sibling of tmpDir (so repak's recursive
             // scan doesn't leak retoc artefacts into the main pak). Wiped
             // at the start of each build the same way tmpDir is.
-            var pickupRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__pickup");
-            if (Directory.Exists(pickupRoot)) Directory.Delete(pickupRoot, true);
-            Directory.CreateDirectory(pickupRoot);
-            var stagingPak = Path.Combine(pickupRoot, "out", sharedBaseName + ".pak");
-            var legacyTmp = Path.Combine(pickupRoot, "legacy");
-            float magnetRadius = (float)(VanillaMagnetRadius * multiplier);
+            var iostoreRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__iostore");
+            if (Directory.Exists(iostoreRoot)) Directory.Delete(iostoreRoot, true);
+            Directory.CreateDirectory(iostoreRoot);
+            var stagingBase = Path.Combine(iostoreRoot, "out", sharedBaseName);
+            var legacyTmp = Path.Combine(iostoreRoot, "legacy");
 
-            LogLine("Building pickup-radius triplet (multiplier=" + multiplier
-                    + ", MagnetRadius=" + magnetRadius + "cm) -> staging");
+            // Compose the source list. Order matters only for log
+            // readability -- retoc deals with the merged tree at the end.
+            var sources = new List<IoStoreCompositeSource>();
+            PickupBlueprintPatchResult pickupPatchResult = null;
+            float magnetRadius = 0f;
 
-            var triplet = new PickupTripletBuilder { Log = Log };
-            var stagingResult = triplet.Build(new PickupTripletRequest
+            if (pickupActive)
+            {
+                magnetRadius = (float)(VanillaMagnetRadius * pickupMultiplier);
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Pickup source: vanilla "
+                        + PickupBlueprintPatcher.AssetFilterStem
+                        + " (multiplier=" + pickupMultiplier
+                        + ", MagnetRadius=" + magnetRadius + "cm)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "pickup",
+                    InputDir = gamePaksDir,
+                    Filter = PickupBlueprintPatcher.AssetFilterStem,
+                    AfterExtract = stagingDir =>
+                    {
+                        var legacyAssetPath = Path.Combine(stagingDir,
+                            PickupBlueprintPatcher.AssetVirtualPath
+                                .Replace('/', Path.DirectorySeparatorChar));
+                        if (!File.Exists(legacyAssetPath))
+                        {
+                            throw new InvalidOperationException(
+                                "retoc to-legacy did not produce the expected pickup asset at "
+                                + legacyAssetPath
+                                + " -- the game container may have moved the asset, or "
+                                + "the filter '" + PickupBlueprintPatcher.AssetFilterStem
+                                + "' is wrong.");
+                        }
+                        var patcher = new PickupBlueprintPatcher { Log = Log };
+                        pickupPatchResult = patcher.Patch(
+                            legacyAssetPath, legacyAssetPath, usmapPath, magnetRadius);
+                    },
+                });
+            }
+
+            BuildingStabilityResult stabilityOut = null;
+            if (stabilityActive)
+            {
+                // Reference-mod adoption: copy mod triplet AND the game's
+                // global.{ucas,utoc} into a tmp dir, point retoc at that.
+                var refsDir = Path.Combine(iostoreRoot, "stability-refs");
+                Directory.CreateDirectory(refsDir);
+                var modPak = Path.Combine(_paths.References, StabilityReferenceFileName + ".pak");
+                if (!File.Exists(modPak))
+                {
+                    throw new FileNotFoundException(
+                        "Building-stability reference mod missing: "
+                        + modPak
+                        + " -- expected the BetterStructureSupport_P triplet under "
+                        + _paths.References);
+                }
+                foreach (var ext in new[] { ".pak", ".ucas", ".utoc" })
+                {
+                    File.Copy(
+                        Path.Combine(_paths.References, StabilityReferenceFileName + ext),
+                        Path.Combine(refsDir, StabilityReferenceFileName + ext),
+                        true);
+                }
+                foreach (var f in new[] { "global.ucas", "global.utoc" })
+                {
+                    var src = Path.Combine(gamePaksDir, f);
+                    if (!File.Exists(src))
+                    {
+                        throw new FileNotFoundException(
+                            "Game's " + f + " not found in " + gamePaksDir
+                            + " -- needed for ScriptObjects resolution during reference-mod extraction.");
+                    }
+                    File.Copy(src, Path.Combine(refsDir, f), true);
+                }
+                LogLine("Stability source: reference mod "
+                        + StabilityReferenceFileName + " (787 DA_BI assets, adopted 1:1)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "stability",
+                    InputDir = refsDir,
+                    Filter = null,
+                    AfterExtract = null,
+                });
+                stabilityOut = new BuildingStabilityResult { Enabled = true };
+            }
+
+            LogLine("Building IoStore composite triplet -> staging ("
+                    + sources.Count + " source" + (sources.Count == 1 ? "" : "s") + ")");
+
+            var builder = new IoStoreCompositeBuilder { Log = Log };
+            var compositeResult = builder.Build(new IoStoreCompositeRequest
             {
                 RetocExe = retocExe,
-                GamePaksDir = gamePaksDir,
-                UsmapPath = usmapPath,
-                OutputPakPath = stagingPak,
-                MagnetRadius = magnetRadius,
+                OutputBasePath = stagingBase,
                 TempDir = legacyTmp,
                 Overwrite = true,
+                Sources = sources,
             });
 
             // Publish to outDir under the shared basename. .ucas + .utoc
@@ -340,37 +442,57 @@ namespace Windrose.Quartermaster.Core
             var finalPak  = Path.Combine(outDir, sharedBaseName + ".pak");
             var finalUcas = Path.Combine(outDir, sharedBaseName + ".ucas");
             var finalUtoc = Path.Combine(outDir, sharedBaseName + ".utoc");
-            File.Copy(stagingResult.UcasPath, finalUcas, true);
-            File.Copy(stagingResult.UtocPath, finalUtoc, true);
+            File.Copy(compositeResult.UcasPath, finalUcas, true);
+            File.Copy(compositeResult.UtocPath, finalUtoc, true);
             if (!mainPakWillBeBuilt)
             {
-                File.Copy(stagingResult.PakPath, finalPak, true);
+                File.Copy(compositeResult.PakPath, finalPak, true);
             }
 
-            LogLine("Pickup triplet published: "
+            LogLine("IoStore composite published: "
                     + sharedBaseName + ".{ucas,utoc}"
                     + (mainPakWillBeBuilt ? "" : ",pak")
                     + " -> " + outDir
-                    + " (.ucas=" + stagingResult.UcasSize + " B, "
-                    + ".utoc=" + stagingResult.UtocSize + " B"
-                    + (mainPakWillBeBuilt ? "" : ", .pak=" + stagingResult.PakSize + " B")
+                    + " (.ucas=" + compositeResult.UcasSize + " B, "
+                    + ".utoc=" + compositeResult.UtocSize + " B"
+                    + (mainPakWillBeBuilt ? "" : ", .pak=" + compositeResult.PakSize + " B")
                     + ")");
 
-            // Rewrite paths in the result object so the response and
-            // build log report the actual on-disk locations the user
-            // can look at, not the internal staging dir.
-            return new PickupTripletResult
+            PickupTripletResult pickupOut = null;
+            if (pickupActive)
             {
-                PakPath  = mainPakWillBeBuilt ? null : finalPak,
-                UcasPath = finalUcas,
-                UtocPath = finalUtoc,
-                PakSize  = mainPakWillBeBuilt ? 0 : stagingResult.PakSize,
-                UcasSize = stagingResult.UcasSize,
-                UtocSize = stagingResult.UtocSize,
-                MagnetRadius = stagingResult.MagnetRadius,
-                PatchResult = stagingResult.PatchResult,
-                LegacyTempDir = stagingResult.LegacyTempDir,
+                pickupOut = new PickupTripletResult
+                {
+                    PakPath  = mainPakWillBeBuilt ? null : finalPak,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakSize  = mainPakWillBeBuilt ? 0 : compositeResult.PakSize,
+                    UcasSize = compositeResult.UcasSize,
+                    UtocSize = compositeResult.UtocSize,
+                    MagnetRadius = magnetRadius,
+                    PatchResult = pickupPatchResult,
+                    LegacyTempDir = compositeResult.StagingDir,
+                };
+            }
+
+            return new BuildIoStoreCompositeOutput
+            {
+                Pickup = pickupOut,
+                Stability = stabilityOut,
             };
+        }
+
+        // Basename (no extension) of the BetterStructureSupport reference
+        // mod triplet under <_paths.References>. Bundled in the repo to
+        // keep the build offline-capable.
+        const string StabilityReferenceFileName = "BetterStructureSupport_P";
+
+        // Internal carrier so BuildIoStoreComposite can return both
+        // feature-specific result objects to the caller without a tuple.
+        sealed class BuildIoStoreCompositeOutput
+        {
+            public PickupTripletResult Pickup;
+            public BuildingStabilityResult Stability;
         }
 
         // Resolves the effective multiplier the build should use, with the
@@ -383,6 +505,16 @@ namespace Windrose.Quartermaster.Core
             var pr = profile.Globals.PickupRadius;
             if (pr.Multiplier.HasValue) return pr.Multiplier.Value;
             return 1.0;
+        }
+
+        // True when the profile asks to enable the building-stability
+        // single-toggle. False (or null/missing) means no stability
+        // assets ship for this profile.
+        static bool ResolveStabilityEnabled(Profile profile)
+        {
+            var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;
+            if (bs == null) return false;
+            return bs.Enabled.GetValueOrDefault(false);
         }
 
         // True when the profile actually configures the loot domain --
@@ -463,7 +595,21 @@ namespace Windrose.Quartermaster.Core
         // The user-facing scalar that produced the triplet (e.g. 2.0,
         // 1.5, ...). null when no pickup triplet was built.
         public double? PickupMultiplier;
+        // Building-stability inclusion result. null when the profile
+        // didn't enable the toggle. When non-null, the .ucas/.utoc
+        // already shipped under PickupResult's paths (or the standalone
+        // shared basename if pickup was off and stability was the only
+        // IoStore source).
+        public BuildingStabilityResult StabilityResult;
         public string TmpDir;
         public bool Success;
+    }
+
+    // Standalone summary of "stability got included in this build". Kept
+    // separate from PickupTripletResult so the caller can report the two
+    // features independently in the response payload.
+    public sealed class BuildingStabilityResult
+    {
+        public bool Enabled;
     }
 }

@@ -19,6 +19,14 @@ namespace Windrose.Quartermaster.Core
         public string ProfilesBuiltin;
         public string BuildTmp;
         public string Tools;
+        // Folder containing reference mods we adopt 1:1 (.pak/.ucas/.utoc
+        // triplets). Currently only used for BetterStructureSupport, whose
+        // 787 patched DA_BI assets we extract via retoc to-legacy and merge
+        // into our composite IoStore output. Reference mods are kept
+        // verbatim because vanilla DataAssets cannot be parsed by UAssetAPI
+        // (RawExport fallback); the mod-cooked variants serialize their
+        // properties in full and re-pack cleanly.
+        public string References;
 
         public static WindrosePaths FromModRoot(string modRoot)
         {
@@ -49,6 +57,7 @@ namespace Windrose.Quartermaster.Core
                 ProfilesBuiltin = Path.Combine(modRoot, "Profiles", "_builtin"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),
                 Tools = Path.Combine(modRoot, "Tools"),
+                References = Path.Combine(modRoot, "References"),
             };
         }
     }

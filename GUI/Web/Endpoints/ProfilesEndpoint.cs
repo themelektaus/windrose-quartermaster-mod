@@ -181,6 +181,12 @@ public static class ProfilesEndpoint
                     BellCap = g.FastTravelBells.BellCap,
                     SignalFireCap = g.FastTravelBells.SignalFireCap,
                 },
+            BuildingStability = g.BuildingStability == null
+                ? null
+                : new BuildingStabilityGlobal
+                {
+                    Enabled = g.BuildingStability.Enabled,
+                },
         };
     }
 
@@ -260,6 +266,12 @@ public static class ProfilesEndpoint
             // (10 bells, 3 signal fires). Mirrors the same logic the
             // build pipeline uses to decide whether to run the patcher.
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
+            // True when the single-toggle "enhanced building stability"
+            // is on -- the build will then bake the BetterStructureSupport
+            // reference mod's 787 DA_BI* assets into the IoStore composite.
+            hasGlobalBuildingStability = p.Globals != null
+                                         && p.Globals.BuildingStability != null
+                                         && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
         };
     }
 

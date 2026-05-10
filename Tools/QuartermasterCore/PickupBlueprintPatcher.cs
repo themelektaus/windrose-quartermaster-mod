@@ -24,10 +24,23 @@ namespace Windrose.Quartermaster.Core
     //     -> retoc to-zen      (Legacy -> IoStore triplet .pak/.ucas/.utoc)
     //
     // The path gymnastics (in/out paths, usmap loader) live here -- the
-    // higher-level orchestrator (PickupTripletBuilder) just calls Patch()
-    // with the in/out paths and the magnet-radius value.
+    // higher-level orchestrator (BuildPipeline.BuildIoStoreComposite)
+    // just calls Patch() with the in/out paths and the magnet-radius value.
     public sealed class PickupBlueprintPatcher
     {
+        // Virtual asset path within the game's content tree. Hardcoded
+        // because there's exactly one Blueprint with the MagnetRadius
+        // property in Windrose 5.6 -- if the engine ever moves it, the
+        // composite builder fails fast with a clear "filter didn't match"
+        // diagnostic and we update this constant.
+        public const string AssetVirtualPath =
+            "R5/Content/Gameplay/Character/Player/GameplayAbilities/Loot/GA_Loot_AutoPickup.uasset";
+
+        // Filename-stem filter passed to retoc to-legacy --filter. Just
+        // the basename (no path component, no extension); retoc walks
+        // the IoStore container tree and matches anywhere.
+        public const string AssetFilterStem = "GA_Loot_AutoPickup";
+
         public Action<string> Log;
 
         // Patches the asset in-place when inputAssetPath == outputAssetPath,
@@ -143,5 +156,26 @@ namespace Windrose.Quartermaster.Core
         public float? OldMagnetRadius;// null if the property was added (no prior value)
         public float NewMagnetRadius;
         public int FinalPropertyCount;
+    }
+
+    // Per-feature triplet result -- BuildPipeline emits one of these for
+    // the pickup-radius portion of the IoStore composite. Even though all
+    // IoStore content now ships in ONE shared triplet (sharedBaseName.*),
+    // the result keeps separate UCAS/UTOC paths for the pickup feature so
+    // the build response can attribute file sizes / paths back to the
+    // user-visible "Pickup" axis. PakPath is null when the main Pak1 is
+    // also being built (because then the same path on disk is owned by
+    // repak's Pak1 output, not the retoc IoStore stub).
+    public sealed class PickupTripletResult
+    {
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+        public long PakSize;
+        public long UcasSize;
+        public long UtocSize;
+        public float MagnetRadius;
+        public PickupBlueprintPatchResult PatchResult;
+        public string LegacyTempDir;
     }
 }
