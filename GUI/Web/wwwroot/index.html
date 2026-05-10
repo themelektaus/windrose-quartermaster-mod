@@ -36,6 +36,7 @@
     <nav id="tabs" class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="items" role="tab" aria-selected="true">Items</button>
       <button type="button" class="tab"        data-tab="loot"  role="tab" aria-selected="false">Loot Tables</button>
+      <button type="button" class="tab"        data-tab="misc"  role="tab" aria-selected="false">Misc</button>
       <button type="button" class="tab"        data-tab="mods"  role="tab" aria-selected="false">Mods</button>
     </nav>
     <div id="profile-bar" class="profile-bar">
@@ -79,45 +80,6 @@
               <label>Value <input type="number" id="ss-abs" min="0" step="1" value="999" disabled></label>
             </div>
           </fieldset>
-        </section>
-
-        <section class="card">
-          <h2>Globals - Pickup Radius</h2>
-          <p class="hint">Auto-pickup magnet range. Vanilla: 4 m.</p>
-          <div class="pickup-row">
-            <label class="check-row">
-              <input type="checkbox" id="pickup-enabled">
-              Enable pickup-radius patch
-            </label>
-            <div class="pickup-slider indent">
-              <input type="range" id="pickup-multiplier"
-                     min="1.0" max="10.0" step="0.1" value="2.0">
-              <div class="pickup-readout">
-                Multiplier: <span id="pickup-multiplier-value">2.0&times;</span>
-                <span class="muted">&middot;</span>
-                Range: <span id="pickup-range">8.0 m</span>
-              </div>
-            </div>
-          </div>
-          <p class="hint pickup-hint">Ships as an IoStore triplet (.pak + .ucas + .utoc) sharing the main pak's basename, so the engine mounts everything as one logical mod. Built-in profiles can't toggle this -- duplicate first.</p>
-        </section>
-
-        <section class="card">
-          <h2>Globals - Fast-Travel Bells</h2>
-          <p class="hint">Placement caps for fast-travel bells and signal fires. Vanilla: 10 bells (per type) + 3 signal fires.</p>
-          <div class="bell-row">
-            <label>
-              Bell cap
-              <input type="number" id="bell-cap" min="1" max="1000" step="1" value="10">
-              <span class="muted bell-hint" id="bell-cap-hint">vanilla: 10</span>
-            </label>
-            <label>
-              Signal-fire cap
-              <input type="number" id="signal-fire-cap" min="1" max="1000" step="1" value="3">
-              <span class="muted bell-hint" id="signal-fire-cap-hint">vanilla: 3</span>
-            </label>
-          </div>
-          <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak -- no extra files. Built-in profiles can't change this -- duplicate first.</p>
         </section>
 
         <section class="card">
@@ -181,6 +143,54 @@
         </div>
         <ul id="lt-list" class="lt-list"></ul>
       </section>
+    </div>
+
+    <!-- MISC PAGE -- single-column "extras" tab for global tweaks that
+         don't belong on the per-item or per-loot-table pages: pickup
+         radius (IoStore blueprint patch) and fast-travel build limits
+         (JSON patch). Both are profile-scoped and ship as part of the
+         main pak / triplet. -->
+    <div class="tab-page misc-page" data-tab="misc" hidden>
+      <aside class="pane misc">
+        <section class="card">
+          <h2>Globals - Pickup Radius</h2>
+          <p class="hint">Auto-pickup magnet range. Vanilla: 4 m.</p>
+          <div class="pickup-row">
+            <label class="check-row">
+              <input type="checkbox" id="pickup-enabled">
+              Enable pickup-radius patch
+            </label>
+            <div class="pickup-slider indent">
+              <input type="range" id="pickup-multiplier"
+                     min="1.0" max="10.0" step="0.1" value="2.0">
+              <div class="pickup-readout">
+                Multiplier: <span id="pickup-multiplier-value">2.0&times;</span>
+                <span class="muted">&middot;</span>
+                Range: <span id="pickup-range">8.0 m</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint pickup-hint">Ships as an IoStore triplet (.pak + .ucas + .utoc) sharing the main pak's basename, so the engine mounts everything as one logical mod. Built-in profiles can't toggle this -- duplicate first.</p>
+        </section>
+
+        <section class="card">
+          <h2>Globals - Fast-Travel Bells</h2>
+          <p class="hint">Placement caps for fast-travel bells and signal fires. Vanilla: 10 bells (per type) + 3 signal fires.</p>
+          <div class="bell-row">
+            <label>
+              Bell cap
+              <input type="number" id="bell-cap" min="1" max="1000" step="1" value="10">
+              <span class="muted bell-hint" id="bell-cap-hint">vanilla: 10</span>
+            </label>
+            <label>
+              Signal-fire cap
+              <input type="number" id="signal-fire-cap" min="1" max="1000" step="1" value="3">
+              <span class="muted bell-hint" id="signal-fire-cap-hint">vanilla: 3</span>
+            </label>
+          </div>
+          <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak -- no extra files. Built-in profiles can't change this -- duplicate first.</p>
+        </section>
+      </aside>
     </div>
 
     <!-- MODS PAGE -- list .pak files in Windrose's ~mods/ folder.

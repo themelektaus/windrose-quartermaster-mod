@@ -201,11 +201,23 @@ main {
 
 .tab-page[hidden] { display: none; }
 
+/* Misc tab: single-column layout for the "extras" cards (pickup radius,
+   bell limits). Cards stay readable on wide screens by capping width. */
+.tab-page.misc-page {
+  grid-template-columns: minmax(0, 48em);
+  justify-content: start;
+  overflow: auto;
+}
+
 .pane {
   display: flex;
   flex-direction: column;
   gap: .5em;
   min-height: 0;
+}
+
+.pane.misc {
+  overflow: visible;
 }
 
 .card {
