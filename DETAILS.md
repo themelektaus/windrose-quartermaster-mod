@@ -230,8 +230,7 @@ The GUI binary doubles as a CLI for headless / CI use:
 dotnet run --project GUI\Web -- --setup
 dotnet run --project GUI\Web -- --setup --force
 
-# Build a builtin (or any user profile, by id or display name)
-dotnet run --project GUI\Web -- --test-patcher --profile x4
+# Build a profile, by id or display name
 dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
 
 # Direct one-shot without a profile (legacy multiplier semantics)
@@ -254,17 +253,13 @@ drive builds from another tool:
 | GET | `/api/items` | list of all `R5BLInventoryItem` JSONs + icon URL + localized meta |
 | GET | `/api/profiles` | list of profile summaries |
 | GET | `/api/profiles/{id}` | full profile |
-| POST | `/api/profiles` | create user profile (server picks GUID) |
-| PUT | `/api/profiles/{id}` | overwrite user profile |
-| DELETE | `/api/profiles/{id}` | delete user profile |
-| POST | `/api/profiles/{id}/duplicate` | clone (incl. builtin -> user) |
+| POST | `/api/profiles` | create profile (server picks GUID) |
+| PUT | `/api/profiles/{id}` | overwrite profile |
+| DELETE | `/api/profiles/{id}` | delete profile |
+| POST | `/api/profiles/{id}/duplicate` | clone |
 | POST | `/api/build` body: `{profileId}` | run the full pipeline synchronously |
 | GET | `/api/setup/status` | probe what's already extracted (Sources/Icons/usmap/Steam pak) |
 | POST | `/api/setup/run[?force=true]` | Server-Sent Events stream of the dump + icon extraction |
-
-Builtins are read-only via the API: `PUT` / `DELETE` on a builtin returns
-`403`. The supported way to "edit" a builtin is `POST /duplicate` and
-edit the clone.
 
 The `/api/setup/run` stream emits two event types:
 
@@ -361,7 +356,6 @@ Stack Size\
 | `No *.usmap file found` | Icon extractor needs a UE5 mappings file. Should never happen on a deployed EXE - one is seeded from embedded resource on first run. Only triggers in dev mode if the repo root has no `.usmap`. | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
 | `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
-| `Builtin profiles cannot be modified` | Tried to edit a built-in profile in the GUI | Click `Duplicate` first; user copies are editable |
 | Desktop launcher fails with "Failed to initialize WebView2" | Microsoft Edge WebView2 Runtime missing (rare on Win11, possible on stripped Win10) | Install the [evergreen WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (~1.6 MB bootstrapper) and relaunch |
 
 ---

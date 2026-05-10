@@ -88,7 +88,7 @@ namespace Windrose.Quartermaster.Web
                     outDir);
             }
 
-            // Profile mode: load a builtin / user profile by id or name and
+            // Profile mode: load a profile by id or name and
             // run the full BuildPipeline (patch + pack + cleanup).
             if (!string.IsNullOrEmpty(profileSpec))
             {

@@ -1,4 +1,6 @@
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 @font-face {
   font-family: inter;
@@ -36,11 +38,25 @@
   --icon-size: 4.5em;
 }
 
-::-webkit-scrollbar { width: .375em; height: .375em; }
-::-webkit-scrollbar-track { background: var(--bg-elev-2); }
-::-webkit-scrollbar-thumb { background: var(--bg-elev-3); }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
-::-webkit-scrollbar-corner { background: transparent }
+::-webkit-scrollbar {
+  width: .375em;
+  height: .375em;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-elev-2);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-elev-3);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 body {
   margin: 0;
@@ -184,7 +200,9 @@ main {
   min-height: 0;
 }
 
-.tab-page[hidden] { display: none; }
+.tab-page[hidden] {
+  display: none;
+}
 
 /* Empty-state shown when /api/profiles is empty. The toggling is done by
    syncNoProfileState() in app.js - it adds .no-profiles to <body> when
@@ -222,8 +240,8 @@ main {
 }
 
 .no-profile-card button.primary {
-  font-size: var(--font-size-big);
   padding: .5em 1.5em;
+  text-transform: uppercase;
   margin-top: .5em;
 }
 
@@ -873,8 +891,13 @@ footer.collapsed .footer-body {
   position: relative;
 }
 
-.lt.changed { --lt-color: var(--success); }
-.lt.overridden { --lt-color: var(--accent); }
+.lt.changed {
+  --lt-color: var(--success);
+}
+
+.lt.overridden {
+  --lt-color: var(--accent);
+}
 
 .lt::after {
   content: "";
@@ -945,11 +968,21 @@ footer.collapsed .footer-body {
   margin-left: .25em;
 }
 
-.lt-badge.added   { background: var(--success); }
-.lt-badge.removed { background: var(--danger); }
-.lt-badge.edited  { background: var(--accent); }
+.lt-badge.added {
+  background: var(--success);
+}
 
-.lt.collapsed .lt-body { display: none; }
+.lt-badge.removed {
+  background: var(--danger);
+}
+
+.lt-badge.edited {
+  background: var(--accent);
+}
+
+.lt.collapsed .lt-body {
+  display: none;
+}
 
 .lt-body {
   display: flex;
@@ -1233,8 +1266,13 @@ footer.collapsed .footer-body {
   position: relative;
 }
 
-.mod.owned { --mod-color: var(--accent); }
-.mod.foreign { --mod-color: var(--text-dim); }
+.mod.owned {
+  --mod-color: var(--accent);
+}
+
+.mod.foreign {
+  --mod-color: var(--text-dim);
+}
 
 .mod::after {
   content: "";
@@ -1304,7 +1342,7 @@ footer.collapsed .footer-body {
 .mod-actions .lock {
   color: var(--text-dim);
   font-size: var(--font-size-small);
-  padding: .3em .6em;
+  padding: var(--button-padding);
   user-select: none;
 }
 

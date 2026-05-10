@@ -617,7 +617,7 @@ namespace Windrose.Quartermaster.Core
         // True when the profile actually configures the loot domain,
         // either via a per-bucket multiplier or per-LT override. Lets the
         // pipeline skip the loot patch step entirely for stack-only
-        // profiles (e.g. all 11 builtins).
+        // profiles.
         static bool HasLootConfiguration(Profile profile)
         {
             if (profile.LootOverrides != null && profile.LootOverrides.Count > 0) return true;
