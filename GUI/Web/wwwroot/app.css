@@ -306,6 +306,37 @@ fieldset .indent input[type="number"] {
   opacity: .5;
 }
 
+/* Fast-travel bell + signal-fire caps. Two number-inputs side by side
+   on a wide pane, stacked on narrow ones. Mirrors loot-globals' label
+   pattern (label wraps the input + hint) so they look uniform. */
+.bell-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1em;
+}
+
+.bell-row label {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  min-width: 8em;
+  flex: 1;
+}
+
+.bell-row input[type="number"] {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.bell-row input[type="number"]:disabled {
+  opacity: .5;
+}
+
+.bell-row .bell-hint {
+  font-size: .85em;
+  color: var(--text-dim);
+}
+
 dl {
   display: grid;
   grid-template-columns: 1fr auto;

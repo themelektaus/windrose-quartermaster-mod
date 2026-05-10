@@ -23,6 +23,7 @@ namespace Windrose.Quartermaster.Core
         readonly WindrosePaths _paths;
         readonly StackPatcher _patcher;
         readonly LootPatcher _lootPatcher;
+        readonly BellLimitsPatcher _bellPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
 
@@ -54,6 +55,7 @@ namespace Windrose.Quartermaster.Core
             _paths = paths;
             _patcher = new StackPatcher();
             _lootPatcher = new LootPatcher();
+            _bellPatcher = new BellLimitsPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
         }
@@ -137,7 +139,38 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in lootResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                int totalWritten = patchResult.Written + (lootResult != null ? lootResult.Written : 0);
+                // Fast-travel-bell + signal-fire caps. Tiny JSON config
+                // patch (~700 B input, one file) -- ships inside the main
+                // Pak1 alongside the item / loot patches, no IoStore step.
+                BellLimitsPatchResult bellResult = null;
+                if (HasBellLimitsConfiguration(profile))
+                {
+                    LogLine("Patching fast-travel build limits");
+                    var bell = profile.Globals.FastTravelBells;
+                    bellResult = _bellPatcher.PatchToDirectory(
+                        _paths.VanillaBuildingLimits, tmpDir,
+                        bell.BellCap, bell.SignalFireCap);
+                    if (bellResult.Skipped)
+                    {
+                        LogLine("  skipped (resolved caps match vanilla 10/3 -- nothing to do)");
+                    }
+                    else if (bellResult.Written)
+                    {
+                        LogLine("  bells " + bellResult.BellCap + " (vanilla 10), signal-fires "
+                                + bellResult.SignalFireCap + " (vanilla 3) -- "
+                                + bellResult.BellsPatched + " bell + "
+                                + bellResult.SignalFiresPatched + " signal-fire entries patched");
+                    }
+                    if (bellResult.Unmatched != null && bellResult.Unmatched.Count > 0)
+                    {
+                        foreach (var u in bellResult.Unmatched)
+                            LogLine("  warn: unrecognised BuildLimits entry left at vanilla cap: " + u);
+                    }
+                }
+
+                int totalWritten = patchResult.Written
+                    + (lootResult != null ? lootResult.Written : 0)
+                    + (bellResult != null && bellResult.Written ? 1 : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 if (totalWritten == 0 && !pickupActive)
@@ -198,6 +231,7 @@ namespace Windrose.Quartermaster.Core
                     Profile = profile,
                     PatchResult = patchResult,
                     LootPatchResult = lootResult,
+                    BellLimitsResult = bellResult,
                     PakResult = pakResult,
                     PakPath = pakPath,
                     PickupResult = pickupResult,
@@ -367,6 +401,21 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // True when the profile asks for at least one bell-or-signal-fire
+        // cap that differs from vanilla. Lets the pipeline skip the patch
+        // step (and its file-existence check on VanillaBuildingLimits)
+        // for the common case where no bell config is set.
+        static bool HasBellLimitsConfiguration(Profile profile)
+        {
+            var b = profile.Globals != null ? profile.Globals.FastTravelBells : null;
+            if (b == null) return false;
+            if (b.BellCap.HasValue && b.BellCap.Value != BellLimitsPatcher.VanillaBellCap)
+                return true;
+            if (b.SignalFireCap.HasValue && b.SignalFireCap.Value != BellLimitsPatcher.VanillaSignalFireCap)
+                return true;
+            return false;
+        }
+
         // Profile.Name -> filename component for "Quartermaster_<name>_P.pak".
         // Stay strict (alnum + dash + underscore) so the pak filename works
         // on every Windows / Linux server config the user might drop it on.
@@ -405,6 +454,7 @@ namespace Windrose.Quartermaster.Core
         public Profile Profile;
         public PatchResult PatchResult;
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
+        public BellLimitsPatchResult BellLimitsResult; // null if profile has no bell config
         public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
         public string PakPath;                    // null if pickup-only build
         // The freshly built pickup-radius IoStore triplet, or null if the

@@ -99,7 +99,25 @@
               </div>
             </div>
           </div>
-          <p class="hint pickup-hint">Ships as a separate <code>_PickupRadius_P</code> IoStore triplet (.pak + .ucas + .utoc) next to the main pak. Built-in profiles can't toggle this -- duplicate first.</p>
+          <p class="hint pickup-hint">Ships as an IoStore triplet (.pak + .ucas + .utoc) sharing the main pak's basename, so the engine mounts everything as one logical mod. Built-in profiles can't toggle this -- duplicate first.</p>
+        </section>
+
+        <section class="card">
+          <h2>Globals - Fast-Travel Bells</h2>
+          <p class="hint">Placement caps for fast-travel bells and signal fires. Vanilla: 10 bells (per type) + 3 signal fires.</p>
+          <div class="bell-row">
+            <label>
+              Bell cap
+              <input type="number" id="bell-cap" min="1" max="1000" step="1" value="10">
+              <span class="muted bell-hint" id="bell-cap-hint">vanilla: 10</span>
+            </label>
+            <label>
+              Signal-fire cap
+              <input type="number" id="signal-fire-cap" min="1" max="1000" step="1" value="3">
+              <span class="muted bell-hint" id="signal-fire-cap-hint">vanilla: 3</span>
+            </label>
+          </div>
+          <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak -- no extra files. Built-in profiles can't change this -- duplicate first.</p>
         </section>
 
         <section class="card">

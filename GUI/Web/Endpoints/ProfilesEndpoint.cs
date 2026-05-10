@@ -174,6 +174,13 @@ public static class ProfilesEndpoint
                 {
                     Multiplier = g.PickupRadius.Multiplier,
                 },
+            FastTravelBells = g.FastTravelBells == null
+                ? null
+                : new FastTravelBellsGlobal
+                {
+                    BellCap = g.FastTravelBells.BellCap,
+                    SignalFireCap = g.FastTravelBells.SignalFireCap,
+                },
         };
     }
 
@@ -248,7 +255,23 @@ public static class ProfilesEndpoint
             hasGlobalPickupRadius = p.Globals != null && p.Globals.PickupRadius != null
                                     && p.Globals.PickupRadius.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickupRadius.Multiplier.Value - 1.0) > 1e-9,
+            // True when the profile would actually patch the
+            // BuildLimits JSON: at least one cap differs from vanilla
+            // (10 bells, 3 signal fires). Mirrors the same logic the
+            // build pipeline uses to decide whether to run the patcher.
+            hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
         };
+    }
+
+    static bool HasFastTravelBellsConfig(Profile p)
+    {
+        var b = p.Globals != null ? p.Globals.FastTravelBells : null;
+        if (b == null) return false;
+        if (b.BellCap.HasValue && b.BellCap.Value != BellLimitsPatcher.VanillaBellCap)
+            return true;
+        if (b.SignalFireCap.HasValue && b.SignalFireCap.Value != BellLimitsPatcher.VanillaSignalFireCap)
+            return true;
+        return false;
     }
 
     // Full profile + isBuiltin flag attached for the client.

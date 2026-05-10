@@ -13,6 +13,7 @@ namespace Windrose.Quartermaster.Core
         public string Vanilla;
         public string VanillaInventoryItems;
         public string VanillaLootTables;
+        public string VanillaBuildingLimits;
         public string Builds;
         public string Profiles;
         public string ProfilesBuiltin;
@@ -30,6 +31,11 @@ namespace Windrose.Quartermaster.Core
                 "R5BusinessRules", "Content", "InventoryItems");
             var vanillaLoot = Path.Combine(vanilla, "R5", "Plugins",
                 "R5BusinessRules", "Content", "LootTables");
+            // BuildingLimits lives in the base R5 content tree (NOT under
+            // the R5BusinessRules plugin), and contains tiny config JSONs
+            // like DA_BuildLimits_FastTravel.json (~10 entries total).
+            var vanillaBuildLimits = Path.Combine(vanilla, "R5", "Content",
+                "Gameplay", "BuildingLimits");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -37,6 +43,7 @@ namespace Windrose.Quartermaster.Core
                 Vanilla = vanilla,
                 VanillaInventoryItems = vanillaInv,
                 VanillaLootTables = vanillaLoot,
+                VanillaBuildingLimits = vanillaBuildLimits,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 ProfilesBuiltin = Path.Combine(modRoot, "Profiles", "_builtin"),

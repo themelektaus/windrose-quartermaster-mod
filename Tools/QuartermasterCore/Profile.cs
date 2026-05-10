@@ -39,6 +39,7 @@ namespace Windrose.Quartermaster.Core
         public StackSizeGlobal StackSize;
         public LootGlobal Loot;
         public PickupRadiusGlobal PickupRadius;
+        public FastTravelBellsGlobal FastTravelBells;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -75,6 +76,28 @@ namespace Windrose.Quartermaster.Core
         // Final scaling factor applied to the vanilla 400cm magnet range.
         // null OR == 1.0 -> no pickup-radius mod is built for this profile.
         public double? Multiplier;
+    }
+
+    // Fast-travel-bell + signal-fire placement caps. Patches
+    // R5/Content/Gameplay/BuildingLimits/DA_BuildLimits_FastTravel.json
+    // (a small DataAsset config file) and ships it inside the main
+    // Pak1 -- no IoStore triplet, no retoc step. The vanilla file has
+    // three R5BuildingAmountLimit entries:
+    //   [0] Bell variant 1 (DA_BI_Utilities_FastTravel_Bell)   default 10
+    //   [1] Bell variant 2 (DA_BI_Utilities_FastTravelBell_02) default 10
+    //   [2] Signal fire     (DA_BI_SignalFireT01)              default  3
+    // The two bell variants share the user-facing "BellCap" because the
+    // game enforces them as a single placement budget per player. Signal
+    // fires have a distinct cap.
+    //
+    // null fields = "leave at vanilla". Patching is skipped entirely when
+    // the resolved cap equals the vanilla default for that entry, so
+    // BellCap=10 + SignalFireCap=3 is functionally identical to the
+    // FastTravelBells global being null.
+    public sealed class FastTravelBellsGlobal
+    {
+        public int? BellCap;        // both bell variants; 10..1000
+        public int? SignalFireCap;  // 3..1000
     }
 
     public sealed class ItemOverride

@@ -130,6 +130,27 @@ public static class BuildEndpoint
                         multiplier = result.PickupMultiplier,
                     };
                 }
+                // BellLimitsResult is null when the profile didn't request
+                // a bell-cap change, OR present-but-Skipped when the
+                // resolved caps matched vanilla. Frontend distinguishes
+                // null (= "domain not configured") from Skipped (=
+                // "configured but no-op"); the Written branch carries
+                // the actually-patched cap values.
+                object bellLimitsInfo = null;
+                if (result.BellLimitsResult != null)
+                {
+                    var br = result.BellLimitsResult;
+                    bellLimitsInfo = new
+                    {
+                        skipped = br.Skipped,
+                        written = br.Written,
+                        bellCap = br.BellCap,
+                        signalFireCap = br.SignalFireCap,
+                        bellsPatched = br.BellsPatched,
+                        signalFiresPatched = br.SignalFiresPatched,
+                        unmatched = br.Unmatched,
+                    };
+                }
                 return Results.Json(new
                 {
                     success = true,
@@ -150,6 +171,7 @@ public static class BuildEndpoint
                     },
                     lootPatchResult,
                     pickupRadius = pickupRadiusInfo,
+                    bellLimits = bellLimitsInfo,
                     log,
                 });
             }

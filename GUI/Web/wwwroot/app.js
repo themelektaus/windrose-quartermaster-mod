@@ -423,8 +423,18 @@ function applyProfileToUI() {
     document.getElementById('pickup-multiplier').value =
         pickupOn ? pickupMul : 2.0;
     syncPickupReadout();
+    // Fast-travel bell caps: two number inputs. Vanilla = 10 / 3; null
+    // in the profile means "use vanilla" so the input snaps to vanilla
+    // for legibility. Empty string would also render as 0 in some
+    // browsers, which would be misleading.
+    const ftb = (p.globals && p.globals.fastTravelBells) || null;
+    document.getElementById('bell-cap').value =
+        ftb && ftb.bellCap != null ? ftb.bellCap : 10;
+    document.getElementById('signal-fire-cap').value =
+        ftb && ftb.signalFireCap != null ? ftb.signalFireCap : 3;
     syncStackSizeInputsState();
     syncPickupInputState();
+    syncBellInputState();
     renderProfileMeta();
 }
 
@@ -459,6 +469,15 @@ function syncPickupInputState() {
     const slider  = document.getElementById('pickup-multiplier');
     enabled.disabled = isReadonly;
     slider.disabled  = isReadonly || !enabled.checked;
+}
+
+// Bell-cap inputs are read-only on builtins (consistent with stack-size /
+// pickup / loot globals). Locking is governed by isBuiltin alone -- both
+// inputs are always meaningful values, the user just can't pick "off".
+function syncBellInputState() {
+    const isReadonly = !!(state.current && state.current.isBuiltin);
+    document.getElementById('bell-cap').disabled = isReadonly;
+    document.getElementById('signal-fire-cap').disabled = isReadonly;
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -1529,6 +1548,32 @@ function setPickupRadiusFromUI() {
     markDirty();
 }
 
+// Fast-travel bell + signal-fire caps. Both vanilla (10 / 3) drops the
+// whole subtree so the JSON stays clean for default profiles. Either
+// value differing from vanilla writes both fields together (so a future
+// game-update change to one cap doesn't silently shift the other).
+function setBellLimitsFromUI() {
+    if (!state.current) return;
+    const bellRaw   = document.getElementById('bell-cap').value;
+    const signalRaw = document.getElementById('signal-fire-cap').value;
+    const bell   = parseInt(bellRaw,   10);
+    const signal = parseInt(signalRaw, 10);
+    if (!isFinite(bell) || !isFinite(signal)) return;  // mid-edit garbage
+
+    state.current.globals = state.current.globals || {};
+    const isVanillaBell   = bell === 10;
+    const isVanillaSignal = signal === 3;
+    if (isVanillaBell && isVanillaSignal) {
+        delete state.current.globals.fastTravelBells;
+    } else {
+        state.current.globals.fastTravelBells = {
+            bellCap: bell,
+            signalFireCap: signal,
+        };
+    }
+    markDirty();
+}
+
 function setOverrideFromInput(itemId, rawValue) {
     if (!state.current) return;
     state.current.overrides = state.current.overrides || {};
@@ -1681,6 +1726,14 @@ async function onBuild() {
                     'DONE -- pickup-radius patch (' + (pr.multiplier || '?').toFixed(1) + 'x, '
                     + 'MagnetRadius=' + pr.magnetRadius + ', ' + totalKb + ' KB) -> '
                     + target });
+            }
+            if (data.bellLimits && data.bellLimits.written) {
+                const bl = data.bellLimits;
+                lines.push({ kind: 'ok', msg:
+                    'DONE -- fast-travel limits patched (bells=' + bl.bellCap
+                    + ', signal-fires=' + bl.signalFireCap + '; '
+                    + bl.bellsPatched + ' bell + ' + bl.signalFiresPatched
+                    + ' signal-fire entries)' });
             }
             if (!data.pakPath && !data.pickupRadius) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
@@ -1886,6 +1939,8 @@ function bindHandlers() {
     document.getElementById('ss-abs').addEventListener('input',  setStackSizeFromUI);
     document.getElementById('pickup-enabled').addEventListener('change', setPickupRadiusFromUI);
     document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
+    document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
+    document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);
