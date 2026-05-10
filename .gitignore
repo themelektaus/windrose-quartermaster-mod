@@ -20,3 +20,7 @@ Thumbs.db
 /WindrosePlus/
 
 /repak.exe
+/retoc.exe
+
+# VS auto-generated, contains user-local ports
+GUI/*/Properties/launchSettings.json

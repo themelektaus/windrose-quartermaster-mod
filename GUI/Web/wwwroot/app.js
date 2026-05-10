@@ -411,10 +411,18 @@ function applyProfileToUI() {
     document.getElementById('ss-mult').value = ss.multiplier == null ? 4 : ss.multiplier;
     document.getElementById('ss-cap').value  = ss.cap        == null ? 0 : ss.cap;
     document.getElementById('ss-abs').value  = ss.absolute   == null ? 999 : ss.absolute;
-    // Pickup-radius: a single checkbox bound to globals.pickupRadius.doubled.
-    // Missing block / null / false all map to "off".
-    const pickupOn = !!(p.globals && p.globals.pickupRadius && p.globals.pickupRadius.doubled);
-    document.getElementById('pickup-doubled').checked = pickupOn;
+    // Pickup-radius: a checkbox toggles the whole subtree, the slider
+    // sets globals.pickupRadius.multiplier (1.0 - 10.0).
+    const pr = (p.globals && p.globals.pickupRadius) || null;
+    const pickupMul = pr && pr.multiplier != null ? pr.multiplier : null;
+    const pickupOn = pickupMul != null && Math.abs(pickupMul - 1.0) > 1e-9;
+    document.getElementById('pickup-enabled').checked = pickupOn;
+    // Carry the previous multiplier as the slider's default when re-enabled,
+    // so toggling off-and-on doesn't snap back to 2.0 mid-edit. 2.0 is the
+    // "first time the user enables it" default.
+    document.getElementById('pickup-multiplier').value =
+        pickupOn ? pickupMul : 2.0;
+    syncPickupReadout();
     syncStackSizeInputsState();
     syncPickupInputState();
     renderProfileMeta();
@@ -441,11 +449,28 @@ function syncStackSizeInputsState() {
     }
 }
 
-// Pickup-radius toggle is read-only on builtins (consistent with stack-size /
-// loot globals): user must duplicate to a custom profile to change it.
+// Pickup-radius controls are read-only on builtins (consistent with
+// stack-size / loot globals): user must duplicate to a custom profile to
+// change it. The slider is also disabled while the checkbox is off, so
+// "0.5x range" can't accidentally happen while the patch is supposedly off.
 function syncPickupInputState() {
     const isReadonly = !!(state.current && state.current.isBuiltin);
-    document.getElementById('pickup-doubled').disabled = isReadonly;
+    const enabled = document.getElementById('pickup-enabled');
+    const slider  = document.getElementById('pickup-multiplier');
+    enabled.disabled = isReadonly;
+    slider.disabled  = isReadonly || !enabled.checked;
+}
+
+// Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
+// out so both the change-event and the initial render can call it.
+function syncPickupReadout() {
+    const slider = document.getElementById('pickup-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('pickup-multiplier-value').innerHTML =
+        mul.toFixed(1) + '&times;';
+    // Vanilla magnet range is 4.0 m; the slider scales it linearly.
+    document.getElementById('pickup-range').textContent =
+        (4.0 * mul).toFixed(1) + ' m';
 }
 
 function populateProfileSelect() {
@@ -1484,18 +1509,23 @@ function setStackSizeFromUI() {
     renderItems();
 }
 
-// Pickup-radius lives in globals.pickupRadius.doubled. Off (= unchecked /
-// unset) drops the whole subtree so the JSON stays clean ({} on disk for
-// profiles that don't touch pickup).
+// Pickup-radius lives in globals.pickupRadius.multiplier. Off (= unchecked
+// OR slider at 1.0) drops the whole subtree so the JSON stays clean ({} on
+// disk for profiles that don't touch pickup). Called from the checkbox
+// (toggle) and the slider (live update) so the readout always matches state.
 function setPickupRadiusFromUI() {
     if (!state.current) return;
-    const on = document.getElementById('pickup-doubled').checked;
+    const enabled = document.getElementById('pickup-enabled').checked;
+    const slider  = document.getElementById('pickup-multiplier');
+    const mul     = parseFloat(slider.value) || 1.0;
     state.current.globals = state.current.globals || {};
-    if (on) {
-        state.current.globals.pickupRadius = { doubled: true };
+    if (enabled && Math.abs(mul - 1.0) > 1e-9) {
+        state.current.globals.pickupRadius = { multiplier: mul };
     } else {
         delete state.current.globals.pickupRadius;
     }
+    syncPickupReadout();
+    syncPickupInputState();
     markDirty();
 }
 
@@ -1632,9 +1662,24 @@ async function onBuild() {
         const lines = [];
         for (const m of data.log || []) lines.push({ kind: 'ok', msg: m });
         if (data.success) {
-            const sizeKb = (data.sizeBytes / 1024).toFixed(1);
-            lines.push({ kind: 'ok', msg:
-                'DONE -- ' + data.pakPath + ' (' + sizeKb + ' KB, ' + data.fileCount + ' files)' });
+            // Main pak is missing (pakPath==null) only on a pickup-only
+            // build -- collapse to a single "DONE" line in either case.
+            if (data.pakPath) {
+                const sizeKb = (data.sizeBytes / 1024).toFixed(1);
+                lines.push({ kind: 'ok', msg:
+                    'DONE -- ' + data.pakPath + ' (' + sizeKb + ' KB, ' + data.fileCount + ' files)' });
+            }
+            if (data.pickupRadius) {
+                const pr = data.pickupRadius;
+                const totalKb = ((pr.pakSize + pr.ucasSize + pr.utocSize) / 1024).toFixed(1);
+                lines.push({ kind: 'ok', msg:
+                    'DONE -- pickup-radius triplet (' + (pr.multiplier || '?').toFixed(1) + 'x, '
+                    + 'MagnetRadius=' + pr.magnetRadius + ', ' + totalKb + ' KB) -> '
+                    + pr.pakPath });
+            }
+            if (!data.pakPath && !data.pickupRadius) {
+                lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
+            }
         } else {
             lines.push({ kind: 'err', msg: 'ERROR: ' + (data.error || 'unknown') });
         }
@@ -1834,7 +1879,8 @@ function bindHandlers() {
     document.getElementById('ss-mult').addEventListener('input', setStackSizeFromUI);
     document.getElementById('ss-cap').addEventListener('input',  setStackSizeFromUI);
     document.getElementById('ss-abs').addEventListener('input',  setStackSizeFromUI);
-    document.getElementById('pickup-doubled').addEventListener('change', setPickupRadiusFromUI);
+    document.getElementById('pickup-enabled').addEventListener('change', setPickupRadiusFromUI);
+    document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);

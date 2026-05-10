@@ -19,6 +19,12 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //                                     return 403 so we can never delete a
 //                                     mod the user installed elsewhere.
 //
+// Pickup-radius is shipped as an IoStore mod triplet (.pak + .ucas + .utoc)
+// next to the main pak. The list-view treats the triplet as one logical
+// entity by aggregating sibling sizes, and the delete endpoint recycles
+// all three files together so the user can't end up with a half-deleted
+// triplet that confuses UE5 on next mount.
+//
 // The recycle-bin step uses Microsoft.VisualBasic.FileIO.FileSystem; the
 // assembly ships with the .NET runtime on Windows so no extra NuGet ref
 // is required.
@@ -29,9 +35,9 @@ public static class ModsEndpoint
     // hardcoded "Quartermaster_<safe>_P.pak" template.
     public const string OwnedPrefix = "Quartermaster_";
     public const string OwnedSuffix = "_P.pak";
-    // Inner suffix that distinguishes the pickup-radius companion pak
+    // Inner suffix that distinguishes the pickup-radius triplet pak
     // from the main pak. "Quartermaster_x4_PickupRadius_P.pak" carries
-    // the pre-baked Blueprint patch; "Quartermaster_x4_P.pak" carries
+    // the IoStore Blueprint patch; "Quartermaster_x4_P.pak" carries
     // the patched JSON tree.
     const string PickupInnerSuffix = "_PickupRadius";
 
@@ -86,7 +92,7 @@ public static class ModsEndpoint
                         // for our own paks. null for foreign mods.
                         displayName = owned ? StripOwnedAffixes(fi.Name) : null,
                         // "main" = the patched JSON tree; "pickupRadius" =
-                        // the pre-baked Blueprint companion. Frontend uses
+                        // the IoStore Blueprint companion. Frontend uses
                         // this to render a different badge.
                         kind = owned ? ClassifyOwned(fi.Name) : "foreign",
                     });
@@ -154,12 +160,11 @@ public static class ModsEndpoint
                 return Results.NotFound(new { error = "File not found", filename });
             }
 
-            // Some Quartermaster paks ship with sibling IoStore files
+            // Quartermaster paks may ship with sibling IoStore files
             // (.ucas/.utoc) that the engine treats as one logical mod
-            // alongside the .pak (e.g. the pre-baked pickup-radius
-            // Blueprint patch). Recycle them together so the user can't
-            // end up with a half-deleted triplet that confuses the engine
-            // on next mount.
+            // alongside the .pak (the pickup-radius triplet). Recycle
+            // them together so the user can't end up with a half-deleted
+            // triplet that confuses the engine on next mount.
             var basePath = fullPath.Substring(0, fullPath.Length - ".pak".Length);
             var companions = new[] { ".ucas", ".utoc" };
             var recycled = new List<string> { filename };

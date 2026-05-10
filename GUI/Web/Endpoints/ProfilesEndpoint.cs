@@ -172,7 +172,7 @@ public static class ProfilesEndpoint
                 ? null
                 : new PickupRadiusGlobal
                 {
-                    Doubled = g.PickupRadius.Doubled,
+                    Multiplier = g.PickupRadius.Multiplier,
                 },
         };
     }
@@ -243,8 +243,11 @@ public static class ProfilesEndpoint
             hasGlobalLoot = p.Globals != null && p.Globals.Loot != null
                             && p.Globals.Loot.ByCategory != null
                             && p.Globals.Loot.ByCategory.Count > 0,
+            // Multiplier > 1.0 means a triplet would actually be built;
+            // 1.0 / null means "no pickup mod", same as no pickup config.
             hasGlobalPickupRadius = p.Globals != null && p.Globals.PickupRadius != null
-                                    && p.Globals.PickupRadius.Doubled == true,
+                                    && p.Globals.PickupRadius.Multiplier.HasValue
+                                    && Math.Abs(p.Globals.PickupRadius.Multiplier.Value - 1.0) > 1e-9,
         };
     }
 

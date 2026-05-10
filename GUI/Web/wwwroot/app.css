@@ -273,6 +273,39 @@ fieldset .indent input[type="number"] {
   margin-top: .5em;
 }
 
+.pickup-row {
+  display: flex;
+  flex-direction: column;
+  gap: .35em;
+}
+
+.pickup-slider {
+  display: flex;
+  flex-direction: column;
+  gap: .35em;
+}
+
+.pickup-slider input[type="range"] {
+  width: 100%;
+}
+
+.pickup-readout {
+  display: flex;
+  gap: .35em;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.pickup-readout .muted {
+  color: var(--text-dim);
+}
+
+/* Disabled slider when pickup-enabled is unchecked OR profile is builtin. */
+.pickup-slider input[type="range"]:disabled,
+.pickup-slider:has(input[type="range"]:disabled) .pickup-readout {
+  opacity: .5;
+}
+
 dl {
   display: grid;
   grid-template-columns: 1fr auto;

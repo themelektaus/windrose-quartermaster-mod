@@ -84,11 +84,22 @@
         <section class="card">
           <h2>Globals - Pickup Radius</h2>
           <p class="hint">Auto-pickup magnet range. Vanilla: 4 m.</p>
-          <label class="check-row">
-            <input type="checkbox" id="pickup-doubled">
-            Double pickup radius (4 m &rarr; 8 m)
-          </label>
-          <p class="hint pickup-hint">Ships as a separate <code>_PickupRadius_P</code> mod next to the main pak. Built-in profiles can't toggle this -- duplicate first.</p>
+          <div class="pickup-row">
+            <label class="check-row">
+              <input type="checkbox" id="pickup-enabled">
+              Enable pickup-radius patch
+            </label>
+            <div class="pickup-slider indent">
+              <input type="range" id="pickup-multiplier"
+                     min="1.0" max="10.0" step="0.1" value="2.0">
+              <div class="pickup-readout">
+                Multiplier: <span id="pickup-multiplier-value">2.0&times;</span>
+                <span class="muted">&middot;</span>
+                Range: <span id="pickup-range">8.0 m</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint pickup-hint">Ships as a separate <code>_PickupRadius_P</code> IoStore triplet (.pak + .ucas + .utoc) next to the main pak. Built-in profiles can't toggle this -- duplicate first.</p>
         </section>
 
         <section class="card">

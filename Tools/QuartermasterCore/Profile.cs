@@ -61,15 +61,20 @@ namespace Windrose.Quartermaster.Core
         public Dictionary<string, double> ByCategory;
     }
 
-    // Pickup-radius is delivered as a pre-baked Blueprint mod (the
-    // GA_Loot_AutoPickup CDO with MagnetRadius patched from 400 to 800,
-    // shipped as a triplet next to the main Quartermaster pak). Phase 1
-    // is a single bool (off / 2x); future: a discrete preset enum or a
-    // float multiplier once we ship more pre-baked variants or move to
-    // a real Blueprint property writer.
+    // Pickup-radius is delivered as a freshly built IoStore mod triplet
+    // alongside the main Quartermaster pak. The pipeline runs retoc on
+    // the vanilla GA_Loot_AutoPickup Blueprint, patches the CDO via
+    // UAssetAPI to set MagnetRadius = 400 * Multiplier, then re-packs as
+    // a UE5 IoStore container.
+    //
+    // The Multiplier field is the user-facing scalar (slider in the GUI,
+    // "1.5", "2", "5", "10", ...). 1.0 = vanilla = no triplet emitted;
+    // null = no pickup config.
     public sealed class PickupRadiusGlobal
     {
-        public bool? Doubled;
+        // Final scaling factor applied to the vanilla 400cm magnet range.
+        // null OR == 1.0 -> no pickup-radius mod is built for this profile.
+        public double? Multiplier;
     }
 
     public sealed class ItemOverride

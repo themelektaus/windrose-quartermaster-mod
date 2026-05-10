@@ -10,4 +10,16 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      UAssetAPI: reads / writes UE Legacy .uasset+.uexp files. Used by
+      PickupBlueprintPatcher to inject a serialized MagnetRadius
+      FloatProperty into the GA_Loot_AutoPickup CDO. The vanilla CDO
+      doesn't serialize the property at all (it's a C++ class default), so
+      we need a real property writer; byte-patching alone wouldn't know
+      the Unversioned-Properties layout in the export bytes.
+    -->
+    <PackageReference Include="UAssetAPI" Version="1.1.0" />
+  </ItemGroup>
+
 </Project>

@@ -10,12 +10,21 @@ namespace Windrose.Quartermaster.Core
     // The temp directory is wiped before patching and (by default) deleted
     // after a successful pack -- callers can opt into keepTemp=true for
     // post-mortem debugging.
+    //
+    // Pickup-radius is a separate IoStore mod triplet built alongside the
+    // main pak: we shell out to retoc to convert the vanilla
+    // GA_Loot_AutoPickup Blueprint to Legacy, patch MagnetRadius via
+    // UAssetAPI, then re-pack as IoStore. UE5 mounts our _P-suffixed
+    // triplet at higher mount priority than vanilla, so the patched
+    // value wins at runtime. See PickupTripletBuilder for the gritty
+    // details.
     public sealed class BuildPipeline
     {
         readonly WindrosePaths _paths;
         readonly StackPatcher _patcher;
         readonly LootPatcher _lootPatcher;
         readonly RepakResolver _repakResolver;
+        readonly RetocResolver _retocResolver;
 
         public Action<string> Log;
 
@@ -26,15 +35,18 @@ namespace Windrose.Quartermaster.Core
         // never touch the live game install.
         public string OutputDir;
 
-        // Optional source of the pre-baked Pickup-Radius mod triplet
-        // (.pak/.ucas/.utoc). Called with one of "pak", "ucas", "utoc" --
-        // returns a readable Stream containing that file's bytes, or null if
-        // the asset is unavailable. When null, profiles asking for the
-        // pickup-radius mod can't be built (the pipeline raises a clear
-        // error). The Web layer wires this to the embedded resources in
-        // Quartermaster.Web.dll; the CLI leaves it null since CLI smoke
-        // tests don't need the Blueprint patch.
-        public Func<string, Stream> PickupRadiusAssetProvider;
+        // Optional locator for the live game's Paks/ directory. Required
+        // ONLY for builds that activate the pickup-radius patch -- retoc's
+        // to-legacy step needs the vanilla IoStore container as input.
+        // The GUI wires this to SteamLocator.FindVanillaPaksDir; CLI smoke
+        // tests leave it null since CLI builds never enable pickup-radius.
+        public Func<string> GamePaksDirProvider;
+
+        // Vanilla MagnetRadius value (cm) the patcher multiplies against
+        // to derive the patched value. 400cm = 4m is the Windrose 5.6
+        // baseline; broken out as a constant so a future game patch
+        // could be handled without touching call sites everywhere.
+        public const float VanillaMagnetRadius = 400f;
 
         public BuildPipeline(WindrosePaths paths)
         {
@@ -43,6 +55,7 @@ namespace Windrose.Quartermaster.Core
             _patcher = new StackPatcher();
             _lootPatcher = new LootPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
+            _retocResolver = new RetocResolver(paths.ModRoot);
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -101,9 +114,8 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 int totalWritten = patchResult.Written + (lootResult != null ? lootResult.Written : 0);
-                bool pickupActive = profile.Globals != null
-                                    && profile.Globals.PickupRadius != null
-                                    && profile.Globals.PickupRadius.Doubled == true;
+                double pickupMultiplier = ResolvePickupMultiplier(profile);
+                bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 if (totalWritten == 0 && !pickupActive)
                 {
                     throw new InvalidOperationException(
@@ -135,16 +147,10 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes -- main pak skipped (pickup-radius-only build).");
                 }
 
-                string pickupPak = null, pickupUcas = null, pickupUtoc = null;
+                PickupTripletResult pickupResult = null;
                 if (pickupActive)
                 {
-                    Directory.CreateDirectory(outDir);
-                    var pickupBase = Path.Combine(outDir,
-                        "Quartermaster_" + safeName + "_PickupRadius_P");
-                    pickupPak  = WritePickupAsset(pickupBase + ".pak",  "pak");
-                    pickupUcas = WritePickupAsset(pickupBase + ".ucas", "ucas");
-                    pickupUtoc = WritePickupAsset(pickupBase + ".utoc", "utoc");
-                    LogLine("Pickup-radius triplet written next to the main pak");
+                    pickupResult = BuildPickupTriplet(profile, safeName, outDir, tmpDir, pickupMultiplier);
                 }
 
                 return new BuildPipelineResult
@@ -154,9 +160,8 @@ namespace Windrose.Quartermaster.Core
                     LootPatchResult = lootResult,
                     PakResult = pakResult,
                     PakPath = pakPath,
-                    PickupPakPath = pickupPak,
-                    PickupUcasPath = pickupUcas,
-                    PickupUtocPath = pickupUtoc,
+                    PickupResult = pickupResult,
+                    PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -174,6 +179,78 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
             }
+        }
+
+        // Builds the IoStore triplet for the pickup-radius mod and writes
+        // it next to the main pak as Quartermaster_<name>_PickupRadius_P.{pak,ucas,utoc}.
+        // Surfaces a clear error if the GUI didn't supply a paks-dir
+        // locator -- a CLI build with pickup-radius enabled is currently
+        // unsupported (CLI doesn't talk to the Steam install).
+        PickupTripletResult BuildPickupTriplet(
+            Profile profile, string safeName, string outDir,
+            string tmpDir, double multiplier)
+        {
+            if (GamePaksDirProvider == null)
+            {
+                throw new InvalidOperationException(
+                    "Profile requests the pickup-radius mod but no GamePaksDirProvider is wired up. "
+                    + "This is a build-host configuration error -- only the GUI build path "
+                    + "can locate the live game's Paks directory.");
+            }
+            var gamePaksDir = GamePaksDirProvider();
+            if (string.IsNullOrEmpty(gamePaksDir) || !Directory.Exists(gamePaksDir))
+            {
+                throw new InvalidOperationException(
+                    "Pickup-radius patch needs the live game's Paks directory but the locator "
+                    + "returned an invalid path: " + (gamePaksDir ?? "<null>"));
+            }
+            var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+
+            LogLine("Resolving retoc.exe...");
+            _retocResolver.Log = Log;
+            var retocExe = _retocResolver.Resolve();
+
+            Directory.CreateDirectory(outDir);
+            var pickupBaseName = "Quartermaster_" + safeName + "_PickupRadius_P.pak";
+            var outPakPath = Path.Combine(outDir, pickupBaseName);
+            var pickupTmp = Path.Combine(tmpDir, "_pickup");
+            float magnetRadius = (float)(VanillaMagnetRadius * multiplier);
+
+            LogLine("Building pickup-radius triplet (multiplier=" + multiplier
+                    + ", MagnetRadius=" + magnetRadius + "cm) -> " + outPakPath);
+
+            var triplet = new PickupTripletBuilder { Log = Log };
+            var result = triplet.Build(new PickupTripletRequest
+            {
+                RetocExe = retocExe,
+                GamePaksDir = gamePaksDir,
+                UsmapPath = usmapPath,
+                OutputPakPath = outPakPath,
+                MagnetRadius = magnetRadius,
+                TempDir = pickupTmp,
+                Overwrite = true,
+            });
+
+            LogLine("Pickup triplet written: "
+                    + Path.GetFileName(result.PakPath) + " ("
+                    + result.PakSize + " B) + "
+                    + Path.GetFileName(result.UcasPath) + " ("
+                    + result.UcasSize + " B) + "
+                    + Path.GetFileName(result.UtocPath) + " ("
+                    + result.UtocSize + " B)");
+            return result;
+        }
+
+        // Resolves the effective multiplier the build should use, with the
+        // "no pickup mod" sentinel (0 or 1.0) collapsed to 1.0. Centralized
+        // here so the readiness check, the activation flag, and the actual
+        // patch all see the same number.
+        static double ResolvePickupMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.PickupRadius == null) return 1.0;
+            var pr = profile.Globals.PickupRadius;
+            if (pr.Multiplier.HasValue) return pr.Multiplier.Value;
+            return 1.0;
         }
 
         // True when the profile actually configures the loot domain --
@@ -219,33 +296,6 @@ namespace Windrose.Quartermaster.Core
             return collapsed.ToString().Trim('-', '_');
         }
 
-        // Streams the named extension ("pak"/"ucas"/"utoc") from the
-        // injected provider and writes it to disk. Throws a clear error if
-        // the provider isn't wired up at all (= GUI didn't pass one) or
-        // doesn't carry the asset (= mismatched ship).
-        string WritePickupAsset(string outPath, string extension)
-        {
-            if (PickupRadiusAssetProvider == null)
-            {
-                throw new InvalidOperationException(
-                    "Profile requests the pickup-radius mod but no asset provider is wired up. "
-                    + "This is a build-host configuration error -- only the GUI build path supports it.");
-            }
-            using (var src = PickupRadiusAssetProvider(extension))
-            {
-                if (src == null)
-                {
-                    throw new InvalidOperationException(
-                        "Pickup-radius asset provider returned null for extension '" + extension + "'.");
-                }
-                using (var dst = File.Create(outPath))
-                {
-                    src.CopyTo(dst);
-                }
-            }
-            return outPath;
-        }
-
         void LogLine(string msg)
         {
             if (Log != null) Log(msg);
@@ -259,12 +309,12 @@ namespace Windrose.Quartermaster.Core
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
         public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
         public string PakPath;                    // null if pickup-only build
-        // Set when the profile asked for the pickup-radius patch. The
-        // engine needs all three files together (Pak1 stub + IoStore data
-        // + IoStore directory); ModsEndpoint groups them as one entry.
-        public string PickupPakPath;
-        public string PickupUcasPath;
-        public string PickupUtocPath;
+        // The freshly built pickup-radius IoStore triplet, or null if the
+        // profile didn't request a pickup mod (or set multiplier == 1.0).
+        public PickupTripletResult PickupResult;
+        // The user-facing scalar that produced the triplet (e.g. 2.0,
+        // 1.5, ...). null when no pickup triplet was built.
+        public double? PickupMultiplier;
         public string TmpDir;
         public bool Success;
     }

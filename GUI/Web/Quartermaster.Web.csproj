@@ -59,24 +59,15 @@
     </EmbeddedResource>
   </ItemGroup>
   <!--
-    Embed the pre-baked Pickup-Radius mod triplet (.pak/.ucas/.utoc).
-    The build pipeline drops these next to the main Quartermaster pak in
-    ~mods/ when a profile has globals.pickupRadius.doubled = true. The
-    mod doubles the auto-pickup MagnetRadius (vanilla 400cm -> 800cm).
-    Stored under Resources\PickupRadius\ in the repo; addressed at
-    runtime via "PickupRadius.<ext>" logical names.
+    Pickup-radius is no longer shipped pre-baked: the build pipeline
+    invokes retoc + UAssetAPI per build to extract the live game's
+    GA_Loot_AutoPickup, patch MagnetRadius to (400 * multiplier), and
+    re-pack it as an IoStore triplet. That way the patched value is
+    always cooked against the user's installed game version (robust
+    against UE upgrades) and the user can pick any multiplier instead
+    of a binary 1x/2x toggle.
+    See PickupTripletBuilder for the per-build orchestration.
   -->
-  <ItemGroup>
-    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.pak">
-      <LogicalName>PickupRadius.pak</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.ucas">
-      <LogicalName>PickupRadius.ucas</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Resources\PickupRadius\PickupRadius_2x.utoc">
-      <LogicalName>PickupRadius.utoc</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
   <!--
     Embed a pre-published copy of IconExtractor (the CUE4Parse-backed
     tool that turns vanilla pak entries into PNGs) so a deployed EXE can

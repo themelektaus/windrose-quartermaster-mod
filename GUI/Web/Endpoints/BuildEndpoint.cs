@@ -49,15 +49,15 @@ public static class BuildEndpoint
             // callback fires from there. List access is safe because we
             // only read it from the same thread (Task.Run completion below).
             pipeline.Log = m => log.Add(m);
-            // Pickup-radius is shipped as a pre-baked mod triplet inside
-            // this assembly (see Quartermaster.Web.csproj <EmbeddedResource>
-            // entries). Pipeline only opens these streams when the profile
-            // actually has globals.pickupRadius.doubled = true.
-            pipeline.PickupRadiusAssetProvider = ext =>
-            {
-                var asm = typeof(BuildEndpoint).Assembly;
-                return asm.GetManifestResourceStream("PickupRadius." + ext);
-            };
+            // Pickup-radius is built fresh per build by retoc + UAssetAPI:
+            // the pipeline pulls the live game's vanilla GA_Loot_AutoPickup,
+            // patches MagnetRadius via UAssetAPI, then re-packs as an
+            // IoStore triplet next to the main pak. Only used when the
+            // profile actually has globals.pickupRadius.multiplier > 1.0.
+            // Surfacing the same "no Steam install" error shape for both
+            // the main-pak ~mods target and this provider keeps the
+            // failure path uniform.
+            pipeline.GamePaksDirProvider = SteamLocator.FindVanillaPaksDir;
 
             // Redirect the pak straight into Windrose's ~mods/ folder so
             // the engine picks it up without a manual copy step. SteamLocator
@@ -102,18 +102,26 @@ public static class BuildEndpoint
                         warnings = lpr.Warnings,
                     };
                 }
+                // PickupResult is null when the profile didn't request
+                // pickup or set multiplier=1.0 (no triplet to ship).
                 // PakResult is null on pickup-radius-only builds (no item /
-                // loot changes -> no main pak written). Frontend treats null
-                // sizeBytes/fileCount as "no main pak" and only shows the
-                // pickup-triplet info.
+                // loot changes -> no main pak written). The frontend treats
+                // both null shapes as "this domain wasn't built" rather
+                // than "domain build failed".
                 object pickupRadiusInfo = null;
-                if (result.PickupPakPath != null)
+                if (result.PickupResult != null)
                 {
+                    var pr = result.PickupResult;
                     pickupRadiusInfo = new
                     {
-                        pakPath = result.PickupPakPath,
-                        ucasPath = result.PickupUcasPath,
-                        utocPath = result.PickupUtocPath,
+                        pakPath = pr.PakPath,
+                        ucasPath = pr.UcasPath,
+                        utocPath = pr.UtocPath,
+                        pakSize = pr.PakSize,
+                        ucasSize = pr.UcasSize,
+                        utocSize = pr.UtocSize,
+                        magnetRadius = pr.MagnetRadius,
+                        multiplier = result.PickupMultiplier,
                     };
                 }
                 return Results.Json(new
