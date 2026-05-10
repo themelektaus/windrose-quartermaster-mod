@@ -1,6 +1,6 @@
 'use strict';
 
-// Windrose Quartermaster -- vanilla JS, no framework.
+// Windrose Quartermaster - vanilla JS, no framework.
 // State lives in a single object; the few mutators that change it call the
 // affected render functions explicitly.
 
@@ -143,7 +143,7 @@ async function boot() {
     }
 
     showSetupOverlay(status);
-    // No auto-run -- the user explicitly clicks "Run setup". The Run button
+    // No auto-run - the user explicitly clicks "Run setup". The Run button
     // is enabled when prerequisites are satisfied (see canAutoRunSetup).
 }
 
@@ -183,9 +183,9 @@ function renderSetupChecks(status) {
         ['hasUsmap',          'UE5 mappings file (.usmap) in mod root',
                               status.usmapPath || 'Drop a Ctrl+Num6 dump into the mod root.'],
         ['hasVanillaSources', 'Vanilla item JSONs extracted',
-                              'Sources/Vanilla -- produced by the dump step.'],
+                              'Sources/Vanilla - produced by the dump step.'],
         ['hasIcons',          'Item icons extracted',
-                              status.iconsDir + ' -- produced by the icons step.'],
+                              status.iconsDir + ' - produced by the icons step.'],
     ];
     ul.innerHTML = rows.map(([key, label, detail]) => {
         const ok = !!status[key];
@@ -209,7 +209,7 @@ function renderSetupError(status) {
         out.hidden = false;
         out.textContent =
             'No .usmap file found in the mod root.\n' +
-            'Generate one via UE4SS Keybinds (DumpUSMAP -- Ctrl+Num6 by default), ' +
+            'Generate one via UE4SS Keybinds (DumpUSMAP - Ctrl+Num6 by default), ' +
             'copy it next to the mod, then click Re-check.';
         return;
     }
@@ -276,7 +276,7 @@ function runSetup(force) {
 
         // Native EventSource only supports GET; we want POST to keep the
         // semantics clear (this mutates state). Use fetch() + ReadableStream
-        // and parse SSE manually -- straightforward for the small frame set
+        // and parse SSE manually - straightforward for the small frame set
         // we emit.
         fetch(url, { method: 'POST' }).then(async resp => {
             if (!resp.ok) {
@@ -521,6 +521,16 @@ function populateProfileSelect() {
         o.textContent = p.name;
         sel.appendChild(o);
     }
+    syncNoProfileState();
+}
+
+// Toggles the empty-state UI when /api/profiles is empty: hides the tabs +
+// per-profile toolbar buttons + every tab-page (via body.no-profiles in
+// app.css) and renders the "create your first profile" hint inside <main>.
+// Called from populateProfileSelect() so every code path that mutates
+// state.profiles flows through here automatically.
+function syncNoProfileState() {
+    document.body.classList.toggle('no-profiles', state.profiles.length === 0);
 }
 
 function populateValueFilter(elId, key, allLabel) {
@@ -684,7 +694,7 @@ function buildItemRow(item) {
     return li;
 }
 
-// In-place row update -- avoids losing focus on the override input.
+// In-place row update - avoids losing focus on the override input.
 function refreshRowInPlace(itemId) {
     const item = state.items.find(i => i.id === itemId);
     if (!item) return;
@@ -855,7 +865,7 @@ function resolveLootEntry(lt, vanillaEntry) {
 }
 
 // Returns true if any aspect of the LT will change in the build relative to
-// vanilla -- this drives the "modified" badge and the only-changed filter.
+// vanilla - this drives the "modified" badge and the only-changed filter.
 function computeLtChanged(lt) {
     const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
     if (ovr) {
@@ -981,7 +991,7 @@ function buildLtRow(lt) {
 }
 
 // Renders the per-entry editor block inside an expanded LT card. Called on
-// expansion, not at initial list render -- 1500 LTs * ~5 entries each would
+// expansion, not at initial list render - 1500 LTs * ~5 entries each would
 // otherwise blow up the DOM.
 function renderLtBody(li, lt) {
     const body = li.querySelector('.lt-body');
@@ -1111,7 +1121,7 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
                 '<small>added empty slot</small>' +
             '</div>';
     } else {
-        // Empty added entry -- user clicked "+ Add entry" but hasn't picked
+        // Empty added entry - user clicked "+ Add entry" but hasn't picked
         // a target yet. Render the picker form inline.
         return buildLtAddedFormHtml(lt, a, addedIndex, isReadonly);
     }
@@ -1137,15 +1147,15 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
 
 // Inline picker form for an added entry whose lootItem/lootTable hasn't been
 // selected yet. The user picks Item / Sub-Table / No drop, types the id
-// (autocompleted via the custom picker dropdown -- see openPicker), and
+// (autocompleted via the custom picker dropdown - see openPicker), and
 // confirmAddedEntry resolves the id into the canonical UE asset path.
 //
-// "No drop" is the engine's term for an empty slot in a Weight table -- it
+// "No drop" is the engine's term for an empty slot in a Weight table - it
 // reserves probability mass for nothing. The picker hides the target input
 // since there's nothing to type.
 function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
     // Default the form to "Item" mode every time it's rendered. We don't
-    // persist mid-form state across re-renders -- if the user wanted a
+    // persist mid-form state across re-renders - if the user wanted a
     // sub-table they'll just flip the select.
     return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
         '<div class="lt-add-form">' +
@@ -1290,7 +1300,7 @@ function setAddedEntryField(ltId, addedIndex, field, rawValue) {
 // then writes it back into the added entry. Returns false (and shows a
 // transient hint) if the id wasn't recognized.
 //
-// type === 'nodrop' is special: it doesn't need a target -- both fields
+// type === 'nodrop' is special: it doesn't need a target - both fields
 // are pinned to 'None' and the entry serializes as a plain empty slot.
 function confirmAddedEntry(ltId, addedIndex, type, target) {
     if (!state.current) return false;
@@ -1456,7 +1466,7 @@ function populatePicker(query) {
 // Reflects the current picker-type select state into the target input:
 // switches data-picker-mode, updates placeholder, and (for nodrop) hides
 // the input entirely since there's nothing to type. "No drop" auto-confirms
-// the entry on selection -- there's nothing to pick from a list.
+// the entry on selection - there's nothing to pick from a list.
 function syncPickerInputToType(selectEl) {
     const wrap = selectEl.closest('.picker-row');
     if (!wrap) return;
@@ -1750,11 +1760,11 @@ async function onBuild() {
         for (const m of data.log || []) lines.push({ kind: 'ok', msg: m });
         if (data.success) {
             // Main pak is missing (pakPath==null) only on a pickup-only
-            // build -- collapse to a single "DONE" line in either case.
+            // build - collapse to a single "DONE" line in either case.
             if (data.pakPath) {
                 const sizeKb = (data.sizeBytes / 1024).toFixed(1);
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- ' + data.pakPath + ' (' + sizeKb + ' KB, ' + data.fileCount + ' files)' });
+                    'DONE - ' + data.pakPath + ' (' + sizeKb + ' KB, ' + data.fileCount + ' files)' });
             }
             if (data.pickupRadius) {
                 const pr = data.pickupRadius;
@@ -1765,27 +1775,27 @@ async function onBuild() {
                 const totalKb = ((pr.pakSize + pr.ucasSize + pr.utocSize) / 1024).toFixed(1);
                 const target = pr.pakPath || pr.ucasPath;
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- pickup-radius patch (' + (pr.multiplier || '?').toFixed(1) + 'x, '
+                    'DONE - pickup-radius patch (' + (pr.multiplier || '?').toFixed(1) + 'x, '
                     + 'MagnetRadius=' + pr.magnetRadius + ', ' + totalKb + ' KB) -> '
                     + target });
             }
             if (data.bellLimits && data.bellLimits.written) {
                 const bl = data.bellLimits;
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- fast-travel limits patched (bells=' + bl.bellCap
+                    'DONE - fast-travel limits patched (bells=' + bl.bellCap
                     + ', signal-fires=' + bl.signalFireCap + '; '
                     + bl.bellsPatched + ' bell + ' + bl.signalFiresPatched
                     + ' signal-fire entries)' });
             }
             if (data.buildingStability && data.buildingStability.enabled) {
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- enhanced building stability bundled (787 DA_BI* assets)' });
+                    'DONE - enhanced building stability bundled (787 DA_BI* assets)' });
             }
             if (data.noSmoke) {
                 const ns = data.noSmoke;
                 const cats = (ns.categories || []).join(', ') || '?';
                 lines.push({ kind: 'ok', msg:
-                    'DONE -- no-smoke patched (' + cats + '; '
+                    'DONE - no-smoke patched (' + cats + '; '
                     + ns.assetCount + ' assets, '
                     + ns.flippedHandles + ' emitter handles silenced)' });
             }
@@ -1796,7 +1806,7 @@ async function onBuild() {
             lines.push({ kind: 'err', msg: 'ERROR: ' + (data.error || 'unknown') });
         }
         setBuildLog(lines);
-        // The pak just landed in (or got overwritten in) ~mods/ -- refresh
+        // The pak just landed in (or got overwritten in) ~mods/ - refresh
         // the snapshot so the Mods tab reflects reality next time it's
         // opened (or right now, if it's already the active tab).
         if (data.success) {
@@ -1900,7 +1910,7 @@ function buildModRowHtml(f) {
         : ('<span class="filename">' + esc(f.filename) + '</span>');
     const actions = f.isQuartermaster
         ? '<button type="button" class="danger" data-delete-mod="' + esc(f.filename) + '" title="Move to recycle bin">Delete</button>'
-        : '<span class="lock" title="Foreign mod -- managed externally">read-only</span>';
+        : '<span class="lock" title="Foreign mod - managed externally">read-only</span>';
     return '<li class="' + cls + '">'
          +   '<span class="mod-marker" title="' + (f.isQuartermaster ? 'Built by Quartermaster' : 'External mod') + '">' + marker + '</span>'
          +   '<div class="mod-name">' + nameBlock + '</div>'
@@ -1974,6 +1984,9 @@ function bindHandlers() {
         loadProfile(e.target.value);
     });
     document.getElementById('btn-new').addEventListener('click',       onNew);
+    // Empty-state mirror of "+ New" - shown only while body.no-profiles is
+    // active. Reuses onNew so the prompt + create flow stays single-sourced.
+    document.getElementById('btn-no-profile-create').addEventListener('click', onNew);
     document.getElementById('btn-duplicate').addEventListener('click', onDuplicate);
     document.getElementById('btn-rename').addEventListener('click',    onRename);
     document.getElementById('btn-save').addEventListener('click',      onSave);
@@ -2047,7 +2060,7 @@ function bindHandlers() {
         }
     });
 
-    // Delegated handlers on the LT list -- one set covers expand/collapse,
+    // Delegated handlers on the LT list - one set covers expand/collapse,
     // per-entry edits, removals, and add-form interactions.
     const ltList = document.getElementById('lt-list');
     ltList.addEventListener('click',   onLtListClick);

@@ -54,6 +54,28 @@
   </header>
 
   <main>
+    <!-- EMPTY-STATE PAGE - shown when /api/profiles is empty (fresh install
+         or all profiles were deleted). The header tabs and per-profile
+         buttons are CSS-hidden via body.no-profiles in this mode so the
+         dropdown / tabs don't render an unusable empty toolbar. The +Create
+         button below mirrors the header's "+ New" button so the user has an
+         obvious next step without having to scan the toolbar. -->
+    <div id="no-profile-state" class="no-profile-state">
+      <div class="no-profile-card">
+        <h2>No profiles yet</h2>
+        <p>
+          Quartermaster is profile-driven: every build configuration - stack
+          sizes, loot multipliers, pickup radius, fast-travel caps, ... --
+          lives inside a profile so you can keep multiple presets side by
+          side and switch between them without losing tweaks.
+        </p>
+        <p>Create your first profile to get started.</p>
+        <button id="btn-no-profile-create" type="button" class="primary">
+          + Create profile
+        </button>
+      </div>
+    </div>
+
     <!-- ITEMS PAGE -->
     <div class="tab-page" data-tab="items">
       <aside class="pane left">
@@ -145,7 +167,7 @@
       </section>
     </div>
 
-    <!-- MISC PAGE -- single-column "extras" tab for global tweaks that
+    <!-- MISC PAGE - single-column "extras" tab for global tweaks that
          don't belong on the per-item or per-loot-table pages: pickup
          radius (IoStore blueprint patch) and fast-travel build limits
          (JSON patch). Both are profile-scoped and ship as part of the
@@ -170,7 +192,7 @@
               </div>
             </div>
           </div>
-          <p class="hint pickup-hint">Ships as an IoStore triplet (.pak + .ucas + .utoc) sharing the main pak's basename, so the engine mounts everything as one logical mod. Built-in profiles can't toggle this -- duplicate first.</p>
+          <p class="hint pickup-hint">Ships as an IoStore triplet (.pak + .ucas + .utoc) sharing the main pak's basename, so the engine mounts everything as one logical mod. Built-in profiles can't toggle this - duplicate first.</p>
         </section>
 
         <section class="card">
@@ -188,7 +210,7 @@
               <span class="muted bell-hint" id="signal-fire-cap-hint">vanilla: 3</span>
             </label>
           </div>
-          <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak -- no extra files. Built-in profiles can't change this -- duplicate first.</p>
+          <p class="hint">Both bell variants (DA_BI_Utilities_FastTravel_Bell + _Bell_02) share the same cap. Patches the small DA_BuildLimits_FastTravel.json shipped inside the main pak - no extra files. Built-in profiles can't change this - duplicate first.</p>
         </section>
 
         <section class="card">
@@ -198,7 +220,7 @@
             <input type="checkbox" id="building-stability-enabled">
             Enhanced building stability
           </label>
-          <p class="hint">Single toggle: on bundles fixed values (BlockWeight=0, MaxLoad=10&thinsp;000&thinsp;000, MinIntersection=0); off ships nothing. Built-in profiles can't toggle this -- duplicate first.</p>
+          <p class="hint">Single toggle: on bundles fixed values (BlockWeight=0, MaxLoad=10&thinsp;000&thinsp;000, MinIntersection=0); off ships nothing. Built-in profiles can't toggle this - duplicate first.</p>
         </section>
 
         <section class="card">
@@ -221,12 +243,12 @@
               <span class="muted nosmoke-hint">(FX_Smoke_Kiln_T3, FX_Smoke_Kiln_Dop_T3)</span>
             </label>
           </div>
-          <p class="hint">Categories are independent -- enable any combination. Built-in profiles can't toggle this -- duplicate first.</p>
+          <p class="hint">Categories are independent - enable any combination. Built-in profiles can't toggle this - duplicate first.</p>
         </section>
       </aside>
     </div>
 
-    <!-- MODS PAGE -- list .pak files in Windrose's ~mods/ folder.
+    <!-- MODS PAGE - list .pak files in Windrose's ~mods/ folder.
          Quartermaster-produced paks are sorted to the top and have a
          delete (recycle) button; foreign mods are read-only and shown
          with a lock indicator so the user can see what else is loaded
@@ -250,7 +272,7 @@
 
         <section class="card">
           <h2>Notes</h2>
-          <p class="hint">Deleting a Quartermaster mod sends it to the Windows recycle bin -- you can restore it from Explorer if needed. Foreign mods are read-only; manage them with whatever tool installed them.</p>
+          <p class="hint">Deleting a Quartermaster mod sends it to the Windows recycle bin - you can restore it from Explorer if needed. Foreign mods are read-only; manage them with whatever tool installed them.</p>
         </section>
       </aside>
 

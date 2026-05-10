@@ -186,6 +186,67 @@ main {
 
 .tab-page[hidden] { display: none; }
 
+/* Empty-state shown when /api/profiles is empty. The toggling is done by
+   syncNoProfileState() in app.js - it adds .no-profiles to <body> when
+   state.profiles.length === 0 and removes it as soon as a profile exists.
+   Tabs / per-profile buttons / tab-pages all hide via the body class so
+   the user only sees the call-to-action. */
+.no-profile-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2em;
+  height: 100%;
+  min-height: 0;
+}
+
+.no-profile-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  padding: 2em;
+  max-width: 36em;
+  text-align: center;
+}
+
+.no-profile-card h2 {
+  margin: 0 0 .75em;
+  text-transform: none;
+  color: var(--text);
+  font-size: var(--font-size-big);
+}
+
+.no-profile-card p {
+  margin: 0 0 1em;
+  color: var(--text-dim);
+}
+
+.no-profile-card button.primary {
+  font-size: var(--font-size-big);
+  padding: .5em 1.5em;
+  margin-top: .5em;
+}
+
+/* When no profile exists: collapse the header tabs + per-profile controls
+   so the page reads as a single big call-to-action. The "+ New" button and
+   the title stay visible so the toolbar still has a primary action. */
+body.no-profiles #tabs,
+body.no-profiles #profile-meta,
+body.no-profiles .profile-select-label,
+body.no-profiles #btn-duplicate,
+body.no-profiles #btn-rename,
+body.no-profiles #btn-save,
+body.no-profiles #btn-delete,
+body.no-profiles #btn-build,
+body.no-profiles .tab-page {
+  display: none !important;
+}
+
+/* Inverse: hide the empty-state hint as soon as any profile exists. */
+body:not(.no-profiles) #no-profile-state {
+  display: none;
+}
+
 /* Misc tab: single-column layout for the "extras" cards (pickup radius,
    bell limits). Cards stay readable on wide screens by capping width. */
 .tab-page.misc-page {
