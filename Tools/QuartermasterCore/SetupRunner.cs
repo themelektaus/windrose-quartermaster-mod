@@ -40,7 +40,7 @@ namespace Windrose.Quartermaster.Core
                 Directory.EnumerateFiles(_paths.VanillaLootTables, "*.json", SearchOption.AllDirectories).Any();
             status.HasVanillaSources = status.HasVanillaInventoryItems && status.HasVanillaLootTables;
 
-            // Icons: at least one .png present is good enough -- a partial
+            // Icons: at least one .png present is good enough - a partial
             // run from a previous failed extraction shouldn't trigger a
             // re-run, but we'll surface it via the count.
             var iconsDir = Path.Combine(_paths.ModRoot, "Icons");
@@ -56,7 +56,7 @@ namespace Windrose.Quartermaster.Core
             status.HasIconExtractor = File.Exists(Path.Combine(
                 _paths.ModRoot, "Tools", "IconExtractor", "publish", "IconExtractor.exe"));
 
-            // Steam-detected vanilla pak -- don't throw, just report.
+            // Steam-detected vanilla pak - don't throw, just report.
             try
             {
                 status.VanillaPakPath = SteamLocator.FindVanillaPak();
@@ -72,7 +72,7 @@ namespace Windrose.Quartermaster.Core
             return status;
         }
 
-        // Runs the dump + icon extraction -- whichever steps are missing
+        // Runs the dump + icon extraction - whichever steps are missing
         // (or always, when ForceAll is set). Throws on the first failing
         // step so the SSE handler can surface it to the user.
         public bool ForceAll;
@@ -83,7 +83,7 @@ namespace Windrose.Quartermaster.Core
 
             // The icon pipeline depends on the vanilla pak being present
             // (CUE4Parse mounts it). If Steam can't find it we have to
-            // bail upfront -- nothing we can do without that file.
+            // bail upfront - nothing we can do without that file.
             if (!status.HasVanillaPak && (ForceAll || !status.HasVanillaSources || !status.HasIcons))
             {
                 throw new InvalidOperationException(
@@ -91,7 +91,7 @@ namespace Windrose.Quartermaster.Core
                     "\nInstall Windrose via Steam, or extract the JSONs / icons manually.");
             }
 
-            // Dump step -- needed when Sources/Vanilla is empty, or when
+            // Dump step - needed when Sources/Vanilla is empty, or when
             // ForceAll is set.
             if (ForceAll || !status.HasVanillaSources)
             {
@@ -113,7 +113,7 @@ namespace Windrose.Quartermaster.Core
                 LogLine("[skip] Vanilla JSONs already present (" + _paths.Vanilla + ")");
             }
 
-            // Icons step -- needs the .usmap, so probe again after the
+            // Icons step - needs the .usmap, so probe again after the
             // dump (the dump never produces a usmap, but the user may
             // have dropped one in between Probe() and Run()).
             string usmap;

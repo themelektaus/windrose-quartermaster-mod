@@ -77,7 +77,7 @@ namespace Windrose.Quartermaster.Core
     // Fast-travel-bell + signal-fire placement caps. Patches
     // R5/Content/Gameplay/BuildingLimits/DA_BuildLimits_FastTravel.json
     // (a small DataAsset config file) and ships it inside the main
-    // Pak1 -- no IoStore triplet, no retoc step. The vanilla file has
+    // Pak1 - no IoStore triplet, no retoc step. The vanilla file has
     // three R5BuildingAmountLimit entries:
     //   [0] Bell variant 1 (DA_BI_Utilities_FastTravel_Bell)   default 10
     //   [1] Bell variant 2 (DA_BI_Utilities_FastTravelBell_02) default 10
@@ -105,7 +105,7 @@ namespace Windrose.Quartermaster.Core
     // serialize via UE5's tag-stream format that UAssetAPI cannot
     // decode (loads as RawExport). The reference mod's variants ARE
     // parseable but for a single on/off toggle we don't need to patch
-    // them anyway -- the bundled values (BlockWeight=0, MaxLoad=1e7,
+    // them anyway - the bundled values (BlockWeight=0, MaxLoad=1e7,
     // MinIntersection=0) match the "buildings never collapse" UX.
     //
     // null OR Enabled=false -> no stability assets shipped for this
@@ -120,7 +120,7 @@ namespace Windrose.Quartermaster.Core
     // bIsEnabled = false on the corresponding NiagaraSystem export.
     //
     // Self-baked from vanilla via UAssetAPI (Niagara assets parse cleanly
-    // unlike DA_BI), so no reference mod is shipped -- the build pipeline
+    // unlike DA_BI), so no reference mod is shipped - the build pipeline
     // extracts the live game's Niagara assets via retoc to-legacy, runs
     // NoSmokePatcher on them, and re-packs into the IoStore composite.
     //
@@ -153,7 +153,7 @@ namespace Windrose.Quartermaster.Core
     public sealed class LootTableOverride
     {
         // Vanilla-index -> sparse field overrides. Indices reference the
-        // VANILLA list before any removal -- the patcher reconciles.
+        // VANILLA list before any removal - the patcher reconciles.
         public Dictionary<int, LootEntryEdit> Entries;
 
         // Vanilla-indices that should NOT appear in the output. Combined
@@ -162,7 +162,7 @@ namespace Windrose.Quartermaster.Core
         public List<int> Removed;
 
         // Brand-new entries appended after the surviving vanilla entries
-        // (in declaration order). Always full schema -- there's no vanilla
+        // (in declaration order). Always full schema - there's no vanilla
         // baseline to inherit from.
         public List<LootEntry> Added;
     }

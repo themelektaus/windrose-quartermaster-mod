@@ -127,7 +127,7 @@ namespace Windrose.Quartermaster.Core
             {
                 throw new InvalidOperationException(
                     "No NiagaraSystem export found in " + assetPath
-                    + " -- expected at least one to disable emitters on.");
+                    + " - expected at least one to disable emitters on.");
             }
 
             LogLine("NiagaraSystems: " + niagaraSystems

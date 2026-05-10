@@ -28,7 +28,7 @@ public partial class App : Application
         try
         {
             // Port 0 = let the OS pick a free TCP port. We resolve the real
-            // address after StartAsync via IServerAddressesFeature -- this
+            // address after StartAsync via IServerAddressesFeature - this
             // avoids hard-coded port collisions if 17777 is busy and lets the
             // user run multiple desktop instances side-by-side.
             //
@@ -71,7 +71,7 @@ public partial class App : Application
             }
             catch
             {
-                // Swallow shutdown errors -- the process is exiting anyway and
+                // Swallow shutdown errors - the process is exiting anyway and
                 // surfacing them only spawns confusing dialogs at the very end.
             }
         }

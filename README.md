@@ -24,11 +24,11 @@ For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
   `git submodule update --init Tools/CUE4Parse` on first use to pull the
   CUE4Parse reader the icon extractor needs. (No need to do it yourself,
   but the binary has to be reachable.)
-- **A UE5 `*.usmap` file** -- only needed when running from the source
+- **A UE5 `*.usmap` file** - only needed when running from the source
   tree. The single-file EXE ships an embedded copy and seeds it into
   `QuartermasterData\` automatically, so end users don't need this. For
   game updates (UE-version bump), regenerate one with UE4SS Keybinds
-  (Ctrl+Num6 in-game) and drop it into the data root -- newest mtime
+  (Ctrl+Num6 in-game) and drop it into the data root - newest mtime
   wins, so it transparently supersedes the embedded copy.
 
 `repak.exe` is auto-downloaded (pinned v0.2.3, SHA256-verified) on first
@@ -52,7 +52,7 @@ Kestrel is hosted in-process on a free port (no fixed `:17777` collision,
 multiple instances can run side-by-side). Closing the window stops the
 server cleanly.
 
-Requires the **Microsoft Edge WebView2 Runtime** -- preinstalled on
+Requires the **Microsoft Edge WebView2 Runtime** - preinstalled on
 Windows 11 and recent Windows 10 builds. If missing, the launcher links
 to the
 [evergreen installer](https://developer.microsoft.com/microsoft-edge/webview2/).
@@ -149,5 +149,5 @@ nothing to copy. CLI builds (`--build-pak`) still write to the `Builds\`
 folder so smoke tests don't touch the live game; copy from there manually
 if you want a CLI-built pak in-game.
 
-Only **one** `Quartermaster_*.pak` per `~mods` folder -- remove any older
+Only **one** `Quartermaster_*.pak` per `~mods` folder - remove any older
 one first (the **Mods** tab handles this with a single click).

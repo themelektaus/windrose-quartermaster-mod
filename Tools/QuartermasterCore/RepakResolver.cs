@@ -15,7 +15,7 @@ namespace Windrose.Quartermaster.Core
     // version pin, same release URL, same hash check).
     //
     // SHA256 verification protects against download corruption / mirror
-    // glitches, not against active tampering -- there's no signature check
+    // glitches, not against active tampering - there's no signature check
     // on the .sha256 sidecar itself.
     public sealed class RepakResolver
     {
@@ -42,7 +42,7 @@ namespace Windrose.Quartermaster.Core
                 return repakExe;
             }
 
-            LogLine("repak.exe not present -- downloading v" + PinnedVersion);
+            LogLine("repak.exe not present - downloading v" + PinnedVersion);
             Directory.CreateDirectory(_modRoot);
             Download(repakExe);
             LogLine("Installed: " + repakExe + " (repak v" + PinnedVersion + ")");

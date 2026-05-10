@@ -22,7 +22,7 @@ namespace Windrose.Quartermaster.Core
     //   5. profile.LootOverrides[ltId].Added is appended verbatim after the survivors
     //
     // After computing the result list, the patcher does a deep equality check
-    // against the vanilla list -- if nothing actually changed, the LT is
+    // against the vanilla list - if nothing actually changed, the LT is
     // skipped (no file is written, the engine uses vanilla).
     //
     // Output formatting matches vanilla LootTable JSONs: tab indent
@@ -138,7 +138,7 @@ namespace Windrose.Quartermaster.Core
 
         // The bucket key is the first path segment under LootTables/, e.g.
         // "Mobs", "Chests", "Foliage". Sub-folders below that are folded
-        // into the same bucket -- "Mobs/Rss/..." still hits "Mobs". This
+        // into the same bucket - "Mobs/Rss/..." still hits "Mobs". This
         // matches the user-facing per-category multiplier UI (no sub-tree).
         static string ExtractBucket(string ltId)
         {
@@ -169,7 +169,7 @@ namespace Windrose.Quartermaster.Core
                 : new HashSet<int>();
 
             // Warn (don't fail) if the override references indices outside
-            // the vanilla range -- the schema is forgiving so old profiles
+            // the vanilla range - the schema is forgiving so old profiles
             // survive game-patch shifts.
             if (ovr != null)
             {
@@ -220,7 +220,7 @@ namespace Windrose.Quartermaster.Core
         // Min, Max, Weight, LootItem, ItemAttributeModifiers (if present in
         // vanilla), LootTable. This order matches what the engine emits.
         // The optionality of ItemAttributeModifiers is a vanilla schema
-        // variation -- 278 of 1589 vanilla LTs simply don't include the
+        // variation - 278 of 1589 vanilla LTs simply don't include the
         // field on their entries, and we mirror that exactly.
         static JsonObject BuildEntry(JsonObject vanilla, LootEntryEdit edit, double multiplier)
         {
@@ -231,7 +231,7 @@ namespace Windrose.Quartermaster.Core
             var vTable  = vanilla["LootTable"]?.GetValue<string>() ?? "None";
             var vAttrs  = vanilla["ItemAttributeModifiers"] as JsonArray;
 
-            // Sub-table refs roll the referenced LT N times -- multiplying
+            // Sub-table refs roll the referenced LT N times - multiplying
             // that count would compound with the leaf-table drops (which
             // already get the multiplier). User intent for "Mobs x2" is
             // "twice the drops", not "roll each sub-table twice", so the
@@ -359,7 +359,7 @@ namespace Windrose.Quartermaster.Core
             {
                 root.WriteTo(writer);
             }
-            // Trailing CRLF -- vanilla LT JSONs end with one.
+            // Trailing CRLF - vanilla LT JSONs end with one.
             ms.WriteByte((byte)'\r');
             ms.WriteByte((byte)'\n');
             return ms.ToArray();

@@ -14,7 +14,7 @@ namespace Windrose.Quartermaster.Web
     //
     // Used to smoke-test parity with the legacy PowerShell pipeline before the
     // full Build endpoint exists (Phase 4).  Keeps the production HTTP path
-    // untouched -- the flag short-circuits Main before the WebApplication is
+    // untouched - the flag short-circuits Main before the WebApplication is
     // built.
     public static class PatcherCli
     {
@@ -221,8 +221,8 @@ namespace Windrose.Quartermaster.Web
                 Console.WriteLine("Status:");
                 Console.WriteLine("  vanilla sources : " + (status.HasVanillaSources ? "OK" : "MISSING"));
                 Console.WriteLine("  icons           : " + (status.HasIcons          ? "OK" : "MISSING"));
-                Console.WriteLine("  usmap           : " + (status.HasUsmap          ? "OK -- " + status.UsmapPath : "MISSING"));
-                Console.WriteLine("  steam pak       : " + (status.HasVanillaPak     ? "OK -- " + status.VanillaPakPath : "MISSING -- " + status.VanillaPakError));
+                Console.WriteLine("  usmap           : " + (status.HasUsmap          ? "OK - " + status.UsmapPath : "MISSING"));
+                Console.WriteLine("  steam pak       : " + (status.HasVanillaPak     ? "OK - " + status.VanillaPakPath : "MISSING - " + status.VanillaPakError));
                 Console.WriteLine();
                 runner.Run();
                 Console.WriteLine();
@@ -241,7 +241,7 @@ namespace Windrose.Quartermaster.Web
         // to the vanilla LootTables tree and writes the patched files into
         // .build-tmp/loot_smoke_<...>/. Output is now CRLF-pinned (vanilla
         // shape); byte-compare against the reference MoreEnemyResources_2x_P
-        // pak no longer matches (that one ships LF) -- compare against
+        // pak no longer matches (that one ships LF) - compare against
         // vanilla LT JSONs with all-bucket multiplier=1 instead for a
         // round-trip sanity check.
         static int RunLootSmoke(string repoRoot, string bucket, double mult, string outDirOverride)

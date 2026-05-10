@@ -7,12 +7,12 @@ namespace Windrose.Quartermaster.Core
     // Locates a UE5 mappings file (.usmap) in the mod root.
     // CUE4Parse needs this to deserialize unversioned property layouts on
     // Windrose builds (UE5.6 + R5BusinessRules plugin). Generate one by
-    // pressing Ctrl+Num6 in-game with UE4SS' Keybinds mod active -- the
+    // pressing Ctrl+Num6 in-game with UE4SS' Keybinds mod active - the
     // dumper writes a file like `R5-5.6.1-0+UE5-<hash>.usmap`. Drop it
     // into the mod root.
     //
     // When multiple .usmap files are present, the most recently modified
-    // one wins -- after a game update you just dump a fresh one and ignore
+    // one wins - after a game update you just dump a fresh one and ignore
     // the older copies.
     public static class UsmapLocator
     {

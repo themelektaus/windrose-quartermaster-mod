@@ -8,11 +8,11 @@ using Microsoft.Win32;
 namespace Windrose.Quartermaster.Core
 {
     // Resolves the Steam install path and the Windrose vanilla pak by
-    // walking libraryfolders.vdf -- the same logic Library/Common.ps1
+    // walking libraryfolders.vdf - the same logic Library/Common.ps1
     // used to do via Get-SteamInstallPath / Get-SteamLibraryPaths /
     // Get-WindroseVanillaPak.
     //
-    // Windows-only (Steam-on-Linux is a different layout) -- we throw a
+    // Windows-only (Steam-on-Linux is a different layout) - we throw a
     // descriptive error on non-Windows and skip the registry lookup. The
     // .NET CA1416 (Platform compatibility) analyzer is suppressed at the
     // call sites because we gate every registry call behind an OS check.

@@ -14,7 +14,7 @@ namespace Windrose.Quartermaster.Core
     // updating) a serialized "MagnetRadius" FloatProperty on the
     // ClassDefaultObject. The vanilla CDO ships with MagnetRadius coming
     // from the C++ class default (NOT serialized in the export bytes), so
-    // for any non-default value we have to ADD the property -- the engine
+    // for any non-default value we have to ADD the property - the engine
     // then reads our value at CDO-load time and overrides the C++ default.
     //
     // Workflow context:
@@ -23,14 +23,14 @@ namespace Windrose.Quartermaster.Core
     //     -> THIS CLASS        (add FloatProperty MagnetRadius=<value>)
     //     -> retoc to-zen      (Legacy -> IoStore triplet .pak/.ucas/.utoc)
     //
-    // The path gymnastics (in/out paths, usmap loader) live here -- the
+    // The path gymnastics (in/out paths, usmap loader) live here - the
     // higher-level orchestrator (BuildPipeline.BuildIoStoreComposite)
     // just calls Patch() with the in/out paths and the magnet-radius value.
     public sealed class PickupBlueprintPatcher
     {
         // Virtual asset path within the game's content tree. Hardcoded
         // because there's exactly one Blueprint with the MagnetRadius
-        // property in Windrose 5.6 -- if the engine ever moves it, the
+        // property in Windrose 5.6 - if the engine ever moves it, the
         // composite builder fails fast with a clear "filter didn't match"
         // diagnostic and we update this constant.
         public const string AssetVirtualPath =
@@ -101,7 +101,7 @@ namespace Windrose.Quartermaster.Core
             {
                 throw new InvalidOperationException(
                     "No NormalExport found in " + inputAssetPath
-                    + " -- expected a Blueprint CDO export to patch.");
+                    + " - expected a Blueprint CDO export to patch.");
             }
 
             LogLine("CDO export [" + cdoIndex + "]: " + cdo.ObjectName
@@ -109,7 +109,7 @@ namespace Windrose.Quartermaster.Core
 
             // Set or add the property. FName.FromString registers the name
             // in the asset's NameMap if it isn't there yet (which is the
-            // common case here -- vanilla CDO doesn't carry MagnetRadius).
+            // common case here - vanilla CDO doesn't carry MagnetRadius).
             var magnetName = FName.FromString(asset, "MagnetRadius");
             var existing = cdo.Data.FirstOrDefault(p => p.Name == magnetName);
             bool added;
@@ -158,7 +158,7 @@ namespace Windrose.Quartermaster.Core
         public int FinalPropertyCount;
     }
 
-    // Per-feature triplet result -- BuildPipeline emits one of these for
+    // Per-feature triplet result - BuildPipeline emits one of these for
     // the pickup-radius portion of the IoStore composite. Even though all
     // IoStore content now ships in ONE shared triplet (sharedBaseName.*),
     // the result keeps separate UCAS/UTOC paths for the pickup feature so

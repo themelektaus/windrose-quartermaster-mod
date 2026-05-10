@@ -23,7 +23,7 @@ namespace Windrose.Quartermaster.Core
     // doesn't silently corrupt the output.
     //
     // The patcher is a no-op when the resolved caps equal the vanilla
-    // defaults (10/3) -- it returns Written=false and writes nothing. The
+    // defaults (10/3) - it returns Written=false and writes nothing. The
     // BuildPipeline uses that signal to skip including the JSON in the
     // pak entirely (otherwise we'd ship a bit-for-bit copy of vanilla,
     // which is harmless but pollutes mod-diff tooling).
@@ -52,7 +52,7 @@ namespace Windrose.Quartermaster.Core
             var result = new BellLimitsPatchResult();
 
             // Resolve effective caps (null = vanilla); short-circuit if both
-            // are vanilla -- nothing to write.
+            // are vanilla - nothing to write.
             int effBell = bellCap ?? VanillaBellCap;
             int effSignal = signalFireCap ?? VanillaSignalFireCap;
             ValidateCaps(effBell, effSignal);
@@ -71,7 +71,7 @@ namespace Windrose.Quartermaster.Core
                 throw new FileNotFoundException(
                     "Vanilla DA_BuildLimits_FastTravel.json not found: "
                     + vanillaJsonPath
-                    + " -- run Setup to dump the BuildingLimits/ tree.");
+                    + " - run Setup to dump the BuildingLimits/ tree.");
 
             var raw = File.ReadAllText(vanillaJsonPath, Encoding.UTF8);
             var root = JsonNode.Parse(raw);
@@ -121,7 +121,7 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Bail without writing if classification matched nothing -- we
+            // Bail without writing if classification matched nothing - we
             // must not silently ship a pak with the same content as vanilla
             // and pretend we patched something.
             if (result.BellsPatched == 0 && result.SignalFiresPatched == 0)
@@ -171,7 +171,7 @@ namespace Windrose.Quartermaster.Core
             // Order matters: Bell_02 must match before the broader Bell match,
             // since "FastTravelBell_02" contains "FastTravel_Bell" via fuzz
             // would NOT match (it's "FastTravel_Bell" vs "FastTravelBell_02"
-            // -- different separator), but we still anchor the more specific
+            // - different separator), but we still anchor the more specific
             // marker first to be robust against any future renaming.
             if (refPath.IndexOf(BellMarker2, StringComparison.OrdinalIgnoreCase) >= 0)
                 return bellCap;
@@ -227,7 +227,7 @@ namespace Windrose.Quartermaster.Core
     public sealed class BellLimitsPatchResult
     {
         // True when both caps resolved to vanilla defaults OR no entry
-        // matched a known marker -- no JSON was written.
+        // matched a known marker - no JSON was written.
         public bool Skipped;
         // True when a patched JSON was written to OutputPath.
         public bool Written;
@@ -236,7 +236,7 @@ namespace Windrose.Quartermaster.Core
         public int SignalFiresPatched;  // number of signal-fire entries updated (0..1)
         public int BellCap;
         public int SignalFireCap;
-        // Collection-paths that didn't match any known marker -- typically
+        // Collection-paths that didn't match any known marker - typically
         // empty; non-empty would mean a game update added a new BuildingLimits
         // entry we should consider exposing in the GUI.
         public List<string> Unmatched;

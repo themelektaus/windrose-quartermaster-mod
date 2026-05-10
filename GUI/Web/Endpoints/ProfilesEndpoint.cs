@@ -230,7 +230,7 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Lightweight summary for the list view -- the full profile (including
+    // Lightweight summary for the list view - the full profile (including
     // every override) only loads when the user opens it.
     static object ToSummary(Profile p)
     {
@@ -260,12 +260,12 @@ public static class ProfilesEndpoint
             // build pipeline uses to decide whether to run the patcher.
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             // True when the single-toggle "enhanced building stability"
-            // is on -- the build will then bake the BetterStructureSupport
+            // is on - the build will then bake the BetterStructureSupport
             // reference mod's 787 DA_BI* assets into the IoStore composite.
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
-            // True when at least one NoSmoke category is on -- the build
+            // True when at least one NoSmoke category is on - the build
             // will then self-bake the relevant vanilla Niagara assets
             // (silencing emitter handles) into the IoStore composite.
             hasGlobalNoSmoke = HasAnyNoSmokeCategory(p),

@@ -94,7 +94,7 @@ public static class SetupEndpoint
                         ForceAll = force,
                         Log = msg =>
                         {
-                            // Best-effort write -- if the channel is closed
+                            // Best-effort write - if the channel is closed
                             // (e.g. client disconnected) we just drop the line.
                             // .NET 10's Channel WriteAsync from a sync callback
                             // would deadlock; TryWrite + spin works because
@@ -128,7 +128,7 @@ public static class SetupEndpoint
             }
             catch (OperationCanceledException)
             {
-                // Client disconnected -- nothing to send back.
+                // Client disconnected - nothing to send back.
             }
             catch (Exception ex)
             {

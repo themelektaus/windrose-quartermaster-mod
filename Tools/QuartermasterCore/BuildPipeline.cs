@@ -9,13 +9,13 @@ namespace Windrose.Quartermaster.Core
     //   Vanilla/  --(StackPatcher)-->  .build-tmp/<profile-id>/  --(PakBuilder)-->  Builds/<name>_P.pak
     //
     // The temp directory is wiped before patching and (by default) deleted
-    // after a successful pack -- callers can opt into keepTemp=true for
+    // after a successful pack - callers can opt into keepTemp=true for
     // post-mortem debugging.
     //
     // IoStore content (pickup-radius patch + enhanced building stability)
     // is built into a SHARED triplet that ships alongside the main Pak1.
-    // The IoStoreCompositeBuilder takes one or more "sources" -- each
-    // source contributes Legacy assets to a unified staging tree -- and
+    // The IoStoreCompositeBuilder takes one or more "sources" - each
+    // source contributes Legacy assets to a unified staging tree - and
     // produces one .ucas / .utoc / .pak-stub set with everything merged.
     //
     // Two source kinds today:
@@ -24,12 +24,12 @@ namespace Windrose.Quartermaster.Core
     //      add a serialized MagnetRadius FloatProperty.
     //   2. Stability: the BetterStructureSupport reference mod's 787
     //      pre-cooked DA_BI* DataAssets adopted 1:1 (single toggle, no
-    //      patch -- vanilla DA_BI cannot be UAssetAPI-parsed).
+    //      patch - vanilla DA_BI cannot be UAssetAPI-parsed).
     //
     // Both share the basename of the main pak so UE5 mounts them as one
     // logical mod (.pak Pak1 + .ucas/.utoc IoStore companions).
     //
-    // A third source -- NoSmoke -- self-bakes vanilla Niagara assets
+    // A third source - NoSmoke - self-bakes vanilla Niagara assets
     // (FX_Bonefire/Campfire/Furnace/Kiln) and patches every
     // EmitterHandle.bIsEnabled to false to silence the smoke / flame
     // particle systems. Three independent toggles map to three asset
@@ -56,7 +56,7 @@ namespace Windrose.Quartermaster.Core
 
         // Optional locator for the live game's Paks/ directory. Required
         // for builds that activate any IoStore feature (pickup-radius or
-        // building-stability) -- retoc's to-legacy step needs the vanilla
+        // building-stability) - retoc's to-legacy step needs the vanilla
         // IoStore container as input AND the game's global.utoc to resolve
         // ScriptObjects, even for the stability source which only adopts
         // bytes from a reference mod. The GUI wires this to
@@ -89,7 +89,7 @@ namespace Windrose.Quartermaster.Core
             if (!Directory.Exists(_paths.Vanilla))
                 throw new DirectoryNotFoundException(
                     "Vanilla source not found: " + _paths.Vanilla
-                    + " -- run Dump-WindroseVanilla.ps1 first to extract it from the game pak");
+                    + " - run Dump-WindroseVanilla.ps1 first to extract it from the game pak");
 
             var safeName = SanitizeForFileName(profile.Name);
             var pakName = "Quartermaster_" + safeName + "_P.pak";
@@ -100,7 +100,7 @@ namespace Windrose.Quartermaster.Core
             // .pak/.ucas/.utoc with a matching basename as one logical
             // container, so consolidating under one prefix lets us ship
             // a single mod that combines JSON patches AND the patched
-            // Blueprint -- instead of the two separate "main" + "_PickupRadius"
+            // Blueprint - instead of the two separate "main" + "_PickupRadius"
             // mods we used to produce.
             var sharedBaseName = "Quartermaster_" + safeName + "_P";
             var sharedUcasPath = Path.Combine(outDir, sharedBaseName + ".ucas");
@@ -116,7 +116,7 @@ namespace Windrose.Quartermaster.Core
                 // Pre-clear stale outputs at the target paths. Without this,
                 // a previous build that produced .ucas/.utoc would leave
                 // them lingering when the user disables pickup-radius for
-                // the next build -- and stale IoStore companions would
+                // the next build - and stale IoStore companions would
                 // still get mounted by the engine. Done before any work
                 // so a half-finished build leaves the user no worse off.
                 if (Directory.Exists(outDir))
@@ -161,7 +161,7 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 // Fast-travel-bell + signal-fire caps. Tiny JSON config
-                // patch (~700 B input, one file) -- ships inside the main
+                // patch (~700 B input, one file) - ships inside the main
                 // Pak1 alongside the item / loot patches, no IoStore step.
                 BellLimitsPatchResult bellResult = null;
                 if (HasBellLimitsConfiguration(profile))
@@ -173,12 +173,12 @@ namespace Windrose.Quartermaster.Core
                         bell.BellCap, bell.SignalFireCap);
                     if (bellResult.Skipped)
                     {
-                        LogLine("  skipped (resolved caps match vanilla 10/3 -- nothing to do)");
+                        LogLine("  skipped (resolved caps match vanilla 10/3 - nothing to do)");
                     }
                     else if (bellResult.Written)
                     {
                         LogLine("  bells " + bellResult.BellCap + " (vanilla 10), signal-fires "
-                                + bellResult.SignalFireCap + " (vanilla 3) -- "
+                                + bellResult.SignalFireCap + " (vanilla 3) - "
                                 + bellResult.BellsPatched + " bell + "
                                 + bellResult.SignalFiresPatched + " signal-fire entries patched");
                     }
@@ -201,7 +201,7 @@ namespace Windrose.Quartermaster.Core
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
-                        "Profile produces no changes -- nothing to pack. "
+                        "Profile produces no changes - nothing to pack. "
                         + "Adjust globals or add per-item / per-loot-table overrides.");
                 }
 
@@ -214,7 +214,7 @@ namespace Windrose.Quartermaster.Core
                 //
                 // For IoStore-only builds (no item/loot/bell changes),
                 // repak is skipped entirely and we copy all three triplet
-                // files (including the stub .pak) to outDir -- the engine
+                // files (including the stub .pak) to outDir - the engine
                 // still needs the .pak as the IoStore container's marker.
                 PickupTripletResult pickupResult = null;
                 BuildingStabilityResult stabilityResult = null;
@@ -255,7 +255,7 @@ namespace Windrose.Quartermaster.Core
                 }
                 else if (!ioStoreActive)
                 {
-                    LogLine("No item / loot changes -- main pak skipped (IoStore-only build).");
+                    LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
                 return new BuildPipelineResult
@@ -310,12 +310,12 @@ namespace Windrose.Quartermaster.Core
         //     just be overwritten anyway.
         //
         // The retoc work happens in <_paths.BuildTmp>/<profileId>__iostore/
-        // -- a SIBLING of the JSON-patch tmpDir, NOT a child. If we put it
+        // - a SIBLING of the JSON-patch tmpDir, NOT a child. If we put it
         // inside tmpDir, repak's recursive scan would sweep the retoc
         // artefacts into the main pak.
         //
         // Surfaces a clear error if the GUI didn't supply a paks-dir
-        // locator -- CLI builds can't enable IoStore features today.
+        // locator - CLI builds can't enable IoStore features today.
         BuildIoStoreCompositeOutput BuildIoStoreComposite(
             Profile profile, string outDir,
             double pickupMultiplier, bool pickupActive, bool stabilityActive,
@@ -326,7 +326,7 @@ namespace Windrose.Quartermaster.Core
             {
                 throw new InvalidOperationException(
                     "Profile requests an IoStore feature but no GamePaksDirProvider is wired up. "
-                    + "This is a build-host configuration error -- only the GUI build path "
+                    + "This is a build-host configuration error - only the GUI build path "
                     + "can locate the live game's Paks directory.");
             }
             var gamePaksDir = GamePaksDirProvider();
@@ -353,7 +353,7 @@ namespace Windrose.Quartermaster.Core
             var legacyTmp = Path.Combine(iostoreRoot, "legacy");
 
             // Compose the source list. Order matters only for log
-            // readability -- retoc deals with the merged tree at the end.
+            // readability - retoc deals with the merged tree at the end.
             var sources = new List<IoStoreCompositeSource>();
             PickupBlueprintPatchResult pickupPatchResult = null;
             float magnetRadius = 0f;
@@ -381,7 +381,7 @@ namespace Windrose.Quartermaster.Core
                             throw new InvalidOperationException(
                                 "retoc to-legacy did not produce the expected pickup asset at "
                                 + legacyAssetPath
-                                + " -- the game container may have moved the asset, or "
+                                + " - the game container may have moved the asset, or "
                                 + "the filter '" + PickupBlueprintPatcher.AssetFilterStem
                                 + "' is wrong.");
                         }
@@ -405,7 +405,7 @@ namespace Windrose.Quartermaster.Core
                     throw new FileNotFoundException(
                         "Building-stability reference mod missing: "
                         + modPak
-                        + " -- expected the BetterStructureSupport_P triplet under "
+                        + " - expected the BetterStructureSupport_P triplet under "
                         + _paths.References);
                 }
                 foreach (var ext in new[] { ".pak", ".ucas", ".utoc" })
@@ -422,7 +422,7 @@ namespace Windrose.Quartermaster.Core
                     {
                         throw new FileNotFoundException(
                             "Game's " + f + " not found in " + gamePaksDir
-                            + " -- needed for ScriptObjects resolution during reference-mod extraction.");
+                            + " - needed for ScriptObjects resolution during reference-mod extraction.");
                     }
                     File.Copy(src, Path.Combine(refsDir, f), true);
                 }
@@ -483,7 +483,7 @@ namespace Windrose.Quartermaster.Core
                                 throw new InvalidOperationException(
                                     "retoc to-legacy did not produce the expected NoSmoke asset at "
                                     + legacyAssetPath
-                                    + " -- the game container may have moved the asset, or "
+                                    + " - the game container may have moved the asset, or "
                                     + "the filter '" + filterStems[i] + "' is wrong.");
                             }
                             var pr = patcher.Patch(legacyAssetPath, usmapPath);

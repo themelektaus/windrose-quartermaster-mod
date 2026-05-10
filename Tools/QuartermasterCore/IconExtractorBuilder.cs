@@ -32,7 +32,7 @@ namespace Windrose.Quartermaster.Core
 
             if (File.Exists(exePath)) return exePath;
 
-            LogLine("IconExtractor.exe not present -- building");
+            LogLine("IconExtractor.exe not present - building");
 
             var csproj = Path.Combine(projectDir, "IconExtractor.csproj");
             if (!File.Exists(csproj))
@@ -41,7 +41,7 @@ namespace Windrose.Quartermaster.Core
                     "IconExtractor project not found: " + csproj);
             }
 
-            // CUE4Parse submodule preflight -- transparently `git submodule
+            // CUE4Parse submodule preflight - transparently `git submodule
             // update --init` if the submodule isn't checked out yet, so a
             // fresh clone "just works" without the user knowing about
             // submodules. If git itself isn't on PATH or the repo isn't a
@@ -75,7 +75,7 @@ namespace Windrose.Quartermaster.Core
         // isn't actually a git clone.
         void EnsureCUE4ParseSubmodule(string expectedCsproj)
         {
-            LogLine("CUE4Parse submodule not initialized -- running git submodule update --init");
+            LogLine("CUE4Parse submodule not initialized - running git submodule update --init");
 
             var dotGit = Path.Combine(_modRoot, ".git");
             if (!Directory.Exists(dotGit) && !File.Exists(dotGit))

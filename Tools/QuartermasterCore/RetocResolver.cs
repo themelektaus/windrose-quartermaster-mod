@@ -11,20 +11,20 @@ namespace Windrose.Quartermaster.Core
 {
     // Resolves retoc.exe in the mod root. Downloads and SHA256-verifies a
     // pinned release on first use; subsequent calls just return the cached
-    // path. Same shape as RepakResolver -- the two tools are independent
+    // path. Same shape as RepakResolver - the two tools are independent
     // (repak handles Pak1, retoc handles UE5 IoStore .ucas/.utoc), but the
     // download / pin / verify story is identical so the implementations
     // mirror each other line-for-line.
     //
     // Why retoc: UE5 ships Blueprint assets via IoStore (.ucas/.utoc), not
-    // Pak1. We can't shadow them via a loose .uasset in a Pak1 -- the engine
+    // Pak1. We can't shadow them via a loose .uasset in a Pak1 - the engine
     // looks them up through the IoStore reader, which expects Zen-Package
     // bytes (a different format from the Pak1 Legacy-Asset format). retoc
     // is the toolchain for the round-trip Zen <-> Legacy and for packing a
     // proper IoStore mod triplet.
     //
     // SHA256 verification protects against download corruption / mirror
-    // glitches, not against active tampering -- there's no signature check
+    // glitches, not against active tampering - there's no signature check
     // on the .sha256 sidecar itself.
     public sealed class RetocResolver
     {
@@ -51,7 +51,7 @@ namespace Windrose.Quartermaster.Core
                 return retocExe;
             }
 
-            LogLine("retoc.exe not present -- downloading v" + PinnedVersion);
+            LogLine("retoc.exe not present - downloading v" + PinnedVersion);
             Directory.CreateDirectory(_modRoot);
             Download(retocExe);
             LogLine("Installed: " + retocExe + " (retoc v" + PinnedVersion + ")");

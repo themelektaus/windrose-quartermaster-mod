@@ -37,7 +37,7 @@ cd 'E:\Windrose\Mods\Quartermaster'
 ```
 
 That's it. The CUE4Parse submodule is fetched automatically on first
-icon-extraction run -- no need for `git submodule update --init` by
+icon-extraction run - no need for `git submodule update --init` by
 hand. **No PowerShell scripts to run** - the first time you start the
 GUI it auto-runs the dump + icon extraction:
 
@@ -66,17 +66,17 @@ The pipeline auto-resolves its tooling on first use:
   submodule on first use (`IconExtractorBuilder.cs`). For deployed EXEs
   the full `publish/` folder is shipped as an embedded zip resource and
   extracted into `<DataRoot>\Tools\IconExtractor\publish\` on first run
-  (see `SeedIconExtractorIfMissing`) -- so an end-user machine doesn't
+  (see `SeedIconExtractorIfMissing`) - so an end-user machine doesn't
   need .NET SDK / git / CUE4Parse source, just the .NET 8 desktop
   runtime to run the framework-dependent extractor binary.
 - **`*.usmap`**: located via newest-mtime in the DataRoot
   (`UsmapLocator.cs`). The single-file EXE ships an embedded copy that
   gets seeded into `<DataRoot>\<filename>.usmap` on first run if the
   data root has no usmap yet. After a game version bump, drop a fresh
-  Ctrl+Num6 dump into the data root -- the newer mtime wins, so it
+  Ctrl+Num6 dump into the data root - the newer mtime wins, so it
   silently supersedes the embedded fallback without any code change.
 
-Layout (relative to the **DataRoot** -- see Section 3 for resolution rules):
+Layout (relative to the **DataRoot** - see Section 3 for resolution rules):
 
 ```
 <DataRoot>\Sources\Vanilla         ~1097 vanilla item JSONs       (gitignored)
@@ -118,7 +118,7 @@ single WPF window with a WebView2 control navigated to that port. Closing
 the window calls `IHost.StopAsync` with a 2-second drain, then exits. No
 fixed-port collision, multiple instances can run side-by-side.
 
-Requires the **Microsoft Edge WebView2 Runtime** -- preinstalled on
+Requires the **Microsoft Edge WebView2 Runtime** - preinstalled on
 Windows 11 and most Windows 10 builds. The launcher pops a clear error
 dialog (with the [evergreen installer URL](https://developer.microsoft.com/microsoft-edge/webview2/))
 if the runtime is missing.
@@ -132,7 +132,7 @@ that's a dev/repo run and the matching ancestor folder becomes the
 DataRoot directly. If nothing matches up to the filesystem root, the
 EXE has been deployed somewhere outside its source tree, and DataRoot
 falls through to a sibling `QuartermasterData\` folder right next to
-the EXE -- so the data travels with the EXE (USB-stick portable, no
+the EXE - so the data travels with the EXE (USB-stick portable, no
 per-user state hidden in `%APPDATA%`).
 
 We seed from `AppContext.BaseDirectory` rather than
@@ -157,7 +157,7 @@ default `<Content>` set and re-adds it as `<EmbeddedResource>`, with
 `<GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>`
 so a `ManifestEmbeddedFileProvider("/wwwroot")` resolves the original
 paths at runtime. `CreateWebApp` first probes
-`<ContentRoot>\wwwroot\index.html` -- if that exists (= `dotnet run
+`<ContentRoot>\wwwroot\index.html` - if that exists (= `dotnet run
 --project GUI/Web`), it serves from disk so live CSS/JS edits show up
 on refresh. Otherwise it falls back to the embedded provider, which
 is the codepath every published EXE takes.
@@ -166,7 +166,7 @@ The repo-root `*.usmap` file is embedded into Web.csproj alongside
 the wwwroot, with `<LogicalName>Usmap.<filename>.usmap`.
 `SeedUsmapIfMissing()` reads that single resource on deployed runs.
 
-The CUE4Parse-backed icon extractor is embedded the same way -- but
+The CUE4Parse-backed icon extractor is embedded the same way - but
 instead of a single resource we ship the entire publish output as a
 zip. `Quartermaster.Web.csproj` declares a `PublishIconExtractorForEmbed`
 target gated on `_IsPublishing`: during `dotnet publish` it runs
@@ -177,7 +177,7 @@ top-level `<EmbeddedResource Condition="Exists(...)">` would evaluate
 the condition at project-load time, before the target had a chance to
 create the zip). On a deployed run, `SeedIconExtractorIfMissing` opens
 the zip from the assembly via `ZipArchive` and unpacks it into
-`<DataRoot>\Tools\IconExtractor\publish\` -- the existing
+`<DataRoot>\Tools\IconExtractor\publish\` - the existing
 `IconExtractorBuilder.Resolve()` short-circuits on the
 `IconExtractor.exe` file check and never tries to spawn `dotnet publish`
 on the end-user's machine. Plain `dotnet build` skips the pre-publish
@@ -214,7 +214,7 @@ overrides[itemId].stackSize
 ```
 
 For items with `vanillaStack <= 1`, globals only apply when the item is
-"promotable" -- `ItemClass == Consumable`, or
+"promotable" - `ItemClass == Consumable`, or
 `ItemType == Inventory.ItemType.Resource`, or `ItemClass == Default && Category == Resource`.
 Equipment / NPCs / Ship cannons / Quest tokens at stack=1 stay at 1
 unless the user sets an explicit per-item override.
@@ -358,7 +358,7 @@ Stack Size\
 | `Could not find a Windrose vanilla pak under any Steam library` | Windrose isn't installed via Steam, or it's in a non-standard location Steam doesn't track | Install Windrose, or pass an explicit pak path through the API/CLI |
 | `git not found in PATH` during icon setup | Auto-init of the CUE4Parse submodule needs git | Install Git for Windows from https://git-scm.com/download/win, or run `git submodule update --init Tools/CUE4Parse` from another machine and copy the result over |
 | `Cannot auto-initialize the CUE4Parse submodule` (no .git directory) | The mod root was downloaded as a zip, not cloned via git | Re-clone the repo (`git clone --recursive ...`) or download CUE4Parse manually from https://github.com/FabianFG/CUE4Parse and place it under `Tools/CUE4Parse/` |
-| `No *.usmap file found` | Icon extractor needs a UE5 mappings file. Should never happen on a deployed EXE -- one is seeded from embedded resource on first run. Only triggers in dev mode if the repo root has no `.usmap`. | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
+| `No *.usmap file found` | Icon extractor needs a UE5 mappings file. Should never happen on a deployed EXE - one is seeded from embedded resource on first run. Only triggers in dev mode if the repo root has no `.usmap`. | Press Ctrl+Num6 in-game with UE4SS Keybinds active, drop the produced `.usmap` in the mod root |
 | Setup overlay shows "Setup is already running (409)" | Two browsers / API clients fired `/api/setup/run` simultaneously | Wait for the first run to finish; subsequent calls succeed |
 | `Profile produces no changes - nothing to pack` | Profile has neither globals nor overrides | Pick a Multiplier / Absolute mode, or add at least one override |
 | `Builtin profiles cannot be modified` | Tried to edit a built-in profile in the GUI | Click `Duplicate` first; user copies are editable |

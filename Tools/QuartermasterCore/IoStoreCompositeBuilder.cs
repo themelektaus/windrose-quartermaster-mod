@@ -13,20 +13,20 @@ namespace Windrose.Quartermaster.Core
     //
     // Two source kinds in use today:
     //
-    //   1. VanillaFilter -- runs `retoc to-legacy` on the live game's Paks
+    //   1. VanillaFilter - runs `retoc to-legacy` on the live game's Paks
     //      directory with --filter <stem>, e.g. "GA_Loot_AutoPickup".
     //      Produces 1..N legacy assets that we then patch in-place via the
     //      AfterExtract callback (UAssetAPI). This is how the pickup-radius
     //      mod is built: vanilla bytes -> legacy -> UAssetAPI adds the
     //      MagnetRadius FloatProperty -> back to zen.
     //
-    //   2. ReferenceModExtract -- runs `retoc to-legacy` on a reference
+    //   2. ReferenceModExtract - runs `retoc to-legacy` on a reference
     //      mod's triplet (with the live game's global.utoc/.ucas alongside
     //      so retoc can resolve ScriptObjects). Produces N pre-cooked
     //      legacy assets that we adopt 1:1 with NO patch, because vanilla
     //      DA_BI* assets are NOT parseable by UAssetAPI (they fall back to
     //      RawExport). Single-toggle features that match a known reference
-    //      mod 1:1 use this path -- specifically the BetterStructureSupport
+    //      mod 1:1 use this path - specifically the BetterStructureSupport
     //      mod for the "enhanced building stability" feature.
     //
     // The builder writes everything into the caller-supplied TempDir and
@@ -46,7 +46,7 @@ namespace Windrose.Quartermaster.Core
             if (!File.Exists(req.RetocExe))
                 throw new FileNotFoundException("retoc.exe not found: " + req.RetocExe);
 
-            // Triplet output paths -- caller passes ".../<base>" without
+            // Triplet output paths - caller passes ".../<base>" without
             // extension, we derive .pak/.ucas/.utoc from it.
             var outDir = Path.GetDirectoryName(req.OutputBasePath);
             if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
@@ -82,7 +82,7 @@ namespace Windrose.Quartermaster.Core
             Directory.CreateDirectory(stagingDir);
 
             // Step 1: extract every source into the shared staging tree.
-            // Multiple to-legacy calls into the same dir are safe -- retoc
+            // Multiple to-legacy calls into the same dir are safe - retoc
             // overwrites scriptobjects.bin idempotently (it's a function of
             // the GAME's global container, not the input mod) and asset
             // files land at distinct paths because the engine forbids two
@@ -233,7 +233,7 @@ namespace Windrose.Quartermaster.Core
         // (retoc needs them to resolve ScriptObjects).
         public string InputDir;
         // Optional --filter for retoc to-legacy. Empty means "extract every
-        // asset in InputDir" -- only safe for tightly scoped mod extracts.
+        // asset in InputDir" - only safe for tightly scoped mod extracts.
         public string Filter;
         // Optional additional filters appended to Filter. retoc accepts
         // repeated --filter flags and OR-matches them, so this lets one

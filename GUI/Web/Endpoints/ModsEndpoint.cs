@@ -66,7 +66,7 @@ public static class ModsEndpoint
                     var owned = IsQuartermasterPak(fi.Name);
                     // For our own paks: total size includes the IoStore
                     // companions (.ucas/.utoc) that ship next to the .pak
-                    // -- otherwise the pickup-radius triplet looks
+                    // - otherwise the pickup-radius triplet looks
                     // misleadingly tiny (the .pak alone is ~350 bytes).
                     long totalSize = fi.Length;
                     if (owned)
@@ -123,7 +123,7 @@ public static class ModsEndpoint
             }
 
             // Only our own paks are deletable. Foreign mods are off-limits
-            // even if the request hits the right endpoint -- the 403 makes
+            // even if the request hits the right endpoint - the 403 makes
             // the constraint explicit instead of silently no-op'ing.
             if (!IsQuartermasterPak(filename))
             {
@@ -167,7 +167,7 @@ public static class ModsEndpoint
                 // a misclick is recoverable via Explorer. UIOption.OnlyErrorDialogs
                 // means the standard "do you want to recycle this?" prompt is
                 // suppressed (we already do our own confirm in the UI) but
-                // any actual error still pops a dialog -- which is fine for
+                // any actual error still pops a dialog - which is fine for
                 // a desktop tool.
                 Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
                     fullPath,

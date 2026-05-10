@@ -18,10 +18,10 @@ namespace Windrose.Quartermaster.Core
     //   4. null  -> skip (item stays vanilla in-game)
     //
     // For vanillaStack == 1 items, globals (steps 2/3) only apply when the item
-    // is "promotable" -- i.e. one of:
+    // is "promotable" - i.e. one of:
     //   * ItemClass == "Consumable"
     //   * ItemType.TagName == "Inventory.ItemType.Resource"  (game's own
-    //     classification -- catches treasure/loot Misc items like the
+    //     classification - catches treasure/loot Misc items like the
     //     Senkamati pieces that look like resources to the game but live
     //     under Category=Misc)
     //   * ItemClass == "Default" && Category == "Resource"   (legacy folder-
@@ -34,7 +34,7 @@ namespace Windrose.Quartermaster.Core
     // raw JSON, single-occurrence replace, UTF-8 no-BOM output).
     public sealed class StackPatcher
     {
-        // Parsing regexes -- intentionally identical to the PS version.
+        // Parsing regexes - intentionally identical to the PS version.
         static readonly Regex MaxCountRegex = new Regex(
             "(\"MaxCountInSlot\"\\s*:\\s*)(\\d+)",
             RegexOptions.Compiled);
@@ -114,7 +114,7 @@ namespace Windrose.Quartermaster.Core
                 if (userOverride.HasValue)
                 {
                     // Per-item override: the user explicitly asked for this value,
-                    // so we apply it unconditionally -- no Equipment/Ship gate.
+                    // so we apply it unconditionally - no Equipment/Ship gate.
                     target = userOverride.Value;
                     fromOverride = true;
                     if (oldVal <= 1) wasPromoted = true;

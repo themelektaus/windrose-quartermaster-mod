@@ -140,7 +140,7 @@ public static class LootTablesEndpoint
     // UE asset path -> short id. UE paths come in two forms:
     //   "/Path/To/Folder/AssetName"            (some legacy data)
     //   "/Path/To/Folder/AssetName.AssetName"  (the canonical post-cook form)
-    // Both reduce to "AssetName" -- which is the on-disk filename in
+    // Both reduce to "AssetName" - which is the on-disk filename in
     // Sources/Vanilla/InventoryItems/ and the lookup key for /api/items.
     static string AssetPathToId(string assetPath)
     {

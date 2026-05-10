@@ -38,7 +38,7 @@ public partial class MainWindow : Window
             // Keep the WebView2 user-data folder inside the DataRoot so that
             // (a) cookies/cache survive across runs without needing write
             // access to %ProgramFiles%, (b) the portable EXE doesn't litter
-            // its drop folder with hidden state -- everything mutable lives
+            // its drop folder with hidden state - everything mutable lives
             // inside QuartermasterData/ next to or under the EXE depending
             // on dev-vs-deployed mode.
             var userDataFolder = Path.Combine(_dataRoot, ".webview2");
@@ -54,7 +54,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             // Most common failure: WebView2 Runtime not installed. The error
-            // text from the SDK is already specific enough -- surface it.
+            // text from the SDK is already specific enough - surface it.
             MessageBox.Show(
                 "Failed to initialize WebView2.\n\n" + ex.Message +
                 "\n\nMake sure the Microsoft Edge WebView2 Runtime is installed.\n" +

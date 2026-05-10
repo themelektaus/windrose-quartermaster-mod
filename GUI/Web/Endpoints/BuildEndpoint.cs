@@ -112,7 +112,7 @@ public static class BuildEndpoint
                 //
                 // When BOTH are built, pickup's PakPath is null because
                 // the main pak overwrites the would-be pickup .pak stub
-                // at the same path -- only the .ucas/.utoc are uniquely
+                // at the same path - only the .ucas/.utoc are uniquely
                 // pickup-owned. The shared on-disk basename is reported
                 // via result.PakPath in that case.
                 object pickupRadiusInfo = null;

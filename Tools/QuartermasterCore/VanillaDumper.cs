@@ -8,7 +8,7 @@ namespace Windrose.Quartermaster.Core
 {
     // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
     // pak via repak.exe. Replaces Library/Dump.ps1 +
-    // Dump-WindroseVanilla.ps1 -- same repak invocation, same default
+    // Dump-WindroseVanilla.ps1 - same repak invocation, same default
     // paths, same "force overwrite" semantics. Three prefixes are extracted
     // in sequence: InventoryItems (item defs), LootTables (drop pools), and
     // BuildingLimits (DA_BuildLimits_FastTravel.json + siblings).

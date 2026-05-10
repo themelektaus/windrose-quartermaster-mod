@@ -303,7 +303,7 @@ internal static class Program
         if (withMeta.Count == 0)
         {
             Console.WriteLine();
-            Console.WriteLine("[!]  Metadata: no manifest entries carry localization keys -- skipped");
+            Console.WriteLine("[!]  Metadata: no manifest entries carry localization keys - skipped");
             return;
         }
 
@@ -311,7 +311,7 @@ internal static class Program
         if (cultures.Count == 0)
         {
             Console.WriteLine();
-            Console.WriteLine("[!]  Metadata: no cultures discovered (DefaultGame.ini parse miss?) -- skipped");
+            Console.WriteLine("[!]  Metadata: no cultures discovered (DefaultGame.ini parse miss?) - skipped");
             return;
         }
 
@@ -321,7 +321,7 @@ internal static class Program
         // Curve refs are culture-independent (they always produce the same
         // numeric string), so resolve them once per item up front.
         // itemId -> values[] (one entry per descriptionData[] index, null
-        // means "lookup failed -- leave the {N} literal in place").
+        // means "lookup failed - leave the {N} literal in place").
         CurveResolver.Verbose = Environment.GetEnvironmentVariable("ICONEXTRACTOR_DEBUG_CURVES") == "1";
         var curveResolver = new CurveResolver(provider);
         var resolvedCurves = new Dictionary<string, string?[]>(StringComparer.Ordinal);
@@ -355,7 +355,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"     {culture}: ChangeCulture failed ({ex.GetType().Name}: {ex.Message}) -- skipping");
+                Console.WriteLine($"     {culture}: ChangeCulture failed ({ex.GetType().Name}: {ex.Message}) - skipping");
                 continue;
             }
 
@@ -488,7 +488,7 @@ internal static class Program
     }
 
     // Loads UCurveTables on demand and evaluates a CurveRef to a display
-    // string ("5", "5%", "5.5%" -- per the DisplayType formatter).
+    // string ("5", "5%", "5.5%" - per the DisplayType formatter).
     // The provider is shared with the rest of the run, so cached assets are
     // reused. Misses (table not found, row not found) cache as null and the
     // caller leaves the {N} placeholder literal.
@@ -568,7 +568,7 @@ internal static class Program
                         var byName = new Dictionary<string, FStructFallback>(t.RowMap.Count, StringComparer.OrdinalIgnoreCase);
                         foreach (var kvp in t.RowMap)
                         {
-                            // Last write wins on duplicate text keys -- in practice
+                            // Last write wins on duplicate text keys - in practice
                             // RowMap is text-unique, this is just defensive.
                             byName[kvp.Key.Text] = kvp.Value;
                         }
@@ -651,7 +651,7 @@ internal static class Program
     }
 
     // BC7/BC4/BC5/ASTC textures need Detex for decompression. The DLL is shipped
-    // as an embedded resource inside CUE4Parse-Conversion -- extract once and
+    // as an embedded resource inside CUE4Parse-Conversion - extract once and
     // hand the path to DetexHelper.Initialize.
     private static void EnsureDetex()
     {

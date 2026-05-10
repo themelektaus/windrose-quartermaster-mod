@@ -19,7 +19,7 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        // Headless CLI paths -- bypass the WebApplication entirely.
+        // Headless CLI paths - bypass the WebApplication entirely.
         //   --test-patcher       : smoke-test the StackPatcher / BuildPipeline
         //                          against the legacy PowerShell pipeline.
         //   --test-loot-patcher  : smoke-test the LootPatcher by writing a
@@ -57,7 +57,7 @@ public static class Program
     /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
     /// marker (= dev / repo run) and falls back to
     /// <c>&lt;exe-dir&gt;\QuartermasterData\</c> for a deployed EXE that's
-    /// been copied somewhere outside the source tree -- so the data folder
+    /// been copied somewhere outside the source tree - so the data folder
     /// travels with the EXE (USB-stick portable).
     /// </param>
     public static WebApplication CreateWebApp(string[] args, string url, string dataRoot = "")
@@ -140,10 +140,10 @@ public static class Program
     /// Resolves the data root for runtime files (Profiles, Sources, Icons,
     /// Tools, Builds). Walks up from <see cref="AppContext.BaseDirectory"/>
     /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
-    /// marker -- if found, that's a dev/repo run and we use it directly.
+    /// marker - if found, that's a dev/repo run and we use it directly.
     /// Otherwise the EXE has been deployed somewhere outside its source
     /// tree, and we route reads/writes to a sibling folder
-    /// <c>QuartermasterData\</c> next to the EXE -- so the data travels
+    /// <c>QuartermasterData\</c> next to the EXE - so the data travels
     /// with the EXE (USB-stick portable).
     /// </summary>
     /// <remarks>
@@ -152,12 +152,12 @@ public static class Program
     /// purpose: the latter depends on whoever invoked the EXE (e.g. starting
     /// from a shell that happens to live inside the repo would give a false
     /// positive on the marker). BaseDirectory is the actual binary location
-    /// -- for a single-file EXE this is the launch directory (where the
+    /// - for a single-file EXE this is the launch directory (where the
     /// .exe physically sits), not the self-extract temp dir, which is
     /// exactly where we want <c>QuartermasterData\</c> to live.
     /// </remarks>
     /// <returns>
-    /// (<c>path</c>, <c>isDeployed</c>) -- callers use the second flag to
+    /// (<c>path</c>, <c>isDeployed</c>) - callers use the second flag to
     /// gate "seed-from-embedded" behavior so dev edits aren't clobbered.
     /// </returns>
     public static (string Path, bool IsDeployed) ResolveDataRoot()
@@ -187,7 +187,7 @@ public static class Program
     /// <c>IconExtractor.exe</c> is already there. Mirrors what
     /// <see cref="Windrose.Quartermaster.Core.IconExtractorBuilder"/> does
     /// for dev builds (where it runs <c>dotnet publish</c> against the
-    /// CUE4Parse submodule on demand) -- the deployed EXE skips the build
+    /// CUE4Parse submodule on demand) - the deployed EXE skips the build
     /// step entirely because the publish output was baked into the
     /// assembly at <c>dotnet publish</c> time.
     /// <para>
@@ -204,14 +204,14 @@ public static class Program
         var publishDir = Path.Combine(iconExtractorDir, "publish");
         var exePath = Path.Combine(publishDir, "IconExtractor.exe");
 
-        // Already extracted -- nothing to do. The IconExtractorBuilder will
+        // Already extracted - nothing to do. The IconExtractorBuilder will
         // pick the existing exe up via its short-circuit path.
         if (File.Exists(exePath)) return;
 
         using var src = asm.GetManifestResourceStream(resourceName);
         if (src == null)
         {
-            // Embedded resource missing -- happens for plain `dotnet build`
+            // Embedded resource missing - happens for plain `dotnet build`
             // outputs where the pre-publish target didn't run. The
             // IconExtractorBuilder will fall back to building from source
             // (works in dev runs since the Tools/IconExtractor/ folder is
@@ -223,12 +223,12 @@ public static class Program
         Directory.CreateDirectory(iconExtractorDir);
         // Wipe any partial / stale publish dir from a prior version of the
         // EXE so we never end up with mixed-version DLLs (different SkiaSharp
-        // build, etc.). Safe because publish/ is a derived artifact -- nothing
+        // build, etc.). Safe because publish/ is a derived artifact - nothing
         // user-authored lives there.
         if (Directory.Exists(publishDir))
         {
             try { Directory.Delete(publishDir, recursive: true); }
-            catch { /* best-effort -- ZipArchive.ExtractToDirectory will fail
+            catch { /* best-effort - ZipArchive.ExtractToDirectory will fail
                        loudly below if it really can't replace the files. */ }
         }
         Directory.CreateDirectory(publishDir);
@@ -240,15 +240,15 @@ public static class Program
     /// <summary>
     /// Writes the embedded UE5 mappings file (<c>Usmap.*.usmap</c> resource)
     /// into <paramref name="dataRoot"/>, but only if no <c>*.usmap</c> is
-    /// already there. Newer dumps -- e.g. one the user grabbed via UE4SS
-    /// Ctrl+Num6 after a game update -- are preserved (and win in
+    /// already there. Newer dumps - e.g. one the user grabbed via UE4SS
+    /// Ctrl+Num6 after a game update - are preserved (and win in
     /// <see cref="UsmapLocator"/> by mtime). The embedded copy is a
     /// "good-enough default" so a fresh EXE drop can run setup without
     /// any external prerequisites.
     /// </summary>
     static void SeedUsmapIfMissing(string dataRoot)
     {
-        // Bail if any *.usmap is already at the data root -- user-supplied
+        // Bail if any *.usmap is already at the data root - user-supplied
         // dumps take precedence over our embedded fallback.
         if (Directory.EnumerateFiles(dataRoot, "*.usmap", SearchOption.TopDirectoryOnly).Any())
             return;
@@ -260,7 +260,7 @@ public static class Program
                               && n.EndsWith(".usmap", StringComparison.OrdinalIgnoreCase));
         if (resourceName == null) return;
 
-        // Resource name shape: "Usmap.<filename>.usmap" -- strip prefix
+        // Resource name shape: "Usmap.<filename>.usmap" - strip prefix
         // for the on-disk name so an updated EXE can ship a different
         // dump and the user sees the version-tagged filename.
         var filename = resourceName.Substring(prefix.Length);
