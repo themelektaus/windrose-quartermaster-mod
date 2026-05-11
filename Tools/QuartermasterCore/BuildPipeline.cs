@@ -50,6 +50,13 @@ namespace Windrose.Quartermaster.Core
     //              Furnace/Kiln) and patches every EmitterHandle.bIsEnabled
     //              to false to silence the smoke / flame particle systems.
     //              Three independent toggles map to three asset groups.
+    //   - Bonfire: scales the two influence floats on
+    //              DA_BI_Utilities_BuildingCenterT01.uasset by a user
+    //              multiplier (vanilla 5000/3000 -> 5000*M/3000*M), so the
+    //              "you can build here" zone around a placed building
+    //              center grows linearly. Single-asset byte patch on
+    //              RawExport.Data inside UAssetAPI, then re-emitted as
+    //              legacy uasset+uexp for the composite's to-zen step.
     //
     // The composite triplet shares the basename of the main pak so UE5
     // mounts them as one logical mod. The raw companion has its own
@@ -254,7 +261,9 @@ namespace Windrose.Quartermaster.Core
                 bool noSmokeActive = noSmokeCategories.Count > 0;
                 double minimapMultiplier = ResolveMinimapMultiplier(profile);
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive;
+                double bonfireMultiplier = ResolveBonfireMultiplier(profile);
+                bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -275,15 +284,18 @@ namespace Windrose.Quartermaster.Core
                 // still needs the .pak as the IoStore container's marker.
                 PickupTripletResult pickupResult = null;
                 NoSmokeResult noSmokeResult = null;
-                bool compositeActive = pickupActive || noSmokeActive;
+                BonfireRadiusResult bonfireResult = null;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
                         noSmokeCategories,
+                        bonfireMultiplier, bonfireActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
+                    bonfireResult = compositeResult.Bonfire;
                 }
 
                 // Raw companion is independent of the composite (see
@@ -342,6 +354,7 @@ namespace Windrose.Quartermaster.Core
                     StabilityResult = stabilityResult,
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
+                    BonfireResult = bonfireResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -393,6 +406,7 @@ namespace Windrose.Quartermaster.Core
             Profile profile, string outDir,
             double pickupMultiplier, bool pickupActive,
             List<NoSmokeCategory> noSmokeCategories,
+            double bonfireMultiplier, bool bonfireActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -461,6 +475,47 @@ namespace Windrose.Quartermaster.Core
                         var patcher = new PickupBlueprintPatcher { Log = Log };
                         pickupPatchResult = patcher.Patch(
                             legacyAssetPath, legacyAssetPath, usmapPath, magnetRadius);
+                    },
+                });
+            }
+
+            BonfireRadiusPatchResult bonfirePatchResult = null;
+            if (bonfireActive)
+            {
+                // Vanilla DA_BI_Utilities_BuildingCenterT01 ships with
+                // serialized InfluenceRadius=5000 + InfluenceHeight=3000
+                // floats inside its RawExport.Data; we overwrite both with
+                // user*5000 and user*3000 directly in the byte stream so
+                // the patch never has to interpret the trailing
+                // R5CollisionApproximation custom-Serialize tail.
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Bonfire source: vanilla "
+                        + BonfireRadiusPatcher.AssetFilterStem
+                        + " (multiplier=" + bonfireMultiplier
+                        + ", InfluenceRadius=" + (BonfireRadiusPatcher.VanillaInfluenceRadius * bonfireMultiplier)
+                        + "cm, InfluenceHeight=" + (BonfireRadiusPatcher.VanillaInfluenceHeight * bonfireMultiplier) + "cm)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "bonfire",
+                    InputDir = gamePaksDir,
+                    Filter = BonfireRadiusPatcher.AssetFilterStem,
+                    AfterExtract = stagingDir =>
+                    {
+                        var legacyAssetPath = Path.Combine(stagingDir,
+                            BonfireRadiusPatcher.AssetVirtualPath
+                                .Replace('/', Path.DirectorySeparatorChar));
+                        if (!File.Exists(legacyAssetPath))
+                        {
+                            throw new InvalidOperationException(
+                                "retoc to-legacy did not produce the expected bonfire asset at "
+                                + legacyAssetPath
+                                + " - the game container may have moved the asset, or "
+                                + "the filter '" + BonfireRadiusPatcher.AssetFilterStem
+                                + "' is wrong.");
+                        }
+                        var patcher = new BonfireRadiusPatcher { Log = Log };
+                        bonfirePatchResult = patcher.Patch(
+                            legacyAssetPath, legacyAssetPath, usmapPath, bonfireMultiplier);
                     },
                 });
             }
@@ -582,10 +637,25 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            BonfireRadiusResult bonfireOut = null;
+            if (bonfireActive)
+            {
+                bonfireOut = new BonfireRadiusResult
+                {
+                    Enabled = true,
+                    Multiplier = bonfireMultiplier,
+                    Patch = bonfirePatchResult,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
                 NoSmoke = noSmokeOut,
+                Bonfire = bonfireOut,
             };
         }
 
@@ -595,6 +665,7 @@ namespace Windrose.Quartermaster.Core
         {
             public PickupTripletResult Pickup;
             public NoSmokeResult NoSmoke;
+            public BonfireRadiusResult Bonfire;
         }
 
         // Builds the raw companion under <rawBaseName>.{pak[,ucas,utoc]},
@@ -983,6 +1054,17 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        // Resolves the effective bonfire / building-center influence
+        // multiplier. 1.0 (default) means "no bonfire patch ships" - same
+        // null/1.0 collapse pattern as pickup-radius and minimap.
+        static double ResolveBonfireMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.BonfireRadius == null) return 1.0;
+            var br = profile.Globals.BonfireRadius;
+            if (br.Multiplier.HasValue) return br.Multiplier.Value;
+            return 1.0;
+        }
+
         // Returns the list of NoSmoke categories the profile has actively
         // enabled (in declaration order: Campfire, Furnace, Kiln). Empty
         // list means no NoSmoke source contributes to the IoStore composite.
@@ -1094,6 +1176,12 @@ namespace Windrose.Quartermaster.Core
         // ini-patch was shipped in (shared with stability's pak when
         // both features are active).
         public MinimapRangeResult MinimapResult;
+        // Bonfire / building-center influence-radius inclusion result.
+        // null when the profile didn't configure a multiplier or set it
+        // to 1.0 (vanilla). When non-null, the patched DA_BI_Utilities_
+        // BuildingCenterT01 is part of the same shared IoStore triplet
+        // as Pickup / NoSmoke (sharedBaseName.ucas/utoc).
+        public BonfireRadiusResult BonfireResult;
         public string TmpDir;
         public bool Success;
     }
@@ -1158,5 +1246,22 @@ namespace Windrose.Quartermaster.Core
         public MinimapRangePatchResult Patch;
         public string PakPath;
         public long PakSize;
+    }
+
+    // Standalone summary of "bonfire-radius got included in this build".
+    // The patched DataAsset rides inside the SAME IoStore triplet as
+    // Pickup / NoSmoke (sharedBaseName.ucas/utoc), so PakPath here is
+    // null when a main Pak1 is also being built (it would be redundant
+    // with the main pak path) and points to the stub .pak otherwise.
+    // Patch carries the vanilla + effective influence values for the
+    // build-response log line.
+    public sealed class BonfireRadiusResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public BonfireRadiusPatchResult Patch;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
     }
 }

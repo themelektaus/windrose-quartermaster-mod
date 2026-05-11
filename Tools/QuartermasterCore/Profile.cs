@@ -37,6 +37,7 @@ namespace Windrose.Quartermaster.Core
         public BuildingStabilityGlobal BuildingStability;
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
+        public BonfireRadiusGlobal BonfireRadius;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -169,6 +170,37 @@ namespace Windrose.Quartermaster.Core
     {
         // Final scaling factor applied to the four vanilla reveal-range
         // floats. null OR == 1.0 -> no minimap mod is built for this profile.
+        public double? Multiplier;
+    }
+
+    // Bonfire / building-center influence-radius patch. Scales two
+    // FloatProperties on R5/Content/Gameplay/Building/BuildingUtilities/
+    // DA_BI_Utilities_BuildingCenterT01.uasset by the same user multiplier:
+    //
+    //   InfluenceRadius   vanilla 5000 cm -> 5000 * Multiplier  (~50 m base)
+    //   InfluenceHeight   vanilla 3000 cm -> 3000 * Multiplier  (~30 m base)
+    //
+    // These define the cylindrical "you can build here" zone around a
+    // placed building-center / bonfire. The reference mod
+    // ExtendedBonfireRadius_3x_P matches Multiplier=3.0 (15000/9000); an
+    // ingame probe confirmed these are the gameplay-relevant fields (the
+    // BP_BuildingBlock's ScenarioOverlapSphere radius alone had no
+    // visible effect when tuned in isolation).
+    //
+    // The patch ships in the IoStore composite triplet (same .ucas/.utoc
+    // as Pickup / NoSmoke) because the patched DataAsset goes through
+    // retoc to-zen cleanly - the affected bytes sit well below the
+    // CollisionApproximation tail that defeats the to-zen round-trip for
+    // OTHER DA_BI* assets (the Stability set), so this asset doesn't
+    // hit the same crash class the BuildingStability patcher works
+    // around with raw-chunk patching.
+    //
+    // null OR Multiplier == 1.0 -> no bonfire patch is included in the
+    // build (same null-collapse pattern as PickupRadius / MinimapRange).
+    public sealed class BonfireRadiusGlobal
+    {
+        // Final scaling factor applied to both vanilla influence floats.
+        // null OR == 1.0 -> no bonfire patch is built for this profile.
         public double? Multiplier;
     }
 

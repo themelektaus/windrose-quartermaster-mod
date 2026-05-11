@@ -453,12 +453,23 @@ function applyProfileToUI() {
     document.getElementById('minimap-multiplier').value =
         minimapOn ? minimapMul : 2.0;
     syncMinimapReadout();
+    // Bonfire-radius: same pattern as minimap. 1.0 / null collapses to
+    // off; off-and-on remembers the last value. Default multiplier 3.0
+    // matches the reference-mod baseline (15000 cm / 9000 cm).
+    const br = (p.globals && p.globals.bonfireRadius) || null;
+    const bonfireMul = br && br.multiplier != null ? br.multiplier : null;
+    const bonfireOn = bonfireMul != null && Math.abs(bonfireMul - 1.0) > 1e-9;
+    document.getElementById('bonfire-enabled').checked = bonfireOn;
+    document.getElementById('bonfire-multiplier').value =
+        bonfireOn ? bonfireMul : 2.0;
+    syncBonfireReadout();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
     syncBuildingStabilityInputState();
     syncNoSmokeInputState();
     syncMinimapInputState();
+    syncBonfireInputState();
     renderProfileMeta();
 }
 
@@ -534,6 +545,31 @@ function syncMinimapReadout() {
         footDist.toFixed(0) + ' cm @ ' + footBrush.toFixed(0) + ' brush';
     document.getElementById('minimap-ship-readout').textContent =
         shipDist.toFixed(0) + ' cm @ ' + shipBrush.toFixed(0) + ' brush';
+}
+
+// Bonfire-radius slider mirrors the minimap / pickup pattern: disabled
+// while the checkbox is off so a downscale can't silently happen.
+function syncBonfireInputState() {
+    const enabled = document.getElementById('bonfire-enabled');
+    const slider  = document.getElementById('bonfire-multiplier');
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
+}
+
+// Mirrors the multiplier into the readout span ("3.0x ... 15000 cm
+// (~150 m) ... 9000 cm (~90 m)"). Vanilla baselines come from
+// BonfireRadiusPatcher's constants (5000 / 3000 cm).
+function syncBonfireReadout() {
+    const slider = document.getElementById('bonfire-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('bonfire-multiplier-value').innerHTML =
+        mul.toFixed(1) + '&times;';
+    const radius = 5000 * mul;
+    const height = 3000 * mul;
+    document.getElementById('bonfire-radius-readout').textContent =
+        radius.toFixed(0) + ' cm (~' + (radius / 100).toFixed(0) + ' m)';
+    document.getElementById('bonfire-height-readout').textContent =
+        height.toFixed(0) + ' cm (~' + (height / 100).toFixed(0) + ' m)';
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -1660,6 +1696,24 @@ function setMinimapRangeFromUI() {
     markDirty();
 }
 
+// Bonfire-radius checkbox+slider. Same null-collapse semantics as
+// minimap / pickup-radius - 1.0 or off drops the whole subtree, on
+// writes { multiplier: <slider value> }.
+function setBonfireRadiusFromUI() {
+    if (!state.current) return;
+    syncBonfireReadout();
+    syncBonfireInputState();
+    const enabled = document.getElementById('bonfire-enabled').checked;
+    const mul = parseFloat(document.getElementById('bonfire-multiplier').value);
+    state.current.globals = state.current.globals || {};
+    if (!enabled || !isFinite(mul) || Math.abs(mul - 1.0) < 1e-9) {
+        delete state.current.globals.bonfireRadius;
+    } else {
+        state.current.globals.bonfireRadius = { multiplier: mul };
+    }
+    markDirty();
+}
+
 // No-Smoke per-category toggles. All three off -> drop the whole noSmoke
 // subtree (clean JSON, mirrors the build pipeline's "no source contributes"
 // semantics). At least one on -> keep only the active flags as true; off
@@ -1801,7 +1855,7 @@ async function onBuild() {
         }
     }
     setFooterCollapsed(false);  // build always opens the log so output is visible
-    setBuildLog([{ kind: 'info', msg: 'Building (this may take 1-2 seconds)...' }]);
+    setBuildLog([{ kind: 'info', msg: 'Building (this may take a few seconds)...' }]);
     document.getElementById('btn-build').disabled = true;
 
     try {
@@ -1864,8 +1918,17 @@ async function onBuild() {
                     + ', ship ' + mr.vanilla.shipBrush + '/' + mr.vanilla.shipDistance + ' -> '
                     + mr.effective.shipBrush + '/' + mr.effective.shipDistance + ')' });
             }
+            if (data.bonfireRadius) {
+                const bo = data.bonfireRadius;
+                const mul = (bo.multiplier || 1.0).toFixed(1);
+                lines.push({ kind: 'ok', msg:
+                    'DONE - bonfire radius patched (' + mul + 'x; influence '
+                    + bo.vanilla.influenceRadius + '/' + bo.vanilla.influenceHeight
+                    + ' -> ' + bo.effective.influenceRadius + '/' + bo.effective.influenceHeight
+                    + ' cm)' });
+            }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange) {
+                && !data.noSmoke && !data.minimapRange && !data.bonfireRadius) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -2081,6 +2144,8 @@ function bindHandlers() {
     document.getElementById('nosmoke-kiln').addEventListener('change',     setNoSmokeFromUI);
     document.getElementById('minimap-enabled').addEventListener('change', setMinimapRangeFromUI);
     document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
+    document.getElementById('bonfire-enabled').addEventListener('change', setBonfireRadiusFromUI);
+    document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);

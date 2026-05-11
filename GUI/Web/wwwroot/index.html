@@ -247,6 +247,29 @@
         </section>
 
         <section class="card">
+          <h2>Globals - Bonfire Radius</h2>
+          <p class="hint">Scales the influence sphere around a placed building-center / bonfire so you can build farther from it. Patches two floats on <code>DA_BI_Utilities_BuildingCenterT01</code>: <code>InfluenceRadius</code> (vanilla 5000 cm = ~50 m) and <code>InfluenceHeight</code> (vanilla 3000 cm = ~30 m). Both scale by the same multiplier.</p>
+          <div class="pickup-row">
+            <label class="check-row">
+              <input type="checkbox" id="bonfire-enabled">
+              Enable bonfire-radius patch
+            </label>
+            <div class="pickup-slider indent">
+              <input type="range" id="bonfire-multiplier"
+                     min="1.0" max="5.0" step="0.1" value="2.0">
+              <div class="pickup-readout">
+                Multiplier: <span id="bonfire-multiplier-value">2.0&times;</span>
+                <span class="muted">&middot;</span>
+                Radius: <span id="bonfire-radius-readout">15000 cm (~150 m)</span>
+                <span class="muted">&middot;</span>
+                Height: <span id="bonfire-height-readout">9000 cm (~90 m)</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint">Ships inside the shared IoStore composite triplet alongside pickup-radius and no-smoke.</p>
+        </section>
+
+        <section class="card">
           <h2>Globals - No Smoke</h2>
           <p class="hint">Hide the smoke / flame Niagara FX on selected craft stations and campsites. Self-baked from vanilla: every EmitterHandle on the matching NiagaraSystem is flipped to disabled, then re-packed into the shared IoStore triplet.</p>
           <div class="nosmoke-rows">

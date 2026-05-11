@@ -187,6 +187,12 @@ public static class ProfilesEndpoint
                 {
                     Multiplier = g.MinimapRange.Multiplier,
                 },
+            BonfireRadius = g.BonfireRadius == null
+                ? null
+                : new BonfireRadiusGlobal
+                {
+                    Multiplier = g.BonfireRadius.Multiplier,
+                },
         };
     }
 
@@ -287,6 +293,16 @@ public static class ProfilesEndpoint
                                     && p.Globals.MinimapRange != null
                                     && p.Globals.MinimapRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.MinimapRange.Multiplier.Value - 1.0) > 1e-9,
+            // True when Bonfire-radius is configured with a multiplier
+            // > 1.0 (1.0 / null collapses to "no bonfire mod"). The build
+            // then patches the two influence floats on
+            // DA_BI_Utilities_BuildingCenterT01 and ships the result in
+            // the shared IoStore composite triplet alongside Pickup /
+            // NoSmoke.
+            hasGlobalBonfireRadius = p.Globals != null
+                                     && p.Globals.BonfireRadius != null
+                                     && p.Globals.BonfireRadius.Multiplier.HasValue
+                                     && Math.Abs(p.Globals.BonfireRadius.Multiplier.Value - 1.0) > 1e-9,
         };
     }
 

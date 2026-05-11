@@ -197,6 +197,31 @@ public static class BuildEndpoint
                         },
                     };
                 }
+                // Bonfire-radius: when active, the patched DA_BI_Utilities_
+                // BuildingCenterT01 rides inside the shared IoStore triplet.
+                // Carries the effective influence values so the build log
+                // can render a "5000 -> 15000" style summary.
+                object bonfireRadiusInfo = null;
+                if (result.BonfireResult != null)
+                {
+                    var br = result.BonfireResult;
+                    bonfireRadiusInfo = new
+                    {
+                        multiplier = br.Multiplier,
+                        ucasPath = br.UcasPath,
+                        utocPath = br.UtocPath,
+                        vanilla = new
+                        {
+                            influenceRadius = br.Patch != null ? br.Patch.VanillaInfluenceRadius : 0f,
+                            influenceHeight = br.Patch != null ? br.Patch.VanillaInfluenceHeight : 0f,
+                        },
+                        effective = new
+                        {
+                            influenceRadius = br.Patch != null ? br.Patch.EffectiveInfluenceRadius : 0f,
+                            influenceHeight = br.Patch != null ? br.Patch.EffectiveInfluenceHeight : 0f,
+                        },
+                    };
+                }
                 // NoSmoke surfaces the active categories + per-asset patch
                 // counts so the frontend can render "Campfire, Furnace
                 // (5 assets, 38 emitter handles silenced)". null = no
@@ -251,6 +276,7 @@ public static class BuildEndpoint
                     buildingStability = buildingStabilityInfo,
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,
+                    bonfireRadius = bonfireRadiusInfo,
                     log,
                 });
             }
