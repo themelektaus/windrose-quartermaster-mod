@@ -294,12 +294,14 @@ body:not(.no-profiles) #no-profile-state {
     justify-content: center;
     align-items: center;
     gap: 2em;
+    margin-inline: auto;
     padding: 2em 1em;
     height: 0;
+    max-width: 80em;
     
     .card {
-      flex: 0 0 40em;
-      height: 20em;
+      flex: 0 0 35em;
+      height: 18em;
       display: flex;
       gap: 1em;
       
@@ -317,6 +319,19 @@ body:not(.no-profiles) #no-profile-state {
       
       .card-content {
         flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: .5em;
+        
+        h2 {
+          margin: 0;
+          text-transform: unset;
+          color: var(--text);
+        }
+        
+        .hint:last-child {
+          margin-top: 1em;
+        }
       }
     }
   }
@@ -369,48 +384,50 @@ fieldset .indent input[type="number"] {
   display: flex;
   align-items: center;
   gap: .5em;
-  margin: .25em 0;
-}
-
-.check-row input[type="checkbox"]:disabled + * {
-  opacity: .6;
-}
-
-.pickup-hint {
-  margin-top: .5em;
 }
 
 .pickup-row {
   display: flex;
   flex-direction: column;
-  gap: .35em;
+  gap: .5em;
 }
 
 .pickup-slider {
   display: flex;
-  flex-direction: column;
-  gap: .35em;
+  align-items: center;
+  gap: .5em;
 }
 
 .pickup-slider input[type="range"] {
-  width: 100%;
+  flex: 1;
 }
 
-.pickup-readout {
-  display: flex;
-  gap: .35em;
-  align-items: baseline;
-  font-variant-numeric: tabular-nums;
-}
-
-.pickup-readout .muted {
-  color: var(--text-dim);
-}
-
-/* Disabled slider when pickup-enabled is unchecked. */
-.pickup-slider input[type="range"]:disabled,
-.pickup-slider:has(input[type="range"]:disabled) .pickup-readout {
+.pickup-slider:has([disabled]) {
   opacity: .5;
+}
+
+#pickup-multiplier-value,
+#minimap-multiplier-value,
+#bonfire-multiplier-value {
+  background-color: var(--warn);
+  color: var(--bg);
+  border-radius: var(--border-radius);
+  width: 3.5em;
+  text-align: center;
+  font-weight: bold;
+  font-size: var(--font-size-small);
+}
+
+#pickup-range,
+#minimap-foot-readout,
+#minimap-ship-readout,
+#bonfire-radius-readout,
+#bonfire-height-readout {
+  color: var(--text-dim);
+  border-radius: var(--border-radius);
+  width: 4em;
+  text-align: center;
+  font-size: var(--font-size-small);
 }
 
 /* Fast-travel bell + signal-fire caps. Two number-inputs side by side

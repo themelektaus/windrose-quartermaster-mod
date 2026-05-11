@@ -535,16 +535,11 @@ function syncMinimapInputState() {
 function syncMinimapReadout() {
     const slider = document.getElementById('minimap-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('minimap-multiplier-value').innerHTML =
-        mul.toFixed(1) + 'x<!--&times;-->';
-    const footBrush = 37  * mul;
-    const footDist  = 250 * mul;
-    const shipBrush = 290 * mul;
-    const shipDist  = 750 * mul;
-    document.getElementById('minimap-foot-readout').textContent =
-        footDist.toFixed(0) + ' cm @ ' + footBrush.toFixed(0) + ' brush';
-    document.getElementById('minimap-ship-readout').textContent =
-        shipDist.toFixed(0) + ' cm @ ' + shipBrush.toFixed(0) + ' brush';
+    document.getElementById('minimap-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    const footDist  = 25 * mul / 10;
+    const shipDist  = 75 * mul / 10;
+    document.getElementById('minimap-foot-readout').textContent = footDist.toFixed(1) + ' m';
+    document.getElementById('minimap-ship-readout').textContent = shipDist.toFixed(1) + ' m';
 }
 
 // Bonfire-radius slider mirrors the minimap / pickup pattern: disabled
@@ -562,14 +557,9 @@ function syncBonfireInputState() {
 function syncBonfireReadout() {
     const slider = document.getElementById('bonfire-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('bonfire-multiplier-value').innerHTML =
-        mul.toFixed(1) + 'x<!--&times;-->';
-    const radius = 5000 * mul;
-    const height = 3000 * mul;
-    document.getElementById('bonfire-radius-readout').textContent =
-        radius.toFixed(0) + ' cm (~' + (radius / 100).toFixed(0) + ' m)';
-    document.getElementById('bonfire-height-readout').textContent =
-        height.toFixed(0) + ' cm (~' + (height / 100).toFixed(0) + ' m)';
+    document.getElementById('bonfire-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    document.getElementById('bonfire-radius-readout').textContent = (mul * 50).toFixed(0) + ' m'
+    document.getElementById('bonfire-height-readout').textContent = (mul * 30).toFixed(0) + ' m'
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
