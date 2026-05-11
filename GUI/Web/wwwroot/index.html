@@ -215,7 +215,7 @@
 
         <section class="card">
           <h2>Globals - Building Stability</h2>
-          <p class="hint">Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing. Bakes the BetterStructureSupport reference mod's 787 DA_BI* DataAssets into the IoStore triplet alongside any other globals.</p>
+          <p class="hint">Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing. Self-bakes 787 vanilla DA_BI* DataAssets by overwriting their IntegritySettings floats directly in the raw zen chunks, then ships them as a companion triplet alongside the main mod.</p>
           <label class="check-row">
             <input type="checkbox" id="building-stability-enabled">
             Enhanced building stability

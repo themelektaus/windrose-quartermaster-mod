@@ -260,8 +260,10 @@ public static class ProfilesEndpoint
             // build pipeline uses to decide whether to run the patcher.
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             // True when the single-toggle "enhanced building stability"
-            // is on - the build will then bake the BetterStructureSupport
-            // reference mod's 787 DA_BI* assets into the IoStore composite.
+            // is on - the build will then self-bake the 787 supported
+            // vanilla DA_BI* DataAssets (overwriting the IntegritySettings
+            // floats directly in their raw zen chunks) and ship them as
+            // a _PStab_P companion triplet next to the main mod.
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),

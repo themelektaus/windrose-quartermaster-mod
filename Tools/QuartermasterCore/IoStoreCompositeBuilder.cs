@@ -20,14 +20,13 @@ namespace Windrose.Quartermaster.Core
     //      mod is built: vanilla bytes -> legacy -> UAssetAPI adds the
     //      MagnetRadius FloatProperty -> back to zen.
     //
-    //   2. ReferenceModExtract - runs `retoc to-legacy` on a reference
-    //      mod's triplet (with the live game's global.utoc/.ucas alongside
-    //      so retoc can resolve ScriptObjects). Produces N pre-cooked
-    //      legacy assets that we adopt 1:1 with NO patch, because vanilla
-    //      DA_BI* assets are NOT parseable by UAssetAPI (they fall back to
-    //      RawExport). Single-toggle features that match a known reference
-    //      mod 1:1 use this path - specifically the BetterStructureSupport
-    //      mod for the "enhanced building stability" feature.
+    //   2. (No active reference-mod source today - the building-stability
+    //      feature switched to a vanilla self-bake using byte-level
+    //      patches on the unparseable RawExport fallback. The reference-
+    //      mod adoption pattern is preserved in this builder for future
+    //      features that might genuinely need 1:1 adoption: drop the
+    //      mod's .pak/.ucas/.utoc + the game's global.{ucas,utoc} into
+    //      the same input dir and call with Filter=null.)
     //
     // The builder writes everything into the caller-supplied TempDir and
     // produces the final triplet at OutputBasePath + ".{pak,ucas,utoc}".

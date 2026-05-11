@@ -153,9 +153,11 @@ public static class BuildEndpoint
                     };
                 }
                 // BuildingStability is a single-toggle feature: when on,
-                // the 787 reference-mod assets are baked into the IoStore
-                // composite; when off (or null), nothing is shipped. The
-                // frontend only needs the boolean.
+                // the 787 supported vanilla DA_BI* assets get self-baked
+                // (4 floats in IntegritySettings overwritten directly in
+                // their raw zen chunks) and shipped as a separate
+                // _PStab_P companion triplet; when off (or null), nothing
+                // ships. The frontend only needs the boolean.
                 object buildingStabilityInfo = null;
                 if (result.StabilityResult != null)
                 {

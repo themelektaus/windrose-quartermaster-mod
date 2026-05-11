@@ -96,20 +96,26 @@ namespace Windrose.Quartermaster.Core
         public int? SignalFireCap;  // 3..1000
     }
 
-    // "Enhanced building stability" toggle. When enabled, ships the 787
-    // pre-cooked DA_BI* DataAssets from the BetterStructureSupport
-    // reference mod (References/BetterStructureSupport_P.{pak,ucas,utoc})
-    // verbatim, alongside any other IoStore content for this profile.
+    // "Enhanced building stability" toggle. When enabled, the build
+    // pipeline self-bakes the 787 supported vanilla DA_BI* DataAssets
+    // (~862 total in 5.6, 75 are excluded as non-placeable / special-
+    // physics) by overwriting four floats in the IntegritySettings
+    // StructProperty directly in the asset's raw zen-format chunk bytes:
+    //   BlockWeight=0, BlockMaxHorizontalLoad=1e7,
+    //   BlockMaxVerticalLoad=1e7, BlockMinimumIntersectionExtent=0
     //
-    // We do NOT patch the values ourselves because vanilla DA_BI assets
-    // serialize via UE5's tag-stream format that UAssetAPI cannot
-    // decode (loads as RawExport). The reference mod's variants ARE
-    // parseable but for a single on/off toggle we don't need to patch
-    // them anyway - the bundled values (BlockWeight=0, MaxLoad=1e7,
-    // MinIntersection=0) match the "buildings never collapse" UX.
+    // The byte-level patch is necessary because the to-legacy + to-zen
+    // round-trip produces game-incompatible output for this asset class
+    // (R5CollisionApproximation uses a custom C++ Serialize() that
+    // breaks under unversioned <-> versioned property re-encoding).
+    // BuildingStabilityPatcher therefore uses retoc unpack-raw + a
+    // pattern-match-and-overwrite within the raw chunk + retoc pack-raw,
+    // which leaves every byte not part of IntegritySettings untouched.
     //
-    // null OR Enabled=false -> no stability assets shipped for this
-    // profile; the IoStore output omits the stability source entirely.
+    // Stability ships as its own _PStab_P companion triplet next to the
+    // main mod; ModsEndpoint aggregates both into one logical mod row.
+    //
+    // null OR Enabled=false -> no stability triplet for this profile.
     public sealed class BuildingStabilityGlobal
     {
         public bool? Enabled;

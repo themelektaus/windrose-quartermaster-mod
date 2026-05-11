@@ -239,11 +239,7 @@ namespace Windrose.Quartermaster.Web
 
         // Loot smoke: applies a single bucket multiplier (or "*" wildcard)
         // to the vanilla LootTables tree and writes the patched files into
-        // .build-tmp/loot_smoke_<...>/. Output is now CRLF-pinned (vanilla
-        // shape); byte-compare against the reference MoreEnemyResources_2x_P
-        // pak no longer matches (that one ships LF) - compare against
-        // vanilla LT JSONs with all-bucket multiplier=1 instead for a
-        // round-trip sanity check.
+        // .build-tmp/loot_smoke_<...>/.
         static int RunLootSmoke(string repoRoot, string bucket, double mult, string outDirOverride)
         {
             var paths = WindrosePaths.FromModRoot(repoRoot);

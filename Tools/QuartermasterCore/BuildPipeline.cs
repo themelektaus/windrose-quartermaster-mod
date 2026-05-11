@@ -12,30 +12,37 @@ namespace Windrose.Quartermaster.Core
     // after a successful pack - callers can opt into keepTemp=true for
     // post-mortem debugging.
     //
-    // IoStore content (pickup-radius patch + enhanced building stability)
-    // is built into a SHARED triplet that ships alongside the main Pak1.
-    // The IoStoreCompositeBuilder takes one or more "sources" - each
-    // source contributes Legacy assets to a unified staging tree - and
-    // produces one .ucas / .utoc / .pak-stub set with everything merged.
+    // The build can produce up to TWO IoStore triplets next to the main pak:
     //
-    // Two source kinds today:
-    //   1. Pickup: vanilla GA_Loot_AutoPickup Blueprint extracted via
-    //      retoc to-legacy and then patched in-place via UAssetAPI to
-    //      add a serialized MagnetRadius FloatProperty.
-    //   2. Stability: the BetterStructureSupport reference mod's 787
-    //      pre-cooked DA_BI* DataAssets adopted 1:1 (single toggle, no
-    //      patch - vanilla DA_BI cannot be UAssetAPI-parsed).
+    //   1. Composite triplet  Quartermaster_<name>_P.{ucas,utoc}  (+ stub .pak
+    //      OR full .pak from the main pakbuild). Built via retoc to-legacy +
+    //      AfterExtract patches + retoc to-zen by IoStoreCompositeBuilder.
+    //      Carries the Pickup and NoSmoke features.
     //
-    // Both share the basename of the main pak so UE5 mounts them as one
-    // logical mod (.pak Pak1 + .ucas/.utoc IoStore companions).
+    //   2. Stability triplet  Quartermaster_<name>_PStab_P.{pak,ucas,utoc}.
+    //      Built via retoc unpack-raw + BuildingStabilityPatcher (byte-level
+    //      patches on raw zen chunks) + retoc pack-raw. Lives in its own
+    //      triplet because to-zen produces game-incompatible output for the
+    //      vanilla DA_BI* class (R5CollisionApproximation uses a custom C++
+    //      Serialize() that breaks under unversioned <-> versioned round-
+    //      tripping), so we must avoid the to-zen step for stability assets
+    //      and the resulting container can't be merged with the composite
+    //      triplet's container.
     //
-    // A third source - NoSmoke - self-bakes vanilla Niagara assets
-    // (FX_Bonefire/Campfire/Furnace/Kiln) and patches every
-    // EmitterHandle.bIsEnabled to false to silence the smoke / flame
-    // particle systems. Three independent toggles map to three asset
-    // groups (Campfire / Furnace / Kiln); active toggles' assets are
-    // pulled in a single to-legacy call (multi --filter) and patched in
-    // the AfterExtract callback.
+    // Composite sources today:
+    //   - Pickup:  vanilla GA_Loot_AutoPickup Blueprint extracted via
+    //              retoc to-legacy and patched in-place via UAssetAPI to
+    //              add a serialized MagnetRadius FloatProperty.
+    //   - NoSmoke: self-bakes vanilla Niagara assets (FX_Bonefire/Campfire/
+    //              Furnace/Kiln) and patches every EmitterHandle.bIsEnabled
+    //              to false to silence the smoke / flame particle systems.
+    //              Three independent toggles map to three asset groups.
+    //
+    // The composite triplet shares the basename of the main pak so UE5
+    // mounts them as one logical mod. The stability triplet has its own
+    // basename (..._PStab_P) and gets recognised as a companion by
+    // ModsEndpoint so it aggregates back into a single logical mod in
+    // the UI.
     public sealed class BuildPipeline
     {
         readonly WindrosePaths _paths;
@@ -55,14 +62,27 @@ namespace Windrose.Quartermaster.Core
         public string OutputDir;
 
         // Optional locator for the live game's Paks/ directory. Required
-        // for builds that activate any IoStore feature (pickup-radius or
-        // building-stability) - retoc's to-legacy step needs the vanilla
-        // IoStore container as input AND the game's global.utoc to resolve
-        // ScriptObjects, even for the stability source which only adopts
-        // bytes from a reference mod. The GUI wires this to
-        // SteamLocator.FindVanillaPaksDir; CLI smoke tests leave it null
-        // since CLI builds never enable IoStore features.
+        // for builds that activate any IoStore feature (pickup-radius,
+        // no-smoke, or building-stability). retoc's to-legacy + unpack-raw
+        // both read directly from the game's IoStore containers. The GUI
+        // wires this to SteamLocator.FindVanillaPaksDir; CLI smoke tests
+        // leave it null since CLI builds never enable IoStore features.
         public Func<string> GamePaksDirProvider;
+
+        // Filename of the game container that ships the DA_BI* DataAssets
+        // (the ones BuildingStabilityPatcher operates on). retoc unpack-raw
+        // takes a specific .utoc file rather than a Paks directory, so we
+        // need to know which container to point it at. pakchunk0_s3 has
+        // been stable across Windrose 5.6 patches; if it ever moves we'll
+        // see "no DA_BI assets in chunk manifest" in the build log.
+        public const string StabilityContainerFilename = "pakchunk0_s3-Windows.utoc";
+
+        // Suffix appended to the safe profile name to derive the stability
+        // companion triplet's basename. The "_P" terminator makes UE5
+        // recognise it as a mod container at mount time. ModsEndpoint uses
+        // the same constant to aggregate the stability triplet back into
+        // the parent mod's list entry.
+        public const string StabilityCompanionSuffix = "_PStab_P";
 
         // Vanilla MagnetRadius value (cm) the patcher multiplies against
         // to derive the patched value. 400cm = 4m is the Windrose 5.6
@@ -105,6 +125,17 @@ namespace Windrose.Quartermaster.Core
             var sharedBaseName = "Quartermaster_" + safeName + "_P";
             var sharedUcasPath = Path.Combine(outDir, sharedBaseName + ".ucas");
             var sharedUtocPath = Path.Combine(outDir, sharedBaseName + ".utoc");
+
+            // Stability lives in a SEPARATE triplet (see class header for
+            // why). Same out-dir, distinct basename so UE mounts both as
+            // independent containers but ModsEndpoint aggregates them
+            // back into one logical "Quartermaster_<name>" row in the
+            // mods list.
+            var stabilityBaseName = "Quartermaster_" + safeName + StabilityCompanionSuffix;
+            var stabilityPakPath  = Path.Combine(outDir, stabilityBaseName + ".pak");
+            var stabilityUcasPath = Path.Combine(outDir, stabilityBaseName + ".ucas");
+            var stabilityUtocPath = Path.Combine(outDir, stabilityBaseName + ".utoc");
+
             var tmpDir = Path.Combine(_paths.BuildTmp, profile.Id);
 
             try
@@ -121,7 +152,11 @@ namespace Windrose.Quartermaster.Core
                 // so a half-finished build leaves the user no worse off.
                 if (Directory.Exists(outDir))
                 {
-                    foreach (var p in new[] { outPakPath, sharedUcasPath, sharedUtocPath })
+                    foreach (var p in new[]
+                    {
+                        outPakPath, sharedUcasPath, sharedUtocPath,
+                        stabilityPakPath, stabilityUcasPath, stabilityUtocPath,
+                    })
                     {
                         if (File.Exists(p)) File.Delete(p);
                     }
@@ -217,17 +252,26 @@ namespace Windrose.Quartermaster.Core
                 // files (including the stub .pak) to outDir - the engine
                 // still needs the .pak as the IoStore container's marker.
                 PickupTripletResult pickupResult = null;
-                BuildingStabilityResult stabilityResult = null;
                 NoSmokeResult noSmokeResult = null;
-                if (ioStoreActive)
+                bool compositeActive = pickupActive || noSmokeActive;
+                if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
-                        profile, outDir, pickupMultiplier, pickupActive, stabilityActive,
+                        profile, outDir, pickupMultiplier, pickupActive,
                         noSmokeCategories,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
-                    stabilityResult = compositeResult.Stability;
                     noSmokeResult = compositeResult.NoSmoke;
+                }
+
+                // Stability triplet is independent of the composite (see
+                // class header). Built only when the toggle is on; goes to
+                // its own _PStab_P basename. ModsEndpoint recognises the
+                // suffix and treats both triplets as one logical mod.
+                BuildingStabilityResult stabilityResult = null;
+                if (stabilityActive)
+                {
+                    stabilityResult = BuildStabilityTriplet(profile, outDir, stabilityBaseName);
                 }
 
                 PakBuildResult pakResult = null;
@@ -282,6 +326,7 @@ namespace Windrose.Quartermaster.Core
                     {
                         tmpDir,
                         Path.Combine(_paths.BuildTmp, profile.Id + "__iostore"),
+                        Path.Combine(_paths.BuildTmp, profile.Id + "__stability"),
                     })
                     {
                         if (!Directory.Exists(dir)) continue;
@@ -318,7 +363,7 @@ namespace Windrose.Quartermaster.Core
         // locator - CLI builds can't enable IoStore features today.
         BuildIoStoreCompositeOutput BuildIoStoreComposite(
             Profile profile, string outDir,
-            double pickupMultiplier, bool pickupActive, bool stabilityActive,
+            double pickupMultiplier, bool pickupActive,
             List<NoSmokeCategory> noSmokeCategories,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
@@ -390,52 +435,6 @@ namespace Windrose.Quartermaster.Core
                             legacyAssetPath, legacyAssetPath, usmapPath, magnetRadius);
                     },
                 });
-            }
-
-            BuildingStabilityResult stabilityOut = null;
-            if (stabilityActive)
-            {
-                // Reference-mod adoption: copy mod triplet AND the game's
-                // global.{ucas,utoc} into a tmp dir, point retoc at that.
-                var refsDir = Path.Combine(iostoreRoot, "stability-refs");
-                Directory.CreateDirectory(refsDir);
-                var modPak = Path.Combine(_paths.References, StabilityReferenceFileName + ".pak");
-                if (!File.Exists(modPak))
-                {
-                    throw new FileNotFoundException(
-                        "Building-stability reference mod missing: "
-                        + modPak
-                        + " - expected the BetterStructureSupport_P triplet under "
-                        + _paths.References);
-                }
-                foreach (var ext in new[] { ".pak", ".ucas", ".utoc" })
-                {
-                    File.Copy(
-                        Path.Combine(_paths.References, StabilityReferenceFileName + ext),
-                        Path.Combine(refsDir, StabilityReferenceFileName + ext),
-                        true);
-                }
-                foreach (var f in new[] { "global.ucas", "global.utoc" })
-                {
-                    var src = Path.Combine(gamePaksDir, f);
-                    if (!File.Exists(src))
-                    {
-                        throw new FileNotFoundException(
-                            "Game's " + f + " not found in " + gamePaksDir
-                            + " - needed for ScriptObjects resolution during reference-mod extraction.");
-                    }
-                    File.Copy(src, Path.Combine(refsDir, f), true);
-                }
-                LogLine("Stability source: reference mod "
-                        + StabilityReferenceFileName + " (787 DA_BI assets, adopted 1:1)");
-                sources.Add(new IoStoreCompositeSource
-                {
-                    Name = "stability",
-                    InputDir = refsDir,
-                    Filter = null,
-                    AfterExtract = null,
-                });
-                stabilityOut = new BuildingStabilityResult { Enabled = true };
             }
 
             NoSmokeResult noSmokeOut = null;
@@ -558,23 +557,223 @@ namespace Windrose.Quartermaster.Core
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
-                Stability = stabilityOut,
                 NoSmoke = noSmokeOut,
             };
         }
-
-        // Basename (no extension) of the BetterStructureSupport reference
-        // mod triplet under <_paths.References>. Bundled in the repo to
-        // keep the build offline-capable.
-        const string StabilityReferenceFileName = "BetterStructureSupport_P";
 
         // Internal carrier so BuildIoStoreComposite can return all
         // feature-specific result objects to the caller without a tuple.
         sealed class BuildIoStoreCompositeOutput
         {
             public PickupTripletResult Pickup;
-            public BuildingStabilityResult Stability;
             public NoSmokeResult NoSmoke;
+        }
+
+        // Builds the stability companion triplet by:
+        //   1. retoc unpack-raw on pakchunk0_s3-Windows.utoc -> raw zen
+        //      chunks + manifest.json in a staging dir.
+        //   2. retoc to-legacy with --filter DA_BI on the game Paks dir
+        //      -> legacy .uasset/.uexp pairs used only as PROBE INPUT to
+        //      find IntegritySettings byte patterns inside the raw chunks.
+        //   3. BuildingStabilityPatcher walks the legacy probes, locates
+        //      each asset's 16-byte IntegritySettings pattern uniquely
+        //      within its mapped raw chunk, and overwrites it in place.
+        //      Excluded chunks (75 non-placeable / non-buildable) are
+        //      dropped from both chunksDir AND manifest.
+        //   4. retoc pack-raw on the filtered chunk set -> IoStore triplet
+        //      at outDir/<stabilityBaseName>.{pak,ucas,utoc}.
+        //
+        // The stability triplet is INDEPENDENT of the composite triplet
+        // because the two retoc paths (to-zen vs pack-raw) produce
+        // incompatible container formats. See class header for context.
+        BuildingStabilityResult BuildStabilityTriplet(
+            Profile profile, string outDir, string stabilityBaseName)
+        {
+            if (GamePaksDirProvider == null)
+            {
+                throw new InvalidOperationException(
+                    "Profile requests building-stability but no GamePaksDirProvider is wired up. "
+                    + "This is a build-host configuration error - only the GUI build path "
+                    + "can locate the live game's Paks directory.");
+            }
+            var gamePaksDir = GamePaksDirProvider();
+            if (string.IsNullOrEmpty(gamePaksDir) || !Directory.Exists(gamePaksDir))
+            {
+                throw new InvalidOperationException(
+                    "Building-stability needs the live game's Paks directory but the locator "
+                    + "returned an invalid path: " + (gamePaksDir ?? "<null>"));
+            }
+            var stabUtocSrc = Path.Combine(gamePaksDir, StabilityContainerFilename);
+            if (!File.Exists(stabUtocSrc))
+            {
+                throw new FileNotFoundException(
+                    "Building-stability needs the vanilla container "
+                    + StabilityContainerFilename + " in the game Paks dir but it wasn't found: "
+                    + stabUtocSrc + " - has the game been patched? Check the actual chunk numbering.");
+            }
+
+            LogLine("Resolving retoc.exe...");
+            _retocResolver.Log = Log;
+            var retocExe = _retocResolver.Resolve();
+            var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+
+            Directory.CreateDirectory(outDir);
+
+            // Stability work area. Sibling of tmpDir + iostore dir so a
+            // single keepTemp=false run can wipe all three independently.
+            var stabRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__stability");
+            if (Directory.Exists(stabRoot)) Directory.Delete(stabRoot, true);
+            Directory.CreateDirectory(stabRoot);
+            var rawDir    = Path.Combine(stabRoot, "raw");
+            var legacyDir = Path.Combine(stabRoot, "legacy");
+            var outBase   = Path.Combine(stabRoot, "out", stabilityBaseName);
+            Directory.CreateDirectory(Path.GetDirectoryName(outBase));
+
+            // Step 1: unpack-raw the container that ships DA_BIs into
+            // <rawDir>/chunks + <rawDir>/manifest.json. Includes EVERY
+            // chunk in pakchunk0_s3 (assets + their dependency textures,
+            // materials, meshes) - we filter down to just the 787 DA_BI
+            // chunks in step 3.
+            LogLine("retoc unpack-raw: " + StabilityContainerFilename + " -> " + rawDir);
+            RunRetoc(retocExe, new[] { "unpack-raw", stabUtocSrc, rawDir });
+
+            var chunksDir    = Path.Combine(rawDir, "chunks");
+            var manifestPath = Path.Combine(rawDir, "manifest.json");
+            if (!Directory.Exists(chunksDir) || !File.Exists(manifestPath))
+            {
+                throw new InvalidOperationException(
+                    "retoc unpack-raw produced unexpected layout under " + rawDir
+                    + " - expected chunks/ directory + manifest.json sibling.");
+            }
+
+            // Step 2: pull the 862 vanilla DA_BIs as legacy uasset/uexp
+            // pairs into a separate staging dir. These are used ONLY to
+            // probe IntegritySettings byte patterns; we never round-trip
+            // them through to-zen (that's the path that crashes the game).
+            LogLine("retoc to-legacy --filter " + BuildingStabilityPatcher.AssetFilterStem
+                    + " -> " + legacyDir);
+            RunRetoc(retocExe, new[]
+            {
+                "to-legacy", gamePaksDir, legacyDir, "--version", "UE5_6",
+                "--filter", BuildingStabilityPatcher.AssetFilterStem,
+            });
+
+            // Step 3: byte-patch every supported DA_BI* chunk + drop the
+            // 75 excluded assets from the chunk set and the manifest.
+            LogLine("Stability: patching IntegritySettings in zen chunks");
+            var patcher = new BuildingStabilityPatcher { Log = Log };
+            var assetResults = patcher.PatchChunks(
+                legacyDir, chunksDir, manifestPath, usmapPath);
+
+            int patched = 0, skipped = 0, excluded = 0;
+            foreach (var r in assetResults)
+            {
+                if (r.Patched) patched++;
+                else if (r.Reason == "excluded-by-skiplist") excluded++;
+                else skipped++;
+            }
+            LogLine("Stability: patched=" + patched + ", skipped=" + skipped
+                    + ", excluded=" + excluded);
+
+            // Step 4: re-pack the (now filtered + patched) chunk set into
+            // an IoStore container. pack-raw produces ONLY .ucas + .utoc
+            // (it doesn't emit a .pak marker like to-zen does). UE5 needs
+            // the .pak as a "this is an IoStore mod" marker at mount time,
+            // so we generate the marker separately in step 5.
+            LogLine("retoc pack-raw: " + rawDir + " -> " + outBase + ".utoc");
+            RunRetoc(retocExe, new[] { "pack-raw", rawDir, outBase + ".utoc" });
+
+            var srcUcas = outBase + ".ucas";
+            var srcUtoc = outBase + ".utoc";
+            if (!File.Exists(srcUcas) || !File.Exists(srcUtoc))
+            {
+                throw new InvalidOperationException(
+                    "retoc pack-raw reported success but .ucas/.utoc missing under " + outBase);
+            }
+
+            // Step 5: synthesise the empty pak marker via retoc to-zen on
+            // an empty input dir. to-zen always emits a 347-byte stub .pak
+            // alongside its real .ucas/.utoc; we discard the latter and
+            // reuse only the .pak. The stub is deterministic + content-
+            // independent (UE accepts it as a generic IoStore mod marker
+            // pointing at any same-version companion .ucas/.utoc), so
+            // bytes from an "empty container" stub work just as well as
+            // bytes from a "full container" stub.
+            var stubInputDir = Path.Combine(stabRoot, "stub-input");
+            var stubOutDir   = Path.Combine(stabRoot, "stub-out");
+            Directory.CreateDirectory(stubInputDir);
+            Directory.CreateDirectory(stubOutDir);
+            var stubUtocPath = Path.Combine(stubOutDir, "stub.utoc");
+            LogLine("retoc to-zen (stub pak only): " + stubInputDir + " -> " + stubUtocPath);
+            RunRetoc(retocExe, new[]
+            {
+                "to-zen", "--version", "UE5_6", stubInputDir, stubUtocPath,
+            });
+            var srcPak = Path.Combine(stubOutDir, "stub.pak");
+            if (!File.Exists(srcPak))
+            {
+                throw new InvalidOperationException(
+                    "retoc to-zen (empty stub) did not produce a .pak at " + srcPak);
+            }
+
+            // Publish to outDir. The stability triplet ALWAYS includes its
+            // own .pak (pack-raw produces a real container that has to
+            // ship the .pak marker; no main pak overwrites it because
+            // the basename is unique).
+            var finalPak  = Path.Combine(outDir, stabilityBaseName + ".pak");
+            var finalUcas = Path.Combine(outDir, stabilityBaseName + ".ucas");
+            var finalUtoc = Path.Combine(outDir, stabilityBaseName + ".utoc");
+            File.Copy(srcPak,  finalPak,  true);
+            File.Copy(srcUcas, finalUcas, true);
+            File.Copy(srcUtoc, finalUtoc, true);
+
+            LogLine("Stability triplet published: " + stabilityBaseName
+                    + ".{pak,ucas,utoc} -> " + outDir
+                    + " (.pak=" + new FileInfo(finalPak).Length
+                    + " B, .ucas=" + new FileInfo(finalUcas).Length
+                    + " B, .utoc=" + new FileInfo(finalUtoc).Length + " B)");
+
+            return new BuildingStabilityResult
+            {
+                Enabled = true,
+                AssetResults = assetResults,
+                PakPath  = finalPak,
+                UcasPath = finalUcas,
+                UtocPath = finalUtoc,
+                PakSize  = new FileInfo(finalPak).Length,
+                UcasSize = new FileInfo(finalUcas).Length,
+                UtocSize = new FileInfo(finalUtoc).Length,
+            };
+        }
+
+        // Direct retoc invocation for the stability flow (which uses
+        // unpack-raw + pack-raw instead of going through the
+        // IoStoreCompositeBuilder). Same process semantics as the
+        // builder's RunRetoc - stdout/stderr captured, non-zero exit
+        // raises an InvalidOperationException with the stderr text.
+        void RunRetoc(string retocExe, string[] args)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = retocExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            foreach (var a in args) psi.ArgumentList.Add(a);
+
+            var proc = System.Diagnostics.Process.Start(psi);
+            var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = proc.StandardError.ReadToEnd();
+            proc.WaitForExit();
+
+            if (proc.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    "retoc " + args[0] + " failed (exit " + proc.ExitCode + ")\n"
+                    + (string.IsNullOrEmpty(stderr) ? stdout : stderr));
+            }
         }
 
         // Resolves the effective multiplier the build should use, with the
@@ -711,9 +910,26 @@ namespace Windrose.Quartermaster.Core
     // Standalone summary of "stability got included in this build". Kept
     // separate from PickupTripletResult so the caller can report the two
     // features independently in the response payload.
+    //
+    // AssetResults is populated with one entry per DA_BI_*.uasset the
+    // patcher saw. Patched=true entries are the assets whose
+    // IntegritySettings floats were overwritten; Patched=false entries
+    // are skipped assets (no IntegritySettings property, etc.). The
+    // single-toggle UI only cares about Enabled, but downstream callers
+    // (build response / log) can roll up the counts.
     public sealed class BuildingStabilityResult
     {
         public bool Enabled;
+        public List<BuildingStabilityAssetResult> AssetResults;
+        // Paths to the published stability companion triplet under outDir.
+        // The stability triplet always ships as a full triplet (pak + ucas
+        // + utoc), independent of the main pak / composite triplet.
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+        public long PakSize;
+        public long UcasSize;
+        public long UtocSize;
     }
 
     // Standalone summary of "no-smoke patches got included in this build".
