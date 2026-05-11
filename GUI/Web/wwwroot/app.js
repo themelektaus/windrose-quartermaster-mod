@@ -248,6 +248,46 @@ function bindSetupHandlers() {
         hideSetupOverlay();
         await loadAppData();
     });
+    document.getElementById('setup-close').addEventListener('click', () => {
+        // Manual re-open: app data is already loaded, just dismiss.
+        hideSetupOverlay();
+        resetSetupButtons();
+    });
+}
+
+// Reset all setup-action button visibility to the first-run defaults so a
+// second manual open doesn't inherit leftover state from a previous run.
+function resetSetupButtons() {
+    document.getElementById('setup-run').hidden      = false;
+    document.getElementById('setup-continue').hidden = true;
+    document.getElementById('setup-force').hidden    = true;
+    document.getElementById('setup-close').hidden    = true;
+    clearSetupLog();
+}
+
+// Manually re-open the setup overlay (from the Mods tab "Open setup" button).
+// Differs from the first-run path: app data is already loaded, so we offer
+// a Close button to dismiss without re-running anything.
+async function openSetupManually() {
+    resetSetupButtons();
+    try {
+        const status = await api('GET', '/api/setup/status');
+        showSetupOverlay(status);
+    } catch (err) {
+        // Fall back to a synthetic "everything failed" status so the user
+        // at least sees the dialog and the error context.
+        showSetupOverlay({
+            isReady: false,
+            hasVanillaPak: false,
+            vanillaPakError: err.message,
+        });
+    }
+    // Manual mode: always offer a Close so the user isn't trapped if the
+    // mod root is already healthy and they don't want to re-run anything.
+    document.getElementById('setup-close').hidden = false;
+    // Re-run is also useful from a manual open (e.g. after a game update);
+    // surface it without waiting for a failed run to reveal it.
+    document.getElementById('setup-force').hidden = false;
 }
 
 async function recheckSetup() {
@@ -2176,6 +2216,7 @@ function bindHandlers() {
     document.getElementById('mods-filter').addEventListener('input',          renderMods);
     document.getElementById('mods-filter-source').addEventListener('change',  renderMods);
     document.getElementById('mods-refresh').addEventListener('click',         loadMods);
+    document.getElementById('btn-open-setup').addEventListener('click',       openSetupManually);
     document.getElementById('mods-list').addEventListener('click', e => {
         const t = e.target;
         if (t && t.dataset && t.dataset.deleteMod) {
