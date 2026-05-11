@@ -1,14 +1,26 @@
 # Windrose Quartermaster
 
-Configurator + build pipeline for JSON-based mods for
-[Windrose](https://www.nexusmods.com/windrose). A small web GUI lets you
-edit profiles - a profile bundles item-stack-size tweaks and loot-table
-edits (with more domains to come) - and produces a single `_P.pak` you
-drop into the `~mods` folder.
+Configurator + build pipeline for data-pak mods for
+[Windrose](https://www.nexusmods.com/windrose). A small desktop GUI
+(WPF + WebView2, or a plain browser tab) lets you edit profiles and
+bake them into a single `_P.pak` that drops into the `~mods` folder.
+
+A profile bundles tweaks across multiple domains:
+
+- **Stack sizes** - per-item or global multiplier / absolute caps
+- **Loot tables** - per-category Min/Max multipliers
+- **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider
+- **Fast-travel bells & signal fires** - raise the placement caps
+- **Building stability** - structures hold longer cantilevers / taller towers
+- **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
+- **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider
+- **No smoke** - hide smoke / flame Niagara FX on campfires, furnaces, kilns
+- **Mods tab** - inspect `~mods/`, recycle-bin old Quartermaster builds
 
 Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) - no external
-reference mod needed.
+reference mod needed. The resulting pak is pure data, so no UE4SS / SML
+dependency, works in singleplayer / dedicated server / co-op alike.
 
 For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
 
@@ -113,16 +125,27 @@ auto-runs the dump + icon-extraction pipeline and streams the live
 log into the page. ~30-90 seconds total. Subsequent launches skip
 straight into the configurator.
 
-Click **New** to create a profile, or **Duplicate** an existing one.
-For each profile you can:
+Click **+** (New) in the header to create a profile, or the duplicate
+icon to clone an existing one. For each profile you can:
 
-- Pick a **global stack-size mode**: None, `vanilla * Multiplier` (with
-  optional Cap), or a flat `Absolute` value.
-- Set **per-item overrides** that win over the global policy, even for
-  items that are normally locked at stack=1 (Equipment, NPCs, Ship cannons,
-  Quest tokens).
-- Press **Build .pak** to run the patch + pack pipeline. The finished
-  `_P.pak` lands directly in the game's `~mods` folder, ready to play.
+- **Items tab** - pick a **global stack-size mode**: None,
+  `vanilla * Multiplier` (with optional Cap), or a flat `Absolute`
+  value. Set **per-item overrides** that win over the global policy,
+  even for items that are normally locked at stack=1 (Equipment, NPCs,
+  Ship cannons, Quest tokens).
+- **Loot Tables tab** - per-category Min/Max multipliers applied to
+  every entry in matching tables.
+- **Misc tab** - cards for pickup radius, fast-travel bell caps,
+  building stability, minimap range, bonfire radius and no-smoke FX.
+  Each card has its own toggle / slider; nothing is bundled into the
+  pak unless the corresponding card is enabled.
+- **Mods tab** - lists every `.pak` currently in your `~mods` folder,
+  marks Quartermaster builds, and recycles old ones with one click.
+  Also exposes a button that re-opens the first-run setup dialog so
+  you can re-dump vanilla JSONs / icons after a game update.
+
+Press **Build** to run the patch + pack pipeline. The finished `_P.pak`
+lands directly in the game's `~mods` folder, ready to play.
 
 Profiles persist as `Profiles\<id>.json` (gitignored).
 

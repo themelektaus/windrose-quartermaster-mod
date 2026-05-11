@@ -1,47 +1,51 @@
 [size=4][b]Description[/b][/size]
 
-Increases the maximum stack size (MaxCountInSlot) of every stackable vanilla item in Windrose. Pick one of 11 variants - multipliers from x2 up to x10, or absolute caps at 999 or 9999. Weapons, armor and other non-stackable items are left untouched, so the only thing that changes is how many of a stackable item fit into a single inventory slot.
+Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, building, navigation and FX, then bakes them into a single [code]_P.pak[/code] you drop into the [code]~mods[/code] folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
 
-Multiplier values are calculated against an actual vanilla snapshot, so a "x4" pak really gives you 4x the vanilla stack size.
-
-
-[size=4][b]Installation instructions[/b][/size]
-
-[list]
-[*][b]1. [/b]Pick exactly [b]one[/b] of the Quartermaster_*.pak files (e.g. [i]Quartermaster_x4_P.pak[/i]).
-[*][b]2. [/b]Copy it into your [code]~mods[/code] folder:
-  [b]Client:[/b] [code]<Steam>\steamapps\common\Windrose\R5\Content\Paks\~mods\[/code]
-
-  [b]Server:[/b] [code]<Server-Root>\R5\Content\Paks\~mods\[/code]
-[*][b]3. [/b]If you previously installed another Quartermaster_*.pak, [b]remove it first[/b]. Only one variant should ever live in [code] ~mods [/code] at a time.
-[*][b]4. [/b]Launch the game (or restart the server). New stack limits apply immediately - existing inventories are not affected retroactively, but new picks-up and crafted items will stack up to the new limit.
-[/list]
+There is no UE4SS / SML dependency. Everything ships as a pure data pak that works in singleplayer, on dedicated servers, and on co-op sessions as long as the same pak is installed on both sides.
 
 
 [size=4][b]Main features[/b][/size]
 
 [list]
-[*][b]Multiplier variants[/b] - x2, x3, x4, x5, x6, x7, x8, x9, x10
-[*][b]Absolute variants[/b] - 999, 9999 (every stackable item gets the same hard cap)
-[*][b]527 items affected[/b] - ammo, consumables, resources, ship cargo, etc.
-[*][b]Vanilla-safe[/b] - weapons, armor, tools and any other inventory entry with a vanilla stack size of 1 stay vanilla
-[*][b]Server + client compatible[/b] - works in singleplayer, on dedicated servers, and on co-op sessions (drop the same pak on both sides)
-[*][b]Clean JSON schema[/b] - no [code]R5LogJsonConverter[/code] errors in the log, no startup crashes from missing item meshes
+[*][b]Stack sizes[/b] - per-item or global multiplier/absolute caps; weapons, armor and other unstackable items stay vanilla unless you explicitly promote them.
+[*][b]Loot tables[/b] - per-category Min/Max multipliers (mobs, plants, chests, fishing, ...) leave everything else alone.
+[*][b]Pickup radius[/b] - free slider from 1.0x to 10.0x for the auto-pickup magnet range (vanilla 4 m).
+[*][b]Fast-travel bells & signal fires[/b] - raise the placement caps (vanilla 10 / 3).
+[*][b]Building stability[/b] - structures hold longer cantilevers and taller towers without collapsing.
+[*][b]Minimap range[/b] - 1.0x to 5.0x slider for the foot/ship reveal range (vanilla 2.5 m / 7.5 m).
+[*][b]Bonfire radius[/b] - 1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m).
+[*][b]No smoke[/b] - hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns.
+[*][b]Mods tab[/b] - lists every [code].pak[/code] in your [code]~mods[/code] folder, marks Quartermaster builds, and lets you recycle-bin them with one click.
+[/list]
+
+Each feature has its own toggle and (where applicable) slider, so you can ship a pak that only changes pickup radius, or one that touches half the game - same pipeline either way.
+
+
+[size=4][b]Installation[/b][/size]
+
+[list]
+[*][b]1. [/b]Download and run [code]Quartermaster.exe[/code]. On first start it auto-extracts the vanilla item JSONs and icons from your Windrose install - takes 30-90 seconds.
+[*][b]2. [/b]Create a profile, pick the tweaks you want, hit [b]Build[/b]. The resulting [code]_P.pak[/code] lands directly in [code]<Steam>\steamapps\common\Windrose\R5\Content\Paks\~mods\[/code].
+[*][b]3. [/b]Launch the game (or restart the server). For multiplayer the same pak has to live in the server's [code]~mods[/code] folder.
+[*][b]4. [/b]To switch between configurations, build a new profile and let the Mods tab recycle the old pak - only one Quartermaster build should live in [code]~mods[/code] at a time.
 [/list]
 
 
 [size=4][b]Requirements[/b][/size]
 
 [list]
-[*][b]Windrose[/b] (any version that supports the [code]~mods[/code] pak loading convention)
-[*]No additional mods, no UE4SS framework needed - this is a pure data pak
+[*][b]Windrose[/b] (any version that supports the [code]~mods[/code] pak loading convention).
+[*][b].NET 8 desktop runtime[/b] (free, ~70 MB - the bundled icon extractor is a framework-dependent net8.0 process; the WPF host ships its own .NET 10 runtime).
+[*][b]Microsoft Edge WebView2 runtime[/b] - preinstalled on Windows 11 and recent Windows 10 builds.
+[*]No UE4SS, no SML, no other mod loader required.
 [/list]
 
 
 [size=4][b]Source code[/b][/size]
 
-The full build pipeline (PowerShell scripts, vanilla snapshot extracted directly from the game pak) is open source on GitHub:
+Full source - C# build pipeline, web GUI, vanilla snapshot extraction - is on GitHub:
 
-[size=4]👉 [url=https://github.com/themelektaus/windrose-size-stack-mod]https://github.com/themelektaus/windrose-size-stack-mod[/url][/size]
+[size=4]https://github.com/themelektaus/windrose-size-stack-mod[/size]
 
-Clone it if you want to build your own variant (e.g. a custom multiplier), inspect what exactly gets changed per item, or port the workflow to a different mod.
+Clone it if you want to build your own variant, audit what exactly gets changed per feature, or extend the pipeline with new tweaks.
