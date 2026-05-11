@@ -33,12 +33,16 @@
   </div>
 
   <header>
-    <h1>Windrose Quartermaster</h1>
+    <div class="header-left">
+      <h1>Windrose Quartermaster</h1>
+      <div id="profile-meta" class="profile-meta"></div>
+    </div>
     <nav id="tabs" class="tabs" role="tablist">
-      <button type="button" class="tab active" data-tab="items" role="tab" aria-selected="true">Items</button>
+      <button type="button" class="tab active" data-tab="misc"  role="tab" aria-selected="true">Basic</button>
+      <button type="button" class="tab"        data-tab="items" role="tab" aria-selected="false">Items</button>
       <button type="button" class="tab"        data-tab="loot"  role="tab" aria-selected="false">Loot Tables</button>
-      <button type="button" class="tab"        data-tab="misc"  role="tab" aria-selected="false">Misc</button>
       <button type="button" class="tab"        data-tab="mods"  role="tab" aria-selected="false">Mods</button>
+      <button id="btn-build" type="button" class="success">BUILD</button>
     </nav>
     <div id="profile-bar" class="profile-bar">
       <label class="profile-select-label">Profile
@@ -49,9 +53,7 @@
       <button id="btn-rename"     type="button" class="icon-button" style="background-image: url(edit.svg); ">&nbsp;&nbsp;</button>
       <button id="btn-save"       type="button" class="icon-button" style="background-image: url(save.svg); " disabled>&nbsp;&nbsp;</button>
       <button id="btn-delete"     type="button" class="icon-button" style="background-image: url(delete.svg); ">&nbsp;&nbsp;</button>
-      <button id="btn-build"      type="button" class="primary">Build</button>
     </div>
-    <div id="profile-meta" class="profile-meta"></div>
   </header>
 
   <main>
@@ -78,7 +80,7 @@
     </div>
 
     <!-- ITEMS PAGE -->
-    <div class="tab-page" data-tab="items">
+    <div class="tab-page" data-tab="items" hidden>
       <aside class="pane left">
         <section class="card">
           <h2>Base Stack Size</h2>
@@ -173,8 +175,40 @@
          radius (IoStore blueprint patch) and fast-travel build limits
          (JSON patch). Both are profile-scoped and ship as part of the
          main pak / triplet. -->
-    <div class="tab-page misc-page" data-tab="misc" hidden>
+    <div class="tab-page misc-page" data-tab="misc">
+      
       <aside class="pane misc">
+        <section class="card">
+          <div class="card-icon">
+            <div data-icon style="background-image: url(stack-size.png); "></div>
+          </div>
+          <div class="card-content">
+            <h2>Stack Size</h2>
+            <p class="hint">Global base for every item. Per-item overrides live on the Items tab.</p>
+            <fieldset id="stacksize-globals-misc">
+              <label class="radio-row">
+                <input type="radio" name="ssmode-misc" value="none" checked>
+                None
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="ssmode-misc" value="multiplier">
+                Relative
+              </label>
+              <div class="indent">
+                <label>Multiplier <input type="number" id="m-ss-mult" min="1" step="1" value="4" disabled></label>
+                <label>Cap (0 = none) <input type="number" id="m-ss-cap" min="0" step="1" value="0" disabled></label>
+              </div>
+              <label class="radio-row">
+                <input type="radio" name="ssmode-misc" value="absolute">
+                Absolute
+              </label>
+              <div class="indent">
+                <label>Value <input type="number" id="m-ss-abs" min="0" step="1" value="999" disabled></label>
+              </div>
+            </fieldset>
+          </div>
+        </section>
+        
         <section class="card">
           <div class="card-icon">
             <div data-icon style="background-image: url(pickup-radius.png); "></div>
@@ -319,6 +353,10 @@
             </div>
           </div>
         </section>
+        
+        <section class="card" style="visibility: hidden; "></section>
+        <section class="card" style="visibility: hidden; "></section>
+        
       </aside>
     </div>
 

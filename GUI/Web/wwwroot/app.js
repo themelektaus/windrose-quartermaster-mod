@@ -18,7 +18,7 @@ const state = {
     profiles: [],    // summaries from /api/profiles
     current: null,   // full profile from /api/profiles/{id}
     isDirty: false,
-    activeTab: 'items',
+    activeTab: 'misc',
 
     // Windrose ~mods/ folder snapshot (lazy-loaded the first time the
     // Mods tab is shown, then refreshed after every successful build and
@@ -443,14 +443,7 @@ async function loadProfile(id) {
 
 function applyProfileToUI() {
     const p = state.current;
-    const ss = (p.globals && p.globals.stackSize) || {};
-    const mode = ss.absolute != null ? 'absolute'
-              : ss.multiplier != null ? 'multiplier'
-              : 'none';
-    document.querySelector('input[name="ssmode"][value="' + mode + '"]').checked = true;
-    document.getElementById('ss-mult').value = ss.multiplier == null ? 4 : ss.multiplier;
-    document.getElementById('ss-cap').value  = ss.cap        == null ? 0 : ss.cap;
-    document.getElementById('ss-abs').value  = ss.absolute   == null ? 999 : ss.absolute;
+    syncStackSizeUIFromState();
     // Pickup-radius: a checkbox toggles the whole subtree, the slider
     // sets globals.pickupRadius.multiplier (1.0 - 10.0).
     const pr = (p.globals && p.globals.pickupRadius) || null;
@@ -523,13 +516,43 @@ function renderProfileMeta() {
     out.innerHTML = html;
 }
 
+// The stack-size controls exist twice in the DOM: once on the Items tab
+// (the original "left rail" fieldset) and once as a card on the Misc tab.
+// Both edit the same globals.stackSize - we keep them in sync by writing
+// to both whenever state changes, and by reading from whichever set fired
+// the event. Each entry maps the four bits we need (radio group name, the
+// three number inputs).
+const STACK_SIZE_SETS = [
+    { name: 'ssmode',      mult: 'ss-mult',   cap: 'ss-cap',   abs: 'ss-abs'   },
+    { name: 'ssmode-misc', mult: 'm-ss-mult', cap: 'm-ss-cap', abs: 'm-ss-abs' },
+];
+
+function syncStackSizeUIFromState() {
+    const ss = (state.current && state.current.globals && state.current.globals.stackSize) || {};
+    const mode = ss.absolute != null ? 'absolute'
+              : ss.multiplier != null ? 'multiplier'
+              : 'none';
+    for (const set of STACK_SIZE_SETS) {
+        const radio = document.querySelector('input[name="' + set.name + '"][value="' + mode + '"]');
+        if (radio) radio.checked = true;
+        document.getElementById(set.mult).value = ss.multiplier == null ? 4   : ss.multiplier;
+        document.getElementById(set.cap).value  = ss.cap        == null ? 0   : ss.cap;
+        document.getElementById(set.abs).value  = ss.absolute   == null ? 999 : ss.absolute;
+    }
+}
+
 function syncStackSizeInputsState() {
-    const mode = document.querySelector('input[name="ssmode"]:checked').value;
-    document.getElementById('ss-mult').disabled = mode !== 'multiplier';
-    document.getElementById('ss-cap').disabled  = mode !== 'multiplier';
-    document.getElementById('ss-abs').disabled  = mode !== 'absolute';
-    for (const r of document.querySelectorAll('input[name="ssmode"]')) {
-        r.disabled = false;
+    // Mode is the same on both sets (writes are mirrored), so read from the
+    // primary set and fan out the disabled flags to all sets.
+    const checked = document.querySelector('input[name="ssmode"]:checked');
+    const mode = checked ? checked.value : 'none';
+    for (const set of STACK_SIZE_SETS) {
+        document.getElementById(set.mult).disabled = mode !== 'multiplier';
+        document.getElementById(set.cap).disabled  = mode !== 'multiplier';
+        document.getElementById(set.abs).disabled  = mode !== 'absolute';
+        for (const r of document.querySelectorAll('input[name="' + set.name + '"]')) {
+            r.disabled = false;
+        }
     }
 }
 
@@ -1619,12 +1642,25 @@ function refreshLtRow(ltId) {
 
 // ---------- Mutations ----------------------------------------------------
 
-function setStackSizeFromUI() {
+// `srcEvt` is the change/input event from whichever set the user touched.
+// We pick that set as the source of truth, write to state, and then mirror
+// the canonical state back to all sets so the twin UI stays in sync. If
+// called without an event (defensive paths), we fall back to the primary
+// set so behaviour matches the pre-mirror version.
+function setStackSizeFromUI(srcEvt) {
     if (!state.current) return;
-    const mode = document.querySelector('input[name="ssmode"]:checked').value;
-    const mult = parseInt(document.getElementById('ss-mult').value, 10);
-    const cap  = parseInt(document.getElementById('ss-cap').value,  10);
-    const abs  = parseInt(document.getElementById('ss-abs').value,  10);
+    let src = STACK_SIZE_SETS[0];
+    if (srcEvt && srcEvt.target) {
+        const t = srcEvt.target;
+        const found = STACK_SIZE_SETS.find(s =>
+            t.name === s.name || t.id === s.mult || t.id === s.cap || t.id === s.abs);
+        if (found) src = found;
+    }
+    const checked = document.querySelector('input[name="' + src.name + '"]:checked');
+    const mode = checked ? checked.value : 'none';
+    const mult = parseInt(document.getElementById(src.mult).value, 10);
+    const cap  = parseInt(document.getElementById(src.cap).value,  10);
+    const abs  = parseInt(document.getElementById(src.abs).value,  10);
 
     state.current.globals = state.current.globals || {};
     if (mode === 'none') {
@@ -1641,6 +1677,7 @@ function setStackSizeFromUI() {
             absolute:   isFinite(abs) && abs >= 0 ? abs : 0,
         };
     }
+    syncStackSizeUIFromState();
     syncStackSizeInputsState();
     markDirty();
     renderStatus();
@@ -2157,12 +2194,14 @@ function bindHandlers() {
         setFooterCollapsed(!isCollapsed);
     });
 
-    for (const r of document.querySelectorAll('input[name="ssmode"]')) {
-        r.addEventListener('change', setStackSizeFromUI);
+    for (const set of STACK_SIZE_SETS) {
+        for (const r of document.querySelectorAll('input[name="' + set.name + '"]')) {
+            r.addEventListener('change', setStackSizeFromUI);
+        }
+        document.getElementById(set.mult).addEventListener('input', setStackSizeFromUI);
+        document.getElementById(set.cap).addEventListener('input',  setStackSizeFromUI);
+        document.getElementById(set.abs).addEventListener('input',  setStackSizeFromUI);
     }
-    document.getElementById('ss-mult').addEventListener('input', setStackSizeFromUI);
-    document.getElementById('ss-cap').addEventListener('input',  setStackSizeFromUI);
-    document.getElementById('ss-abs').addEventListener('input',  setStackSizeFromUI);
     document.getElementById('pickup-enabled').addEventListener('change', setPickupRadiusFromUI);
     document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
     document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
