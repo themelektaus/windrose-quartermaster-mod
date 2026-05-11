@@ -123,7 +123,7 @@ header h1 {
 }
 
 input, button, select {
-  background: var(--bg-elev-2);
+  background-color: var(--bg-elev-2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--border-radius);
@@ -140,13 +140,13 @@ select:focus {
 }
 
 button {
-  background: var(--bg-elev-2);
+  background-color: var(--bg-elev-2);
   color: var(--text);
   transition: background .1s;
 }
 
 button:hover:not(:disabled) {
-  background: var(--border);
+  background-color: var(--border);
 }
 
 input:disabled,
@@ -164,6 +164,12 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+.icon-button {
+  background-position: center;
+  background-size: 60%;
+  background-repeat: no-repeat;
 }
 
 .profile-meta {
@@ -857,7 +863,6 @@ footer.collapsed .footer-body {
 .tabs {
   display: flex;
   gap: .5em;
-  translate: 0 1em;
 }
 
 .tabs .tab {
