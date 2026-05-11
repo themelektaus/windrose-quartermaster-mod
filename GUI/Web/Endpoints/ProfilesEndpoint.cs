@@ -181,6 +181,12 @@ public static class ProfilesEndpoint
                     Furnace = g.NoSmoke.Furnace,
                     Kiln = g.NoSmoke.Kiln,
                 },
+            MinimapRange = g.MinimapRange == null
+                ? null
+                : new MinimapRangeGlobal
+                {
+                    Multiplier = g.MinimapRange.Multiplier,
+                },
         };
     }
 
@@ -262,8 +268,8 @@ public static class ProfilesEndpoint
             // True when the single-toggle "enhanced building stability"
             // is on - the build will then self-bake the 787 supported
             // vanilla DA_BI* DataAssets (overwriting the IntegritySettings
-            // floats directly in their raw zen chunks) and ship them as
-            // a _PStab_P companion triplet next to the main mod.
+            // floats directly in their raw zen chunks) and ship them in
+            // the _Raw_P companion triplet next to the main mod.
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
@@ -271,6 +277,16 @@ public static class ProfilesEndpoint
             // will then self-bake the relevant vanilla Niagara assets
             // (silencing emitter handles) into the IoStore composite.
             hasGlobalNoSmoke = HasAnyNoSmokeCategory(p),
+            // True when Minimap-range is configured with a multiplier
+            // > 1.0 (1.0 / null collapses to "no minimap mod"). The
+            // build then lazy-extracts the vanilla DefaultR5MapSettings
+            // .ini, scales four reveal-range fields linearly, and
+            // ships the result as a loose file in the _Raw_P companion
+            // .pak (shared with stability when both are active).
+            hasGlobalMinimapRange = p.Globals != null
+                                    && p.Globals.MinimapRange != null
+                                    && p.Globals.MinimapRange.Multiplier.HasValue
+                                    && Math.Abs(p.Globals.MinimapRange.Multiplier.Value - 1.0) > 1e-9,
         };
     }
 

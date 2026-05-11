@@ -19,15 +19,28 @@ namespace Windrose.Quartermaster.Core
     //      AfterExtract patches + retoc to-zen by IoStoreCompositeBuilder.
     //      Carries the Pickup and NoSmoke features.
     //
-    //   2. Stability triplet  Quartermaster_<name>_PStab_P.{pak,ucas,utoc}.
-    //      Built via retoc unpack-raw + BuildingStabilityPatcher (byte-level
-    //      patches on raw zen chunks) + retoc pack-raw. Lives in its own
-    //      triplet because to-zen produces game-incompatible output for the
-    //      vanilla DA_BI* class (R5CollisionApproximation uses a custom C++
-    //      Serialize() that breaks under unversioned <-> versioned round-
-    //      tripping), so we must avoid the to-zen step for stability assets
-    //      and the resulting container can't be merged with the composite
-    //      triplet's container.
+    //   2. Raw companion  Quartermaster_<name>_Raw_P.{pak,ucas,utoc} -
+    //      a SECOND mount-point separate from the composite, holding
+    //      features that can't go through retoc to-zen. Two paths
+    //      contribute here:
+    //        - Stability: retoc unpack-raw + byte-level patches on raw
+    //          zen chunks + retoc pack-raw -> .ucas + .utoc. Lives here
+    //          because to-zen produces game-incompatible output for the
+    //          vanilla DA_BI* class (R5CollisionApproximation uses a
+    //          custom C++ Serialize() that breaks under unversioned <->
+    //          versioned round-tripping).
+    //        - Minimap: a vanilla R5/Config/DefaultR5MapSettings.ini
+    //          extracted via AES-keyed repak unpack, scaled by a
+    //          user-supplied multiplier, re-packed via repak pack -> .pak.
+    //          Lives here because the .ini lands in the PakFile subsystem
+    //          (not IoStore) and retoc to-zen silently drops non-asset
+    //          files. The PakFile + IoStore backends mount independently
+    //          under the same basename so both can coexist in one container.
+    //
+    //      Layout is adaptive:
+    //        - Stability + Minimap -> real .pak (minimap INI) + real .ucas/.utoc (stability)
+    //        - Stability only      -> 347-byte stub .pak + real .ucas/.utoc
+    //        - Minimap only        -> real .pak ONLY (no .ucas/.utoc emitted)
     //
     // Composite sources today:
     //   - Pickup:  vanilla GA_Loot_AutoPickup Blueprint extracted via
@@ -39,8 +52,8 @@ namespace Windrose.Quartermaster.Core
     //              Three independent toggles map to three asset groups.
     //
     // The composite triplet shares the basename of the main pak so UE5
-    // mounts them as one logical mod. The stability triplet has its own
-    // basename (..._PStab_P) and gets recognised as a companion by
+    // mounts them as one logical mod. The raw companion has its own
+    // basename (..._Raw_P) and gets recognised as a companion by
     // ModsEndpoint so it aggregates back into a single logical mod in
     // the UI.
     public sealed class BuildPipeline
@@ -77,12 +90,18 @@ namespace Windrose.Quartermaster.Core
         // see "no DA_BI assets in chunk manifest" in the build log.
         public const string StabilityContainerFilename = "pakchunk0_s3-Windows.utoc";
 
-        // Suffix appended to the safe profile name to derive the stability
+        // Suffix appended to the safe profile name to derive the raw
         // companion triplet's basename. The "_P" terminator makes UE5
         // recognise it as a mod container at mount time. ModsEndpoint uses
-        // the same constant to aggregate the stability triplet back into
-        // the parent mod's list entry.
-        public const string StabilityCompanionSuffix = "_PStab_P";
+        // the same constant to aggregate the raw companion back into the
+        // parent mod's list entry.
+        //
+        // "Raw" because the contained payloads bypass retoc's to-zen step
+        // (stability bytes-patches raw zen chunks, minimap ships a loose
+        // config .ini through the PakFile subsystem) - the basename is a
+        // single landing pad for whichever subset of those features the
+        // profile activates.
+        public const string RawCompanionSuffix = "_Raw_P";
 
         // Vanilla MagnetRadius value (cm) the patcher multiplies against
         // to derive the patched value. 400cm = 4m is the Windrose 5.6
@@ -126,15 +145,16 @@ namespace Windrose.Quartermaster.Core
             var sharedUcasPath = Path.Combine(outDir, sharedBaseName + ".ucas");
             var sharedUtocPath = Path.Combine(outDir, sharedBaseName + ".utoc");
 
-            // Stability lives in a SEPARATE triplet (see class header for
-            // why). Same out-dir, distinct basename so UE mounts both as
+            // Raw companion lives in a SEPARATE triplet (see class header
+            // for why). Same out-dir, distinct basename so UE mounts both as
             // independent containers but ModsEndpoint aggregates them
             // back into one logical "Quartermaster_<name>" row in the
-            // mods list.
-            var stabilityBaseName = "Quartermaster_" + safeName + StabilityCompanionSuffix;
-            var stabilityPakPath  = Path.Combine(outDir, stabilityBaseName + ".pak");
-            var stabilityUcasPath = Path.Combine(outDir, stabilityBaseName + ".ucas");
-            var stabilityUtocPath = Path.Combine(outDir, stabilityBaseName + ".utoc");
+            // mods list. Carries whichever subset of {stability, minimap}
+            // the profile activates - see BuildRawCompanion for layout.
+            var rawBaseName = "Quartermaster_" + safeName + RawCompanionSuffix;
+            var rawPakPath  = Path.Combine(outDir, rawBaseName + ".pak");
+            var rawUcasPath = Path.Combine(outDir, rawBaseName + ".ucas");
+            var rawUtocPath = Path.Combine(outDir, rawBaseName + ".utoc");
 
             var tmpDir = Path.Combine(_paths.BuildTmp, profile.Id);
 
@@ -155,7 +175,7 @@ namespace Windrose.Quartermaster.Core
                     foreach (var p in new[]
                     {
                         outPakPath, sharedUcasPath, sharedUtocPath,
-                        stabilityPakPath, stabilityUcasPath, stabilityUtocPath,
+                        rawPakPath, rawUcasPath, rawUtocPath,
                     })
                     {
                         if (File.Exists(p)) File.Delete(p);
@@ -232,7 +252,9 @@ namespace Windrose.Quartermaster.Core
                 bool stabilityActive = ResolveStabilityEnabled(profile);
                 var noSmokeCategories = ResolveNoSmokeCategories(profile);
                 bool noSmokeActive = noSmokeCategories.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive;
+                double minimapMultiplier = ResolveMinimapMultiplier(profile);
+                bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -264,14 +286,19 @@ namespace Windrose.Quartermaster.Core
                     noSmokeResult = compositeResult.NoSmoke;
                 }
 
-                // Stability triplet is independent of the composite (see
-                // class header). Built only when the toggle is on; goes to
-                // its own _PStab_P basename. ModsEndpoint recognises the
-                // suffix and treats both triplets as one logical mod.
+                // Raw companion is independent of the composite (see
+                // class header). Built only when at least one of its
+                // member features (stability / minimap) is on; goes to
+                // its own _Raw_P basename. ModsEndpoint recognises the
+                // suffix and treats both containers as one logical mod.
                 BuildingStabilityResult stabilityResult = null;
-                if (stabilityActive)
+                MinimapRangeResult minimapResult = null;
+                if (stabilityActive || minimapActive)
                 {
-                    stabilityResult = BuildStabilityTriplet(profile, outDir, stabilityBaseName);
+                    var rawOut = BuildRawCompanion(profile, outDir, rawBaseName,
+                                                   stabilityActive, minimapActive, minimapMultiplier);
+                    stabilityResult = rawOut.Stability;
+                    minimapResult = rawOut.Minimap;
                 }
 
                 PakBuildResult pakResult = null;
@@ -314,6 +341,7 @@ namespace Windrose.Quartermaster.Core
                     PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
                     StabilityResult = stabilityResult,
                     NoSmokeResult = noSmokeResult,
+                    MinimapResult = minimapResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -326,7 +354,7 @@ namespace Windrose.Quartermaster.Core
                     {
                         tmpDir,
                         Path.Combine(_paths.BuildTmp, profile.Id + "__iostore"),
-                        Path.Combine(_paths.BuildTmp, profile.Id + "__stability"),
+                        Path.Combine(_paths.BuildTmp, profile.Id + "__raw"),
                     })
                     {
                         if (!Directory.Exists(dir)) continue;
@@ -569,25 +597,141 @@ namespace Windrose.Quartermaster.Core
             public NoSmokeResult NoSmoke;
         }
 
-        // Builds the stability companion triplet by:
-        //   1. retoc unpack-raw on pakchunk0_s3-Windows.utoc -> raw zen
-        //      chunks + manifest.json in a staging dir.
-        //   2. retoc to-legacy with --filter DA_BI on the game Paks dir
-        //      -> legacy .uasset/.uexp pairs used only as PROBE INPUT to
-        //      find IntegritySettings byte patterns inside the raw chunks.
-        //   3. BuildingStabilityPatcher walks the legacy probes, locates
-        //      each asset's 16-byte IntegritySettings pattern uniquely
-        //      within its mapped raw chunk, and overwrites it in place.
-        //      Excluded chunks (75 non-placeable / non-buildable) are
-        //      dropped from both chunksDir AND manifest.
-        //   4. retoc pack-raw on the filtered chunk set -> IoStore triplet
-        //      at outDir/<stabilityBaseName>.{pak,ucas,utoc}.
+        // Builds the raw companion under <rawBaseName>.{pak[,ucas,utoc]},
+        // carrying whichever subset of {stability, minimap} the profile
+        // activated. Adaptive layout - emitted files depend on inputs:
         //
-        // The stability triplet is INDEPENDENT of the composite triplet
-        // because the two retoc paths (to-zen vs pack-raw) produce
-        // incompatible container formats. See class header for context.
-        BuildingStabilityResult BuildStabilityTriplet(
-            Profile profile, string outDir, string stabilityBaseName)
+        //   stability && minimap  -> .pak (minimap INI) + .ucas/.utoc (stability)
+        //   stability only        -> 347-byte stub .pak + .ucas/.utoc
+        //   minimap only          -> .pak (minimap INI) ONLY, no .ucas/.utoc
+        //
+        // The raw companion is INDEPENDENT of the composite triplet
+        // because (a) the retoc paths it uses for stability (unpack-raw
+        // + pack-raw) produce IoStore container bytes incompatible with
+        // the composite's to-zen output, and (b) minimap ships a loose
+        // .ini file in the PakFile subsystem which to-zen would silently
+        // drop. See class header for the full reasoning.
+        BuildRawCompanionOutput BuildRawCompanion(
+            Profile profile, string outDir, string rawBaseName,
+            bool stabilityActive, bool minimapActive, double minimapMultiplier)
+        {
+            if (!stabilityActive && !minimapActive)
+            {
+                throw new InvalidOperationException(
+                    "BuildRawCompanion called with no active feature - this is a "
+                    + "programmer error; the caller should have skipped the call.");
+            }
+
+            Directory.CreateDirectory(outDir);
+
+            // Raw work area. Sibling of tmpDir + iostore dir so a single
+            // keepTemp=false run can wipe all three independently.
+            var rawRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__raw");
+            if (Directory.Exists(rawRoot)) Directory.Delete(rawRoot, true);
+            Directory.CreateDirectory(rawRoot);
+
+            // Resolve outputs eagerly so cleanup paths can always reach them.
+            var finalPak  = Path.Combine(outDir, rawBaseName + ".pak");
+            var finalUcas = Path.Combine(outDir, rawBaseName + ".ucas");
+            var finalUtoc = Path.Combine(outDir, rawBaseName + ".utoc");
+
+            // 1. STABILITY: when active, builds the .ucas/.utoc payload
+            //    via retoc unpack-raw + byte-patch + retoc pack-raw, plus
+            //    an empty stub .pak to use IF minimap isn't going to
+            //    supply a real one. The .pak path here is a temporary
+            //    location inside rawRoot; the final pak copy is decided
+            //    after step 2 runs.
+            BuildingStabilityResult stabilityResult = null;
+            string srcUcas = null, srcUtoc = null, stubPak = null;
+            if (stabilityActive)
+            {
+                stabilityResult = BuildStabilityInsideRawRoot(
+                    profile, rawRoot, rawBaseName,
+                    out srcUcas, out srcUtoc, out stubPak);
+            }
+
+            // 2. MINIMAP: when active, lazy-extracts the vanilla
+            //    DefaultR5MapSettings.ini, scales the four reveal-range
+            //    floats by `multiplier`, and repaks the result into a
+            //    real .pak. This .pak displaces any stub from step 1.
+            MinimapRangeResult minimapResult = null;
+            string srcRealPak = null;
+            if (minimapActive)
+            {
+                minimapResult = BuildMinimapPakInsideRawRoot(
+                    profile, rawRoot, rawBaseName, minimapMultiplier,
+                    out srcRealPak);
+            }
+
+            // 3. PUBLISH: copy the resolved files into outDir under the
+            //    raw basename. Adaptive: stub .pak is used only when no
+            //    real minimap pak exists; .ucas/.utoc are emitted only
+            //    when stability provided them.
+            var publishedPak = srcRealPak ?? stubPak;
+            if (publishedPak == null)
+            {
+                // Both features somehow produced nothing - shouldn't
+                // happen because we required at least one active above.
+                throw new InvalidOperationException(
+                    "Raw companion produced no .pak - internal pipeline error.");
+            }
+            File.Copy(publishedPak, finalPak, true);
+            long finalPakSize = new FileInfo(finalPak).Length;
+
+            long finalUcasSize = 0, finalUtocSize = 0;
+            if (srcUcas != null && srcUtoc != null)
+            {
+                File.Copy(srcUcas, finalUcas, true);
+                File.Copy(srcUtoc, finalUtoc, true);
+                finalUcasSize = new FileInfo(finalUcas).Length;
+                finalUtocSize = new FileInfo(finalUtoc).Length;
+            }
+
+            // Reflect the published paths onto the per-feature results
+            // so callers see "where on disk did my feature land".
+            if (stabilityResult != null)
+            {
+                stabilityResult.PakPath  = finalPak;
+                stabilityResult.UcasPath = finalUcas;
+                stabilityResult.UtocPath = finalUtoc;
+                stabilityResult.PakSize  = finalPakSize;
+                stabilityResult.UcasSize = finalUcasSize;
+                stabilityResult.UtocSize = finalUtocSize;
+            }
+            if (minimapResult != null)
+            {
+                minimapResult.PakPath = finalPak;
+                minimapResult.PakSize = finalPakSize;
+            }
+
+            // Single combined log line so the build log stays readable
+            // regardless of which subset is active.
+            var emittedFiles = ".pak"
+                + (finalUcasSize > 0 ? ",ucas" : "")
+                + (finalUtocSize > 0 ? ",utoc" : "");
+            LogLine("Raw companion published: " + rawBaseName + ".{" + emittedFiles
+                    + "} -> " + outDir
+                    + " (.pak=" + finalPakSize + " B"
+                    + (finalUcasSize > 0 ? ", .ucas=" + finalUcasSize + " B" : "")
+                    + (finalUtocSize > 0 ? ", .utoc=" + finalUtocSize + " B" : "")
+                    + ")");
+
+            return new BuildRawCompanionOutput
+            {
+                Stability = stabilityResult,
+                Minimap = minimapResult,
+            };
+        }
+
+        // Inner stability builder: runs the retoc unpack-raw + to-legacy
+        // + BuildingStabilityPatcher + pack-raw pipeline inside rawRoot,
+        // and produces the source paths for .pak/.ucas/.utoc that the
+        // caller then publishes. Splits the pak source: srcStubPak is
+        // the 347-byte empty marker; the caller may opt to use a real
+        // pak instead (when minimap is also active).
+        BuildingStabilityResult BuildStabilityInsideRawRoot(
+            Profile profile, string rawRoot, string rawBaseName,
+            out string srcUcas, out string srcUtoc, out string srcStubPak)
         {
             if (GamePaksDirProvider == null)
             {
@@ -617,16 +761,9 @@ namespace Windrose.Quartermaster.Core
             var retocExe = _retocResolver.Resolve();
             var usmapPath = UsmapLocator.Find(_paths.ModRoot);
 
-            Directory.CreateDirectory(outDir);
-
-            // Stability work area. Sibling of tmpDir + iostore dir so a
-            // single keepTemp=false run can wipe all three independently.
-            var stabRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__stability");
-            if (Directory.Exists(stabRoot)) Directory.Delete(stabRoot, true);
-            Directory.CreateDirectory(stabRoot);
-            var rawDir    = Path.Combine(stabRoot, "raw");
-            var legacyDir = Path.Combine(stabRoot, "legacy");
-            var outBase   = Path.Combine(stabRoot, "out", stabilityBaseName);
+            var rawDir    = Path.Combine(rawRoot, "stability-raw");
+            var legacyDir = Path.Combine(rawRoot, "stability-legacy");
+            var outBase   = Path.Combine(rawRoot, "stability-out", rawBaseName);
             Directory.CreateDirectory(Path.GetDirectoryName(outBase));
 
             // Step 1: unpack-raw the container that ships DA_BIs into
@@ -683,8 +820,8 @@ namespace Windrose.Quartermaster.Core
             LogLine("retoc pack-raw: " + rawDir + " -> " + outBase + ".utoc");
             RunRetoc(retocExe, new[] { "pack-raw", rawDir, outBase + ".utoc" });
 
-            var srcUcas = outBase + ".ucas";
-            var srcUtoc = outBase + ".utoc";
+            srcUcas = outBase + ".ucas";
+            srcUtoc = outBase + ".utoc";
             if (!File.Exists(srcUcas) || !File.Exists(srcUtoc))
             {
                 throw new InvalidOperationException(
@@ -699,8 +836,12 @@ namespace Windrose.Quartermaster.Core
             // pointing at any same-version companion .ucas/.utoc), so
             // bytes from an "empty container" stub work just as well as
             // bytes from a "full container" stub.
-            var stubInputDir = Path.Combine(stabRoot, "stub-input");
-            var stubOutDir   = Path.Combine(stabRoot, "stub-out");
+            //
+            // If the caller goes on to build a real minimap pak, it'll
+            // displace this stub; the stub itself is only published when
+            // minimap is inactive.
+            var stubInputDir = Path.Combine(rawRoot, "stub-input");
+            var stubOutDir   = Path.Combine(rawRoot, "stub-out");
             Directory.CreateDirectory(stubInputDir);
             Directory.CreateDirectory(stubOutDir);
             var stubUtocPath = Path.Combine(stubOutDir, "stub.utoc");
@@ -709,41 +850,73 @@ namespace Windrose.Quartermaster.Core
             {
                 "to-zen", "--version", "UE5_6", stubInputDir, stubUtocPath,
             });
-            var srcPak = Path.Combine(stubOutDir, "stub.pak");
-            if (!File.Exists(srcPak))
+            srcStubPak = Path.Combine(stubOutDir, "stub.pak");
+            if (!File.Exists(srcStubPak))
             {
                 throw new InvalidOperationException(
-                    "retoc to-zen (empty stub) did not produce a .pak at " + srcPak);
+                    "retoc to-zen (empty stub) did not produce a .pak at " + srcStubPak);
             }
-
-            // Publish to outDir. The stability triplet ALWAYS includes its
-            // own .pak (pack-raw produces a real container that has to
-            // ship the .pak marker; no main pak overwrites it because
-            // the basename is unique).
-            var finalPak  = Path.Combine(outDir, stabilityBaseName + ".pak");
-            var finalUcas = Path.Combine(outDir, stabilityBaseName + ".ucas");
-            var finalUtoc = Path.Combine(outDir, stabilityBaseName + ".utoc");
-            File.Copy(srcPak,  finalPak,  true);
-            File.Copy(srcUcas, finalUcas, true);
-            File.Copy(srcUtoc, finalUtoc, true);
-
-            LogLine("Stability triplet published: " + stabilityBaseName
-                    + ".{pak,ucas,utoc} -> " + outDir
-                    + " (.pak=" + new FileInfo(finalPak).Length
-                    + " B, .ucas=" + new FileInfo(finalUcas).Length
-                    + " B, .utoc=" + new FileInfo(finalUtoc).Length + " B)");
 
             return new BuildingStabilityResult
             {
                 Enabled = true,
                 AssetResults = assetResults,
-                PakPath  = finalPak,
-                UcasPath = finalUcas,
-                UtocPath = finalUtoc,
-                PakSize  = new FileInfo(finalPak).Length,
-                UcasSize = new FileInfo(finalUcas).Length,
-                UtocSize = new FileInfo(finalUtoc).Length,
+                // Final paths/sizes are filled in by the caller after
+                // publishing.
             };
+        }
+
+        // Inner minimap builder: ensures the vanilla INI is in cache,
+        // runs MinimapRangePatcher to scale the four reveal-range fields,
+        // and invokes repak.exe to pack a single-file V8B .pak under
+        // rawRoot. Returns the source pak path through srcRealPak so
+        // the caller can publish it.
+        MinimapRangeResult BuildMinimapPakInsideRawRoot(
+            Profile profile, string rawRoot, string rawBaseName, double multiplier,
+            out string srcRealPak)
+        {
+            // Lazy-extract or hit the cache for the vanilla baseline.
+            // The extractor logs whether it had to run repak unpack.
+            var configExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
+            var vanillaIniPath = configExtractor.EnsureMapSettings();
+
+            // Stage the patched INI under the in-pak path the game
+            // expects (R5/Config/DefaultR5MapSettings.ini).
+            var minimapStageRoot = Path.Combine(rawRoot, "minimap-stage");
+            var stagedIni = Path.Combine(minimapStageRoot,
+                "R5", "Config", "DefaultR5MapSettings.ini");
+
+            var patcher = new MinimapRangePatcher { Log = Log };
+            var minimapPatch = patcher.PatchToFile(vanillaIniPath, stagedIni, multiplier);
+
+            LogLine("Resolving repak.exe...");
+            _repakResolver.Log = Log;
+            var repakExe = _repakResolver.Resolve();
+
+            var pakOutDir = Path.Combine(rawRoot, "minimap-out");
+            Directory.CreateDirectory(pakOutDir);
+            srcRealPak = Path.Combine(pakOutDir, rawBaseName + ".pak");
+
+            var builder = new PakBuilder(repakExe) { Log = Log };
+            builder.Build(minimapStageRoot, srcRealPak, overwrite: true);
+
+            return new MinimapRangeResult
+            {
+                Enabled = true,
+                Multiplier = multiplier,
+                Patch = minimapPatch,
+                // PakPath / PakSize are filled in by the caller after
+                // publishing (they refer to the final outDir path, not
+                // the staging path).
+            };
+        }
+
+        // Internal carrier so BuildRawCompanion can return both feature
+        // result objects from one method without inventing a tuple type.
+        sealed class BuildRawCompanionOutput
+        {
+            public BuildingStabilityResult Stability;
+            public MinimapRangeResult Minimap;
         }
 
         // Direct retoc invocation for the stability flow (which uses
@@ -796,6 +969,18 @@ namespace Windrose.Quartermaster.Core
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;
             if (bs == null) return false;
             return bs.Enabled.GetValueOrDefault(false);
+        }
+
+        // Resolves the effective minimap-range multiplier. 1.0 (default)
+        // means "no minimap pak ships" - same null/1.0 collapse pattern as
+        // pickup-radius, so the readiness check, the activation flag, and
+        // the patcher all see the same number.
+        static double ResolveMinimapMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.MinimapRange == null) return 1.0;
+            var mr = profile.Globals.MinimapRange;
+            if (mr.Multiplier.HasValue) return mr.Multiplier.Value;
+            return 1.0;
         }
 
         // Returns the list of NoSmoke categories the profile has actively
@@ -903,6 +1088,12 @@ namespace Windrose.Quartermaster.Core
         // disabled). The .ucas/.utoc payload is part of the same shared
         // IoStore triplet as Pickup / Stability.
         public NoSmokeResult NoSmokeResult;
+        // Minimap-range inclusion result. null when the profile didn't
+        // configure a multiplier or set it to 1.0 (vanilla). When non-
+        // null, carries the effective scaled values and the .pak the
+        // ini-patch was shipped in (shared with stability's pak when
+        // both features are active).
+        public MinimapRangeResult MinimapResult;
         public string TmpDir;
         public bool Success;
     }
@@ -952,5 +1143,20 @@ namespace Windrose.Quartermaster.Core
         // Subset of TotalHandles that had bIsEnabled flipped from true to
         // false. Handles already at false are not counted.
         public int FlippedHandles;
+    }
+
+    // Standalone summary of "minimap-range got included in this build".
+    // The .pak path here is the raw-companion .pak (shared with stability
+    // when both are active); the loose ini lives at
+    // R5/Config/DefaultR5MapSettings.ini inside that pak. Vanilla baseline
+    // values + effective scaled values surface in the Patch member so
+    // callers can render "37 -> 74" style summaries without recomputing.
+    public sealed class MinimapRangeResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public MinimapRangePatchResult Patch;
+        public string PakPath;
+        public long PakSize;
     }
 }

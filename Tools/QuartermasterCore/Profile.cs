@@ -36,6 +36,7 @@ namespace Windrose.Quartermaster.Core
         public FastTravelBellsGlobal FastTravelBells;
         public BuildingStabilityGlobal BuildingStability;
         public NoSmokeGlobal NoSmoke;
+        public MinimapRangeGlobal MinimapRange;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -143,6 +144,32 @@ namespace Windrose.Quartermaster.Core
         public bool? Campfire;
         public bool? Furnace;
         public bool? Kiln;
+    }
+
+    // Minimap reveal-range patch. Ships a modified
+    // R5/Content/Config/DefaultR5MapSettings.ini as a loose file inside
+    // the _Raw_P companion .pak, alongside (or independently of) the
+    // building-stability .ucas/.utoc. The vanilla baseline INI is
+    // lazy-extracted from the AES-encrypted pakchunk0-Windows.pak on
+    // first build and cached under Sources/Vanilla/R5/Config/.
+    //
+    // Multiplier scales four scalar fields linearly:
+    //   foot-class RevealBrushSize        vanilla 37   -> 37 * Multiplier
+    //   foot-class MiniMapShowDistance    vanilla 250  -> 250 * Multiplier
+    //   ship-class RevealBrushSize        vanilla 290  -> 290 * Multiplier
+    //   ship-class MiniMapShowDistance    vanilla 750  -> 750 * Multiplier
+    //
+    // The reference mod BetterMinimapRange_2x_2x_P matches Multiplier=2.0
+    // exactly (the second 2x in its name refers to MiniMapShowDistance,
+    // NOT MaxMapResolution which stays at the vanilla 2048).
+    //
+    // null OR Multiplier == 1.0 -> no minimap pak is built for this
+    // profile. Same "no key in JSON" semantics as the other globals.
+    public sealed class MinimapRangeGlobal
+    {
+        // Final scaling factor applied to the four vanilla reveal-range
+        // floats. null OR == 1.0 -> no minimap mod is built for this profile.
+        public double? Multiplier;
     }
 
     public sealed class ItemOverride

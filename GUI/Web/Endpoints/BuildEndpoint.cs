@@ -155,15 +155,46 @@ public static class BuildEndpoint
                 // BuildingStability is a single-toggle feature: when on,
                 // the 787 supported vanilla DA_BI* assets get self-baked
                 // (4 floats in IntegritySettings overwritten directly in
-                // their raw zen chunks) and shipped as a separate
-                // _PStab_P companion triplet; when off (or null), nothing
-                // ships. The frontend only needs the boolean.
+                // their raw zen chunks) and shipped inside the _Raw_P
+                // companion's .ucas/.utoc; when off (or null), nothing
+                // stability-related ships. The frontend only needs the
+                // boolean.
                 object buildingStabilityInfo = null;
                 if (result.StabilityResult != null)
                 {
                     buildingStabilityInfo = new
                     {
                         enabled = result.StabilityResult.Enabled,
+                    };
+                }
+                // Minimap-range: when active, scales the four vanilla
+                // reveal-range floats inside DefaultR5MapSettings.ini and
+                // ships the patched INI in the _Raw_P companion's .pak.
+                // Carries the effective scaled values so the build log
+                // can render a "37 -> 74" style summary.
+                object minimapRangeInfo = null;
+                if (result.MinimapResult != null)
+                {
+                    var mr = result.MinimapResult;
+                    minimapRangeInfo = new
+                    {
+                        multiplier = mr.Multiplier,
+                        pakPath = mr.PakPath,
+                        pakSize = mr.PakSize,
+                        vanilla = new
+                        {
+                            footBrush = mr.Patch.VanillaFootBrush,
+                            footDistance = mr.Patch.VanillaFootDistance,
+                            shipBrush = mr.Patch.VanillaShipBrush,
+                            shipDistance = mr.Patch.VanillaShipDistance,
+                        },
+                        effective = new
+                        {
+                            footBrush = mr.Patch.EffectiveFootBrush,
+                            footDistance = mr.Patch.EffectiveFootDistance,
+                            shipBrush = mr.Patch.EffectiveShipBrush,
+                            shipDistance = mr.Patch.EffectiveShipDistance,
+                        },
                     };
                 }
                 // NoSmoke surfaces the active categories + per-asset patch
@@ -219,6 +250,7 @@ public static class BuildEndpoint
                     bellLimits = bellLimitsInfo,
                     buildingStability = buildingStabilityInfo,
                     noSmoke = noSmokeInfo,
+                    minimapRange = minimapRangeInfo,
                     log,
                 });
             }

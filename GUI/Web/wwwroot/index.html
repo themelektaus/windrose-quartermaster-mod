@@ -215,12 +215,35 @@
 
         <section class="card">
           <h2>Globals - Building Stability</h2>
-          <p class="hint">Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing. Self-bakes 787 vanilla DA_BI* DataAssets by overwriting their IntegritySettings floats directly in the raw zen chunks, then ships them as a companion triplet alongside the main mod.</p>
+          <p class="hint">Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing. Self-bakes 787 vanilla DA_BI* DataAssets by overwriting their IntegritySettings floats directly in the raw zen chunks, then ships them in the _Raw_P companion container alongside the main mod.</p>
           <label class="check-row">
             <input type="checkbox" id="building-stability-enabled">
             Enhanced building stability
           </label>
           <p class="hint">Single toggle: on bundles fixed values (BlockWeight=0, MaxLoad=10&thinsp;000&thinsp;000, MinIntersection=0); off ships nothing.</p>
+        </section>
+
+        <section class="card">
+          <h2>Globals - Minimap Range</h2>
+          <p class="hint">Scales the reveal-range fields of <code>R5/Config/DefaultR5MapSettings.ini</code> linearly. Foot/ShallowBoat baseline: brush 37 / distance 250. Ship-class baseline: brush 290 / distance 750. Both scale by the same multiplier.</p>
+          <div class="pickup-row">
+            <label class="check-row">
+              <input type="checkbox" id="minimap-enabled">
+              Enable minimap-range patch
+            </label>
+            <div class="pickup-slider indent">
+              <input type="range" id="minimap-multiplier"
+                     min="1.0" max="5.0" step="0.1" value="2.0">
+              <div class="pickup-readout">
+                Multiplier: <span id="minimap-multiplier-value">2.0&times;</span>
+                <span class="muted">&middot;</span>
+                Foot reveal: <span id="minimap-foot-readout">500 cm @ 74 brush</span>
+                <span class="muted">&middot;</span>
+                Ship reveal: <span id="minimap-ship-readout">1500 cm @ 580 brush</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint">Ships as a loose <code>DefaultR5MapSettings.ini</code> inside the _Raw_P companion pak (shared with stability when both are active). 2.0&times; matches the BetterMinimapRange_2x_2x_P reference mod exactly.</p>
         </section>
 
         <section class="card">

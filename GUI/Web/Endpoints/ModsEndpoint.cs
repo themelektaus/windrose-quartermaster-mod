@@ -27,11 +27,15 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //     Quartermaster_<name>_P.{pak,ucas,utoc}. This carries item/loot/bell
 //     JSON patches plus the Pickup and NoSmoke IoStore features.
 //
-//   - A SEPARATE stability triplet under
-//     Quartermaster_<name>_PStab_P.{pak,ucas,utoc}. The stability feature
-//     needs retoc's unpack-raw/pack-raw path which produces an IoStore
-//     container incompatible with the to-zen composite, so it lives in
-//     its own triplet next to the main one.
+//   - A SEPARATE raw companion under
+//     Quartermaster_<name>_Raw_P.{pak[,ucas,utoc]}. This holds features
+//     that can't ride along in the composite: building-stability ships
+//     its patched zen chunks via retoc unpack-raw/pack-raw (incompatible
+//     with the composite's to-zen container), and minimap-range ships a
+//     loose R5/Config/DefaultR5MapSettings.ini via repak's PakFile
+//     subsystem (to-zen silently drops non-asset files). The container
+//     is adaptive - .pak only when minimap alone is active; .pak + .ucas
+//     + .utoc when stability is involved.
 //
 // We treat all of those files as ONE logical mod here: list view shows
 // one row per "name" with aggregated size; delete recycles every file
@@ -49,11 +53,11 @@ public static class ModsEndpoint
     public const string OwnedPrefix = "Quartermaster_";
     public const string OwnedSuffix = "_P.pak";
 
-    // Suffix that identifies the stability companion triplet's pak. We
-    // hide these from the listing and aggregate them into the parent
-    // mod's row (or surface them standalone when there's no parent).
-    // Keep in sync with BuildPipeline.StabilityCompanionSuffix.
-    public const string StabilityCompanionPakSuffix = "_PStab_P.pak";
+    // Suffix that identifies the raw companion's pak. We hide these
+    // from the listing and aggregate them into the parent mod's row
+    // (or surface them standalone when there's no parent). Keep in
+    // sync with BuildPipeline.RawCompanionSuffix.
+    public const string RawCompanionPakSuffix = "_Raw_P.pak";
 
     public static void Map(WebApplication app, string repoRoot)
     {
@@ -77,36 +81,37 @@ public static class ModsEndpoint
             var files = new List<object>();
             if (Directory.Exists(modsDir))
             {
-                // Two-pass enumeration so the stability companion triplet
-                // can fold into its parent's row.
+                // Two-pass enumeration so the raw companion can fold
+                // into its parent's row.
                 //
-                // Pass 1: index every Quartermaster_*_PStab_P.pak by the
+                // Pass 1: index every Quartermaster_*_Raw_P.pak by the
                 // parent display name (the part between the prefix and
-                // the _PStab_P suffix) - that's the same display name the
+                // the _Raw_P suffix) - that's the same display name the
                 // parent .pak would compute.
-                var stabCompanions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var rawCompanions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var path in Directory.EnumerateFiles(modsDir, "*.pak", SearchOption.TopDirectoryOnly))
                 {
                     var name = Path.GetFileName(path);
-                    if (IsStabilityCompanionPak(name))
+                    if (IsRawCompanionPak(name))
                     {
-                        var displayName = StripStabilityCompanionAffixes(name);
+                        var displayName = StripRawCompanionAffixes(name);
                         if (!string.IsNullOrEmpty(displayName))
-                            stabCompanions[displayName] = path;
+                            rawCompanions[displayName] = path;
                     }
                 }
 
-                // Pass 2: enumerate every .pak; skip stab-companion entries
+                // Pass 2: enumerate every .pak; skip raw-companion entries
                 // because they get folded into their parent OR (when they
-                // exist standalone, i.e. stability is the only feature) get
-                // surfaced under the parent display name with no aggregation
-                // needed. Track which companions ended up folded so any
-                // leftover companions can be promoted to standalone rows.
+                // exist standalone, i.e. the raw companion's features are
+                // the only ones the profile activated) get surfaced under
+                // the parent display name with no aggregation needed.
+                // Track which companions ended up folded so any leftover
+                // companions can be promoted to standalone rows.
                 var foldedCompanions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var path in Directory.EnumerateFiles(modsDir, "*.pak", SearchOption.TopDirectoryOnly))
                 {
                     var fi = new FileInfo(path);
-                    if (IsStabilityCompanionPak(fi.Name)) continue;
+                    if (IsRawCompanionPak(fi.Name)) continue;
 
                     var owned = IsQuartermasterPak(fi.Name);
                     long totalSize = fi.Length;
@@ -124,12 +129,13 @@ public static class ModsEndpoint
                             if (File.Exists(companion)) totalSize += new FileInfo(companion).Length;
                         }
 
-                        // Aggregate the stability companion triplet if it
-                        // exists for this display name (separate basename,
-                        // same logical mod).
-                        if (stabCompanions.TryGetValue(displayName, out var stabPakPath))
+                        // Aggregate the raw companion if it exists for
+                        // this display name (separate basename, same
+                        // logical mod). Layout is adaptive - the .pak
+                        // alone counts when minimap-only ships there.
+                        if (rawCompanions.TryGetValue(displayName, out var rawPakPath))
                         {
-                            totalSize += AggregateTripletSize(stabPakPath);
+                            totalSize += AggregateTripletSize(rawPakPath);
                             foldedCompanions.Add(displayName);
                         }
                     }
@@ -146,10 +152,11 @@ public static class ModsEndpoint
                     });
                 }
 
-                // Pass 3: surface stability-only mods (stab companion
-                // exists but parent .pak doesn't - stability was the only
-                // feature in that profile) under the parent display name.
-                foreach (var kv in stabCompanions)
+                // Pass 3: surface raw-companion-only mods (raw companion
+                // exists but parent .pak doesn't - the profile activated
+                // only features that route into the raw companion) under
+                // the parent display name.
+                foreach (var kv in rawCompanions)
                 {
                     if (foldedCompanions.Contains(kv.Key)) continue;
                     var fi = new FileInfo(kv.Value);
@@ -230,9 +237,9 @@ public static class ModsEndpoint
             //   1. The main triplet/pak set: <basename>.{pak,ucas,utoc}
             //      where <basename> is e.g. "Quartermaster_<name>_P".
             //
-            //   2. The stability companion triplet:
-            //      Quartermaster_<name>_PStab_P.{pak,ucas,utoc}, when the
-            //      profile enabled building-stability.
+            //   2. The raw companion:
+            //      Quartermaster_<name>_Raw_P.{pak[,ucas,utoc]}, when the
+            //      profile enabled stability and/or minimap-range.
             //
             // The user invokes DELETE on a SINGLE pak filename, but the
             // expected behaviour is "delete the whole logical mod" - so we
@@ -240,31 +247,31 @@ public static class ModsEndpoint
             // name. Two cases:
             //
             //   - Filename is the main pak (..._P.pak): recycle its main
-            //     triplet AND any matching stability companion triplet.
-            //   - Filename is the stability companion (..._PStab_P.pak):
-            //     recycle only that triplet (the main set, if it exists,
+            //     triplet AND any matching raw companion files.
+            //   - Filename is the raw companion (..._Raw_P.pak):
+            //     recycle only its file set (the main set, if it exists,
             //     stays - the user explicitly clicked the companion row,
-            //     which only appears when stability is standalone).
+            //     which only appears when the companion is standalone).
             var recycled = new List<string>();
             try
             {
-                if (IsStabilityCompanionPak(filename))
+                if (IsRawCompanionPak(filename))
                 {
                     RecycleTriplet(fullPath, recycled);
                 }
                 else
                 {
-                    // Main pak. Recycle its triplet + any matching stab
-                    // companion triplet for the same display name.
+                    // Main pak. Recycle its triplet + any matching raw
+                    // companion for the same display name.
                     RecycleTriplet(fullPath, recycled);
 
                     var displayName = StripOwnedAffixes(filename);
                     if (!string.IsNullOrEmpty(displayName))
                     {
-                        var stabPakName = OwnedPrefix + displayName + StabilityCompanionPakSuffix;
-                        var stabPakPath = Path.Combine(modsDir, stabPakName);
-                        if (File.Exists(stabPakPath))
-                            RecycleTriplet(stabPakPath, recycled);
+                        var rawPakName = OwnedPrefix + displayName + RawCompanionPakSuffix;
+                        var rawPakPath = Path.Combine(modsDir, rawPakName);
+                        if (File.Exists(rawPakPath))
+                            RecycleTriplet(rawPakPath, recycled);
                     }
                 }
             }
@@ -342,28 +349,27 @@ public static class ModsEndpoint
             && filename.EndsWith(OwnedSuffix, StringComparison.Ordinal);
     }
 
-    // True for stability companion paks (Quartermaster_<name>_PStab_P.pak).
+    // True for raw companion paks (Quartermaster_<name>_Raw_P.pak).
     // These are technically also valid IsQuartermasterPak filenames (they
     // satisfy prefix + _P.pak suffix), so listing logic checks this FIRST
     // to fold them under the parent.
-    static bool IsStabilityCompanionPak(string filename)
+    static bool IsRawCompanionPak(string filename)
     {
         return filename != null
             && filename.StartsWith(OwnedPrefix, StringComparison.Ordinal)
-            && filename.EndsWith(StabilityCompanionPakSuffix, StringComparison.Ordinal);
+            && filename.EndsWith(RawCompanionPakSuffix, StringComparison.Ordinal);
     }
 
     static string StripOwnedAffixes(string filename)
     {
-        // Order matters: check the LONGER stability companion suffix
-        // first, otherwise "_PStab_P.pak" would be parsed as the generic
-        // "_P.pak" suffix leaving an extra "_PStab" tail in the display
-        // name.
-        if (IsStabilityCompanionPak(filename))
+        // Order matters: check the LONGER raw companion suffix first,
+        // otherwise "_Raw_P.pak" would be parsed as the generic "_P.pak"
+        // suffix leaving an extra "_Raw" tail in the display name.
+        if (IsRawCompanionPak(filename))
         {
             return filename.Substring(
                 OwnedPrefix.Length,
-                filename.Length - OwnedPrefix.Length - StabilityCompanionPakSuffix.Length);
+                filename.Length - OwnedPrefix.Length - RawCompanionPakSuffix.Length);
         }
         if (!IsQuartermasterPak(filename)) return filename;
         return filename.Substring(
@@ -371,15 +377,15 @@ public static class ModsEndpoint
             filename.Length - OwnedPrefix.Length - OwnedSuffix.Length);
     }
 
-    // Strips the stability-specific affixes (helper kept separate so the
-    // generic StripOwnedAffixes can stay a thin compatibility wrapper).
-    // Returns the parent display name - e.g. "Quartermaster_Tausi_PStab_P.pak"
+    // Strips the raw-companion-specific affixes (helper kept separate so
+    // the generic StripOwnedAffixes can stay a thin compatibility wrapper).
+    // Returns the parent display name - e.g. "Quartermaster_Tausi_Raw_P.pak"
     // -> "Tausi".
-    static string StripStabilityCompanionAffixes(string filename)
+    static string StripRawCompanionAffixes(string filename)
     {
-        if (!IsStabilityCompanionPak(filename)) return filename;
+        if (!IsRawCompanionPak(filename)) return filename;
         return filename.Substring(
             OwnedPrefix.Length,
-            filename.Length - OwnedPrefix.Length - StabilityCompanionPakSuffix.Length);
+            filename.Length - OwnedPrefix.Length - RawCompanionPakSuffix.Length);
     }
 }

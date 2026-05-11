@@ -444,11 +444,21 @@ function applyProfileToUI() {
     document.getElementById('nosmoke-campfire').checked = !!(ns && ns.campfire === true);
     document.getElementById('nosmoke-furnace').checked  = !!(ns && ns.furnace === true);
     document.getElementById('nosmoke-kiln').checked     = !!(ns && ns.kiln === true);
+    // Minimap-range: checkbox + slider, same pattern as pickup-radius
+    // (1.0 / null collapses to off; off-and-on remembers the last value).
+    const mr = (p.globals && p.globals.minimapRange) || null;
+    const minimapMul = mr && mr.multiplier != null ? mr.multiplier : null;
+    const minimapOn = minimapMul != null && Math.abs(minimapMul - 1.0) > 1e-9;
+    document.getElementById('minimap-enabled').checked = minimapOn;
+    document.getElementById('minimap-multiplier').value =
+        minimapOn ? minimapMul : 2.0;
+    syncMinimapReadout();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
     syncBuildingStabilityInputState();
     syncNoSmokeInputState();
+    syncMinimapInputState();
     renderProfileMeta();
 }
 
@@ -497,6 +507,33 @@ function syncNoSmokeInputState() {
     document.getElementById('nosmoke-campfire').disabled = false;
     document.getElementById('nosmoke-furnace').disabled  = false;
     document.getElementById('nosmoke-kiln').disabled     = false;
+}
+
+// Minimap-range slider follows the pickup-radius pattern: disabled while
+// the checkbox is off so "0.5x range" can't silently happen.
+function syncMinimapInputState() {
+    const enabled = document.getElementById('minimap-enabled');
+    const slider  = document.getElementById('minimap-multiplier');
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
+}
+
+// Mirrors the multiplier into the readout span ("2.0x ... 500 cm @ 74 brush
+// / 1500 cm @ 580 brush"). Vanilla baselines come straight from
+// MinimapRangePatcher's constants.
+function syncMinimapReadout() {
+    const slider = document.getElementById('minimap-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('minimap-multiplier-value').innerHTML =
+        mul.toFixed(1) + '&times;';
+    const footBrush = 37  * mul;
+    const footDist  = 250 * mul;
+    const shipBrush = 290 * mul;
+    const shipDist  = 750 * mul;
+    document.getElementById('minimap-foot-readout').textContent =
+        footDist.toFixed(0) + ' cm @ ' + footBrush.toFixed(0) + ' brush';
+    document.getElementById('minimap-ship-readout').textContent =
+        shipDist.toFixed(0) + ' cm @ ' + shipBrush.toFixed(0) + ' brush';
 }
 
 // Mirror the slider value into the read-out span ("2.0x ... 8.0 m"). Pulled
@@ -1605,6 +1642,24 @@ function setBuildingStabilityFromUI() {
     markDirty();
 }
 
+// Minimap-range checkbox+slider. Off OR multiplier ~= 1.0 -> drop the
+// whole subtree (same null-collapse pattern as pickup-radius). On -> write
+// { multiplier: <slider value> }.
+function setMinimapRangeFromUI() {
+    if (!state.current) return;
+    syncMinimapReadout();
+    syncMinimapInputState();
+    const enabled = document.getElementById('minimap-enabled').checked;
+    const mul = parseFloat(document.getElementById('minimap-multiplier').value);
+    state.current.globals = state.current.globals || {};
+    if (!enabled || !isFinite(mul) || Math.abs(mul - 1.0) < 1e-9) {
+        delete state.current.globals.minimapRange;
+    } else {
+        state.current.globals.minimapRange = { multiplier: mul };
+    }
+    markDirty();
+}
+
 // No-Smoke per-category toggles. All three off -> drop the whole noSmoke
 // subtree (clean JSON, mirrors the build pipeline's "no source contributes"
 // semantics). At least one on -> keep only the active flags as true; off
@@ -1799,7 +1854,18 @@ async function onBuild() {
                     + ns.assetCount + ' assets, '
                     + ns.flippedHandles + ' emitter handles silenced)' });
             }
-            if (!data.pakPath && !data.pickupRadius && !data.buildingStability && !data.noSmoke) {
+            if (data.minimapRange) {
+                const mr = data.minimapRange;
+                const mul = (mr.multiplier || 1.0).toFixed(1);
+                lines.push({ kind: 'ok', msg:
+                    'DONE - minimap range patched (' + mul + 'x; foot '
+                    + mr.vanilla.footBrush + '/' + mr.vanilla.footDistance + ' -> '
+                    + mr.effective.footBrush + '/' + mr.effective.footDistance
+                    + ', ship ' + mr.vanilla.shipBrush + '/' + mr.vanilla.shipDistance + ' -> '
+                    + mr.effective.shipBrush + '/' + mr.effective.shipDistance + ')' });
+            }
+            if (!data.pakPath && !data.pickupRadius && !data.buildingStability
+                && !data.noSmoke && !data.minimapRange) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -2013,6 +2079,8 @@ function bindHandlers() {
     document.getElementById('nosmoke-campfire').addEventListener('change', setNoSmokeFromUI);
     document.getElementById('nosmoke-furnace').addEventListener('change',  setNoSmokeFromUI);
     document.getElementById('nosmoke-kiln').addEventListener('change',     setNoSmokeFromUI);
+    document.getElementById('minimap-enabled').addEventListener('change', setMinimapRangeFromUI);
+    document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
 
     document.getElementById('item-filter').addEventListener('input',     renderItems);
     document.getElementById('filter-class').addEventListener('change',   renderItems);
