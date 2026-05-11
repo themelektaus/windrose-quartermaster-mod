@@ -202,7 +202,7 @@ Top-level layout:
 | Header | Profile dropdown + New / Duplicate / Rename / Save / Delete / Build |
 | Left | Stack-size globals (None / Multiplier / Absolute, with optional Cap) and a live status block (total / overrides / will-be-modified / promoted) |
 | Right | Filterable item list. Each row: icon, localized name, computed target, inline override input |
-| Footer | Build log + a link back to `/items-test.html` for the raw debug view |
+| Footer | Build log |
 
 Resolver rule (per item, for `MaxCountInSlot`):
 
@@ -328,7 +328,7 @@ Stack Size\
 |   +-- Endpoints\                 ItemsEndpoint, ProfilesEndpoint, BuildEndpoint, SetupEndpoint
 |   +-- ItemDto.cs, PatcherCli.cs  ...
 |   +-- wwwroot\                   index.html (configurator + setup overlay),
-|                                  items-test.html (raw debug view), app.css, app.js
+|                                  app.css, app.js
 +-- App\
 |   +-- Quartermaster.App.csproj   WPF + WebView2 desktop wrapper (net10.0-windows)
 |   +-- App.xaml(.cs)              Hosts Kestrel in-process via Program.CreateWebApp

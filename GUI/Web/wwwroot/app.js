@@ -536,7 +536,7 @@ function syncMinimapReadout() {
     const slider = document.getElementById('minimap-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
     document.getElementById('minimap-multiplier-value').innerHTML =
-        mul.toFixed(1) + '&times;';
+        mul.toFixed(1) + 'x<!--&times;-->';
     const footBrush = 37  * mul;
     const footDist  = 250 * mul;
     const shipBrush = 290 * mul;
@@ -563,7 +563,7 @@ function syncBonfireReadout() {
     const slider = document.getElementById('bonfire-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
     document.getElementById('bonfire-multiplier-value').innerHTML =
-        mul.toFixed(1) + '&times;';
+        mul.toFixed(1) + 'x<!--&times;-->';
     const radius = 5000 * mul;
     const height = 3000 * mul;
     document.getElementById('bonfire-radius-readout').textContent =
@@ -578,7 +578,7 @@ function syncPickupReadout() {
     const slider = document.getElementById('pickup-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
     document.getElementById('pickup-multiplier-value').innerHTML =
-        mul.toFixed(1) + '&times;';
+        mul.toFixed(1) + 'x<!--&times;-->';
     // Vanilla magnet range is 4.0 m; the slider scales it linearly.
     document.getElementById('pickup-range').textContent =
         (4.0 * mul).toFixed(1) + ' m';
