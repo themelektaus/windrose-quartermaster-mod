@@ -46,6 +46,6 @@ Each feature has its own toggle and (where applicable) slider, so you can ship a
 
 Full source - C# build pipeline, web GUI, vanilla snapshot extraction - is on GitHub:
 
-[size=4]https://github.com/themelektaus/windrose-size-stack-mod[/size]
+[url=https://github.com/themelektaus/windrose-quartermaster-mod]https://github.com/themelektaus/windrose-quartermaster-mod[/url]
 
 Clone it if you want to build your own variant, audit what exactly gets changed per feature, or extend the pipeline with new tweaks.

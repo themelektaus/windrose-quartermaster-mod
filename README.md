@@ -159,7 +159,7 @@ Same pipeline without the browser:
 dotnet run --project GUI\Web -- --setup
 
 # Build a profile (by id or name)
-dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
+dotnet run --project GUI\Web -- --test-patcher --profile "My Profile"
 
 # Direct multiplier without a profile
 dotnet run --project GUI\Web -- --test-patcher --multiplier 4 --build-pak

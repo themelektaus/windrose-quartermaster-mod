@@ -1859,7 +1859,7 @@ async function onSave() {
 }
 
 async function onNew() {
-    const name = prompt('New profile name?', 'My Stacks');
+    const name = prompt('New profile name?', 'My Profile');
     if (!name) return;
     const created = await api('POST', '/api/profiles', {
         name,

@@ -231,7 +231,7 @@ dotnet run --project GUI\Web -- --setup
 dotnet run --project GUI\Web -- --setup --force
 
 # Build a profile, by id or display name
-dotnet run --project GUI\Web -- --test-patcher --profile "My Stacks"
+dotnet run --project GUI\Web -- --test-patcher --profile "My Profile"
 
 # Direct one-shot without a profile (legacy multiplier semantics)
 dotnet run --project GUI\Web -- --test-patcher --multiplier 4 --build-pak

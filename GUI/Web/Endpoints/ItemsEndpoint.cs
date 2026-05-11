@@ -140,7 +140,8 @@ public static class ItemsEndpoint
                 {
                     using var iconJsonStream = File.OpenRead(iconJsonPath);
                     var meta = await JsonNode.ParseAsync(iconJsonStream);
-                    item.meta = meta.AsObject().Count > 0 ? meta[0] : null;
+                    var metaObject = meta.AsObject();
+                    item.meta = metaObject.Count > 1 ? meta[1] : (metaObject.Count > 0 ? meta[0] : null);
                 }
             }
 
