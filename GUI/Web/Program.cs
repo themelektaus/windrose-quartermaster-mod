@@ -219,8 +219,8 @@ public static class Program
 
         // Already extracted AND built against the expected runtime - nothing
         // to do. The IconExtractorBuilder will pick the existing exe up via
-        // its short-circuit path. If it exists but the runtimeconfig says
-        // it was built against a different TFM, fall through so we re-seed
+        // its short-circuit path. If it exists but the TFM marker says it
+        // was built against a different runtime, fall through so we re-seed
         // from the (presumably-fresher) embedded zip.
         if (File.Exists(exePath) &&
             Windrose.Quartermaster.Core.IconExtractorBuilder.IsPublishFresh(publishDir))

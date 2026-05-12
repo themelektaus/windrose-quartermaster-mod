@@ -9,7 +9,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,5 +22,20 @@
     <PackageReference Include="SkiaSharp"            Version="2.88.9" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
   </ItemGroup>
+
+  <!--
+    Strip transitive .pdb files from the publish dir after publish.
+    DebugType=embedded only bundles the symbols for THIS assembly; the
+    CUE4Parse submodule projects still emit their own .pdb files which
+    bloat the embedded IconExtractor.publish.zip by ~1 MB for no end-user
+    value. We can't change DebugType inside a submodule, so we just
+    delete the artifacts after the fact.
+  -->
+  <Target Name="StripTransitivePdbsAfterPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_PublishPdbLeftovers Include="$(PublishDir)*.pdb" Exclude="$(PublishDir)IconExtractor.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_PublishPdbLeftovers)" />
+  </Target>
 
 </Project>

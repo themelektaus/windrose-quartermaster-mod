@@ -163,26 +163,40 @@
       tree is up to date.
     -->
     <Message Importance="high" Text="[Quartermaster] (Re)publishing IconExtractor for embedding (source changed since last zip)..." />
-    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained false -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
+    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
+    <!--
+      Stamp the publish dir with a plaintext TFM marker. We can't rely on
+      IconExtractor.runtimeconfig.json anymore - PublishSingleFile bundles
+      it inside the EXE - but we still need a sibling sentinel so the
+      runtime freshness check (IconExtractorBuilder.IsPublishFresh) can
+      detect a mismatched cached publish and force a rebuild.
+    -->
+    <WriteLinesToFile File="$(_IconExtractorPublishDir)\IconExtractor.tfm"
+                      Lines="$(_IconExtractorExpectedTfm)"
+                      Overwrite="true" />
     <Delete Files="$(_IconExtractorZipPath)" Condition="Exists('$(_IconExtractorZipPath)')" />
     <ZipDirectory SourceDirectory="$(_IconExtractorPublishDir)" DestinationFile="$(_IconExtractorZipPath)" />
     <Message Importance="high" Text="[Quartermaster] IconExtractor.publish.zip refreshed at $(_IconExtractorZipPath)" />
   </Target>
   <!--
     Safety net: after the target runs (or short-circuits) verify the
-    fresh publish/IconExtractor.runtimeconfig.json TFM matches
-    _IconExtractorExpectedTfm. Catches the "embedded zip is from an
-    older TFM" failure mode at build time instead of letting it ship
-    to end users. Only runs during publish so plain dotnet build
-    isn't gated on having an up-to-date publish/ folder lying around.
+    publish/IconExtractor.tfm marker matches _IconExtractorExpectedTfm.
+    Catches the "embedded zip is from an older TFM" failure mode at
+    build time instead of letting it ship to end users. Only runs
+    during publish so plain dotnet build isn't gated on having an
+    up-to-date publish/ folder lying around.
+
+    (Pre PublishSingleFile we sniffed runtimeconfig.json directly - now
+    that JSON lives inside the EXE so we read the .tfm marker the
+    PublishIconExtractorForEmbed target writes alongside.)
   -->
   <Target Name="VerifyIconExtractorTfm"
           AfterTargets="PublishIconExtractorForEmbed"
-          Condition="'$(_IsPublishing)' == 'true' AND Exists('$(_IconExtractorPublishDir)\IconExtractor.runtimeconfig.json')">
+          Condition="'$(_IsPublishing)' == 'true' AND Exists('$(_IconExtractorPublishDir)\IconExtractor.tfm')">
     <PropertyGroup>
-      <_IconExtractorRuntimeConfig>$([System.IO.File]::ReadAllText('$(_IconExtractorPublishDir)\IconExtractor.runtimeconfig.json'))</_IconExtractorRuntimeConfig>
+      <_IconExtractorTfmMarker>$([System.IO.File]::ReadAllText('$(_IconExtractorPublishDir)\IconExtractor.tfm').Trim())</_IconExtractorTfmMarker>
     </PropertyGroup>
-    <Error Condition="!$(_IconExtractorRuntimeConfig.Contains('&quot;tfm&quot;: &quot;$(_IconExtractorExpectedTfm)&quot;'))"
-           Text="IconExtractor publish was built against the wrong TFM. Expected '$(_IconExtractorExpectedTfm)', but runtimeconfig.json reports something else. Delete $(_IconExtractorPublishDir) and $(_IconExtractorZipPath) and republish." />
+    <Error Condition="'$(_IconExtractorTfmMarker)' != '$(_IconExtractorExpectedTfm)'"
+           Text="IconExtractor publish was built against the wrong TFM. Expected '$(_IconExtractorExpectedTfm)', marker reports '$(_IconExtractorTfmMarker)'. Delete $(_IconExtractorPublishDir) and $(_IconExtractorZipPath) and republish." />
   </Target>
 </Project>

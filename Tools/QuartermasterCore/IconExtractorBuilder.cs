@@ -189,7 +189,10 @@ namespace Windrose.Quartermaster.Core
             psi.ArgumentList.Add("-r");
             psi.ArgumentList.Add("win-x64");
             psi.ArgumentList.Add("--self-contained");
-            psi.ArgumentList.Add("false");
+            psi.ArgumentList.Add("true");
+            psi.ArgumentList.Add("-p:PublishSingleFile=true");
+            psi.ArgumentList.Add("-p:IncludeNativeLibrariesForSelfExtract=true");
+            psi.ArgumentList.Add("-p:EnableCompressionInSingleFile=true");
             psi.ArgumentList.Add("-o");
             psi.ArgumentList.Add(publishDir);
             psi.ArgumentList.Add("--nologo");
@@ -219,36 +222,62 @@ namespace Windrose.Quartermaster.Core
                 throw new InvalidOperationException(
                     "dotnet publish failed (exit " + proc.ExitCode + ")");
             }
+
+            // Stamp the publish dir with the TFM marker so the next Resolve()
+            // can short-circuit. With PublishSingleFile=true there's no
+            // sibling runtimeconfig.json anymore (it's bundled inside the
+            // EXE), so we drop our own marker.
+            WriteTfmMarker(publishDir);
         }
 
-        // Sniffs IconExtractor.runtimeconfig.json next to the cached EXE and
-        // checks whether its "tfm" field matches ExpectedTfm. We do a plain
-        // substring check rather than parsing JSON to keep this dependency-
-        // free and tolerant of formatting (the publish step emits stable
-        // JSON, but we don't want to pull in System.Text.Json from QC just
-        // for this). Missing/unreadable config defaults to "stale" so we
-        // rebuild defensively.
+        // Name of the sentinel file written alongside IconExtractor.exe after
+        // a successful publish. Contains the TFM the EXE was built against.
+        //
+        // Why a custom sentinel instead of IconExtractor.runtimeconfig.json:
+        // the EXE is now published self-contained + PublishSingleFile=true,
+        // which bundles runtimeconfig.json *inside* the EXE. There is no
+        // sibling JSON to sniff anymore. We could AppHost-inspect the .exe,
+        // but a tiny plaintext marker is dependency-free, trivial to write
+        // from both MSBuild (Web.csproj) and managed code (RunDotnetPublish
+        // below), and survives the ZipDirectory / unzip roundtrip.
+        public const string TfmMarkerFileName = "IconExtractor.tfm";
+
+        // Reads the sentinel file written next to IconExtractor.exe and
+        // checks whether the recorded TFM matches ExpectedTfm. Missing or
+        // unreadable marker defaults to "stale" so we rebuild defensively.
         //
         // Public so the deployed-EXE seed path
         // (Web.Program.SeedIconExtractorIfMissing) can share the exact
         // same freshness probe used by the resolver here.
         public static bool IsPublishFresh(string publishDir)
         {
-            var runtimeConfig = Path.Combine(publishDir, "IconExtractor.runtimeconfig.json");
-            if (!File.Exists(runtimeConfig)) return false;
+            var marker = Path.Combine(publishDir, TfmMarkerFileName);
+            if (!File.Exists(marker)) return false;
 
             string text;
-            try { text = File.ReadAllText(runtimeConfig); }
+            try { text = File.ReadAllText(marker); }
             catch { return false; }
 
-            // Looking for: "tfm": "net10.0"
-            var needle = "\"tfm\": \"" + ExpectedTfm + "\"";
-            if (text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return string.Equals(text.Trim(), ExpectedTfm, StringComparison.OrdinalIgnoreCase);
+        }
 
-            // Tolerate the no-space variant just in case the SDK emits it
-            // differently in a future release.
-            needle = "\"tfm\":\"" + ExpectedTfm + "\"";
-            return text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+        // Writes the sentinel file recording which TFM the publish was built
+        // against. Called after a successful `dotnet publish` (both from the
+        // MSBuild target via WriteLinesToFile and from RunDotnetPublish for
+        // the dev-mode rebuild path).
+        public static void WriteTfmMarker(string publishDir)
+        {
+            try
+            {
+                Directory.CreateDirectory(publishDir);
+                File.WriteAllText(Path.Combine(publishDir, TfmMarkerFileName), ExpectedTfm);
+            }
+            catch
+            {
+                // Non-fatal: next Resolve() will just rebuild because the
+                // freshness check returns false. We'd rather silently retry
+                // than crash the icons step over a marker write hiccup.
+            }
         }
 
         void TryDeletePublishDir(string publishDir)
