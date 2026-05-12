@@ -22,8 +22,6 @@ Vanilla values are extracted directly from the game's main pak file
 reference mod needed. The resulting pak is pure data, so no UE4SS / SML
 dependency, works in singleplayer / dedicated server / co-op alike.
 
-For more details (architecture, internals) see [`DETAILS.md`](./DETAILS.md).
-
 ---
 
 ## Prerequisites
