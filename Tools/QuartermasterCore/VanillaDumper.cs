@@ -92,6 +92,11 @@ namespace Windrose.Quartermaster.Core
             LogLine("Unpacking Recipes from pak");
             RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.RecipesPath);
 
+            // Pak-internal file path (not a prefix) - repak treats `-i` as a
+            // prefix match so this still works for a single file.
+            LogLine("Unpacking InventoryItems CSV from pak");
+            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.InventoryItemsCsvPath);
+
             return Statistics(outDir);
         }
 
@@ -146,6 +151,8 @@ namespace Windrose.Quartermaster.Core
                 "Content", "RecipeLists");
             var recipesRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
                 "Content", "Recipes");
+            var inventoryCsv = Path.Combine(outDir, "R5", "Content",
+                "Localization", "Data", "InventoryItems.csv");
 
             int totalCount = 0;
             var byCategory = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -155,6 +162,14 @@ namespace Windrose.Quartermaster.Core
             CollectStatistics(buildLimitsRoot, "buildlimits", byCategory, ref totalCount);
             CollectStatistics(recipeListsRoot, "recipelists", byCategory, ref totalCount);
             CollectStatistics(recipesRoot, "recipes", byCategory, ref totalCount);
+            // The CSV is a single file, so count it as one entry under a
+            // dedicated "loc" category - keeps the summary readable and
+            // serves as a heartbeat that the extractor succeeded for it.
+            if (File.Exists(inventoryCsv))
+            {
+                byCategory["loc/InventoryItems.csv"] = 1;
+                totalCount++;
+            }
 
             LogLine(totalCount + " JSON files extracted");
             foreach (var kv in byCategory.OrderBy(p => p.Key, StringComparer.Ordinal))

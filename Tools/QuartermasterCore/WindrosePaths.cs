@@ -21,6 +21,13 @@ namespace Windrose.Quartermaster.Core
         // Both are needed for the Buyers tab to resolve every recipe ref.
         public string VanillaRecipeLists;
         public string VanillaRecipes;
+        // The vanilla R5/Content/Localization/Data/InventoryItems.csv
+        // string-table. The Item Creator patcher reads this as its
+        // baseline, appends new <Id>_ItemName / <Id>_ItemDescription
+        // rows for every CustomItem, and ships the extended copy in the
+        // mod pak so the engine resolves the FText lookups the new
+        // InventoryItem JSONs contain.
+        public string VanillaInventoryItemsCsv;
         public string Builds;
         public string Profiles;
         public string BuildTmp;
@@ -56,6 +63,10 @@ namespace Windrose.Quartermaster.Core
                 "R5BusinessRules", "Content", "RecipeLists");
             var vanillaRecipes = Path.Combine(vanilla, "R5", "Plugins",
                 "R5BusinessRules", "Content", "Recipes");
+            // InventoryItems string-table CSV (base R5 content tree, not
+            // under the R5BusinessRules plugin).
+            var vanillaInvItemsCsv = Path.Combine(vanilla, "R5", "Content",
+                "Localization", "Data", "InventoryItems.csv");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -66,6 +77,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaBuildingLimits = vanillaBuildLimits,
                 VanillaRecipeLists = vanillaRecipeLists,
                 VanillaRecipes = vanillaRecipes,
+                VanillaInventoryItemsCsv = vanillaInvItemsCsv,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),

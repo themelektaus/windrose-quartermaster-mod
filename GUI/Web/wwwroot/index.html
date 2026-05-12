@@ -40,6 +40,7 @@
     <nav id="tabs" class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="misc"  role="tab" aria-selected="true">Basic</button>
       <button type="button" class="tab"        data-tab="items"  role="tab" aria-selected="false">Items</button>
+      <button type="button" class="tab"        data-tab="creator" role="tab" aria-selected="false">Item Creator</button>
       <button type="button" class="tab"        data-tab="loot"   role="tab" aria-selected="false">Loot Tables</button>
       <button type="button" class="tab"        data-tab="buyers"  role="tab" aria-selected="false">Buyers</button>
       <button type="button" class="tab"        data-tab="sellers" role="tab" aria-selected="false">Sellers</button>
@@ -460,6 +461,52 @@
         </div>
         <div id="sellers-error" class="mods-error" hidden></div>
         <ul id="sellers-list" class="buyers-list"></ul>
+      </section>
+    </div>
+
+    <!-- ITEM CREATOR PAGE - synthesize brand-new InventoryItem JSONs by
+         cloning a vanilla template (currently only Piastre) and overriding
+         the editable fields. The build pipeline writes the new JSONs under
+         InventoryItems/Custom/ and appends matching FText rows to a copy
+         of the vanilla InventoryItems.csv. -->
+    <div class="tab-page" data-tab="creator" hidden>
+      <aside class="pane left">
+        <section class="card">
+          <h2>Item Creator</h2>
+          <p class="hint">
+            Add brand-new items to the game. Each custom item is cloned
+            from a vanilla template (currently the Piastre coin) and gets
+            its editable properties applied during build. The icon stays
+            the template's for now - the field is read-only.
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>Status</h2>
+          <dl id="creator-status-summary">
+            <dt>Custom items</dt><dd id="creator-stat-count">-</dd>
+            <dt>Templates available</dt><dd id="creator-stat-templates">-</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Notes</h2>
+          <p class="hint">
+            Items are added to <code>InventoryItems/Custom/</code> inside
+            the mod pak. They don't auto-spawn anywhere yet - use the Loot
+            Tables tab to drop them from mobs / containers, or the Buyers
+            tab to make NPCs accept them in trade.
+          </p>
+        </section>
+      </aside>
+
+      <section class="pane right">
+        <div class="item-controls">
+          <button id="btn-creator-new" type="button" class="primary">+ New Item</button>
+          <span id="creator-count" class="item-count"></span>
+        </div>
+        <div id="creator-error" class="mods-error" hidden></div>
+        <ul id="creator-list" class="buyers-list"></ul>
       </section>
     </div>
 

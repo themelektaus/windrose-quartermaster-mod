@@ -47,5 +47,15 @@ namespace Windrose.Quartermaster.Core
         // this tree, so we need both folders to render a Buyer.
         public const string RecipesPath =
             "R5/Plugins/R5BusinessRules/Content/Recipes";
+
+        // Pak-internal file path the dumper extracts (the InventoryItems
+        // string-table). Custom items synthesized via the Item Creator tab
+        // reference this table for their FText ItemName / ItemDescription
+        // keys; the patcher emits an extended copy of this CSV alongside
+        // the new InventoryItem JSONs so the engine resolves the lookups
+        // at runtime. Lives in the base R5 content tree (NOT under the
+        // R5BusinessRules plugin), same as BuildingLimits.
+        public const string InventoryItemsCsvPath =
+            "R5/Content/Localization/Data/InventoryItems.csv";
     }
 }

@@ -1716,3 +1716,159 @@ footer.collapsed .footer-body {
   color: var(--text-dim);
   text-align: center;
 }
+
+/* ============================================================
+   ITEM CREATOR TAB
+   - Each custom item is one .creator-card; the list root is
+     re-used .buyers-list (the existing flex-column layout works
+     here unchanged).
+   - Header rows the template icon + title block + delete button.
+   - Body uses a 2-column grid with one wide row for textareas.
+   ============================================================ */
+
+.creator-card {
+  background: var(--bg-elev-2);
+  border-radius: var(--border-radius);
+  padding: .75em 1em;
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+}
+.creator-card-header {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .5em;
+}
+.creator-icon {
+  width: 2.5em;
+  height: 2.5em;
+  border-radius: var(--border-radius-small, 4px);
+  background: var(--bg-elev-1);
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.creator-icon-placeholder {
+  width: 2.5em;
+  height: 2.5em;
+  border-radius: var(--border-radius-small, 4px);
+  background: var(--bg-elev-1);
+  flex-shrink: 0;
+}
+.creator-titles {
+  display: flex;
+  flex-direction: column;
+  gap: .1em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.creator-title-name {
+  font-size: var(--font-size-large, 1.05rem);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.creator-title-name em {
+  color: var(--text-dim);
+  font-style: italic;
+  font-weight: normal;
+}
+.creator-title-id {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  font-family: var(--font-mono, monospace);
+}
+.creator-title-template {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+.creator-title-template strong {
+  color: var(--accent);
+}
+.creator-card-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.creator-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5em .75em;
+  align-items: end;
+}
+.creator-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+  font-size: var(--font-size-small);
+}
+.creator-field-wide {
+  grid-column: 1 / -1;
+}
+.creator-field > span {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+.creator-field input[type="text"],
+.creator-field input[type="number"],
+.creator-field textarea,
+.creator-field select {
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  padding: .35em .5em;
+  background: var(--bg-elev-1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-small, 4px);
+  width: 100%;
+  box-sizing: border-box;
+}
+.creator-field input[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+.creator-field textarea {
+  resize: vertical;
+  min-height: 2.4em;
+  font-family: inherit;
+}
+.creator-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: .5em;
+}
+.creator-checkbox > span {
+  color: var(--text);
+  font-size: var(--font-size-base);
+}
+
+.creator-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* Small annotation next to a field label - used for the flavor-text hint
+   so the user knows what "Vanity Text" actually means without us blowing
+   the label up to a paragraph. */
+.creator-field-hint {
+  color: var(--text-dim);
+  font-weight: normal;
+  margin-left: .35em;
+  font-style: italic;
+}
+
+/* Inline row: text input + Reset button on the same baseline. The button
+   only shows when there's an override to reset, so the column collapses
+   to a plain input in the inherit case. */
+.creator-vanity-row {
+  display: flex;
+  gap: .5em;
+  align-items: center;
+}
+.creator-vanity-row input[type="text"] {
+  flex: 1 1 auto;
+}

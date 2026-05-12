@@ -70,6 +70,7 @@ namespace Windrose.Quartermaster.Core
         readonly LootPatcher _lootPatcher;
         readonly BellLimitsPatcher _bellPatcher;
         readonly BuyerPatcher _buyerPatcher;
+        readonly ItemCreatorPatcher _itemCreatorPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
 
@@ -125,6 +126,7 @@ namespace Windrose.Quartermaster.Core
             _lootPatcher = new LootPatcher();
             _bellPatcher = new BellLimitsPatcher();
             _buyerPatcher = new BuyerPatcher();
+            _itemCreatorPatcher = new ItemCreatorPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
         }
@@ -272,11 +274,31 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in buyerResult.Warnings) LogLine("  warn: " + w);
                 }
 
+                // Item Creator: user-defined custom items synthesized from
+                // vanilla templates. Lands under InventoryItems/Custom/ +
+                // emits an extended copy of InventoryItems.csv (the FText
+                // string-table the synthesized JSONs reference).
+                ItemCreatorPatchResult itemCreatorResult = null;
+                if (HasCustomItemsConfiguration(profile))
+                {
+                    LogLine("Synthesizing custom items");
+                    itemCreatorResult = _itemCreatorPatcher.PatchToDirectory(
+                        _paths.VanillaInventoryItems, _paths.VanillaInventoryItemsCsv,
+                        tmpDir, profile);
+                    LogLine("Custom items: " + itemCreatorResult.ItemsWritten
+                            + " written, " + itemCreatorResult.CsvRowsAppended
+                            + " CSV rows appended");
+                    foreach (var w in itemCreatorResult.Warnings) LogLine("  warn: " + w);
+                }
+
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (buyerResult != null
                         ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
+                        : 0)
+                    + (itemCreatorResult != null
+                        ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
                         : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
@@ -372,6 +394,7 @@ namespace Windrose.Quartermaster.Core
                     LootPatchResult = lootResult,
                     BellLimitsResult = bellResult,
                     BuyerPatchResult = buyerResult,
+                    ItemCreatorResult = itemCreatorResult,
                     PakResult = pakResult,
                     PakPath = pakPath,
                     PickupResult = pickupResult,
@@ -1121,6 +1144,23 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // True when the profile defines at least one CustomItem with a
+        // non-empty Id + TemplateId. Lets the pipeline skip the patcher
+        // entirely for profiles that haven't touched the Item Creator
+        // tab (the common case).
+        static bool HasCustomItemsConfiguration(Profile profile)
+        {
+            var customs = profile.CustomItems;
+            if (customs == null || customs.Count == 0) return false;
+            foreach (var c in customs)
+            {
+                if (c == null) continue;
+                if (!string.IsNullOrWhiteSpace(c.Id) && !string.IsNullOrWhiteSpace(c.TemplateId))
+                    return true;
+            }
+            return false;
+        }
+
         // True when the profile has any buyer/seller trade-list edit -
         // either a recipe override (vanilla edit or synthesized custom) or
         // a per-list add/remove of recipe refs. Lets the pipeline skip
@@ -1196,6 +1236,13 @@ namespace Windrose.Quartermaster.Core
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
         public BellLimitsPatchResult BellLimitsResult; // null if profile has no bell config
         public BuyerPatchResult BuyerPatchResult; // null if profile has no buyer/seller edits
+        // Item Creator (custom items synthesized from vanilla templates).
+        // null when the profile has no CustomItems. When non-null,
+        // ItemsWritten counts the new JSONs that landed under the
+        // Custom/ subfolder; CsvRowsAppended counts the (ItemName +
+        // ItemDescription) string-table rows appended to the modded
+        // InventoryItems.csv.
+        public ItemCreatorPatchResult ItemCreatorResult;
         public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
         public string PakPath;                    // null if pickup-only build
         // The freshly built pickup-radius IoStore triplet, or null if the

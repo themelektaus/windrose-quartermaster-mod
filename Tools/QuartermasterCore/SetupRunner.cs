@@ -47,10 +47,16 @@ namespace Windrose.Quartermaster.Core
             status.HasVanillaRecipes =
                 Directory.Exists(_paths.VanillaRecipes) &&
                 Directory.EnumerateFiles(_paths.VanillaRecipes, "*.json", SearchOption.AllDirectories).Any();
+            // The InventoryItems CSV is a single file - the Item Creator
+            // patcher needs it as the baseline string-table. A pre-CSV
+            // mod root (created before this tab existed) is detected as
+            // stale until the dumper re-runs and tops it up.
+            status.HasVanillaInventoryCsv = File.Exists(_paths.VanillaInventoryItemsCsv);
             status.HasVanillaSources = status.HasVanillaInventoryItems
                 && status.HasVanillaLootTables
                 && status.HasVanillaRecipeLists
-                && status.HasVanillaRecipes;
+                && status.HasVanillaRecipes
+                && status.HasVanillaInventoryCsv;
 
             // Icons: at least one .png present is good enough - a partial
             // run from a previous failed extraction shouldn't trigger a
@@ -187,6 +193,7 @@ namespace Windrose.Quartermaster.Core
         public bool HasVanillaLootTables;
         public bool HasVanillaRecipeLists;
         public bool HasVanillaRecipes;
+        public bool HasVanillaInventoryCsv;
         public bool HasIcons;
         public string IconsDir;
         public bool HasUsmap;

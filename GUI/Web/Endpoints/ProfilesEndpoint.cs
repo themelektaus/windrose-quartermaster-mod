@@ -126,6 +126,7 @@ public static class ProfilesEndpoint
                 LootOverrides = CloneLootOverrides(src.LootOverrides),
                 BuyerRecipes = CloneBuyerRecipes(src.BuyerRecipes),
                 BuyerLists = CloneBuyerLists(src.BuyerLists),
+                CustomItems = CloneCustomItems(src.CustomItems),
             };
 
             try { store.Save(clone); }
@@ -270,6 +271,31 @@ public static class ProfilesEndpoint
         return result;
     }
 
+    // Deep-clones the custom items list. Each CustomItem is flat (only
+    // primitive fields + nullable scalars) so a per-field copy is safe.
+    static List<CustomItem> CloneCustomItems(List<CustomItem> src)
+    {
+        if (src == null) return null;
+        var result = new List<CustomItem>(src.Count);
+        foreach (var c in src)
+        {
+            if (c == null) { result.Add(null); continue; }
+            result.Add(new CustomItem
+            {
+                Id = c.Id,
+                TemplateId = c.TemplateId,
+                Name = c.Name,
+                Description = c.Description,
+                MaxCountInSlot = c.MaxCountInSlot,
+                Rarity = c.Rarity,
+                KeepInInventoryOnDeath = c.KeepInInventoryOnDeath,
+                ItemTexture = c.ItemTexture,
+                VanityText = c.VanityText,
+            });
+        }
+        return result;
+    }
+
     // Deep-clones the per-list edit map. List values are reference-sharing
     // hazards (AddedRecipeIds / RemovedRecipeIds are mutable Lists), so
     // the clone copies the lists explicitly.
@@ -306,6 +332,7 @@ public static class ProfilesEndpoint
             lootOverrideCount = p.LootOverrides == null ? 0 : p.LootOverrides.Count,
             buyerRecipeCount = p.BuyerRecipes == null ? 0 : p.BuyerRecipes.Count,
             buyerListCount = p.BuyerLists == null ? 0 : p.BuyerLists.Count,
+            customItemCount = p.CustomItems == null ? 0 : p.CustomItems.Count,
             hasGlobalStackSize = p.Globals != null && p.Globals.StackSize != null
                                  && (p.Globals.StackSize.Multiplier.HasValue
                                      || p.Globals.StackSize.Absolute.HasValue),

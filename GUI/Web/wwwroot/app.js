@@ -48,6 +48,18 @@ const state = {
         error: null,
     },
 
+    // Catalog of clonable item templates (from /api/item-templates). Used
+    // by the Item Creator tab to seed new CustomItem entries with sensible
+    // defaults and to render the template's icon as a read-only thumbnail
+    // on each card. Phase 1: only the Piastre is in the catalog, but the
+    // backend can grow the list without any frontend change.
+    itemTemplates: {
+        loaded: false,
+        list: [],          // [{id, label, kind, defaultMaxCountInSlot, defaultRarity, ...}]
+        byId: new Map(),
+        error: null,
+    },
+
     // Currently-open picker dropdown. Shared between the Loot tab (add-entry
     // autocomplete) and the Buyers tab (sold-item / pay-item inputs). The
     // `source` discriminator picks which dispatcher onPickerClick uses; the
@@ -98,6 +110,13 @@ async function loadAppData() {
     state.lootById = new Map(state.lootTables.map(lt => [lt.id, lt]));
     indexLootCrossReferences();
 
+    // Eager-load the item-template catalog so the catalog-injection step
+    // in loadProfile() has template metadata available (icon, default
+    // rarity, category) for custom items. Cheap one-time fetch; the
+    // creator tab also tolerates lazy-load, but eager keeps the picker
+    // labels coherent regardless of which tab the user opens first.
+    loadItemTemplates();
+
     populateProfileSelect();
     populateValueFilter('filter-class',  'itemClass', 'All classes');
     populateValueFilter('filter-rarity', 'rarity',    'All rarities');
@@ -146,6 +165,64 @@ function indexLootCrossReferences() {
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => a.name.localeCompare(b.name));
     state.lootTypes = Array.from(types).sort();
+}
+
+// Re-injects the current profile's custom items into the catalog maps so
+// they show up in the Loot Table + Buyer pickers and so LT/Buyer rows
+// can resolve their display names via state.itemsById.
+//
+// Injected entries carry `isCustom: true` so we can strip the previous
+// batch cleanly on every sync. Asset paths mirror what ItemCreatorPatcher
+// writes at build time: /R5BusinessRules/InventoryItems/Custom/<id>.<id>.
+// Icon URL reuses the template's already-extracted icon (phase 1: custom
+// icons are not editable yet).
+//
+// Called after every mutation to state.current.customItems (load, save,
+// create, delete, rename/edit). Cheap - the typical custom-item count is
+// in the single digits.
+function syncCustomItemsIntoCatalog() {
+    if (!state.items || !state.itemsById || !state.itemPathsByItemId) return;
+    // Strip previously-injected custom entries from all three maps.
+    for (let i = state.items.length - 1; i >= 0; i--) {
+        const it = state.items[i];
+        if (it && it.isCustom) {
+            state.items.splice(i, 1);
+            state.itemsById.delete(it.id);
+            state.itemPathsByItemId.delete(it.id);
+        }
+    }
+    if (!state.current) return;
+    const customs = state.current.customItems || [];
+    const tplById = (state.itemTemplates && state.itemTemplates.byId) || new Map();
+    for (const c of customs) {
+        if (!c || !c.id) continue;
+        const tpl = tplById.get(c.templateId) || null;
+        const path = '/R5BusinessRules/InventoryItems/Custom/' + c.id + '.' + c.id;
+        const maxStack = (c.maxCountInSlot != null)
+            ? c.maxCountInSlot
+            : (tpl ? tpl.defaultMaxCountInSlot : 1);
+        const rarity = c.rarity || (tpl ? tpl.defaultRarity : 'Common');
+        const trimmedName = (c.name || '').trim();
+        const entry = {
+            id: c.id,
+            path,
+            isCustom: true,
+            meta: { name: trimmedName || c.id, description: c.description || '' },
+            // Reuse the template's icon URL (the Items tab extracts vanilla
+            // icons under /Icons/<id>.png; custom items inherit that).
+            icon: c.templateId ? '/Icons/' + encodeURIComponent(c.templateId) + '.png' : '',
+            // 'Custom' as itemClass makes the picker subtitle clearly mark
+            // these as user-defined (subtitle reads "<id> - Custom - ...").
+            itemClass: 'Custom',
+            category: tpl ? tpl.category : '',
+            rarity,
+            maxCountInSlot: maxStack,
+            vanillaStack: maxStack,
+        };
+        state.items.push(entry);
+        state.itemsById.set(c.id, entry);
+        state.itemPathsByItemId.set(c.id, path);
+    }
 }
 
 async function boot() {
@@ -464,6 +541,21 @@ function setActiveTab(tab) {
             renderSellersStatus();
         }
     }
+    if (tab === 'creator') {
+        // Two lazy fetches: the template catalog (one-time) and the
+        // current profile's customItems (already in state.current from
+        // loadProfile). Renderers only need the catalog; render once
+        // it arrives.
+        if (!state.itemTemplates.loaded) {
+            loadItemTemplates().then(() => {
+                renderItemCreator();
+                renderItemCreatorStatus();
+            });
+        } else {
+            renderItemCreator();
+            renderItemCreatorStatus();
+        }
+    }
 }
 
 // ---------- Profile loading ---------------------------------------------
@@ -478,6 +570,14 @@ async function loadProfile(id) {
     // refs. Initialised to {} so the renderers don't have to null-check.
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
+    // Item Creator: user-defined items cloned from vanilla templates.
+    // Ordered list; the patcher iterates in declaration order at build
+    // time. New entries get appended; the UI never reorders.
+    state.current.customItems   = state.current.customItems   || [];
+    // Inject the profile's custom items into the catalog maps so the
+    // Loot Table + Buyer pickers can offer them and the LT/Buyer rows
+    // can resolve display names.
+    syncCustomItemsIntoCatalog();
     state.isDirty = false;
     document.getElementById('profile-select').value = id;
     applyProfileToUI();
@@ -491,6 +591,10 @@ async function loadProfile(id) {
     if (state.activeTab === 'buyers' && state.buyers.loaded) {
         renderBuyers();
         renderBuyersStatus();
+    }
+    if (state.activeTab === 'creator' && state.itemTemplates.loaded) {
+        renderItemCreator();
+        renderItemCreatorStatus();
     }
     updateButtons();
     setBuildLog([{ kind: 'info', msg: 'Profile loaded: ' + state.current.name }]);
@@ -1923,6 +2027,7 @@ async function onSave() {
         lootOverrides: p.lootOverrides,
         buyerRecipes: p.buyerRecipes,
         buyerLists: p.buyerLists,
+        customItems: p.customItems,
     };
     const updated = await api('PUT', '/api/profiles/' + encodeURIComponent(p.id), body);
     state.current = updated;
@@ -1931,6 +2036,11 @@ async function onSave() {
     state.current.lootOverrides = state.current.lootOverrides || {};
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
+    state.current.customItems   = state.current.customItems   || [];
+    // Re-sync after save: the server response is authoritative, so any
+    // server-side normalisation of customItems is reflected back into the
+    // catalog before the user opens another tab.
+    syncCustomItemsIntoCatalog();
     state.isDirty = false;
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -1950,6 +2060,7 @@ async function onNew() {
         lootOverrides: {},
         buyerRecipes: {},
         buyerLists: {},
+        customItems: [],
     });
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -3043,6 +3154,336 @@ function renderSellersStatus() {
     document.getElementById('sellers-stat-entries').textContent = entries;
 }
 
+// ---------- Item Creator -------------------------------------------------
+
+// Lazy-load the template catalog from /api/item-templates. Phase 1 ships
+// just one entry (Piastre) but the codepath here is generic - any number
+// of templates render as a select on the new-item create flow.
+async function loadItemTemplates() {
+    const errBox = document.getElementById('creator-error');
+    errBox.hidden = true;
+    errBox.textContent = '';
+    try {
+        const list = await api('GET', '/api/item-templates');
+        const byId = new Map();
+        for (const t of list || []) byId.set(t.id, t);
+        state.itemTemplates.list = list || [];
+        state.itemTemplates.byId = byId;
+        state.itemTemplates.loaded = true;
+        state.itemTemplates.error = null;
+    } catch (ex) {
+        state.itemTemplates.error = (ex && ex.message) ? ex.message : String(ex);
+        errBox.hidden = false;
+        errBox.textContent = 'Failed to load templates: ' + state.itemTemplates.error;
+    }
+}
+
+// 8-hex random string for new custom item ids. Stable across saves (the
+// id is stored verbatim in the profile JSON). Matches the QM_Custom_<8hex>
+// pattern BuyerPatcher uses for custom recipes, scoped to QmItem here so
+// the two namespaces never collide in the file system.
+function newCustomItemId() {
+    const bytes = new Uint8Array(4);
+    if (window.crypto && window.crypto.getRandomValues) {
+        window.crypto.getRandomValues(bytes);
+    } else {
+        for (let i = 0; i < 4; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    let hex = '';
+    for (let i = 0; i < 4; i++) hex += bytes[i].toString(16).padStart(2, '0');
+    return 'QmItem_' + hex;
+}
+
+// Renders the Item Creator tab body: one card per custom item, plus an
+// empty-state hint when the list is empty. Re-runs on every state edit so
+// the badge counts + dirty highlights stay accurate.
+function renderItemCreator() {
+    const list = document.getElementById('creator-list');
+    if (!state.current) {
+        list.innerHTML = '';
+        return;
+    }
+    const customs = state.current.customItems || [];
+    if (customs.length === 0) {
+        list.innerHTML = '<li class="creator-empty"><div class="hint">'
+            + 'No custom items yet. Click "+ New Item" to clone a vanilla template '
+            + '(currently only Piastre). You can then edit name, description, max '
+            + 'stack, rarity, and the "keep on death" flag.'
+            + '</div></li>';
+        return;
+    }
+    const parts = [];
+    for (let i = 0; i < customs.length; i++) {
+        parts.push(buildCustomItemCardHtml(customs[i], i));
+    }
+    list.innerHTML = parts.join('');
+}
+
+// Renders one card. The template is read-only (you pick it at create time
+// and can't change it afterwards); all other fields are inline editable.
+function buildCustomItemCardHtml(custom, index) {
+    if (!custom) return '';
+    const tpl = state.itemTemplates.byId.get(custom.templateId) || null;
+    const tplLabel = tpl ? tpl.label : (custom.templateId || '(unknown template)');
+    // Use the template's vanilla item icon as a thumbnail. We map the
+    // template id to the same /Icons/<id>.png URL the Items tab uses,
+    // so already-extracted icons render without any extra plumbing.
+    const iconUrl = tpl && custom.templateId
+        ? '/Icons/' + encodeURIComponent(custom.templateId) + '.png'
+        : '';
+
+    const rarity = custom.rarity || (tpl ? tpl.defaultRarity : 'Common');
+    const maxStack = (custom.maxCountInSlot != null)
+        ? custom.maxCountInSlot
+        : (tpl ? tpl.defaultMaxCountInSlot : 1);
+    const keepOnDeath = (custom.keepInInventoryOnDeath != null)
+        ? !!custom.keepInInventoryOnDeath
+        : !!(tpl && tpl.defaultKeepInInventoryOnDeath);
+    const iconPath = custom.itemTexture || (tpl ? tpl.defaultItemTexture : '');
+
+    const rarityOpts = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
+        .map(r => `<option value="${r}"${r === rarity ? ' selected' : ''}>${r}</option>`)
+        .join('');
+
+    const safeName = escapeHtml(custom.name || '');
+    const safeDesc = escapeHtml(custom.description || '');
+    // VanityText is tri-state: null = inherit from template (tooltip will
+    // show the template's flavor line), any string = override (incl. ""
+    // which hides the line entirely). The input shows the override value
+    // when set, otherwise stays empty with a placeholder explaining the
+    // inherit behavior so the user knows why they see template text in-game.
+    const vanityOverride = custom.vanityText != null;
+    const safeVanity = escapeHtml(vanityOverride ? custom.vanityText : '');
+    const vanityPlaceholder = vanityOverride
+        ? 'Flavor text (italic, shown at tooltip bottom)'
+        : 'Inherits from template - type to override';
+    // Reset button only renders when there's an override to reset. Pre-
+    // computed so the HTML-builder string concat stays a flat sequence of
+    // `+ '...'` chunks (no inline ternaries that the parser dislikes).
+    const vanityResetBtn = vanityOverride
+        ? '<button type="button" class="btn-link" data-creator-action="reset-vanity" title="Reset to template default">Reset</button>'
+        : '';
+
+    return ''
+        + '<li class="creator-card" data-custom-index="' + index + '">'
+        +   '<header class="creator-card-header">'
+        +     (iconUrl ? '<img class="creator-icon" src="' + iconUrl + '" alt="">' : '<div class="creator-icon-placeholder"></div>')
+        +     '<div class="creator-titles">'
+        +       '<div class="creator-title-name">' + (safeName || '<em>(unnamed)</em>') + '</div>'
+        +       '<div class="creator-title-id">' + escapeHtml(custom.id) + '</div>'
+        +       '<div class="creator-title-template">based on <strong>' + escapeHtml(tplLabel) + '</strong></div>'
+        +     '</div>'
+        +     '<div class="creator-card-actions">'
+        +       '<button type="button" class="btn-link danger" data-creator-action="delete" title="Delete custom item">Delete</button>'
+        +     '</div>'
+        +   '</header>'
+        +   '<div class="creator-fields">'
+        +     '<label class="creator-field">'
+        +       '<span>Name</span>'
+        +       '<input type="text" data-creator-field="name" value="' + safeName + '" placeholder="Item display name">'
+        +     '</label>'
+        +     '<label class="creator-field creator-field-wide">'
+        +       '<span>Description</span>'
+        +       '<textarea data-creator-field="description" rows="2" placeholder="Tooltip text...">' + safeDesc + '</textarea>'
+        +     '</label>'
+        +     '<label class="creator-field">'
+        +       '<span>Max stack</span>'
+        +       '<input type="number" min="1" step="1" data-creator-field="maxCountInSlot" value="' + maxStack + '">'
+        +     '</label>'
+        +     '<label class="creator-field">'
+        +       '<span>Rarity</span>'
+        +       '<select data-creator-field="rarity">' + rarityOpts + '</select>'
+        +     '</label>'
+        +     '<label class="creator-field creator-checkbox">'
+        +       '<input type="checkbox" data-creator-field="keepInInventoryOnDeath"' + (keepOnDeath ? ' checked' : '') + '>'
+        +       '<span>Keep in inventory on death</span>'
+        +     '</label>'
+        +     '<label class="creator-field creator-field-wide">'
+        +       '<span>Flavor text <small class="creator-field-hint">(italic line at tooltip bottom)</small></span>'
+        +       '<div class="creator-vanity-row">'
+        +         '<input type="text" data-creator-field="vanityText"'
+        +           ' value="' + safeVanity + '"'
+        +           ' placeholder="' + vanityPlaceholder + '">'
+        +         vanityResetBtn
+        +       '</div>'
+        +     '</label>'
+        +     '<label class="creator-field creator-field-wide">'
+        +       '<span>Icon path (read-only)</span>'
+        +       '<input type="text" value="' + escapeHtml(iconPath) + '" readonly disabled>'
+        +     '</label>'
+        +   '</div>'
+        + '</li>';
+}
+
+// Minimal HTML escaper - we only build content from server-trusted data
+// (template list) and user-typed strings (name / description). The latter
+// can contain </script> etc. so a real escape is mandatory.
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderItemCreatorStatus() {
+    const customs = (state.current && state.current.customItems) || [];
+    const tpls = state.itemTemplates.list.length;
+    document.getElementById('creator-stat-count').textContent     = customs.length;
+    document.getElementById('creator-stat-templates').textContent = tpls;
+    document.getElementById('creator-count').textContent =
+        customs.length === 0 ? '' : (customs.length + ' item' + (customs.length === 1 ? '' : 's'));
+}
+
+// Create flow: if there's exactly one template, skip the picker and use
+// it directly. With multiple templates we'd open a modal; phase 1 keeps
+// it simple.
+async function onCreatorNew() {
+    if (!state.current) return;
+    if (!state.itemTemplates.loaded) {
+        await loadItemTemplates();
+    }
+    const tpls = state.itemTemplates.list;
+    if (tpls.length === 0) {
+        await alert('No templates available - the backend returned an empty catalog.');
+        return;
+    }
+    let template = tpls[0];
+    if (tpls.length > 1) {
+        // Future: a modal picker. For now, pick the first; if/when more
+        // templates land, this becomes a select-from-list modal.
+        template = tpls[0];
+    }
+    const name = await prompt('Name for the new item:', 'My ' + template.label);
+    if (name == null) return;
+    const trimmed = String(name).trim();
+    if (!trimmed) return;
+
+    state.current.customItems = state.current.customItems || [];
+    state.current.customItems.push({
+        id: newCustomItemId(),
+        templateId: template.id,
+        name: trimmed,
+        description: '',
+        // Defaults are intentionally left null on creation so the patcher
+        // inherits from the template at build time. The user has to
+        // explicitly type a value to lock it in - changing a vanilla
+        // template default would otherwise propagate to every untouched
+        // custom item silently.
+        maxCountInSlot: null,
+        rarity: null,
+        keepInInventoryOnDeath: null,
+        itemTexture: null,
+        // null = inherit the template's VanityText FText (so a fresh
+        // Piastre clone shows "Acht-Reales! Acht-Reales!" until the user
+        // types an override in the Item Creator card).
+        vanityText: null,
+    });
+    state.isDirty = true;
+    syncCustomItemsIntoCatalog();
+    renderItemCreator();
+    renderItemCreatorStatus();
+    updateButtons();
+}
+
+// Delegated change handler for the creator card field grid. Fired on:
+//   - text/textarea -> 'change' (blur/Enter), keeps focus intact while typing
+//   - number input  -> 'change'
+//   - select        -> 'change'
+//   - checkbox      -> 'change'
+function onCreatorListChange(e) {
+    const t = e.target;
+    const field = t && t.dataset ? t.dataset.creatorField : null;
+    if (!field) return;
+    const card = t.closest('li.creator-card');
+    if (!card) return;
+    const index = parseInt(card.dataset.customIndex, 10);
+    if (!isFinite(index)) return;
+    const custom = (state.current && state.current.customItems || [])[index];
+    if (!custom) return;
+
+    if (field === 'name') {
+        custom.name = t.value;
+        // Header title mirrors the name field; update it inline so the
+        // user sees their typing without a full re-render (which would
+        // steal focus from the input mid-edit).
+        const titleEl = card.querySelector('.creator-title-name');
+        if (titleEl) {
+            const safe = escapeHtml(custom.name || '');
+            titleEl.innerHTML = safe || '<em>(unnamed)</em>';
+        }
+    } else if (field === 'description') {
+        custom.description = t.value;
+    } else if (field === 'maxCountInSlot') {
+        const n = parseInt(t.value, 10);
+        custom.maxCountInSlot = isFinite(n) && n > 0 ? n : null;
+    } else if (field === 'rarity') {
+        custom.rarity = t.value || null;
+    } else if (field === 'keepInInventoryOnDeath') {
+        custom.keepInInventoryOnDeath = !!t.checked;
+    } else if (field === 'vanityText') {
+        // Empty input -> back to "inherit from template" (null). Any non-
+        // empty value becomes the override; user can use the Reset button
+        // to wipe back to null without having to clear the field manually.
+        const v = t.value;
+        custom.vanityText = (v == null || v === '') ? null : v;
+        // Re-render the card so the placeholder + Reset-button visibility
+        // reflect the new state. Doing this inline (toggling button/
+        // placeholder) would work too but the cost of a single card
+        // rebuild is negligible.
+        renderItemCreator();
+    } else {
+        return;
+    }
+    state.isDirty = true;
+    // Re-sync the catalog so the picker subtitle / display name reflects
+    // edits (in particular, name + rarity + maxStack changes show up the
+    // next time the user opens a picker on the Loot Tables or Buyers tab).
+    syncCustomItemsIntoCatalog();
+    renderItemCreatorStatus();
+    updateButtons();
+}
+
+// Delegated click handler for per-card buttons (currently just Delete).
+async function onCreatorListClick(e) {
+    const btn = e.target.closest('button[data-creator-action]');
+    if (!btn) return;
+    const action = btn.dataset.creatorAction;
+    const card = btn.closest('li.creator-card');
+    if (!card) return;
+    const index = parseInt(card.dataset.customIndex, 10);
+    if (!isFinite(index)) return;
+    const customs = state.current && state.current.customItems;
+    if (!customs || !customs[index]) return;
+
+    if (action === 'delete') {
+        const c = customs[index];
+        const label = c.name || c.id;
+        if (!await confirm('Delete custom item "' + label + '"?')) return;
+        customs.splice(index, 1);
+        state.isDirty = true;
+        // Strip the deleted item from the catalog so it disappears from
+        // pickers immediately. Existing LT/Buyer overrides that still
+        // reference it stay in place (the user can clean those up by hand)
+        // but the picker won't offer the deleted id any more.
+        syncCustomItemsIntoCatalog();
+        renderItemCreator();
+        renderItemCreatorStatus();
+        updateButtons();
+    } else if (action === 'reset-vanity') {
+        // Wipe the vanity override back to null so the patcher inherits
+        // the template's FText again. Full re-render so the input clears
+        // and the Reset button disappears.
+        customs[index].vanityText = null;
+        state.isDirty = true;
+        renderItemCreator();
+        renderItemCreatorStatus();
+        updateButtons();
+    }
+}
+
 function setFooterCollapsed(collapsed) {
     const footer = document.getElementById('footer');
     const btn    = document.getElementById('footer-toggle');
@@ -3181,6 +3622,17 @@ function bindHandlers() {
     // Sellers page: same read-only filter wiring as Buyers.
     document.getElementById('sellers-filter').addEventListener('input',          renderSellers);
     document.getElementById('sellers-filter-faction').addEventListener('change', renderSellers);
+
+    // Item Creator page: a single primary button + delegated change/click
+    // handlers on the card list. The change handler covers every editable
+    // field (name / description / max stack / rarity / keep-on-death); the
+    // click handler covers the delete button (and future per-card actions).
+    document.getElementById('btn-creator-new').addEventListener('click', onCreatorNew);
+    const creatorList = document.getElementById('creator-list');
+    if (creatorList) {
+        creatorList.addEventListener('change', onCreatorListChange);
+        creatorList.addEventListener('click',  onCreatorListClick);
+    }
 
     // Delegated handlers on the LT list - one set covers expand/collapse,
     // per-entry edits, removals, and add-form interactions.

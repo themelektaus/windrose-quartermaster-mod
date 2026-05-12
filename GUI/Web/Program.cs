@@ -132,6 +132,7 @@ public static class Program
         });
 
         ItemsEndpoint.Map(app, resolvedRoot);
+        ItemTemplatesEndpoint.Map(app, resolvedRoot);
         LootTablesEndpoint.Map(app, resolvedRoot);
         BuyersEndpoint.Map(app, resolvedRoot);
         SellersEndpoint.Map(app, resolvedRoot);
