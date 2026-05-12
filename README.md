@@ -88,7 +88,6 @@ travels with it (USB-stick portable):
   Profiles\<id>.json             <- profiles you create (empty on first run)
   Sources\Vanilla\               <- extracted by setup (1097 item JSONs)
   Icons\                         <- extracted by setup (1097 PNGs)
-  Tools\IconExtractor\publish\   <- seeded from embedded zip on first run
   Tools\repak.exe                <- auto-downloaded from GitHub on first setup
   *.usmap                        <- seeded from embedded resource on first run;
                                     drop a newer one here after game updates
@@ -100,9 +99,9 @@ it stays in "dev mode" and reads/writes against the repo paths instead.
 That way the standard `dotnet run` workflow uses the tracked profiles
 under `Profiles\` as the source of truth.
 
-> **End-user prerequisites for the portable EXE**: none. Both the WPF
-> host and the bundled icon extractor are published self-contained
-> (single-file, compressed), so the EXE runs on a vanilla Windows
+> **End-user prerequisites for the portable EXE**: none. The WPF host is
+> published self-contained (single-file, compressed) and the icon
+> extractor is linked in-process, so the EXE runs on a vanilla Windows
 > machine without any .NET runtime, SDK, Git, or CUE4Parse source.
 
 ### Browser

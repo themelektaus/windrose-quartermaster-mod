@@ -18,6 +18,18 @@
       the Unversioned-Properties layout in the export bytes.
     -->
     <PackageReference Include="UAssetAPI" Version="1.1.0" />
+
+    <!--
+      IconExtractor (CUE4Parse-backed UTexture2D + locres extractor) is now
+      consumed in-process by IconExtractionRunner instead of as a subprocess
+      shelled out via `dotnet publish + Process.Start`. Pulling it in via a
+      ProjectReference means CUE4Parse + SkiaSharp + their native sidecars
+      ship inside the QuartermasterCore output, and a single self-contained
+      publish of the WPF host carries everything end-users need - no second
+      .NET runtime baked into a sibling EXE, no seed-from-zip mechanics, no
+      stale-cache freshness checks.
+    -->
+    <ProjectReference Include="..\IconExtractor\IconExtractor.csproj" />
   </ItemGroup>
 
 </Project>

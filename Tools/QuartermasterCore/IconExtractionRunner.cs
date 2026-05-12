@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -7,10 +6,10 @@ namespace Windrose.Quartermaster.Core
 {
     // Runs the full icon-extraction pipeline:
     //   1. Resolve all the moving pieces (Sources/, Icons/, paks dir,
-    //      .usmap, IconExtractor.exe, AES key).
+    //      .usmap, AES key).
     //   2. Walk Sources and build the manifest JSON
     //      (delegated to IconManifestBuilder).
-    //   3. Invoke IconExtractor.exe with the manifest.
+    //   3. Invoke the IconExtractor library in-process with the manifest.
     //   4. Clean up the temp manifest, report stats.
     //
     // Replaces Library/Icons.ps1 + Extract-Icons.ps1.
@@ -31,7 +30,6 @@ namespace Windrose.Quartermaster.Core
         public string OutDirOverride;
         public string PaksDirOverride;
         public string UsmapOverride;
-        public string ExtractorExeOverride;
         public string GameVersion = "UE5_6";
 
         public IconExtractionResult Run()
@@ -72,19 +70,6 @@ namespace Windrose.Quartermaster.Core
             }
             LogLine("Usmap:     " + usmap);
 
-            string extractorExe = ExtractorExeOverride;
-            if (string.IsNullOrEmpty(extractorExe))
-            {
-                var builder = new IconExtractorBuilder(_paths.ModRoot);
-                builder.Log = Log;
-                extractorExe = builder.Resolve();
-            }
-            else if (!File.Exists(extractorExe))
-            {
-                throw new FileNotFoundException("IconExtractor.exe not found: " + extractorExe);
-            }
-            LogLine("Extractor: " + extractorExe);
-
             // --- 2. Build manifest ----------------------------------------
             LogLine("Scanning JSONs for ItemTexture paths");
             var manifest = new IconManifestBuilder { Log = Log }.Build(sourceDir);
@@ -92,9 +77,24 @@ namespace Windrose.Quartermaster.Core
             var manifestPath = new IconManifestBuilder().WriteToTempFile(manifest.Entries);
             try
             {
-                // --- 3. Invoke IconExtractor.exe ------------------------------
+                // --- 3. Invoke IconExtractor (in-process) -----------------
                 LogLine("Running IconExtractor");
-                RunExtractor(extractorExe, paksDir, manifestPath, outDir, usmap);
+                // Hide the AES key in the displayed banner so logs are safe to share.
+                LogLine("IconExtractor (in-process) --paks-dir \"" + paksDir + "\" --aes-key <hidden>" +
+                        " --manifest \"" + manifestPath + "\" --out-dir \"" + outDir + "\"" +
+                        " --usmap \"" + usmap + "\" --game-version " + GameVersion);
+
+                Windrose.IconExtractor.IconExtractor.Run(
+                    new Windrose.IconExtractor.IconExtractorOptions
+                    {
+                        PaksDir      = paksDir,
+                        AesKey       = WindroseGameSecrets.AesKey,
+                        ManifestPath = manifestPath,
+                        OutDir       = outDir,
+                        UsmapPath    = usmap,
+                        GameVersion  = GameVersion,
+                    },
+                    Log);
             }
             finally
             {
@@ -102,42 +102,6 @@ namespace Windrose.Quartermaster.Core
             }
 
             return Statistics(outDir);
-        }
-
-        void RunExtractor(string extractorExe, string paksDir, string manifestPath,
-                          string outDir, string usmap)
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = extractorExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("--paks-dir");     psi.ArgumentList.Add(paksDir);
-            psi.ArgumentList.Add("--aes-key");      psi.ArgumentList.Add(WindroseGameSecrets.AesKey);
-            psi.ArgumentList.Add("--manifest");     psi.ArgumentList.Add(manifestPath);
-            psi.ArgumentList.Add("--out-dir");      psi.ArgumentList.Add(outDir);
-            psi.ArgumentList.Add("--usmap");        psi.ArgumentList.Add(usmap);
-            psi.ArgumentList.Add("--game-version"); psi.ArgumentList.Add(GameVersion);
-
-            // Hide the AES key in the displayed command so logs are safe to share.
-            LogLine("IconExtractor.exe --paks-dir \"" + paksDir + "\" --aes-key <hidden>" +
-                    " --manifest \"" + manifestPath + "\" --out-dir \"" + outDir + "\"" +
-                    " --usmap \"" + usmap + "\" --game-version " + GameVersion);
-
-            var proc = Process.Start(psi);
-            proc.OutputDataReceived += (s, e) => { if (e.Data != null) LogLine(e.Data); };
-            proc.ErrorDataReceived  += (s, e) => { if (e.Data != null) LogLine(e.Data); };
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
-            proc.WaitForExit();
-            if (proc.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    "IconExtractor failed (exit " + proc.ExitCode + ")");
-            }
         }
 
         IconExtractionResult Statistics(string outDir)

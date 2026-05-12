@@ -3,38 +3,36 @@
 // optionally the localized title + description for each item by walking
 // every shipped culture's .locres files.
 //
-// Invoked by the Stack Size mod's Extract-Icons.ps1. The PowerShell wrapper
-// already collected the InventoryItem JSONs from Sources/Vanilla/, parsed
-// the ItemTexture paths and the FText (TableId/Key) references for
-// ItemName/ItemDescription, and now hands us the list of asset paths +
-// localization keys to extract.
+// Originally shipped as a standalone EXE invoked via Process.Start; now a
+// plain in-process library called from QuartermasterCore.IconExtractionRunner.
+// The on-disk manifest JSON contract is unchanged - the runner still writes
+// a temp file and we still parse it - so we can keep evolving the manifest
+// shape without coupling the two assemblies through a typed contract.
 //
-// Args:
-//   --paks-dir <path>    Folder that contains the game's pakchunk0*.pak/.ucas/.utoc. (required)
-//   --aes-key  <hex>     AES key for the encrypted IoStore containers. (required)
-//   --manifest <path>    JSON array; each entry:
-//                          itemId            (required)
-//                          texturePath       (required, "/Game/...")
-//                          nameTable / nameKey         (optional, FText for ItemName)
-//                          descTable / descKey         (optional, FText for ItemDescription)
-//                          vanityTable / vanityKey     (optional, FText for VanityText)
-//                          effects[]                   (optional, list of FText refs)
-//                          setEffects[]                (optional, list of set-effect entries)
-//                          descriptionData[]           (optional, curve refs that back the
-//                                                       {0}, {1}, ... placeholders in
-//                                                       description / effects / setEffects).
-//                                                       Each entry:
-//                                                         curveTable, rowName, curveLevel,
-//                                                         displayType (RatioToPercent /
-//                                                         ValueToPercent / SecondsAsMinutes /
-//                                                         ValueAsValue / None),
-//                                                         inverse (1 - value when true).
-//   --out-dir  <path>    Where the PNGs land. Created if missing. (required)
-//   --usmap    <path>    UE5 mappings file (.usmap) for unversioned property layouts.
-//                        Without it CUE4Parse cannot deserialize UTexture2D properties
-//                        on Windrose builds. Generate via UE4SS Ctrl+Num6 (DumpUSMAP). (required)
-//   --game-version <id>  Optional, defaults to UE5_6. One of CUE4Parse's EGame names.
-//   --no-meta            Skip metadata extraction (only PNGs).
+// Public surface:
+//   IconExtractor.Run(IconExtractorOptions, Action<string>? log)
+//     Throws ArgumentException on bad inputs, InvalidOperationException on
+//     runtime failures (provider init, decode errors, etc.). Stdout-style
+//     progress is forwarded to the optional log callback (one line per
+//     call) so the GUI can stream it over SSE.
+//
+// Manifest JSON shape (per entry):
+//   itemId            (required)
+//   texturePath       (required, "/Game/...")
+//   nameTable / nameKey         (optional, FText for ItemName)
+//   descTable / descKey         (optional, FText for ItemDescription)
+//   vanityTable / vanityKey     (optional, FText for VanityText)
+//   effects[]                   (optional, list of FText refs)
+//   setEffects[]                (optional, list of set-effect entries)
+//   descriptionData[]           (optional, curve refs that back the
+//                                {0}, {1}, ... placeholders in
+//                                description / effects / setEffects).
+//                                Each entry:
+//                                  curveTable, rowName, curveLevel,
+//                                  displayType (RatioToPercent /
+//                                  ValueToPercent / SecondsAsMinutes /
+//                                  ValueAsValue / None),
+//                                  inverse (1 - value when true).
 //
 // Output:
 //   <OutDir>/<itemId>.png   per successfully extracted item.
@@ -53,11 +51,6 @@
 //                           Optional fields are omitted when empty. Only
 //                           cultures with at least one non-empty field are
 //                           written.
-//
-// Exit codes:
-//   0  success (everything written, even if some items were skipped).
-//   2  argument error (bad CLI args, missing files).
-//   3  CUE4Parse provider initialization failed (wrong key / wrong game ver).
 
 using System.Globalization;
 using System.Text.Json;
@@ -71,14 +64,26 @@ using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Engine.Curves;
-using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.Textures.BC;
 
-namespace WindroseIconExtractor;
+namespace Windrose.IconExtractor;
 
-internal static class Program
+// Options for IconExtractor.Run. Constructed by the caller (typically
+// IconExtractionRunner) with absolute paths that have already been validated.
+public sealed class IconExtractorOptions
+{
+    public string PaksDir { get; set; } = string.Empty;
+    public string AesKey { get; set; } = string.Empty;
+    public string ManifestPath { get; set; } = string.Empty;
+    public string OutDir { get; set; } = string.Empty;
+    public string UsmapPath { get; set; } = string.Empty;
+    public string GameVersion { get; set; } = "UE5_6";
+    public bool NoMeta { get; set; }
+}
+
+public static class IconExtractor
 {
     // Optional localization fields: when present, the extractor resolves the
     // FText (TableId/Key) -> localized string for every culture shipped in
@@ -116,7 +121,7 @@ internal static class Program
 
     // Curve-table reference that backs a {0}/{1}/... placeholder in the
     // localized description / effects / set-effects strings. The field names
-    // mirror the JSON shape produced by Library/Icons.ps1.
+    // mirror the JSON shape produced by QuartermasterCore.IconManifestBuilder.
     private sealed class CurveRef
     {
         public string? CurveTable { get; set; }
@@ -126,39 +131,60 @@ internal static class Program
         public bool Inverse { get; set; }
     }
 
-    private static int Main(string[] args)
+    // Tiny wrapper around the optional log callback so the rest of the file
+    // can keep its old Console.WriteLine cadence (one line per call,
+    // separators between logical sections via Out("")).
+    [ThreadStatic]
+    private static Action<string>? _log;
+    private static void Out(string msg)
     {
+        if (_log != null) _log(msg);
+    }
+
+    // Entry point. Throws ArgumentException for bad inputs, InvalidOperationException
+    // for CUE4Parse / IO failures during the actual run. Output PNG / JSON files
+    // land under opts.OutDir.
+    public static void Run(IconExtractorOptions opts, Action<string>? log = null)
+    {
+        if (opts is null) throw new ArgumentNullException(nameof(opts));
+        ValidateOptions(opts);
+
+        _log = log;
         try
         {
-            var parsed = ParseArgs(args);
-            return Run(parsed);
+            RunCore(opts);
         }
-        catch (ArgumentException ex)
+        finally
         {
-            Console.Error.WriteLine($"[X] {ex.Message}");
-            return 2;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[X] {ex.GetType().Name}: {ex.Message}");
-            Console.Error.WriteLine(ex.StackTrace);
-            return 3;
+            _log = null;
         }
     }
 
-    private static int Run(ParsedArgs a)
+    private static void ValidateOptions(IconExtractorOptions o)
+    {
+        if (string.IsNullOrWhiteSpace(o.PaksDir))     throw new ArgumentException("PaksDir is required");
+        if (string.IsNullOrWhiteSpace(o.AesKey))      throw new ArgumentException("AesKey is required");
+        if (string.IsNullOrWhiteSpace(o.ManifestPath)) throw new ArgumentException("ManifestPath is required");
+        if (string.IsNullOrWhiteSpace(o.OutDir))      throw new ArgumentException("OutDir is required");
+        if (string.IsNullOrWhiteSpace(o.UsmapPath))   throw new ArgumentException("UsmapPath is required");
+        if (!Directory.Exists(o.PaksDir))             throw new ArgumentException($"PaksDir does not exist: {o.PaksDir}");
+        if (!File.Exists(o.UsmapPath))                throw new ArgumentException($"Usmap file not found: {o.UsmapPath}");
+        if (!File.Exists(o.ManifestPath))             throw new ArgumentException($"Manifest not found: {o.ManifestPath}");
+    }
+
+    private static void RunCore(IconExtractorOptions a)
     {
         Directory.CreateDirectory(a.OutDir);
 
         // Load manifest first so a malformed file fails before we touch the pak.
         var manifest = LoadManifest(a.ManifestPath);
-        Console.WriteLine($"[OK] Manifest entries: {manifest.Count}");
+        Out($"[OK] Manifest entries: {manifest.Count}");
 
         EnsureOodle();
         EnsureDetex();
 
-        Console.WriteLine($"[..] Initializing CUE4Parse provider ({a.GameVersion})");
-        Console.WriteLine($"     PaksDir: {a.PaksDir}");
+        Out($"[..] Initializing CUE4Parse provider ({a.GameVersion})");
+        Out($"     PaksDir: {a.PaksDir}");
 
         var version = ParseGameVersion(a.GameVersion);
         var provider = new DefaultFileProvider(
@@ -166,9 +192,9 @@ internal static class Program
             SearchOption.TopDirectoryOnly,
             new VersionContainer(version));
         provider.MappingsContainer = new FileUsmapTypeMappingsProvider(a.UsmapPath);
-        Console.WriteLine($"[OK] Usmap loaded: {a.UsmapPath}");
+        Out($"[OK] Usmap loaded: {a.UsmapPath}");
         provider.Initialize();
-        Console.WriteLine($"[..] Before SubmitKey: UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count}");
+        Out($"[..] Before SubmitKey: UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count}");
 
         // Submit the key for the zero-guid (default), and also for every
         // distinct GUID we see on the unloaded readers. UE5 IoStore can
@@ -179,62 +205,29 @@ internal static class Program
         foreach (var v in provider.UnloadedVfs) seenGuids.Add(v.EncryptionKeyGuid);
         foreach (var g in seenGuids) provider.SubmitKey(g, aes);
 
-        Console.WriteLine($"     After  SubmitKey: UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count}");
+        Out($"     After  SubmitKey: UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count}");
         var mounted = provider.Mount();
-        Console.WriteLine($"     After  Mount():   UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count} (+{mounted})");
+        Out($"     After  Mount():   UnloadedVfs={provider.UnloadedVfs.Count}, MountedVfs={provider.MountedVfs.Count} (+{mounted})");
         provider.PostMount();
-        Console.WriteLine($"[OK] Provider ready: {provider.Files.Count} virtual files mounted");
+        Out($"[OK] Provider ready: {provider.Files.Count} virtual files mounted");
 
         // Diagnose any leftover unloaded readers by trying to mount them
         // directly, so we see the underlying error CUE4Parse swallowed.
         if (provider.UnloadedVfs.Count > 0)
         {
-            Console.WriteLine($"[..] Diagnosing {provider.UnloadedVfs.Count} unloaded VFS readers:");
+            Out($"[..] Diagnosing {provider.UnloadedVfs.Count} unloaded VFS readers:");
             foreach (var v in provider.UnloadedVfs.ToList())
             {
                 try
                 {
                     v.Mount(provider.PathComparer);
-                    Console.WriteLine($"     {v.Name}: direct Mount OK");
+                    Out($"     {v.Name}: direct Mount OK");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"     {v.Name}: {ex.GetType().Name}: {ex.Message}");
+                    Out($"     {v.Name}: {ex.GetType().Name}: {ex.Message}");
                 }
             }
-        }
-
-        if (Environment.GetEnvironmentVariable("ICONEXTRACTOR_DUMP_VFS") == "1")
-        {
-            Console.WriteLine("[..] Mounted VFS:");
-            foreach (var v in provider.MountedVfs) Console.WriteLine($"     {v.Name} (Encrypted={v.IsEncrypted}, Guid={v.EncryptionKeyGuid})");
-            Console.WriteLine("[..] Unloaded VFS (need additional keys):");
-            foreach (var v in provider.UnloadedVfs) Console.WriteLine($"     {v.Name} (Encrypted={v.IsEncrypted}, Guid={v.EncryptionKeyGuid})");
-            return 0;
-        }
-
-        if (Environment.GetEnvironmentVariable("ICONEXTRACTOR_DUMP_PATHS") == "1")
-        {
-            var byExt = provider.Files.Keys
-                .GroupBy(k => Path.GetExtension(k).ToLowerInvariant())
-                .OrderByDescending(g => g.Count())
-                .Take(15)
-                .ToList();
-            Console.WriteLine("[..] File counts by extension:");
-            foreach (var g in byExt) Console.WriteLine($"     {g.Key,-12} {g.Count(),6}");
-
-            var icons = provider.Files.Keys
-                .Where(k => k.Contains("T_ItemIcon", StringComparison.OrdinalIgnoreCase))
-                .Take(10).ToList();
-            Console.WriteLine($"[..] Files matching T_ItemIcon ({icons.Count} sampled):");
-            foreach (var s in icons) Console.WriteLine($"     {s}");
-
-            var uassets = provider.Files.Keys
-                .Where(k => k.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-                .Take(10).ToList();
-            Console.WriteLine($"[..] Sample .uasset files ({uassets.Count} of {provider.Files.Keys.Count(k => k.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))}):");
-            foreach (var s in uassets) Console.WriteLine($"     {s}");
-            return 0;
         }
 
         int ok = 0, miss = 0, fail = 0;
@@ -271,23 +264,21 @@ internal static class Program
             }
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"[OK] Extracted: {ok}");
-        if (miss > 0) Console.WriteLine($"[!]  Skipped (no/None texture path): {miss}");
+        Out("");
+        Out($"[OK] Extracted: {ok}");
+        if (miss > 0) Out($"[!]  Skipped (no/None texture path): {miss}");
         if (fail > 0)
         {
-            Console.WriteLine($"[X]  Failed: {fail}");
+            Out($"[X]  Failed: {fail}");
             int show = Math.Min(failures.Count, 10);
-            for (int i = 0; i < show; i++) Console.WriteLine($"     {failures[i]}");
-            if (failures.Count > show) Console.WriteLine($"     ... and {failures.Count - show} more");
+            for (int i = 0; i < show; i++) Out($"     {failures[i]}");
+            if (failures.Count > show) Out($"     ... and {failures.Count - show} more");
         }
 
         if (!a.NoMeta)
         {
             ExtractMetadata(provider, manifest, a.OutDir);
         }
-
-        return 0;
     }
 
     // For each shipped culture, swap the provider's localization dictionary
@@ -302,21 +293,21 @@ internal static class Program
         var withMeta = manifest.Where(HasAnyLocalization).ToList();
         if (withMeta.Count == 0)
         {
-            Console.WriteLine();
-            Console.WriteLine("[!]  Metadata: no manifest entries carry localization keys - skipped");
+            Out("");
+            Out("[!]  Metadata: no manifest entries carry localization keys - skipped");
             return;
         }
 
         var cultures = provider.Internationalization.AvailableCultures;
         if (cultures.Count == 0)
         {
-            Console.WriteLine();
-            Console.WriteLine("[!]  Metadata: no cultures discovered (DefaultGame.ini parse miss?) - skipped");
+            Out("");
+            Out("[!]  Metadata: no cultures discovered (DefaultGame.ini parse miss?) - skipped");
             return;
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"[..] Metadata: resolving {withMeta.Count} items across {cultures.Count} cultures: {string.Join(", ", cultures)}");
+        Out("");
+        Out($"[..] Metadata: resolving {withMeta.Count} items across {cultures.Count} cultures: {string.Join(", ", cultures)}");
 
         // Curve refs are culture-independent (they always produce the same
         // numeric string), so resolve them once per item up front.
@@ -341,7 +332,7 @@ internal static class Program
         }
         if (curveItems > 0)
         {
-            Console.WriteLine($"     Curve placeholders: resolved {curveOk}, missed {curveMiss} across {curveItems} item(s)");
+            Out($"     Curve placeholders: resolved {curveOk}, missed {curveMiss} across {curveItems} item(s)");
         }
 
         // itemId -> culture -> bag of resolved fields
@@ -355,7 +346,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"     {culture}: ChangeCulture failed ({ex.GetType().Name}: {ex.Message}) - skipping");
+                Out($"     {culture}: ChangeCulture failed ({ex.GetType().Name}: {ex.Message}) - skipping");
                 continue;
             }
 
@@ -374,7 +365,7 @@ internal static class Program
                 byCulture[culture] = bag;
                 hits++;
             }
-            Console.WriteLine($"     {culture}: {hits} item(s) had at least one localized field");
+            Out($"     {culture}: {hits} item(s) had at least one localized field");
         }
 
         // Write one JSON per item. Optional fields are omitted when empty,
@@ -405,7 +396,7 @@ internal static class Program
             File.WriteAllText(outPath, JsonSerializer.Serialize(shaped, jsonOpts));
             written++;
         }
-        Console.WriteLine($"[OK] Metadata: wrote {written} JSON sidecar(s) to {outDir}");
+        Out($"[OK] Metadata: wrote {written} JSON sidecar(s) to {outDir}");
     }
 
     private static bool HasAnyLocalization(ManifestEntry e)
@@ -524,7 +515,7 @@ internal static class Program
 
             if (!cached.ByName.TryGetValue(r.RowName, out var rowStruct))
             {
-                if (Verbose) Console.WriteLine($"     [curve-miss] row '{r.RowName}' not in {r.CurveTable}");
+                if (Verbose) Out($"     [curve-miss] row '{r.RowName}' not in {r.CurveTable}");
                 return null;
             }
 
@@ -540,7 +531,7 @@ internal static class Program
             try { value = curve.Eval(r.CurveLevel); }
             catch (Exception ex)
             {
-                if (Verbose) Console.WriteLine($"     [curve-eval] {r.RowName} @{r.CurveLevel}: {ex.GetType().Name}: {ex.Message}");
+                if (Verbose) Out($"     [curve-eval] {r.RowName} @{r.CurveLevel}: {ex.GetType().Name}: {ex.Message}");
                 return null;
             }
 
@@ -578,7 +569,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                if (Verbose) Console.WriteLine($"     [curve-load] {path ?? assetPath}: {ex.GetType().Name}: {ex.Message}");
+                if (Verbose) Out($"     [curve-load] {path ?? assetPath}: {ex.GetType().Name}: {ex.Message}");
                 built = null;
             }
             _cache[assetPath] = built;
@@ -636,7 +627,7 @@ internal static class Program
         var dllPath = Path.Combine(here, OodleHelper.OodleFileName);
         if (!File.Exists(dllPath))
         {
-            Console.WriteLine($"[..] Downloading Oodle DLL ({OodleHelper.OodleFileName})");
+            Out($"[..] Downloading Oodle DLL ({OodleHelper.OodleFileName})");
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
             // The HttpClient overload pulls from the OodleUE GitHub release,
             // which is more reliable than the synchronous DownloadOodleDll
@@ -645,7 +636,7 @@ internal static class Program
                 .GetAwaiter().GetResult();
             if (!ok || !File.Exists(dllPath))
                 throw new InvalidOperationException("Failed to download Oodle DLL from OodleUE.");
-            Console.WriteLine($"[OK] Oodle DLL: {dllPath}");
+            Out($"[OK] Oodle DLL: {dllPath}");
         }
         OodleHelper.Initialize(dllPath);
     }
@@ -659,10 +650,10 @@ internal static class Program
         var dllPath = Path.Combine(here, DetexHelper.DLL_NAME);
         if (!File.Exists(dllPath))
         {
-            Console.WriteLine($"[..] Extracting Detex DLL ({DetexHelper.DLL_NAME})");
+            Out($"[..] Extracting Detex DLL ({DetexHelper.DLL_NAME})");
             if (!DetexHelper.LoadDll(dllPath) || !File.Exists(dllPath))
                 throw new InvalidOperationException("Failed to extract embedded Detex DLL.");
-            Console.WriteLine($"[OK] Detex DLL: {dllPath}");
+            Out($"[OK] Detex DLL: {dllPath}");
         }
         DetexHelper.Initialize(dllPath);
     }
@@ -716,51 +707,5 @@ internal static class Program
         for (int i = 0; i < s.Length; i++)
             buf[i] = Array.IndexOf(bad, s[i]) >= 0 ? '_' : s[i];
         return new string(buf);
-    }
-
-    private sealed record ParsedArgs(
-        string PaksDir,
-        string AesKey,
-        string ManifestPath,
-        string OutDir,
-        string UsmapPath,
-        string GameVersion,
-        bool NoMeta);
-
-    private static ParsedArgs ParseArgs(string[] args)
-    {
-        string? paks = null, key = null, manifest = null, outDir = null, usmap = null;
-        string version = "UE5_6";
-        bool noMeta = false;
-
-        for (int i = 0; i < args.Length; i++)
-        {
-            string Need(string flag)
-            {
-                if (i + 1 >= args.Length) throw new ArgumentException($"{flag} requires a value");
-                return args[++i];
-            }
-            switch (args[i])
-            {
-                case "--paks-dir": paks = Need("--paks-dir"); break;
-                case "--aes-key":  key  = Need("--aes-key");  break;
-                case "--manifest": manifest = Need("--manifest"); break;
-                case "--out-dir":  outDir = Need("--out-dir"); break;
-                case "--usmap":    usmap  = Need("--usmap"); break;
-                case "--game-version": version = Need("--game-version"); break;
-                case "--no-meta":  noMeta = true; break;
-                default: throw new ArgumentException($"Unknown argument: {args[i]}");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(paks))     throw new ArgumentException("--paks-dir is required");
-        if (string.IsNullOrWhiteSpace(key))      throw new ArgumentException("--aes-key is required");
-        if (string.IsNullOrWhiteSpace(manifest)) throw new ArgumentException("--manifest is required");
-        if (string.IsNullOrWhiteSpace(outDir))   throw new ArgumentException("--out-dir is required");
-        if (string.IsNullOrWhiteSpace(usmap))    throw new ArgumentException("--usmap is required");
-        if (!Directory.Exists(paks))             throw new ArgumentException($"--paks-dir does not exist: {paks}");
-        if (!File.Exists(usmap))                 throw new ArgumentException($"--usmap file not found: {usmap}");
-
-        return new ParsedArgs(paks, key, manifest, outDir, usmap, version, noMeta);
     }
 }

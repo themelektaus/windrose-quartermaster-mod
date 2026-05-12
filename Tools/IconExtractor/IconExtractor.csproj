@@ -1,18 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>WindroseIconExtractor</RootNamespace>
-    <AssemblyName>IconExtractor</AssemblyName>
+    <RootNamespace>Windrose.IconExtractor</RootNamespace>
+    <AssemblyName>Windrose.IconExtractor</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
@@ -24,18 +18,28 @@
   </ItemGroup>
 
   <!--
-    Strip transitive .pdb files from the publish dir after publish.
-    DebugType=embedded only bundles the symbols for THIS assembly; the
-    CUE4Parse submodule projects still emit their own .pdb files which
-    bloat the embedded IconExtractor.publish.zip by ~1 MB for no end-user
-    value. We can't change DebugType inside a submodule, so we just
-    delete the artifacts after the fact.
+    Initialize the CUE4Parse submodule on demand if it's not checked out
+    yet, so a fresh clone (without the recursive flag) still builds. Only
+    runs once - subsequent builds see the .csproj at the expected path
+    and skip straight through. If git itself isn't on PATH we surface a
+    clear hint instead of letting MSBuild's project-not-found propagate
+    up with a misleading "file is missing" message.
   -->
-  <Target Name="StripTransitivePdbsAfterPublish" AfterTargets="Publish">
-    <ItemGroup>
-      <_PublishPdbLeftovers Include="$(PublishDir)*.pdb" Exclude="$(PublishDir)IconExtractor.pdb" />
-    </ItemGroup>
-    <Delete Files="@(_PublishPdbLeftovers)" />
+  <PropertyGroup>
+    <_CUE4ParseCsproj>$(MSBuildThisFileDirectory)..\CUE4Parse\CUE4Parse\CUE4Parse.csproj</_CUE4ParseCsproj>
+    <_ModRoot>$(MSBuildThisFileDirectory)..\..</_ModRoot>
+  </PropertyGroup>
+  <Target Name="EnsureCUE4ParseSubmodule"
+          BeforeTargets="CollectPackageReferences;ResolveProjectReferences;CollectResolvedSDKReferencesDesignTime"
+          Condition="!Exists('$(_CUE4ParseCsproj)')">
+    <Message Importance="high" Text="[Quartermaster] CUE4Parse submodule not initialized - running git submodule update --init" />
+    <Exec Command="git submodule update --init --progress Tools/CUE4Parse"
+          WorkingDirectory="$(_ModRoot)"
+          ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="_GitSubmoduleExit" />
+    </Exec>
+    <Error Condition="'$(_GitSubmoduleExit)' != '0' OR !Exists('$(_CUE4ParseCsproj)')"
+           Text="Could not initialize the CUE4Parse submodule. Either re-clone the repository with the recursive flag, install Git for Windows (https://git-scm.com/download/win) so the auto-init step can run, or grab CUE4Parse manually from https://github.com/FabianFG/CUE4Parse into Tools/CUE4Parse/." />
   </Target>
 
 </Project>

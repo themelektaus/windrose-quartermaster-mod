@@ -53,8 +53,11 @@ namespace Windrose.Quartermaster.Core
             status.UsmapPath = usmap;
 
             status.HasRepak = File.Exists(Path.Combine(_paths.ModRoot, "repak.exe"));
-            status.HasIconExtractor = File.Exists(Path.Combine(
-                _paths.ModRoot, "Tools", "IconExtractor", "publish", "IconExtractor.exe"));
+            // IconExtractor used to be a sibling EXE under
+            // Tools/IconExtractor/publish/; it's now a library linked into
+            // QuartermasterCore directly, so "is the tool present" is
+            // tautologically true as long as the host is running.
+            status.HasIconExtractor = true;
 
             // Steam-detected vanilla pak - don't throw, just report.
             try

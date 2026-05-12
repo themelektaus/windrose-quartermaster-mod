@@ -49,10 +49,7 @@
     the target body deletes the assembly so CoreCompile is forced to
     rebuild from scratch. In steady state the target body skips
     (assembly newer than every wwwroot file) so dev iteration is
-    cheap. Equivalent in spirit to the IconExtractor zip target
-    below, but applied to the assembly itself instead of an embedded
-    resource - works around the wwwroot ItemGroup conditional-
-    Exists-at-evaluation-time chicken-and-egg.
+    cheap.
   -->
   <ItemGroup>
     <_WwwrootInputs Include="wwwroot\**" />
@@ -89,114 +86,14 @@
     See PickupTripletBuilder for the per-build orchestration.
   -->
   <!--
-    Embed a pre-published copy of IconExtractor (the CUE4Parse-backed
-    tool that turns vanilla pak entries into PNGs) so a deployed EXE can
-    seed it into <DataRoot>\Tools\IconExtractor\publish\ on first run.
-    No .NET SDK / git submodule init / CUE4Parse source needed on the
-    end-user's machine.
-
-    Build pipeline:
-      1. PublishIconExtractorForEmbed (BeforeTargets="PrepareForBuild")
-         runs `dotnet publish` on the IconExtractor project and packs
-         the publish/ folder into IconExtractor.publish.zip.
-         Only runs during `dotnet publish` of THIS project (gated by
-         _IsPublishing) so plain `dotnet build` stays cheap.
-      2. The resulting .zip is added to EmbeddedResource items inside
-         the same target so it makes it into the assembly.
-      3. At runtime in deployed mode, Program.SeedIconExtractorIfMissing
-         extracts the .zip into <DataRoot>\Tools\IconExtractor\publish\.
-
-    On a plain dev build the .zip might still exist from a prior publish.
-    We embed it anyway (cheap, ~10 MB compressed) so the cycle stays
-    consistent and the dev binaries can also serve as a portable test.
+    The IconExtractor used to be a separate self-contained EXE that we
+    `dotnet publish`d into a sibling folder, zipped, and embedded here so
+    the deployed EXE could seed it on first run. It's now a library
+    referenced directly from QuartermasterCore - CUE4Parse + SkiaSharp +
+    their native sidecars get linked into our own assembly graph, and the
+    publish of this project pulls them through transitively. No more
+    embed-the-zip target, no more freshness markers, no more cache
+    invalidation rules: a fresh `dotnet publish` produces an EXE that
+    has everything the icon pipeline needs.
   -->
-  <PropertyGroup>
-    <_IconExtractorProj>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\IconExtractor.csproj</_IconExtractorProj>
-    <_IconExtractorDir>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor</_IconExtractorDir>
-    <_IconExtractorPublishDir>$(_IconExtractorDir)\publish</_IconExtractorPublishDir>
-    <_IconExtractorZipPath>$(_IconExtractorDir)\IconExtractor.publish.zip</_IconExtractorZipPath>
-    <_IconExtractorExpectedTfm>net10.0</_IconExtractorExpectedTfm>
-  </PropertyGroup>
-  <!--
-    Always-on top-level EmbeddedResource: if the zip exists at evaluation
-    time it's added to the resource set, so the assembly's CoreCompile
-    inputs include the zip's mtime. Touching the zip (via the target
-    below) invalidates the compile cache and triggers a re-embed -
-    that's how we make sure a fresh zip ends up in the published EXE
-    even when the App project itself has no source changes.
-  -->
-  <ItemGroup Condition="Exists('$(_IconExtractorZipPath)')">
-    <EmbeddedResource Include="$(_IconExtractorZipPath)">
-      <LogicalName>IconExtractor.publish.zip</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
-    <!--
-      Source files that, when changed, must trigger a fresh IconExtractor
-      republish + re-zip. csproj covers TFM bumps and dependency changes;
-      Program.cs is the only source file. If we add more .cs files later,
-      they need to be listed here too (or we glob them, see below).
-    -->
-    <_IconExtractorSource Include="$(_IconExtractorProj)" />
-    <_IconExtractorSource Include="$(_IconExtractorDir)\**\*.cs"
-                          Exclude="$(_IconExtractorDir)\bin\**;$(_IconExtractorDir)\obj\**;$(_IconExtractorDir)\publish\**" />
-  </ItemGroup>
-  <Target Name="PublishIconExtractorForEmbed"
-          BeforeTargets="BeforeBuild;BeforeCompile;CoreCompile"
-          Inputs="@(_IconExtractorSource)"
-          Outputs="$(_IconExtractorZipPath)">
-    <!--
-      Inputs/Outputs let MSBuild skip this target on incremental builds
-      when nothing in the IconExtractor source tree is newer than the
-      zip - so dev iteration stays cheap. When IconExtractor.csproj is
-      bumped (e.g. TFM upgrade) the zip is older than csproj -> target
-      runs, fresh build is published, fresh zip is created.
-
-      Hooked into BeforeBuild as the primary anchor (always invoked
-      during `dotnet build` / `dotnet publish` regardless of incremental
-      state) plus BeforeCompile/CoreCompile as belt-and-braces in case
-      a fast path skips BeforeBuild.
-
-      Intentionally NOT gated on _IsPublishing anymore: a stale zip is
-      a build correctness issue even for plain `dotnet build`, and the
-      Inputs/Outputs gate already keeps the cost at near-zero when the
-      tree is up to date.
-    -->
-    <Message Importance="high" Text="[Quartermaster] (Re)publishing IconExtractor for embedding (source changed since last zip)..." />
-    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
-    <!--
-      Stamp the publish dir with a plaintext TFM marker. We can't rely on
-      IconExtractor.runtimeconfig.json anymore - PublishSingleFile bundles
-      it inside the EXE - but we still need a sibling sentinel so the
-      runtime freshness check (IconExtractorBuilder.IsPublishFresh) can
-      detect a mismatched cached publish and force a rebuild.
-    -->
-    <WriteLinesToFile File="$(_IconExtractorPublishDir)\IconExtractor.tfm"
-                      Lines="$(_IconExtractorExpectedTfm)"
-                      Overwrite="true" />
-    <Delete Files="$(_IconExtractorZipPath)" Condition="Exists('$(_IconExtractorZipPath)')" />
-    <ZipDirectory SourceDirectory="$(_IconExtractorPublishDir)" DestinationFile="$(_IconExtractorZipPath)" />
-    <Message Importance="high" Text="[Quartermaster] IconExtractor.publish.zip refreshed at $(_IconExtractorZipPath)" />
-  </Target>
-  <!--
-    Safety net: after the target runs (or short-circuits) verify the
-    publish/IconExtractor.tfm marker matches _IconExtractorExpectedTfm.
-    Catches the "embedded zip is from an older TFM" failure mode at
-    build time instead of letting it ship to end users. Only runs
-    during publish so plain dotnet build isn't gated on having an
-    up-to-date publish/ folder lying around.
-
-    (Pre PublishSingleFile we sniffed runtimeconfig.json directly - now
-    that JSON lives inside the EXE so we read the .tfm marker the
-    PublishIconExtractorForEmbed target writes alongside.)
-  -->
-  <Target Name="VerifyIconExtractorTfm"
-          AfterTargets="PublishIconExtractorForEmbed"
-          Condition="'$(_IsPublishing)' == 'true' AND Exists('$(_IconExtractorPublishDir)\IconExtractor.tfm')">
-    <PropertyGroup>
-      <_IconExtractorTfmMarker>$([System.IO.File]::ReadAllText('$(_IconExtractorPublishDir)\IconExtractor.tfm').Trim())</_IconExtractorTfmMarker>
-    </PropertyGroup>
-    <Error Condition="'$(_IconExtractorTfmMarker)' != '$(_IconExtractorExpectedTfm)'"
-           Text="IconExtractor publish was built against the wrong TFM. Expected '$(_IconExtractorExpectedTfm)', marker reports '$(_IconExtractorTfmMarker)'. Delete $(_IconExtractorPublishDir) and $(_IconExtractorZipPath) and republish." />
-  </Target>
 </Project>
