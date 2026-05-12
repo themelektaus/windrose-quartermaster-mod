@@ -1387,7 +1387,6 @@ function setLootEntryFieldFromInput(ltId, index, field, rawValue) {
     }
     pruneLootOverrideIfEmpty(ltId);
     markDirty();
-    refreshLtRow(ltId);
     renderLootStatus();
 }
 
@@ -1865,7 +1864,7 @@ async function onSave() {
 }
 
 async function onNew() {
-    const name = prompt('New profile name?', 'My Profile');
+    const name = await prompt('New profile name?', 'My Profile');
     if (!name) return;
     const created = await api('POST', '/api/profiles', {
         name,
@@ -1888,9 +1887,9 @@ async function onDuplicate() {
     await loadProfile(created.id);
 }
 
-function onRename() {
+async function onRename() {
     if (!state.current) return;
-    const newName = prompt('New name?', state.current.name);
+    const newName = await prompt('New name?', state.current.name);
     if (!newName || newName === state.current.name) return;
     state.current.name = newName;
     markDirty();
@@ -1900,7 +1899,7 @@ function onRename() {
 
 async function onDelete() {
     if (!state.current) return;
-    if (!confirm('Delete profile "' + state.current.name + '"?')) return;
+    if (!await confirm('Delete profile "' + state.current.name + '"?')) return;
     await api('DELETE', '/api/profiles/' + encodeURIComponent(state.current.id));
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -1923,7 +1922,7 @@ async function onDelete() {
 async function onBuild() {
     if (!state.current) return;
     if (state.isDirty) {
-        if (confirm('Save unsaved changes before building?')) {
+        if (await confirm('Save unsaved changes before building?')) {
             await onSave();
         }
     }
@@ -2151,16 +2150,16 @@ async function deleteMod(filename) {
     // explicitly says "recycle bin" rather than "delete".
     const file = state.mods.files.find(f => f.filename === filename);
     if (!file || !file.isQuartermaster) return;
-    if (!confirm('Move "' + filename + '" to the recycle bin?')) return;
+    if (!await confirm('Move "' + filename + '" to the recycle bin?')) return;
     try {
         const r = await fetch('/api/mods/' + encodeURIComponent(filename), { method: 'DELETE' });
         const data = await r.json();
         if (!r.ok || !data.success) {
-            alert('Delete failed: ' + (data.error || ('HTTP ' + r.status)));
+            await alert('Delete failed: ' + (data.error || ('HTTP ' + r.status)));
             return;
         }
     } catch (e) {
-        alert('Network error: ' + e.message);
+        await alert('Network error: ' + e.message);
         return;
     }
     await loadMods();
@@ -2176,14 +2175,15 @@ function setFooterCollapsed(collapsed) {
 // ---------- Bindings -----------------------------------------------------
 
 function bindHandlers() {
-    document.getElementById('profile-select').addEventListener('change', e => {
+    document.getElementById('profile-select').addEventListener('change', async e => {
+        const nextId = e.target.value;
         if (state.isDirty) {
-            if (!confirm('Discard unsaved changes?')) {
-                e.target.value = state.current.id;
-                return;
-            }
+            // Revert visually right away so the dropdown doesn't show the
+            // new selection while the (async) confirm modal is open.
+            e.target.value = state.current.id;
+            if (!await confirm('Discard unsaved changes?')) return;
         }
-        loadProfile(e.target.value);
+        loadProfile(nextId);
     });
     document.getElementById('btn-new').addEventListener('click',       onNew);
     // Empty-state mirror of "+ New" - shown only while body.no-profiles is
@@ -2356,10 +2356,18 @@ function onLtListInput(e) {
 }
 
 // Picker-type select changed -> sync the target input (placeholder, mode, hide).
+// Also: deferred refresh for edited entry rows. setLootEntryFieldFromInput
+// skips refreshLtRow() on every keystroke (it would steal focus); we catch
+// up here on blur/Enter/Tab so the edited-badge + .edited CSS settle.
 function onLtListChange(e) {
     const t = e.target;
-    if (t && t.dataset && t.dataset.addFormType) {
+    if (!t || !t.dataset) return;
+    if (t.dataset.addFormType) {
         syncPickerInputToType(t);
+        return;
+    }
+    if (t.dataset.editField && t.dataset.ltId) {
+        refreshLtRow(t.dataset.ltId);
     }
 }
 
@@ -2397,3 +2405,101 @@ function onDocClickClosePicker(e) {
     if (e.target === state.picker.input) return;
     closePicker();
 }
+
+// ---------- Modal dialogs (alert / confirm / prompt overrides) ----------
+//
+// The native browser dialogs look out of place against the rest of the app,
+// so we override them with styled HTML modals. JS has no real synchronous
+// blocking primitive, so the overrides return Promises instead of values -
+// every call site has to `await` them.
+//
+// Keyboard: Esc cancels (returns false / null / undefined depending on kind),
+// Enter confirms (returns true / input value / undefined). Each call gets
+// its own overlay element, so nested dialogs would just stack.
+function showModal({ kind, message, defaultValue }) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        const card = document.createElement('div');
+        card.className = 'modal-card';
+
+        const msg = document.createElement('p');
+        msg.className = 'modal-message';
+        msg.textContent = message;
+        card.appendChild(msg);
+
+        let input = null;
+        if (kind === 'prompt') {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'modal-input';
+            input.value = defaultValue ?? '';
+            card.appendChild(input);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'modal-actions';
+        card.appendChild(actions);
+        overlay.appendChild(card);
+
+        const cancelValue  = kind === 'prompt' ? null : (kind === 'alert' ? undefined : false);
+        const confirmValue = () =>
+            kind === 'prompt' ? input.value : (kind === 'alert' ? undefined : true);
+
+        const close = (value) => {
+            document.removeEventListener('keydown', onKey, true);
+            overlay.remove();
+            resolve(value);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close(cancelValue);
+            } else if (e.key === 'Enter') {
+                // For prompts, only Enter inside the input commits - so Tab to
+                // a button + Enter still works as expected.
+                if (kind === 'prompt' && e.target !== input) return;
+                e.preventDefault();
+                close(confirmValue());
+            }
+        };
+
+        if (kind !== 'alert') {
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = 'Cancel';
+            cancel.addEventListener('click', () => close(cancelValue));
+            actions.appendChild(cancel);
+        }
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'primary';
+        ok.textContent = 'OK';
+        ok.addEventListener('click', () => close(confirmValue()));
+        actions.appendChild(ok);
+
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', onKey, true);
+
+        if (input) {
+            input.focus();
+            input.select();
+        } else {
+            ok.focus();
+        }
+    });
+}
+
+window.alert = function(msg) {
+    return showModal({ kind: 'alert', message: String(msg ?? '') });
+};
+window.confirm = function(msg) {
+    return showModal({ kind: 'confirm', message: String(msg ?? '') });
+};
+window.prompt = function(msg, defaultValue) {
+    return showModal({
+        kind: 'prompt',
+        message: String(msg ?? ''),
+        defaultValue: defaultValue ?? '',
+    });
+};

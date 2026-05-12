@@ -22,11 +22,9 @@
   --text: color-mix(in srgb, var(--base-color), #fff 80%);
   --text-dim: color-mix(in srgb, var(--base-color), #fff 40%);
   --accent: #6da3ff;
-  --accent-hover: #87b3ff;
-  --success: #5dca8b;
-  --success-hover: #64e098;
+  --success: #6c5;
   --warn: #e9b85c;
-  --danger: #e16464;
+  --danger: #d66;
   --border-radius: .25em;
   --font: inter, sans-serif;
   --font-size: 15px;
@@ -105,7 +103,7 @@ header {
 }
 
 .header-left {
-  width: 23rem;
+  width: 27rem;
   display: flex;
   align-items: center;
   gap: .5em;
@@ -117,7 +115,11 @@ header {
   gap: .5em;
   justify-content: flex-end;
   align-items: center;
-  width: 23rem;
+  width: 27rem;;
+}
+
+#profile-select {
+  width: 12em;
 }
 
 .profile-select-label {
@@ -151,7 +153,8 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background-color: var(--border);
+  filter: brightness(1.1);
+  border-color: var(--bg-elev-3)
 }
 
 input:disabled,
@@ -159,28 +162,23 @@ button:disabled {
   opacity: .5;
 }
 
-button.primary {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
+button.primary,
+button.success,
+button.danger {
+  border-color: transparent;
   font-weight: bold;
 }
 
-button.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+button.primary {
+  background-color: color-mix(in srgb, var(--accent), #000 40%);
 }
 
 button.success {
-  background: var(--success);
-  color: var(--bg);
-  border-color: var(--success);
-  font-weight: bold;
+  background-color: color-mix(in srgb, var(--success), #000 30%);
 }
 
-button.success:hover:not(:disabled) {
-  background: var(--success-hover);
-  border-color: var(--success-hover);
+button.danger {
+  background-color: color-mix(in srgb, var(--danger), #000 30%);
 }
 
 .icon-button {
@@ -315,7 +313,7 @@ body:not(.no-profiles) #no-profile-state {
     align-items: center;
     gap: 2em;
     margin-inline: auto;
-    padding: 2em 1em;
+    padding: 4em 2em;
     height: 0;
     max-width: 80em;
     
@@ -739,7 +737,7 @@ footer.collapsed .footer-body {
   padding: .5em;
   border-radius: var(--border-radius);
   border: 1px solid var(--border);
-  max-height: 14vh;
+  max-height: 34vh;
   overflow: auto;
 }
 
@@ -759,7 +757,7 @@ footer.collapsed .footer-body {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(15, 17, 22, 0.94);
+  background: rgba(15, 17, 22, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -832,7 +830,7 @@ footer.collapsed .footer-body {
 }
 
 .setup-error {
-  background: rgba(225, 100, 100, 0.12);
+  background: rgba(225, 100, 100, 0.2);
   border: 1px solid var(--danger);
   border-radius: var(--border-radius);
   padding: .5em .75em;
@@ -872,6 +870,50 @@ footer.collapsed .footer-body {
 
 .setup-actions {
   display: flex; gap: .5em;
+}
+
+/* Modal dialogs that override window.alert / confirm / prompt. The native
+   browser dialogs look out of place, so we render our own overlay in the
+   same idiom as .setup-overlay (lighter backdrop because these are quick
+   ack/confirm dialogs, not full-screen takeovers). */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 17, 22, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2em;
+}
+
+.modal-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  padding: 1.5em;
+  min-width: 22em;
+  max-width: 40em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+.modal-message {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.modal-input {
+  width: 100%;
+}
+
+.modal-actions {
+  display: flex;
+  gap: .5em;
+  justify-content: flex-end;
 }
 
 .tabs {
