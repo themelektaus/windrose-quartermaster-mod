@@ -69,6 +69,7 @@ namespace Windrose.Quartermaster.Core
         readonly StackPatcher _patcher;
         readonly LootPatcher _lootPatcher;
         readonly BellLimitsPatcher _bellPatcher;
+        readonly BuyerPatcher _buyerPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
 
@@ -123,6 +124,7 @@ namespace Windrose.Quartermaster.Core
             _patcher = new StackPatcher();
             _lootPatcher = new LootPatcher();
             _bellPatcher = new BellLimitsPatcher();
+            _buyerPatcher = new BuyerPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
         }
@@ -251,9 +253,31 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
+                // Buyer/Seller trade-list edits. Writes into the same
+                // tmpDir tree but under disjoint subpaths (Recipes/ +
+                // RecipeLists/) so it composes cleanly with the other
+                // patchers' output for a single repak invocation.
+                BuyerPatchResult buyerResult = null;
+                if (HasBuyerConfiguration(profile))
+                {
+                    LogLine("Patching buyer/seller trade lists");
+                    buyerResult = _buyerPatcher.PatchToDirectory(
+                        _paths.VanillaRecipeLists, _paths.VanillaRecipes, tmpDir, profile);
+                    LogLine("Patched recipes: "
+                            + buyerResult.RecipesEdited + " edited, "
+                            + buyerResult.RecipesAdded + " added; "
+                            + "lists: " + buyerResult.ListsWritten + " written ("
+                            + buyerResult.RefsAdded + " refs appended, "
+                            + buyerResult.RefsRemoved + " refs removed)");
+                    foreach (var w in buyerResult.Warnings) LogLine("  warn: " + w);
+                }
+
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
-                    + (bellResult != null && bellResult.Written ? 1 : 0);
+                    + (bellResult != null && bellResult.Written ? 1 : 0)
+                    + (buyerResult != null
+                        ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
+                        : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
@@ -347,6 +371,7 @@ namespace Windrose.Quartermaster.Core
                     PatchResult = patchResult,
                     LootPatchResult = lootResult,
                     BellLimitsResult = bellResult,
+                    BuyerPatchResult = buyerResult,
                     PakResult = pakResult,
                     PakPath = pakPath,
                     PickupResult = pickupResult,
@@ -1096,6 +1121,26 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // True when the profile has any buyer/seller trade-list edit -
+        // either a recipe override (vanilla edit or synthesized custom) or
+        // a per-list add/remove of recipe refs. Lets the pipeline skip
+        // the BuyerPatcher entirely for stack/loot-only profiles.
+        static bool HasBuyerConfiguration(Profile profile)
+        {
+            if (profile.BuyerRecipes != null && profile.BuyerRecipes.Count > 0) return true;
+            if (profile.BuyerLists != null)
+            {
+                foreach (var kv in profile.BuyerLists)
+                {
+                    var v = kv.Value;
+                    if (v == null) continue;
+                    if (v.AddedRecipeIds != null && v.AddedRecipeIds.Count > 0) return true;
+                    if (v.RemovedRecipeIds != null && v.RemovedRecipeIds.Count > 0) return true;
+                }
+            }
+            return false;
+        }
+
         // True when the profile asks for at least one bell-or-signal-fire
         // cap that differs from vanilla. Lets the pipeline skip the patch
         // step (and its file-existence check on VanillaBuildingLimits)
@@ -1150,6 +1195,7 @@ namespace Windrose.Quartermaster.Core
         public PatchResult PatchResult;
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
         public BellLimitsPatchResult BellLimitsResult; // null if profile has no bell config
+        public BuyerPatchResult BuyerPatchResult; // null if profile has no buyer/seller edits
         public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
         public string PakPath;                    // null if pickup-only build
         // The freshly built pickup-radius IoStore triplet, or null if the

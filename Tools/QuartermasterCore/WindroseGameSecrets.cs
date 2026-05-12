@@ -33,5 +33,19 @@ namespace Windrose.Quartermaster.Core
         //   [2] Signal fire     (DA_BI_SignalFireT01)              default  3
         public const string FastTravelLimitsRelPath =
             "R5/Content/Gameplay/BuildingLimits/DA_BuildLimits_FastTravel.json";
+
+        // Pak-internal prefix the dumper extracts (R5BLRecipeList JSONs:
+        // the per-NPC trade rosters - what each trader buys from / sells to
+        // the player - plus crafting-station rosters like Furnace_T01).
+        // Needed by the Buyers tab (PlayerSells variants).
+        public const string RecipeListsPath =
+            "R5/Plugins/R5BusinessRules/Content/RecipeLists";
+
+        // Pak-internal prefix the dumper extracts (R5BLRecipeData JSONs:
+        // the individual trade / craft entries with Cost + Result + optional
+        // CraftRequirement). Every entry in a RecipeList is a reference into
+        // this tree, so we need both folders to render a Buyer.
+        public const string RecipesPath =
+            "R5/Plugins/R5BusinessRules/Content/Recipes";
     }
 }

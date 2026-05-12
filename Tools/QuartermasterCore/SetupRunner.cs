@@ -29,16 +29,28 @@ namespace Windrose.Quartermaster.Core
         {
             var status = new SetupStatus();
 
-            // Both subtrees (InventoryItems + LootTables) must be present;
-            // a half-extracted Vanilla/ from a previous run shouldn't be
-            // treated as ready.
+            // All four subtrees (InventoryItems, LootTables, RecipeLists,
+            // Recipes) must be present; a half-extracted Vanilla/ from a
+            // previous run shouldn't be treated as ready. RecipeLists +
+            // Recipes are needed by the Buyers tab; older mod roots from
+            // before the buyers feature will look "stale" until setup
+            // re-runs and tops up the missing folders.
             status.HasVanillaInventoryItems =
                 Directory.Exists(_paths.VanillaInventoryItems) &&
                 Directory.EnumerateFiles(_paths.VanillaInventoryItems, "*.json", SearchOption.AllDirectories).Any();
             status.HasVanillaLootTables =
                 Directory.Exists(_paths.VanillaLootTables) &&
                 Directory.EnumerateFiles(_paths.VanillaLootTables, "*.json", SearchOption.AllDirectories).Any();
-            status.HasVanillaSources = status.HasVanillaInventoryItems && status.HasVanillaLootTables;
+            status.HasVanillaRecipeLists =
+                Directory.Exists(_paths.VanillaRecipeLists) &&
+                Directory.EnumerateFiles(_paths.VanillaRecipeLists, "*.json", SearchOption.AllDirectories).Any();
+            status.HasVanillaRecipes =
+                Directory.Exists(_paths.VanillaRecipes) &&
+                Directory.EnumerateFiles(_paths.VanillaRecipes, "*.json", SearchOption.AllDirectories).Any();
+            status.HasVanillaSources = status.HasVanillaInventoryItems
+                && status.HasVanillaLootTables
+                && status.HasVanillaRecipeLists
+                && status.HasVanillaRecipes;
 
             // Icons: at least one .png present is good enough - a partial
             // run from a previous failed extraction shouldn't trigger a
@@ -173,6 +185,8 @@ namespace Windrose.Quartermaster.Core
         public bool HasVanillaSources;        // = InventoryItems && LootTables
         public bool HasVanillaInventoryItems;
         public bool HasVanillaLootTables;
+        public bool HasVanillaRecipeLists;
+        public bool HasVanillaRecipes;
         public bool HasIcons;
         public string IconsDir;
         public bool HasUsmap;

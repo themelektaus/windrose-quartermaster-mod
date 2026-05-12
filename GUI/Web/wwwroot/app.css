@@ -1455,3 +1455,264 @@ footer.collapsed .footer-body {
   color: var(--text-dim);
   text-align: center;
 }
+
+/* Buyers tab: read-only card per PlayerSells RecipeList, each card is a
+   header + table of items the NPC pays for. Mirrors the visual rhythm of
+   the mods list (rounded card, accent-tinted background) but trades the
+   single-row grid for a multi-row table. */
+.buyers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 .5em 0 0;
+  overflow-y: scroll;
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+}
+
+.buyer-card {
+  background: var(--bg-elev-2);
+  border-radius: var(--border-radius);
+  padding: .75em 1em;
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.buyer-header {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .5em;
+}
+
+.buyer-title {
+  display: flex;
+  align-items: baseline;
+  gap: .75em;
+}
+
+.buyer-faction {
+  font-size: var(--font-size-small);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: bold;
+}
+
+.buyer-label {
+  font-weight: bold;
+}
+
+.buyer-sub {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+}
+
+.buyer-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.buyer-table th {
+  text-align: left;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  font-weight: normal;
+  padding: .25em .5em;
+  border-bottom: 1px solid var(--border);
+}
+
+.buyer-table th.num,
+.buyer-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.buyer-table td {
+  padding: .35em .5em;
+  vertical-align: middle;
+}
+
+.buyer-row + .buyer-row td {
+  border-top: 1px solid color-mix(in srgb, var(--border), transparent 60%);
+}
+
+.buyer-item {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  min-width: 0;
+}
+
+.buyer-icon {
+  width: 1.75em;
+  height: 1.75em;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.buyer-icon-empty {
+  display: inline-block;
+  background: var(--bg-elev);
+  border-radius: var(--border-radius);
+}
+
+.buyer-item-name {
+  font-weight: bold;
+}
+
+.buyer-item-id {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+}
+
+.buyer-row.unresolved td {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.buyer-req {
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+.buyer-req-none {
+  color: var(--text-dim);
+}
+
+.buyer-unresolved .buyer-recipe {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.buyer-empty-row {
+  text-align: center;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 1em;
+}
+
+/* --- Buyer CRUD: inline-edit + action-button styles -------------------- */
+
+/* Per-card change badge sits next to the title and surfaces a quick
+   "this list has N edits / N removed / N added" summary. */
+.buyer-change-badge {
+  display: inline-flex;
+  gap: .35em;
+  margin-left: auto;
+}
+.buyer-change-badge .badge {
+  font-size: var(--font-size-small);
+  padding: .1em .5em;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.buyer-change-badge .badge.edited  { background: color-mix(in srgb, var(--accent), transparent 75%); color: var(--accent); }
+.buyer-change-badge .badge.removed { background: color-mix(in srgb, var(--danger), transparent 75%); color: var(--danger); }
+.buyer-change-badge .badge.added   { background: color-mix(in srgb, var(--success), transparent 75%); color: var(--success); }
+
+/* Three row states tint the entire row so the user can spot edits at a
+   glance. .removed dims everything; .edited / .added apply a thin tinted
+   left border to differentiate from clean vanilla rows. */
+.buyer-row.edited td:first-child {
+  border-left: 3px solid var(--accent);
+}
+.buyer-row.added td:first-child {
+  border-left: 3px solid var(--success);
+}
+.buyer-row.removed td {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+.buyer-row.removed td.buyer-row-actions {
+  opacity: 1;
+  text-decoration: none;
+}
+
+/* The Item / Pay-item cell holds an icon + a vertical edit-pair (display
+   name above, input below). Flex centring keeps the icon aligned with the
+   middle of the (now taller) cell. */
+.buyer-item-edit {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+  min-width: 0;
+  flex: 1;
+}
+.buyer-item-input {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  width: 100%;
+  color: inherit;
+}
+.buyer-item-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Number inputs (Qty / Pay qty) - keep them tight so the table doesn't
+   blow up vertically. The 5em cap covers four digits plus the spinner. */
+.buyer-num-input {
+  width: 5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  color: inherit;
+}
+.buyer-num-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Action column: contains the reset / delete / restore buttons. Stays
+   narrow so the data columns get the bulk of the row width. */
+.buyer-row-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.buyer-row-actions .btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 1.1em;
+  padding: 0 .25em;
+}
+.buyer-row-actions .btn-link:hover {
+  color: var(--text);
+}
+.buyer-row-actions .buyer-delete:hover  { color: var(--danger); }
+.buyer-row-actions .buyer-reset:hover   { color: var(--accent); }
+.buyer-row-actions .buyer-restore:hover { color: var(--success); }
+
+/* Card footer: the + Add entry button. Right-aligned so it doesn't pull
+   the eye away from the table. */
+.buyer-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: .25em;
+}
+.buyer-add-btn {
+  font-size: var(--font-size-small);
+  padding: .25em .75em;
+}
+
+.buyers-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}

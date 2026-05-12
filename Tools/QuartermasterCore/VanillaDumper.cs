@@ -9,9 +9,11 @@ namespace Windrose.Quartermaster.Core
     // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
     // pak via repak.exe. Replaces Library/Dump.ps1 +
     // Dump-WindroseVanilla.ps1 - same repak invocation, same default
-    // paths, same "force overwrite" semantics. Three prefixes are extracted
-    // in sequence: InventoryItems (item defs), LootTables (drop pools), and
-    // BuildingLimits (DA_BuildLimits_FastTravel.json + siblings).
+    // paths, same "force overwrite" semantics. Five prefixes are extracted
+    // in sequence: InventoryItems (item defs), LootTables (drop pools),
+    // BuildingLimits (DA_BuildLimits_FastTravel.json + siblings), RecipeLists
+    // (per-NPC + per-station recipe rosters), and Recipes (the individual
+    // Cost+Result entries the lists reference).
     //
     // Auto-resolves repak.exe (download on first use) and the vanilla pak
     // (via Steam) when the corresponding inputs are null/empty.
@@ -84,6 +86,12 @@ namespace Windrose.Quartermaster.Core
             LogLine("Unpacking BuildingLimits from pak");
             RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.BuildingLimitsPath);
 
+            LogLine("Unpacking RecipeLists from pak");
+            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.RecipeListsPath);
+
+            LogLine("Unpacking Recipes from pak");
+            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.RecipesPath);
+
             return Statistics(outDir);
         }
 
@@ -134,6 +142,10 @@ namespace Windrose.Quartermaster.Core
                 "Content", "LootTables");
             var buildLimitsRoot = Path.Combine(outDir, "R5", "Content",
                 "Gameplay", "BuildingLimits");
+            var recipeListsRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
+                "Content", "RecipeLists");
+            var recipesRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
+                "Content", "Recipes");
 
             int totalCount = 0;
             var byCategory = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -141,6 +153,8 @@ namespace Windrose.Quartermaster.Core
             CollectStatistics(invRoot, "items", byCategory, ref totalCount);
             CollectStatistics(lootRoot, "loot", byCategory, ref totalCount);
             CollectStatistics(buildLimitsRoot, "buildlimits", byCategory, ref totalCount);
+            CollectStatistics(recipeListsRoot, "recipelists", byCategory, ref totalCount);
+            CollectStatistics(recipesRoot, "recipes", byCategory, ref totalCount);
 
             LogLine(totalCount + " JSON files extracted");
             foreach (var kv in byCategory.OrderBy(p => p.Key, StringComparer.Ordinal))

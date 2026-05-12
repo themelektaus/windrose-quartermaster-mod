@@ -30,11 +30,32 @@ const state = {
         error: null,   // human-readable error string from the GET, or null
     },
 
-    // Currently-open picker dropdown (loot add-entry autocomplete).
-    // null when no picker is open. Holds the input element so we can reposition
-    // on scroll / write the chosen id back, plus the address of the added entry
-    // (ltId + addedIndex) and the picker mode ('item' | 'table').
-    picker: null,    // { input, ltId, addedIndex, type } or null
+    // Vanilla buyer rosters (lazy-loaded the first time the Buyers tab is
+    // shown). Each item: { id, faction, label, slot, entries:[...] }.
+    // Phase 1 is read-only; we cache once and never refetch on tab switch.
+    buyers: {
+        loaded: false,
+        list: [],
+        error: null,
+    },
+
+    // Vanilla seller (vendor) rosters - same shape as buyers, parsed from
+    // the PlayerBuys RecipeLists. Independent lazy-load + cache so opening
+    // one tab doesn't pull data for the other.
+    sellers: {
+        loaded: false,
+        list: [],
+        error: null,
+    },
+
+    // Currently-open picker dropdown. Shared between the Loot tab (add-entry
+    // autocomplete) and the Buyers tab (sold-item / pay-item inputs). The
+    // `source` discriminator picks which dispatcher onPickerClick uses; the
+    // other fields are source-specific:
+    //   loot:  { input, source:'loot',  type:'item'|'table'|'nodrop', ltId, addedIndex }
+    //   buyer: { input, source:'buyer', type:'item', buyerId, recipeId, buyerField }
+    // null when no picker is open.
+    picker: null,
 };
 
 // ---------- API helpers --------------------------------------------------
@@ -424,6 +445,25 @@ function setActiveTab(tab) {
             renderModsStatus();
         }
     }
+    if (tab === 'buyers') {
+        // Same lazy-load pattern as the Mods tab: first view fetches,
+        // subsequent views just re-render from the cached state.
+        if (!state.buyers.loaded) {
+            loadBuyers();
+        } else {
+            renderBuyers();
+            renderBuyersStatus();
+        }
+    }
+    if (tab === 'sellers') {
+        // Same lazy-load pattern as Buyers / Mods.
+        if (!state.sellers.loaded) {
+            loadSellers();
+        } else {
+            renderSellers();
+            renderSellersStatus();
+        }
+    }
 }
 
 // ---------- Profile loading ---------------------------------------------
@@ -433,6 +473,11 @@ async function loadProfile(id) {
     state.current.globals       = state.current.globals || {};
     state.current.overrides     = state.current.overrides || {};
     state.current.lootOverrides = state.current.lootOverrides || {};
+    // Buyers tab CRUD state: per-recipe edits (global - same recipe id
+    // patched everywhere it's referenced) + per-list add/remove of recipe
+    // refs. Initialised to {} so the renderers don't have to null-check.
+    state.current.buyerRecipes  = state.current.buyerRecipes  || {};
+    state.current.buyerLists    = state.current.buyerLists    || {};
     state.isDirty = false;
     document.getElementById('profile-select').value = id;
     applyProfileToUI();
@@ -442,6 +487,10 @@ async function loadProfile(id) {
         renderLootGlobals();
         renderLootTables();
         renderLootStatus();
+    }
+    if (state.activeTab === 'buyers' && state.buyers.loaded) {
+        renderBuyers();
+        renderBuyersStatus();
     }
     updateButtons();
     setBuildLog([{ kind: 'info', msg: 'Profile loaded: ' + state.current.name }]);
@@ -1488,12 +1537,35 @@ function deleteAddedEntry(ltId, addedIndex) {
 // fixed coords next to the input. Closes on outside click, Escape, or scroll.
 function openPicker(input, ltId, addedIndex, mode) {
     closePicker();
-    state.picker = { input, ltId, addedIndex, type: mode };
+    state.picker = { input, source: 'loot', type: mode, ltId, addedIndex };
     populatePicker(input.value);
     // Unhide BEFORE positioning so getBoundingClientRect() reports real
     // dimensions (the [hidden] CSS rule sets display:none -> rect would be 0).
     document.getElementById('picker-dropdown').hidden = false;
     positionPicker(input);
+}
+
+// Buyer-tab variant. Same dropdown, different payload: we remember which
+// recipe + field the user is editing so the dispatcher in onPickerClick can
+// route the chosen id back through setBuyerEntryField. The picker only does
+// items for buyers (no sub-tables / nodrop), so `type` is hardcoded to 'item'.
+//
+// Opens with an empty query so the user sees the full item catalog on first
+// focus - then types to filter. Pre-filling from input.value would only
+// match the one currently-selected item, which defeats the picker. The
+// input value itself stays as-is on screen but is selected so the first
+// keystroke replaces it cleanly.
+function openBuyerPicker(input, buyerId, recipeId, buyerField) {
+    closePicker();
+    state.picker = { input, source: 'buyer', type: 'item', buyerId, recipeId, buyerField };
+    populatePicker('');
+    document.getElementById('picker-dropdown').hidden = false;
+    positionPicker(input);
+    if (input.value) {
+        // Select all so typing replaces. Wrap in try/catch because some
+        // browsers throw on input.select() during the focus event sequence.
+        try { input.select(); } catch (_) { /* ignore */ }
+    }
 }
 
 function closePicker() {
@@ -1849,12 +1921,16 @@ async function onSave() {
         createdAt: p.createdAt,
         globals: p.globals, overrides: p.overrides,
         lootOverrides: p.lootOverrides,
+        buyerRecipes: p.buyerRecipes,
+        buyerLists: p.buyerLists,
     };
     const updated = await api('PUT', '/api/profiles/' + encodeURIComponent(p.id), body);
     state.current = updated;
     state.current.globals       = state.current.globals       || {};
     state.current.overrides     = state.current.overrides     || {};
     state.current.lootOverrides = state.current.lootOverrides || {};
+    state.current.buyerRecipes  = state.current.buyerRecipes  || {};
+    state.current.buyerLists    = state.current.buyerLists    || {};
     state.isDirty = false;
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -1872,6 +1948,8 @@ async function onNew() {
         globals: {},
         overrides: {},
         lootOverrides: {},
+        buyerRecipes: {},
+        buyerLists: {},
     });
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -2165,6 +2243,806 @@ async function deleteMod(filename) {
     await loadMods();
 }
 
+// ---------- Buyers tab (read-only PlayerSells roster browser) ------------
+//
+// /api/buyers returns a list of BuyerDto entries. Each entry is one
+// R5BLRecipeList JSON whose filename matches *_PlayerSells* in vanilla
+// (8 such lists, 2 per Trade* faction). Phase 1 is purely display:
+// item id, count, what the NPC pays in (typically piastres), and the
+// reputation gate if any. Editing follows in a later iteration.
+
+async function loadBuyers() {
+    try {
+        const data = await api('GET', '/api/buyers');
+        state.buyers.loaded = true;
+        state.buyers.list = data || [];
+        state.buyers.error = null;
+        populateBuyerFactionFilter();
+    } catch (e) {
+        state.buyers.loaded = true;
+        state.buyers.list = [];
+        state.buyers.error = 'Failed to load buyers: ' + e.message;
+    }
+    renderBuyers();
+    renderBuyersStatus();
+}
+
+// Build the faction-filter <select> from whatever factions the current
+// dataset surfaces, so a future addition (e.g. modded Tortuga faction) is
+// picked up automatically without touching the HTML.
+function populateBuyerFactionFilter() {
+    const sel = document.getElementById('buyers-filter-faction');
+    if (!sel) return;
+    const seen = new Set();
+    for (const b of state.buyers.list) {
+        if (b.faction) seen.add(b.faction);
+    }
+    const factions = Array.from(seen).sort();
+    // Preserve current selection across re-population.
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">All factions</option>'
+        + factions.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('');
+    if (prev && factions.includes(prev)) sel.value = prev;
+}
+
+function filterBuyers() {
+    const q = (document.getElementById('buyers-filter').value || '').trim().toLowerCase();
+    const faction = document.getElementById('buyers-filter-faction').value;
+    const out = [];
+    for (const b of state.buyers.list) {
+        if (faction && b.faction !== faction) continue;
+        if (q) {
+            // Match on label / id / any entry's item or recipe id so users
+            // can find "who buys Rum Bottles?" by typing the item id.
+            let hay = (b.label + ' ' + b.id + ' ' + b.faction).toLowerCase();
+            for (const e of b.entries) {
+                hay += ' ' + (e.itemId || '') + ' ' + (e.recipeId || '');
+            }
+            if (!hay.includes(q)) continue;
+        }
+        out.push(b);
+    }
+    return out;
+}
+
+function renderBuyers() {
+    const errEl = document.getElementById('buyers-error');
+    if (state.buyers.error) {
+        errEl.textContent = state.buyers.error;
+        errEl.hidden = false;
+    } else {
+        errEl.hidden = true;
+    }
+
+    const list = document.getElementById('buyers-list');
+    const filtered = filterBuyers();
+
+    if (filtered.length === 0) {
+        const msg = state.buyers.list.length === 0
+            ? 'No PlayerSells RecipeLists in vanilla yet. Re-run setup to extract them.'
+            : 'No buyers match the current filter.';
+        list.innerHTML = '<li class="buyers-empty">' + esc(msg) + '</li>';
+    } else {
+        list.innerHTML = filtered.map(buildBuyerCardHtml).join('');
+    }
+
+    document.getElementById('buyers-count').textContent =
+        filtered.length + ' / ' + state.buyers.list.length + ' lists';
+}
+
+function buildBuyerCardHtml(b) {
+    const listOvr = (state.current && state.current.buyerLists
+                     && state.current.buyerLists[b.id]) || null;
+    const removedSet = listOvr && listOvr.removedRecipeIds
+        ? new Set(listOvr.removedRecipeIds)
+        : new Set();
+    const addedIds = (listOvr && listOvr.addedRecipeIds) || [];
+
+    const entries = b.entries || [];
+    const vanillaRows = entries.map(e => buildBuyerEntryRowHtml(b.id, e, removedSet.has(e.recipeId)));
+    const addedRows = addedIds.map(id => buildBuyerAddedRowHtml(b.id, id));
+    const allRows = vanillaRows.concat(addedRows);
+
+    const rows = allRows.length === 0
+        ? '<tr><td colspan="5" class="buyer-empty-row">(no entries)</td></tr>'
+        : allRows.join('');
+
+    const editedCount = countEditedInBuyer(b);
+    const removedCount = removedSet.size;
+    const addedCount = addedIds.length;
+    const changeBadge = (editedCount + removedCount + addedCount) === 0
+        ? ''
+        : ' <span class="buyer-change-badge">'
+        +   (editedCount  ? '<span class="badge edited">'  + editedCount  + ' edited</span>'  : '')
+        +   (removedCount ? '<span class="badge removed">' + removedCount + ' removed</span>' : '')
+        +   (addedCount   ? '<span class="badge added">'   + addedCount   + ' added</span>'   : '')
+        + '</span>';
+
+    const sub = b.id + (b.entries ? '  -  ' + b.entries.length + ' entries' : '');
+    return '<li class="buyer-card" data-buyer-id="' + esc(b.id) + '">'
+         +   '<header class="buyer-header">'
+         +     '<div class="buyer-title">'
+         +       '<span class="buyer-faction">' + esc(b.faction || '(other)') + '</span>'
+         +       '<span class="buyer-label">' + esc(b.label || b.id) + '</span>'
+         +       changeBadge
+         +     '</div>'
+         +     '<span class="buyer-sub">' + esc(sub) + '</span>'
+         +   '</header>'
+         +   '<table class="buyer-table">'
+         +     '<thead><tr>'
+         +       '<th>Item</th>'
+         +       '<th class="num">Qty</th>'
+         +       '<th>Pay item</th>'
+         +       '<th class="num">Pay qty</th>'
+         +       '<th class="buyer-row-actions">&nbsp;</th>'
+         +     '</tr></thead>'
+         +     '<tbody>' + rows + '</tbody>'
+         +   '</table>'
+         +   '<div class="buyer-card-footer">'
+         +     '<button class="btn-secondary buyer-add-btn" data-buyer-add="' + esc(b.id) + '">+ Add entry</button>'
+         +   '</div>'
+         + '</li>';
+}
+
+// Counts how many of this buyer's vanilla entries currently have a recipe-
+// level edit in the profile. Used to drive the per-card "N edited" badge.
+function countEditedInBuyer(b) {
+    if (!state.current || !state.current.buyerRecipes) return 0;
+    const recipes = state.current.buyerRecipes;
+    let n = 0;
+    for (const e of (b.entries || [])) {
+        if (e.recipeId && recipes[e.recipeId]) n++;
+    }
+    return n;
+}
+
+// A vanilla entry can be in one of three render states:
+//   * removed:  user toggled it off - greyed-out row with a Restore button
+//   * edited:   buyerRecipes[recipeId] has at least one field set - inputs
+//               show the overridden values, a Reset button reverts
+//   * pristine: no override - inputs show vanilla, edits create an override
+//
+// We always render full inputs so the user can switch state by typing into
+// them (matches the loot-table edit pattern).
+function buildBuyerEntryRowHtml(buyerId, e, removed) {
+    if (!e.resolved) {
+        return '<tr class="buyer-row unresolved">'
+             +   '<td colspan="5" class="buyer-unresolved">'
+             +     '<span class="buyer-recipe">' + esc(e.recipeId || '(unknown)') + '</span>'
+             +     ' <span class="hint">(recipe not found in vanilla extract)</span>'
+             +   '</td>'
+             + '</tr>';
+    }
+
+    const ovr = (state.current && state.current.buyerRecipes
+                 && state.current.buyerRecipes[e.recipeId]) || null;
+    const rowClass = removed
+        ? 'buyer-row removed'
+        : (ovr ? 'buyer-row edited' : 'buyer-row');
+    const itemId    = (ovr && ovr.itemPath)    ? assetPathToId(ovr.itemPath)    : e.itemId;
+    const itemCount = (ovr && ovr.itemCount   != null) ? ovr.itemCount   : (e.itemCount   || 0);
+    const payItemId = (ovr && ovr.payItemPath) ? assetPathToId(ovr.payItemPath) : e.payItemId;
+    const payCount  = (ovr && ovr.payCount    != null) ? ovr.payCount    : (e.payCount    || 0);
+
+    const actionBtn = removed
+        ? '<button class="btn-link buyer-restore" data-buyer-restore="' + esc(buyerId)
+            + '|' + esc(e.recipeId) + '" title="Restore">&#x21BA;</button>'
+        : (ovr
+            ? '<button class="btn-link buyer-reset" data-buyer-reset="' + esc(e.recipeId)
+                + '" title="Reset to vanilla">&#x21B6;</button>'
+                + '<button class="btn-link buyer-delete" data-buyer-delete="' + esc(buyerId)
+                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>'
+            : '<button class="btn-link buyer-delete" data-buyer-delete="' + esc(buyerId)
+                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>');
+
+    const disabledAttr = removed ? ' disabled' : '';
+    return '<tr class="' + rowClass + '" data-recipe-id="' + esc(e.recipeId) + '">'
+         +   buildBuyerEditableItemCellHtml(e.recipeId, 'item', itemId, disabledAttr)
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(itemCount)) + '"'
+         +       ' data-buyer-field="itemCount" data-recipe-id="' + esc(e.recipeId) + '"'
+         +       disabledAttr + '>'
+         +   '</td>'
+         +   buildBuyerEditableItemCellHtml(e.recipeId, 'payItem', payItemId, disabledAttr)
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(payCount)) + '"'
+         +       ' data-buyer-field="payCount" data-recipe-id="' + esc(e.recipeId) + '"'
+         +       disabledAttr + '>'
+         +   '</td>'
+         +   '<td class="buyer-row-actions">' + actionBtn + '</td>'
+         + '</tr>';
+}
+
+// Renders one "added" row - these are custom recipes the user appended to
+// the list. They live ONLY in the profile (no vanilla baseline) and are
+// fully editable; the trash button hard-deletes them.
+function buildBuyerAddedRowHtml(buyerId, recipeId) {
+    const ovr = (state.current && state.current.buyerRecipes
+                 && state.current.buyerRecipes[recipeId]) || null;
+    if (!ovr) {
+        // The added id is in buyerLists but the recipe override vanished -
+        // a corrupted profile, but surface the orphan so the user can fix
+        // it manually rather than silently dropping it.
+        return '<tr class="buyer-row added orphan" data-recipe-id="' + esc(recipeId) + '">'
+             +   '<td colspan="5" class="buyer-unresolved">'
+             +     '<span class="buyer-recipe">' + esc(recipeId) + '</span>'
+             +     ' <span class="hint">(added recipe has no edit-spec - profile corrupted)</span>'
+             +   '</td>'
+             + '</tr>';
+    }
+    const itemId    = ovr.itemPath    ? assetPathToId(ovr.itemPath)    : '';
+    const payItemId = ovr.payItemPath ? assetPathToId(ovr.payItemPath) : '';
+    const itemCount = ovr.itemCount != null ? ovr.itemCount : 0;
+    const payCount  = ovr.payCount  != null ? ovr.payCount  : 0;
+    return '<tr class="buyer-row added" data-recipe-id="' + esc(recipeId) + '">'
+         +   buildBuyerEditableItemCellHtml(recipeId, 'item', itemId, '')
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(itemCount)) + '"'
+         +       ' data-buyer-field="itemCount" data-recipe-id="' + esc(recipeId) + '">'
+         +   '</td>'
+         +   buildBuyerEditableItemCellHtml(recipeId, 'payItem', payItemId, '')
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(payCount)) + '"'
+         +       ' data-buyer-field="payCount" data-recipe-id="' + esc(recipeId) + '">'
+         +   '</td>'
+         +   '<td class="buyer-row-actions">'
+         +     '<button class="btn-link buyer-delete" data-buyer-delete-added="'
+         +       esc(buyerId) + '|' + esc(recipeId) + '" title="Delete added entry">&#x2715;</button>'
+         +   '</td>'
+         + '</tr>';
+}
+
+// Renders one of the two item cells (sold-item OR pay-item) as an editable
+// id-input that opens the shared custom picker (#picker-dropdown) on focus.
+// The picker shows icon + display name + subtitle for every vanilla item,
+// matching the loot-table add-entry UX. The 'field' arg tells the picker
+// dispatcher which path to update on the recipe override - we store it on
+// the input via data-buyer-field. The buyerId is derived from the closest
+// .buyer-card[data-buyer-id] in the focus / change handlers.
+function buildBuyerEditableItemCellHtml(recipeId, field, itemId, disabledAttr) {
+    const item = itemId ? state.itemsById.get(itemId) : null;
+    const name = (item && item.meta && item.meta.name) || itemId || '(no item)';
+    const iconHtml = (item && item.icon)
+        ? '<img class="buyer-icon" src="' + esc(item.icon) + '" alt="" loading="lazy">'
+        : '<span class="buyer-icon buyer-icon-empty"></span>';
+    return '<td class="buyer-item">'
+         +   iconHtml
+         +   '<div class="buyer-item-edit">'
+         +     '<span class="buyer-item-name">' + esc(name) + '</span>'
+         +     '<input type="text" class="buyer-item-input"'
+         +       ' value="' + esc(itemId || '') + '"'
+         +       ' data-buyer-picker-target="1"'
+         +       ' data-buyer-field="' + esc(field) + '"'
+         +       ' data-recipe-id="' + esc(recipeId) + '"'
+         +       ' placeholder="Search items by name or id..."'
+         +       ' autocomplete="off"'
+         +       disabledAttr + '>'
+         +   '</div>'
+         + '</td>';
+}
+
+// "/R5BusinessRules/.../DA_DID_X.DA_DID_X" -> "DA_DID_X". Used to project
+// an asset path back to the short id the UI deals with everywhere else.
+function assetPathToId(assetPath) {
+    if (!assetPath) return '';
+    const s = assetPath;
+    const dot = s.lastIndexOf('.');
+    const slash = s.lastIndexOf('/');
+    const cut = Math.max(dot, slash);
+    return cut >= 0 && cut < s.length - 1 ? s.substring(cut + 1) : s;
+}
+
+// Inverse of assetPathToId: looks up the canonical full path from the
+// vanilla items registry. Used when the user types an item id into one of
+// the inline-edit inputs - we store the FULL asset path on the override
+// (the patcher needs it that way) but the UI talks in ids.
+function itemIdToAssetPath(itemId) {
+    if (!itemId) return null;
+    return state.itemPathsByItemId.get(itemId) || null;
+}
+
+// ---------- Buyers: CRUD on the per-profile overlay ----------------------
+//
+// The Buyers tab is rendered from two layers: the read-only vanilla list
+// (state.buyers.list) and the per-profile overrides (state.current.
+// buyerRecipes + buyerLists). Mutations only ever touch the overlay;
+// re-rendering merges the two at display time. Save persists the overlay
+// to disk; Build feeds the overlay to the BuyerPatcher which produces
+// patched RecipeData / RecipeList JSONs.
+
+// Re-renders exactly one buyer card from current state. Used by every
+// CRUD helper instead of touching the DOM directly - keeps the render code
+// in one place and avoids drift between the initial render and post-edit
+// updates.
+function refreshBuyerCard(buyerId) {
+    const list = document.getElementById('buyers-list');
+    const old = list && list.querySelector('.buyer-card[data-buyer-id="' + cssEsc(buyerId) + '"]');
+    if (!old) return;
+    const buyer = state.buyers.list.find(b => b.id === buyerId);
+    if (!buyer) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = buildBuyerCardHtml(buyer);
+    const fresh = wrap.firstElementChild;
+    if (fresh) old.replaceWith(fresh);
+}
+
+// Returns the buyerRecipes[recipeId] entry, creating it on the fly if the
+// caller intends to set a field. Seed with vanilla values from `vanillaEntry`
+// so a partial edit (e.g. only Qty) still serializes a complete override -
+// the patcher only mutates fields it sees on the override, so leaving the
+// others null would mean "keep vanilla" anyway, but storing them makes the
+// JSON self-documenting and survives a future vanilla rename.
+function getOrCreateBuyerRecipeOverride(recipeId, vanillaEntry) {
+    if (!state.current) return null;
+    state.current.buyerRecipes = state.current.buyerRecipes || {};
+    let ovr = state.current.buyerRecipes[recipeId];
+    if (!ovr) {
+        ovr = {
+            itemPath:    vanillaEntry && vanillaEntry.itemPath    ? vanillaEntry.itemPath    : null,
+            itemCount:   vanillaEntry && vanillaEntry.itemCount   != null ? vanillaEntry.itemCount   : 0,
+            payItemPath: vanillaEntry && vanillaEntry.payItemPath ? vanillaEntry.payItemPath : null,
+            payCount:    vanillaEntry && vanillaEntry.payCount    != null ? vanillaEntry.payCount    : 0,
+            isCustom:    false,
+        };
+        state.current.buyerRecipes[recipeId] = ovr;
+    }
+    return ovr;
+}
+
+// Returns the buyerLists[buyerId] entry, creating an empty {added,removed}
+// pair on demand. Used by add/remove operations.
+function getOrCreateBuyerListOverride(buyerId) {
+    if (!state.current) return null;
+    state.current.buyerLists = state.current.buyerLists || {};
+    let lo = state.current.buyerLists[buyerId];
+    if (!lo) {
+        lo = { addedRecipeIds: [], removedRecipeIds: [] };
+        state.current.buyerLists[buyerId] = lo;
+    }
+    if (!lo.addedRecipeIds)   lo.addedRecipeIds = [];
+    if (!lo.removedRecipeIds) lo.removedRecipeIds = [];
+    return lo;
+}
+
+// Drops empty containers so the persisted profile JSON doesn't keep
+// "buyerLists": { "X": { addedRecipeIds: [], removedRecipeIds: [] } }
+// after every undo. Mirrors how loot overrides are pruned.
+function pruneBuyerListOverride(buyerId) {
+    if (!state.current || !state.current.buyerLists) return;
+    const lo = state.current.buyerLists[buyerId];
+    if (!lo) return;
+    const emptyAdd = !lo.addedRecipeIds || lo.addedRecipeIds.length === 0;
+    const emptyRem = !lo.removedRecipeIds || lo.removedRecipeIds.length === 0;
+    if (emptyAdd && emptyRem) {
+        delete state.current.buyerLists[buyerId];
+    }
+    if (Object.keys(state.current.buyerLists).length === 0) {
+        delete state.current.buyerLists;
+    }
+}
+
+// User typed into one of the qty / payQty / item / payItem inputs of a
+// vanilla entry. Resolves the recipeId back to its vanilla snapshot so the
+// override can be seeded with the current vanilla baseline, then writes
+// just the changed field. The number-input path is shared with the added
+// rows since they look identical - the only difference is "no vanilla
+// snapshot" which the override already has via its IsCustom flag.
+function setBuyerEntryField(buyerId, recipeId, field, rawValue) {
+    if (!state.current) return;
+    // Locate the vanilla entry for snapshot seeding. Added rows have no
+    // vanilla baseline so we pass null - getOrCreateBuyerRecipeOverride
+    // returns the existing IsCustom=true override unchanged in that case.
+    const buyer = state.buyers.list.find(b => b.id === buyerId);
+    const vanilla = buyer && buyer.entries
+        ? buyer.entries.find(e => e.recipeId === recipeId)
+        : null;
+    const ovr = getOrCreateBuyerRecipeOverride(recipeId, vanilla);
+    if (!ovr) return;
+
+    if (field === 'itemCount' || field === 'payCount') {
+        const n = parseInt(rawValue, 10);
+        if (!isFinite(n) || n < 0) return; // ignore garbage; input stays on screen
+        ovr[field] = n;
+    } else if (field === 'item' || field === 'payItem') {
+        const id = (rawValue || '').trim();
+        const targetField = field === 'item' ? 'itemPath' : 'payItemPath';
+        if (!id) {
+            ovr[targetField] = null;
+        } else {
+            const path = itemIdToAssetPath(id);
+            if (!path) {
+                // Unknown id - keep the input value so the user can fix it
+                // but DON'T persist garbage. Patcher would crash on an
+                // unresolvable asset ref at build time.
+                return;
+            }
+            ovr[targetField] = path;
+        }
+    }
+
+    markDirty();
+}
+
+// Vanilla entries: toggle into the removedRecipeIds set. Re-rendering the
+// card shows the row as greyed out with a Restore button instead of the
+// usual delete + reset combo.
+function toggleRemoveBuyerEntry(buyerId, recipeId) {
+    const lo = getOrCreateBuyerListOverride(buyerId);
+    if (!lo) return;
+    const idx = lo.removedRecipeIds.indexOf(recipeId);
+    if (idx >= 0) {
+        lo.removedRecipeIds.splice(idx, 1);
+    } else {
+        lo.removedRecipeIds.push(recipeId);
+    }
+    pruneBuyerListOverride(buyerId);
+    markDirty();
+    refreshBuyerCard(buyerId);
+}
+
+// Drops a recipe-level edit so the entry shows vanilla values again.
+function resetBuyerRecipeOverride(buyerId, recipeId) {
+    if (!state.current || !state.current.buyerRecipes) return;
+    delete state.current.buyerRecipes[recipeId];
+    if (Object.keys(state.current.buyerRecipes).length === 0) {
+        delete state.current.buyerRecipes;
+    }
+    markDirty();
+    refreshBuyerCard(buyerId);
+}
+
+// Hard-removes an "added" entry from the list. The recipe override goes
+// with it (added recipes are NEVER referenced from any other list - we
+// generate a fresh QM_Custom_* id every time the user clicks Add - so the
+// orphan check is unnecessary but cheap).
+function removeAddedBuyerEntry(buyerId, recipeId) {
+    const lo = state.current && state.current.buyerLists
+        && state.current.buyerLists[buyerId];
+    if (lo && lo.addedRecipeIds) {
+        const idx = lo.addedRecipeIds.indexOf(recipeId);
+        if (idx >= 0) lo.addedRecipeIds.splice(idx, 1);
+    }
+    pruneBuyerListOverride(buyerId);
+    if (state.current && state.current.buyerRecipes) {
+        delete state.current.buyerRecipes[recipeId];
+        if (Object.keys(state.current.buyerRecipes).length === 0) {
+            delete state.current.buyerRecipes;
+        }
+    }
+    markDirty();
+    refreshBuyerCard(buyerId);
+}
+
+// Appends a new (empty) custom recipe entry to the given buyer's list.
+// The id is server-style "QM_Custom_<8 hex>" so the patcher recognises it
+// as synthetic (file goes to Recipes/Custom/<id>.json instead of editing
+// a vanilla one). User fills in the four fields inline afterwards.
+function addBuyerEntry(buyerId) {
+    if (!state.current) return;
+    const lo = getOrCreateBuyerListOverride(buyerId);
+    if (!lo) return;
+    const id = 'QM_Custom_' + randomHex(8);
+    state.current.buyerRecipes = state.current.buyerRecipes || {};
+    state.current.buyerRecipes[id] = {
+        itemPath: null,
+        itemCount: 1,
+        payItemPath: null,
+        payCount: 1,
+        isCustom: true,
+    };
+    lo.addedRecipeIds.push(id);
+    markDirty();
+    refreshBuyerCard(buyerId);
+}
+
+// Cheap-enough random id source for "QM_Custom_*" recipe ids. Doesn't have
+// to be cryptographically strong - just unique within one profile.
+function randomHex(n) {
+    let s = '';
+    while (s.length < n) s += Math.floor(Math.random() * 0x100000000).toString(16);
+    return s.substring(0, n);
+}
+
+// Delegated click handler on the Buyers list. Dispatches based on the
+// data-attribute the target carries: each action embeds the buyerId and
+// (where applicable) the recipeId in its own attribute so the handler
+// stays simple. data-buyer-* attributes are uniform across button kinds.
+function onBuyersListClick(e) {
+    const t = e.target.closest && e.target.closest(
+        '[data-buyer-add],[data-buyer-delete],[data-buyer-delete-added],'
+        + '[data-buyer-restore],[data-buyer-reset]');
+    if (!t) return;
+    if (t.dataset.buyerAdd) {
+        addBuyerEntry(t.dataset.buyerAdd);
+        return;
+    }
+    if (t.dataset.buyerDelete) {
+        const [buyerId, recipeId] = t.dataset.buyerDelete.split('|');
+        toggleRemoveBuyerEntry(buyerId, recipeId);
+        return;
+    }
+    if (t.dataset.buyerDeleteAdded) {
+        const [buyerId, recipeId] = t.dataset.buyerDeleteAdded.split('|');
+        removeAddedBuyerEntry(buyerId, recipeId);
+        return;
+    }
+    if (t.dataset.buyerRestore) {
+        const [buyerId, recipeId] = t.dataset.buyerRestore.split('|');
+        toggleRemoveBuyerEntry(buyerId, recipeId); // toggle removes the entry from removedRecipeIds
+        return;
+    }
+    if (t.dataset.buyerReset) {
+        // Walk up to the card so we know which buyer to re-render.
+        const card = t.closest('.buyer-card');
+        const buyerId = card && card.dataset.buyerId;
+        if (buyerId) resetBuyerRecipeOverride(buyerId, t.dataset.buyerReset);
+        return;
+    }
+}
+
+// Delegated change handler. Fires when a buyer-input loses focus or the
+// user presses Enter - this matches the loot-list edit pattern so focus
+// survives mid-typing instead of being yanked by every keystroke.
+//
+// Picker-target inputs (item / payItem) are NOT committed via change: the
+// picker confirms the pick on mousedown via onPickerClick. Letting `change`
+// fire here would persist whatever text the user happened to type even if
+// they then clicked a different picker row - so we skip them.
+function onBuyersListChange(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.buyerField) return;
+    if (t.dataset.buyerPickerTarget) return;  // picker handles its own commit
+    const recipeId = t.dataset.recipeId;
+    const card = t.closest('.buyer-card');
+    const buyerId = card && card.dataset.buyerId;
+    if (!buyerId || !recipeId) return;
+    setBuyerEntryField(buyerId, recipeId, t.dataset.buyerField, t.value);
+    // Re-render the card so the edited/added badges + change-class
+    // highlighting reflect the new state. Card-scoped re-render preserves
+    // focus on inputs the user wasn't editing (we left this input on
+    // change, so focus is fine).
+    refreshBuyerCard(buyerId);
+}
+
+// Focusing one of the item / pay-item inputs opens the shared custom picker
+// underneath it - identical UX to the loot-table add-entry picker (icon +
+// name + subtitle rows). We resolve buyerId from the closest card so callers
+// can't lie about which row the input belongs to.
+function onBuyersListFocusIn(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.buyerPickerTarget) return;
+    if (t.disabled) return;  // .removed rows have disabled inputs
+    const recipeId = t.dataset.recipeId;
+    const field    = t.dataset.buyerField;
+    const card     = t.closest('.buyer-card');
+    const buyerId  = card && card.dataset.buyerId;
+    if (!buyerId || !recipeId || !field) return;
+    openBuyerPicker(t, buyerId, recipeId, field);
+}
+
+// Typing in a picker-target input refreshes the dropdown contents live.
+// Other buyer inputs (qty / payQty) go through onBuyersListChange on blur
+// instead - they don't talk to the picker.
+function onBuyersListInput(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.buyerPickerTarget) return;
+    if (!state.picker || state.picker.input !== t) return;
+    populatePicker(t.value);
+    // Content height likely changed -> re-evaluate flip-up / overflow.
+    positionPicker(t);
+}
+
+// Render an item id as an icon + display-name + raw-id cell. Used for both
+// the sold item (left) and the pay item (right); pay items are typically
+// CoinPiastre / CoinGuinea but can also be barter goods (Drowned/Senkamati
+// "Stuff" tiers), so we don't hardcode "currency" semantics.
+function buildBuyerItemCellHtml(itemId) {
+    if (!itemId) {
+        return '<td class="buyer-item">'
+             +   '<span class="buyer-icon buyer-icon-empty"></span>'
+             +   '<span class="buyer-item-name">(no item)</span>'
+             + '</td>';
+    }
+    const item = state.itemsById.get(itemId);
+    const name = (item && item.meta && item.meta.name) || itemId;
+    const iconHtml = item && item.icon
+        ? '<img class="buyer-icon" src="' + esc(item.icon) + '" alt="" loading="lazy">'
+        : '<span class="buyer-icon buyer-icon-empty"></span>';
+    return '<td class="buyer-item">'
+         +   iconHtml
+         +   '<span class="buyer-item-name">' + esc(name) + '</span>'
+         +   '<span class="buyer-item-id">' + esc(itemId) + '</span>'
+         + '</td>';
+}
+
+function renderBuyersStatus() {
+    const total = state.buyers.list.length;
+    let entries = 0;
+    for (const b of state.buyers.list) {
+        entries += (b.entries ? b.entries.length : 0);
+    }
+    document.getElementById('buyers-stat-total').textContent   = total;
+    document.getElementById('buyers-stat-entries').textContent = entries;
+}
+
+// ---------- Sellers tab (read-only PlayerBuys roster browser) -----------
+//
+// /api/sellers returns a list of SellerDto entries. Each entry is one
+// R5BLRecipeList JSON whose filename matches *_PlayerBuys* in vanilla
+// (the player buys from the NPC = NPC is a vendor). Vanilla ships the
+// 8 Trade* faction rosters plus 3 Handyman vendors. The DTO shape mirrors
+// BuyerEntryDto - itemId always refers to the "main" item being traded
+// (= what the NPC sells), payItemId is the currency the player pays in.
+// Read-only for now; CRUD follows in a later iteration.
+//
+// We deliberately reuse the .buyer-* / .buyers-list CSS classes from the
+// Buyers tab - both pages render identical-looking cards + tables, so the
+// visual styles are shared rather than duplicated. The class names being
+// "buyer-foo" inside the sellers markup is an internal naming wart that
+// the user never sees; if we ever diverge visually we'll split them.
+
+async function loadSellers() {
+    try {
+        const data = await api('GET', '/api/sellers');
+        state.sellers.loaded = true;
+        state.sellers.list = data || [];
+        state.sellers.error = null;
+        populateSellerFactionFilter();
+    } catch (e) {
+        state.sellers.loaded = true;
+        state.sellers.list = [];
+        state.sellers.error = 'Failed to load sellers: ' + e.message;
+    }
+    renderSellers();
+    renderSellersStatus();
+}
+
+function populateSellerFactionFilter() {
+    const sel = document.getElementById('sellers-filter-faction');
+    if (!sel) return;
+    const seen = new Set();
+    for (const s of state.sellers.list) {
+        if (s.faction) seen.add(s.faction);
+    }
+    const factions = Array.from(seen).sort();
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">All factions</option>'
+        + factions.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('');
+    if (prev && factions.includes(prev)) sel.value = prev;
+}
+
+function filterSellers() {
+    const q = (document.getElementById('sellers-filter').value || '').trim().toLowerCase();
+    const faction = document.getElementById('sellers-filter-faction').value;
+    const out = [];
+    for (const s of state.sellers.list) {
+        if (faction && s.faction !== faction) continue;
+        if (q) {
+            // Match on label / id / any entry's item or recipe id so users
+            // can find "who sells Rum Bottles?" by typing the item id.
+            let hay = (s.label + ' ' + s.id + ' ' + s.faction).toLowerCase();
+            for (const e of s.entries) {
+                hay += ' ' + (e.itemId || '') + ' ' + (e.recipeId || '');
+            }
+            if (!hay.includes(q)) continue;
+        }
+        out.push(s);
+    }
+    return out;
+}
+
+function renderSellers() {
+    const errEl = document.getElementById('sellers-error');
+    if (state.sellers.error) {
+        errEl.textContent = state.sellers.error;
+        errEl.hidden = false;
+    } else {
+        errEl.hidden = true;
+    }
+
+    const list = document.getElementById('sellers-list');
+    const filtered = filterSellers();
+
+    if (filtered.length === 0) {
+        const msg = state.sellers.list.length === 0
+            ? 'No PlayerBuys RecipeLists in vanilla yet. Re-run setup to extract them.'
+            : 'No sellers match the current filter.';
+        list.innerHTML = '<li class="buyers-empty">' + esc(msg) + '</li>';
+    } else {
+        list.innerHTML = filtered.map(buildSellerCardHtml).join('');
+    }
+
+    document.getElementById('sellers-count').textContent =
+        filtered.length + ' / ' + state.sellers.list.length + ' lists';
+}
+
+function buildSellerCardHtml(s) {
+    const entries = s.entries || [];
+    const rows = entries.length === 0
+        ? '<tr><td colspan="5" class="buyer-empty-row">(no entries)</td></tr>'
+        : entries.map(buildSellerEntryRowHtml).join('');
+
+    const sub = s.id + (s.entries ? '  -  ' + s.entries.length + ' entries' : '');
+    return '<li class="buyer-card">'
+         +   '<header class="buyer-header">'
+         +     '<div class="buyer-title">'
+         +       '<span class="buyer-faction">' + esc(s.faction || '(other)') + '</span>'
+         +       '<span class="buyer-label">' + esc(s.label || s.id) + '</span>'
+         +     '</div>'
+         +     '<span class="buyer-sub">' + esc(sub) + '</span>'
+         +   '</header>'
+         +   '<table class="buyer-table">'
+         +     '<thead><tr>'
+         +       '<th>Item</th>'
+         +       '<th class="num">Qty</th>'
+         +       '<th>Pay item</th>'
+         +       '<th class="num">Pay qty</th>'
+         +       '<th>Requirement</th>'
+         +     '</tr></thead>'
+         +     '<tbody>' + rows + '</tbody>'
+         +   '</table>'
+         + '</li>';
+}
+
+function buildSellerEntryRowHtml(e) {
+    if (!e.resolved) {
+        return '<tr class="buyer-row unresolved">'
+             +   '<td colspan="5" class="buyer-unresolved">'
+             +     '<span class="buyer-recipe">' + esc(e.recipeId || '(unknown)') + '</span>'
+             +     ' <span class="hint">(recipe not found in vanilla extract)</span>'
+             +   '</td>'
+             + '</tr>';
+    }
+
+    // Same layout as buyer rows. The backend already swapped Cost/Result
+    // semantics so itemId = the item the NPC sells, payItemId = currency.
+    // We reuse buildBuyerItemCellHtml since it's a generic id -> cell
+    // renderer (no buy/sell semantics in the helper itself).
+    //
+    // Unlike buyers, sellers regularly have a CraftRequirement set (faction
+    // reputation gate, e.g. "DA_Requirement_Smugglers_1" = Smugglers Rep 1).
+    // The 5th column surfaces that; empty means "no reputation needed".
+    const req = shortenSellerRequirement(e.craftRequirement);
+    const reqCell = req
+        ? '<td class="buyer-req">' + esc(req) + '</td>'
+        : '<td class="buyer-req buyer-req-none">-</td>';
+    return '<tr class="buyer-row">'
+         +   buildBuyerItemCellHtml(e.itemId)
+         +   '<td class="num">' + esc(String(e.itemCount || 0)) + '</td>'
+         +   buildBuyerItemCellHtml(e.payItemId)
+         +   '<td class="num">' + esc(String(e.payCount || 0)) + '</td>'
+         +   reqCell
+         + '</tr>';
+}
+
+// Turns a CraftRequirement asset path like
+// ".../Reputation/DA_Requirement_Smugglers_1" into "Smugglers Rep 1".
+// Returns '' for empty / unrecognised input so callers can fall back to a
+// neutral placeholder.
+function shortenSellerRequirement(reqPath) {
+    if (!reqPath) return '';
+    const s = String(reqPath);
+    const m = s.match(/DA_Requirement_([A-Za-z]+)_(\d+)/);
+    if (m) return m[1] + ' Rep ' + m[2];
+    // Fallback: last path segment, strip the DA_Requirement_ prefix if any
+    const last = s.split('/').pop().split('.').pop();
+    return last.replace(/^DA_Requirement_/, '').replace(/_/g, ' ');
+}
+
+function renderSellersStatus() {
+    const total = state.sellers.list.length;
+    let entries = 0;
+    for (const s of state.sellers.list) {
+        entries += (s.entries ? s.entries.length : 0);
+    }
+    document.getElementById('sellers-stat-total').textContent   = total;
+    document.getElementById('sellers-stat-entries').textContent = entries;
+}
+
 function setFooterCollapsed(collapsed) {
     const footer = document.getElementById('footer');
     const btn    = document.getElementById('footer-toggle');
@@ -2268,6 +3146,41 @@ function bindHandlers() {
             deleteMod(t.dataset.deleteMod);
         }
     });
+
+    // Buyers page: read-only for now, so we only need filter wiring -
+    // Faction dropdown is populated after /api/buyers comes back, so its
+    // initial state at bind time is just the "All factions" placeholder.
+    document.getElementById('buyers-filter').addEventListener('input',           renderBuyers);
+    document.getElementById('buyers-filter-faction').addEventListener('change',  renderBuyers);
+
+    // Buyers CRUD - delegated handlers on the list root. Edits write
+    // through to state.current.buyer{Recipes,Lists} via the helpers above
+    // and re-render the affected card. Splitting click vs change vs input
+    // mirrors the loot-list pattern: text/number inputs commit on `change`
+    // (blur/Enter) so focus survives mid-typing, but we still react to
+    // `input` to track in-progress values for the per-card status badge.
+    const buyersList = document.getElementById('buyers-list');
+    if (buyersList) {
+        buyersList.addEventListener('click',  onBuyersListClick);
+        buyersList.addEventListener('change', onBuyersListChange);
+        // Focusing an item / pay-item input opens the shared custom picker
+        // (same dropdown the loot-table tab uses). focusin (vs focus) bubbles
+        // so we can delegate from the list root.
+        buyersList.addEventListener('focusin', onBuyersListFocusIn);
+        // Live-filter the picker while the user types in the input. The
+        // picker stays open across keystrokes because populatePicker just
+        // re-fills #picker-dropdown in place.
+        buyersList.addEventListener('input',  onBuyersListInput);
+        // Re-position the dropdown when the buyers list scrolls (cheap; the
+        // handler no-ops if no picker is open).
+        buyersList.addEventListener('scroll', () => {
+            if (state.picker) positionPicker(state.picker.input);
+        }, { passive: true });
+    }
+
+    // Sellers page: same read-only filter wiring as Buyers.
+    document.getElementById('sellers-filter').addEventListener('input',          renderSellers);
+    document.getElementById('sellers-filter-faction').addEventListener('change', renderSellers);
 
     // Delegated handlers on the LT list - one set covers expand/collapse,
     // per-entry edits, removals, and add-form interactions.
@@ -2392,9 +3305,18 @@ function onPickerClick(e) {
     if (!li || !li.dataset.pickId) return;
     if (!state.picker) return;
     e.preventDefault();
-    const { ltId, addedIndex, type } = state.picker;
+    const picker = state.picker;
     closePicker();  // close before confirm; confirm re-renders the row
-    confirmAddedEntry(ltId, addedIndex, type, li.dataset.pickId);
+    if (picker.source === 'buyer') {
+        // Buyer item / pay-item pick. setBuyerEntryField does its own
+        // markDirty; the card re-render lets the new icon + display name
+        // settle in the cell.
+        setBuyerEntryField(picker.buyerId, picker.recipeId, picker.buyerField, li.dataset.pickId);
+        refreshBuyerCard(picker.buyerId);
+        return;
+    }
+    // Default / 'loot' source: legacy LT add-entry flow.
+    confirmAddedEntry(picker.ltId, picker.addedIndex, picker.type, li.dataset.pickId);
 }
 
 // Any click outside the picker or its anchor input closes the dropdown.

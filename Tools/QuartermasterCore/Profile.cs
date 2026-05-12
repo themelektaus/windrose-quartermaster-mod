@@ -26,6 +26,25 @@ namespace Windrose.Quartermaster.Core
         // "Mobs/DA_LT_Mob_BlackBeard_Sergeant_Final"). Null = no loot
         // overrides for this profile.
         public Dictionary<string, LootTableOverride> LootOverrides;
+
+        // Per-Recipe edits for the Buyers/Sellers trade tabs. Keyed by
+        // recipeId (the filename basename of the on-disk R5BLRecipeData
+        // JSON, e.g. "DA_RD_CID_Food_Rum_Bottle_T03_Sell"). For custom
+        // recipes added via the Buyers tab's "Add Entry" UI the key uses
+        // the well-known prefix "QM_Custom_<hex>" and IsCustom=true; the
+        // patcher then synthesizes the JSON instead of editing a vanilla
+        // baseline. Recipe edits are GLOBAL - if the same recipe is
+        // referenced by multiple RecipeLists, every list sees the new
+        // values (matches the "Trade Rum Bottles" mod approach).
+        // Null = no buyer-recipe overrides for this profile.
+        public Dictionary<string, BuyerRecipeOverride> BuyerRecipes;
+
+        // Per-RecipeList edits (add/remove recipe refs from a buyer or
+        // seller NPC's roster). Keyed by buyerListId (path under RecipeLists/
+        // without ".json", e.g. "TradeBrethren/DA_RecipeList_Trade_Brethren1_
+        // PlayerSells"). The same key shape the GET /api/buyers endpoint
+        // emits as `id`. Null = no list-level edits for this profile.
+        public Dictionary<string, BuyerListOverride> BuyerLists;
     }
 
     public sealed class ProfileGlobals
@@ -255,5 +274,60 @@ namespace Windrose.Quartermaster.Core
         public int Weight;        // 0 for List-type tables, > 0 for Weight-type
         public string LootItem;   // "None" or an asset path
         public string LootTable;  // "None" or a sub-LT asset path
+    }
+
+    // Edit-spec for a single Recipe (R5BLRecipeData) that powers a buyer/
+    // seller entry. The 4 trade fields (sold item + count, paid item +
+    // count) are the only mutable values; everything else (RecipeTag,
+    // CraftRequirement, UIData, ...) is preserved verbatim from vanilla
+    // for IsCustom=false, or synthesized from a template for IsCustom=true.
+    //
+    // Sparse: null fields = "vanilla wins" (for IsCustom=false). Custom
+    // recipes (IsCustom=true) must have all four set or the patcher will
+    // refuse to emit the file - there's no vanilla baseline to fall back
+    // to. The patcher validates this and surfaces a warning instead of
+    // writing broken JSON.
+    public sealed class BuyerRecipeOverride
+    {
+        // Item the player gives up (RecipeCost[0].Item). Full asset path
+        // form: "/R5BusinessRules/InventoryItems/Consumables/Misc/DA_DID_..."
+        public string ItemPath;
+        public int? ItemCount;
+
+        // Item the player receives (RecipeResult[0].Item). For PlayerSells
+        // recipes this is typically a coin variant (Piastre/Guinea/...).
+        public string PayItemPath;
+        public int? PayCount;
+
+        // True = the patcher synthesizes a fresh R5BLRecipeData JSON from
+        // an internal template (cloned from a vanilla PlayerSells recipe at
+        // build time so the schema matches the live game's expectations).
+        // False = the patcher loads the vanilla file matching this key's
+        // basename and patches the four fields in-place.
+        public bool IsCustom;
+    }
+
+    // Edit-spec for a single R5BLRecipeList JSON. Captures the RecipeList[]
+    // diff against vanilla: which references to drop, which new ones to
+    // append. The patcher rebuilds the list in this order:
+    //   1. iterate vanilla refs, skip any whose basename is in RemovedRecipeIds
+    //   2. append entries for each id in AddedRecipeIds, resolving to either
+    //      the vanilla recipe path or the synthesized "QM_Custom_*" path
+    //
+    // Both lists deduplicate themselves silently - the frontend never
+    // sends duplicates, but a profile edited by hand might.
+    public sealed class BuyerListOverride
+    {
+        // Recipe basenames to append to the RecipeList[]. Resolution rule:
+        //   * "QM_Custom_*"       -> /R5BusinessRules/Recipes/Custom/<id>.<id>
+        //   * everything else     -> looked up via the vanilla recipe map
+        //                            (basename -> on-disk path) the patcher
+        //                            builds at start.
+        public List<string> AddedRecipeIds;
+
+        // Recipe basenames to strip from the vanilla RecipeList[]. Matched
+        // against the trailing segment of each vanilla ref (after the last
+        // '/' and trimmed of any ".AssetName" suffix).
+        public List<string> RemovedRecipeIds;
     }
 }

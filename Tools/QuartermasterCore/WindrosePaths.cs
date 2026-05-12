@@ -14,6 +14,13 @@ namespace Windrose.Quartermaster.Core
         public string VanillaInventoryItems;
         public string VanillaLootTables;
         public string VanillaBuildingLimits;
+        // RecipeLists/ holds R5BLRecipeList JSONs - each lists which Recipe
+        // entries belong to one trader (PlayerBuys / PlayerSells) or crafting
+        // station (Furnace, Kiln, ...). Recipes/ holds R5BLRecipeData JSONs -
+        // the actual Cost+Result+CraftRequirement entries the lists reference.
+        // Both are needed for the Buyers tab to resolve every recipe ref.
+        public string VanillaRecipeLists;
+        public string VanillaRecipes;
         public string Builds;
         public string Profiles;
         public string BuildTmp;
@@ -43,6 +50,12 @@ namespace Windrose.Quartermaster.Core
             // like DA_BuildLimits_FastTravel.json (~10 entries total).
             var vanillaBuildLimits = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "BuildingLimits");
+            // RecipeLists + Recipes both live under R5BusinessRules/Content/
+            // (same plugin tree as InventoryItems / LootTables).
+            var vanillaRecipeLists = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "RecipeLists");
+            var vanillaRecipes = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "Recipes");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -51,6 +64,8 @@ namespace Windrose.Quartermaster.Core
                 VanillaInventoryItems = vanillaInv,
                 VanillaLootTables = vanillaLoot,
                 VanillaBuildingLimits = vanillaBuildLimits,
+                VanillaRecipeLists = vanillaRecipeLists,
+                VanillaRecipes = vanillaRecipes,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),

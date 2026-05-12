@@ -124,6 +124,8 @@ public static class ProfilesEndpoint
                             ? null
                             : new ItemOverride { StackSize = kvp.Value.StackSize }),
                 LootOverrides = CloneLootOverrides(src.LootOverrides),
+                BuyerRecipes = CloneBuyerRecipes(src.BuyerRecipes),
+                BuyerLists = CloneBuyerLists(src.BuyerLists),
             };
 
             try { store.Save(clone); }
@@ -242,6 +244,53 @@ public static class ProfilesEndpoint
         return result;
     }
 
+    // Deep-clones the per-recipe edit map. Safe to share BuyerRecipeOverride
+    // values across clones in theory (they're flat), but explicit copying
+    // matches the LootOverrides pattern and makes future field additions
+    // safer (a forgotten reference-share would silently corrupt the source
+    // profile).
+    static Dictionary<string, BuyerRecipeOverride> CloneBuyerRecipes(
+        Dictionary<string, BuyerRecipeOverride> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, BuyerRecipeOverride>(src.Count);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new BuyerRecipeOverride
+            {
+                ItemPath = v.ItemPath,
+                ItemCount = v.ItemCount,
+                PayItemPath = v.PayItemPath,
+                PayCount = v.PayCount,
+                IsCustom = v.IsCustom,
+            };
+        }
+        return result;
+    }
+
+    // Deep-clones the per-list edit map. List values are reference-sharing
+    // hazards (AddedRecipeIds / RemovedRecipeIds are mutable Lists), so
+    // the clone copies the lists explicitly.
+    static Dictionary<string, BuyerListOverride> CloneBuyerLists(
+        Dictionary<string, BuyerListOverride> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, BuyerListOverride>(src.Count);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new BuyerListOverride
+            {
+                AddedRecipeIds = v.AddedRecipeIds == null ? null : new List<string>(v.AddedRecipeIds),
+                RemovedRecipeIds = v.RemovedRecipeIds == null ? null : new List<string>(v.RemovedRecipeIds),
+            };
+        }
+        return result;
+    }
+
     // Lightweight summary for the list view - the full profile (including
     // every override) only loads when the user opens it.
     static object ToSummary(Profile p)
@@ -255,6 +304,8 @@ public static class ProfilesEndpoint
             modifiedAt = p.ModifiedAt,
             overrideCount = p.Overrides == null ? 0 : p.Overrides.Count,
             lootOverrideCount = p.LootOverrides == null ? 0 : p.LootOverrides.Count,
+            buyerRecipeCount = p.BuyerRecipes == null ? 0 : p.BuyerRecipes.Count,
+            buyerListCount = p.BuyerLists == null ? 0 : p.BuyerLists.Count,
             hasGlobalStackSize = p.Globals != null && p.Globals.StackSize != null
                                  && (p.Globals.StackSize.Multiplier.HasValue
                                      || p.Globals.StackSize.Absolute.HasValue),

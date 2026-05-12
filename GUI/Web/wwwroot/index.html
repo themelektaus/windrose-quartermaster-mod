@@ -39,9 +39,11 @@
     </div>
     <nav id="tabs" class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="misc"  role="tab" aria-selected="true">Basic</button>
-      <button type="button" class="tab"        data-tab="items" role="tab" aria-selected="false">Items</button>
-      <button type="button" class="tab"        data-tab="loot"  role="tab" aria-selected="false">Loot Tables</button>
-      <button type="button" class="tab"        data-tab="mods"  role="tab" aria-selected="false">Mods</button>
+      <button type="button" class="tab"        data-tab="items"  role="tab" aria-selected="false">Items</button>
+      <button type="button" class="tab"        data-tab="loot"   role="tab" aria-selected="false">Loot Tables</button>
+      <button type="button" class="tab"        data-tab="buyers"  role="tab" aria-selected="false">Buyers</button>
+      <button type="button" class="tab"        data-tab="sellers" role="tab" aria-selected="false">Sellers</button>
+      <button type="button" class="tab"        data-tab="mods"    role="tab" aria-selected="false">Mods</button>
       <button id="btn-build" type="button" class="primary">BUILD</button>
     </nav>
     <div id="profile-bar" class="profile-bar">
@@ -358,6 +360,107 @@
         <section class="card" style="visibility: hidden; "></section>
         
       </aside>
+    </div>
+
+    <!-- BUYERS PAGE - read-only browser for all RecipeList JSONs whose
+         filename matches *_PlayerSells* (= the NPC buys from the player).
+         Vanilla ships 8 such lists (Brethren / Bucaneers / Civilians /
+         Smugglers, slots 1 and 1_02). Each card renders the items the NPC
+         pays for and the price (typically piastres). Phase 1: display only,
+         no editing yet. -->
+    <div class="tab-page" data-tab="buyers" hidden>
+      <aside class="pane left">
+        <section class="card">
+          <h2>Buyers</h2>
+          <p class="hint">
+            NPCs in the world that purchase items from the player. Each card
+            shows one trade roster - what the NPC accepts and what they pay
+            in piastres.
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>Status</h2>
+          <dl id="buyers-status-summary">
+            <dt>Buyer lists in vanilla</dt><dd id="buyers-stat-total">-</dd>
+            <dt>Total trade entries</dt><dd id="buyers-stat-entries">-</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Notes</h2>
+          <p class="hint">
+            Each entry is editable: type a new item id (autocompletes from
+            every vanilla item), change quantities, or click the X to remove
+            an entry from the list. The reset arrow reverts a single edit to
+            its vanilla baseline; the + Add entry button appends a brand-new
+            custom recipe. All edits live on the current profile and are
+            baked into the pak on Build.
+          </p>
+        </section>
+      </aside>
+
+      <section class="pane right">
+        <div class="item-controls">
+          <input type="search" id="buyers-filter" placeholder="Search" title="Filter buyers by faction, item id, or recipe id...">
+          <select id="buyers-filter-faction"><option value="">All factions</option></select>
+          <span id="buyers-count" class="item-count"></span>
+        </div>
+        <div id="buyers-error" class="mods-error" hidden></div>
+        <ul id="buyers-list" class="buyers-list"></ul>
+        <!-- Item / pay-item inputs on each buyer card open the shared
+             #picker-dropdown (defined at the bottom of <body>) on focus -
+             same custom picker the loot-table add-entry flow uses. No
+             per-tab datalist needed. -->
+      </section>
+    </div>
+
+    <!-- SELLERS PAGE - read-only browser for all RecipeList JSONs whose
+         filename matches *_PlayerBuys* (= the player buys from the NPC, the
+         NPC acts as a vendor). Mirrors the Buyers page; Sellers covers the
+         standard Trade* factions plus the three Handyman vendors (Animals /
+         Food / Resources) and is also where the Guinea<->Piastre exchange
+         recipes show up (Smugglers PlayerBuys_02). Phase 1: display only. -->
+    <div class="tab-page" data-tab="sellers" hidden>
+      <aside class="pane left">
+        <section class="card">
+          <h2>Sellers</h2>
+          <p class="hint">
+            NPCs in the world that sell items to the player. Each card shows
+            one trade roster - what the NPC offers and the price (typically
+            piastres, sometimes guineas or barter goods).
+          </p>
+        </section>
+
+        <section class="card">
+          <h2>Status</h2>
+          <dl id="sellers-status-summary">
+            <dt>Seller lists in vanilla</dt><dd id="sellers-stat-total">-</dd>
+            <dt>Total trade entries</dt><dd id="sellers-stat-entries">-</dd>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2>Notes</h2>
+          <p class="hint">
+            Read-only for now. Editing vendor inventories (adding / removing
+            items, changing prices) is planned for a follow-up iteration. The
+            Smugglers second inventory also contains the Guinea<->Piastre
+            currency exchange recipes - a classic asymmetric spread (1 Guinea
+            buys 50 Piastres, but selling one back yields only 20).
+          </p>
+        </section>
+      </aside>
+
+      <section class="pane right">
+        <div class="item-controls">
+          <input type="search" id="sellers-filter" placeholder="Search" title="Filter sellers by faction, item id, or recipe id...">
+          <select id="sellers-filter-faction"><option value="">All factions</option></select>
+          <span id="sellers-count" class="item-count"></span>
+        </div>
+        <div id="sellers-error" class="mods-error" hidden></div>
+        <ul id="sellers-list" class="buyers-list"></ul>
+      </section>
     </div>
 
     <!-- MODS PAGE - list .pak files in Windrose's ~mods/ folder.
