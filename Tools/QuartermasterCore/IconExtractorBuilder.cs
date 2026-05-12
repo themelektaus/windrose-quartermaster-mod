@@ -14,6 +14,16 @@ namespace Windrose.Quartermaster.Core
     // GUI can stream it to the browser.
     public sealed class IconExtractorBuilder
     {
+        // Must match Tools/IconExtractor/IconExtractor.csproj <TargetFramework>.
+        // Used to invalidate stale publish/ caches built against an older
+        // TFM (e.g. user upgraded from a net8.0 build and the cached EXE
+        // would still ask for the net8.0 runtime at launch).
+        //
+        // Public so the deployed-EXE seed path
+        // (Web.Program.SeedIconExtractorIfMissing) can share the exact same
+        // freshness logic without duplicating the constant.
+        public const string ExpectedTfm = "net10.0";
+
         readonly string _modRoot;
 
         public IconExtractorBuilder(string modRoot)
@@ -30,15 +40,37 @@ namespace Windrose.Quartermaster.Core
             var publishDir = Path.Combine(projectDir, "publish");
             var exePath = Path.Combine(publishDir, "IconExtractor.exe");
 
-            if (File.Exists(exePath)) return exePath;
-
-            LogLine("IconExtractor.exe not present - building");
+            if (File.Exists(exePath))
+            {
+                if (IsPublishFresh(publishDir)) return exePath;
+                LogLine("IconExtractor.exe present but built against a different .NET runtime - rebuilding");
+                TryDeletePublishDir(publishDir);
+            }
+            else
+            {
+                LogLine("IconExtractor.exe not present - building");
+            }
 
             var csproj = Path.Combine(projectDir, "IconExtractor.csproj");
             if (!File.Exists(csproj))
             {
+                // Deployed end-users never see this in the happy path -
+                // Web.Program.SeedIconExtractorIfMissing extracts a
+                // prebuilt publish/ from the embedded zip on startup, so
+                // by the time we get here the EXE exists and matches
+                // ExpectedTfm. If we land here in a deployed install
+                // anyway, the embedded zip wasn't present (very old EXE)
+                // or extraction was wiped between startup and setup -
+                // either way "the project file is missing" is misleading.
                 throw new FileNotFoundException(
-                    "IconExtractor project not found: " + csproj);
+                    "IconExtractor build artifact is missing and rebuilding " +
+                    "from source isn't possible because the project file " +
+                    "isn't shipped with the deployed EXE.\n\n" +
+                    "Fix: re-download or re-extract the latest " +
+                    "Quartermaster.exe (the prebuilt IconExtractor is " +
+                    "embedded in it) and start it once before running " +
+                    "setup again.\n\n" +
+                    "Expected at: " + csproj);
             }
 
             // CUE4Parse submodule preflight - transparently `git submodule
@@ -186,6 +218,56 @@ namespace Windrose.Quartermaster.Core
             {
                 throw new InvalidOperationException(
                     "dotnet publish failed (exit " + proc.ExitCode + ")");
+            }
+        }
+
+        // Sniffs IconExtractor.runtimeconfig.json next to the cached EXE and
+        // checks whether its "tfm" field matches ExpectedTfm. We do a plain
+        // substring check rather than parsing JSON to keep this dependency-
+        // free and tolerant of formatting (the publish step emits stable
+        // JSON, but we don't want to pull in System.Text.Json from QC just
+        // for this). Missing/unreadable config defaults to "stale" so we
+        // rebuild defensively.
+        //
+        // Public so the deployed-EXE seed path
+        // (Web.Program.SeedIconExtractorIfMissing) can share the exact
+        // same freshness probe used by the resolver here.
+        public static bool IsPublishFresh(string publishDir)
+        {
+            var runtimeConfig = Path.Combine(publishDir, "IconExtractor.runtimeconfig.json");
+            if (!File.Exists(runtimeConfig)) return false;
+
+            string text;
+            try { text = File.ReadAllText(runtimeConfig); }
+            catch { return false; }
+
+            // Looking for: "tfm": "net10.0"
+            var needle = "\"tfm\": \"" + ExpectedTfm + "\"";
+            if (text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            // Tolerate the no-space variant just in case the SDK emits it
+            // differently in a future release.
+            needle = "\"tfm\":\"" + ExpectedTfm + "\"";
+            return text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        void TryDeletePublishDir(string publishDir)
+        {
+            try
+            {
+                if (Directory.Exists(publishDir))
+                {
+                    Directory.Delete(publishDir, recursive: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: dotnet publish will overwrite individual files.
+                // The runtimeconfig.json is regenerated either way, so even
+                // if we can't wipe the whole dir, the freshness check will
+                // pass on the next Resolve().
+                LogLine("Could not delete stale publish dir (" + ex.Message
+                    + ") - continuing, dotnet publish will overwrite.");
             }
         }
 

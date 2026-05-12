@@ -183,8 +183,11 @@ public static class Program
 
     /// <summary>
     /// Extracts the embedded <c>IconExtractor.publish.zip</c> resource into
-    /// <paramref name="iconExtractorDir"/><c>\publish\</c> if no
-    /// <c>IconExtractor.exe</c> is already there. Mirrors what
+    /// <paramref name="iconExtractorDir"/><c>\publish\</c> when no
+    /// <c>IconExtractor.exe</c> is there yet, OR when the existing one is a
+    /// stale build against an older .NET runtime (TFM mismatch with
+    /// <see cref="Windrose.Quartermaster.Core.IconExtractorBuilder.ExpectedTfm"/>).
+    /// Mirrors what
     /// <see cref="Windrose.Quartermaster.Core.IconExtractorBuilder"/> does
     /// for dev builds (where it runs <c>dotnet publish</c> against the
     /// CUE4Parse submodule on demand) - the deployed EXE skips the build
@@ -196,6 +199,16 @@ public static class Program
     /// older extracted files at <c>publish\</c> are overwritten by the
     /// next start (we delete the existing <c>publish\</c> dir first).
     /// </para>
+    /// <para>
+    /// Cross-update bug fixed here: when an older deployed EXE had already
+    /// extracted a net8.0 build into <c>publish\</c>, a newer EXE with a
+    /// net10.0 embedded zip used to short-circuit on the existing
+    /// <c>IconExtractor.exe</c> and never re-seed. The freshness probe
+    /// closes that gap so the deployed-EXE path doesn't depend on the
+    /// from-source rebuild fallback (which fails in a real deployment
+    /// because <c>Tools/IconExtractor/IconExtractor.csproj</c> isn't
+    /// shipped alongside the EXE).
+    /// </para>
     /// </summary>
     static void SeedIconExtractorIfMissing(string iconExtractorDir)
     {
@@ -204,9 +217,16 @@ public static class Program
         var publishDir = Path.Combine(iconExtractorDir, "publish");
         var exePath = Path.Combine(publishDir, "IconExtractor.exe");
 
-        // Already extracted - nothing to do. The IconExtractorBuilder will
-        // pick the existing exe up via its short-circuit path.
-        if (File.Exists(exePath)) return;
+        // Already extracted AND built against the expected runtime - nothing
+        // to do. The IconExtractorBuilder will pick the existing exe up via
+        // its short-circuit path. If it exists but the runtimeconfig says
+        // it was built against a different TFM, fall through so we re-seed
+        // from the (presumably-fresher) embedded zip.
+        if (File.Exists(exePath) &&
+            Windrose.Quartermaster.Core.IconExtractorBuilder.IsPublishFresh(publishDir))
+        {
+            return;
+        }
 
         using var src = asm.GetManifestResourceStream(resourceName);
         if (src == null)

@@ -225,7 +225,13 @@ function appendSetupLog(line, kind) {
     const out = document.getElementById('setup-log');
     const span = document.createElement('span');
     if (kind) span.className = kind;
-    span.textContent = (kind ? '[' + kind.toUpperCase() + '] ' : '') + line + '\n';
+    // Skip the [KIND] prefix when the upstream line already carries its own
+    // bracket marker (e.g. IconExtractor emits "[OK] Oodle DLL: ..."), so we
+    // don't end up with "[OK] [OK] ...". Step markers ([step:start ...]) use
+    // a different prefix style and stay as-is for visual scanability.
+    const hasOwnPrefix = /^\[(?:OK|ok|X|!|\.\.|skip)\b/.test(line);
+    const prefix = kind && !hasOwnPrefix ? '[' + kind.toUpperCase() + '] ' : '';
+    span.textContent = prefix + line + '\n';
     out.appendChild(span);
     out.scrollTop = out.scrollHeight;
 }

@@ -34,6 +34,38 @@
     <EmbeddedResource Include="wwwroot\**" />
   </ItemGroup>
   <!--
+    Belt-and-braces incremental-rebuild trigger for wwwroot.
+
+    Why: <EmbeddedResource Include="wwwroot\**" /> alone should cause
+    CoreCompile to invalidate when any wwwroot file's mtime moves
+    past the assembly's mtime. In practice the Web SDK's interaction
+    with RID-specific publish paths (bin\Release\netN.0\win-x64\)
+    occasionally skips the rebuild even though wwwroot changed - the
+    no-RID build picks it up, the RID build doesn't, and the
+    single-file EXE ends up bundling a stale RID Web.dll.
+
+    Fix: explicit Inputs/Outputs target. Inputs = wwwroot\**, Outputs
+    = the assembly. If any wwwroot file is newer than the assembly,
+    the target body deletes the assembly so CoreCompile is forced to
+    rebuild from scratch. In steady state the target body skips
+    (assembly newer than every wwwroot file) so dev iteration is
+    cheap. Equivalent in spirit to the IconExtractor zip target
+    below, but applied to the assembly itself instead of an embedded
+    resource - works around the wwwroot ItemGroup conditional-
+    Exists-at-evaluation-time chicken-and-egg.
+  -->
+  <ItemGroup>
+    <_WwwrootInputs Include="wwwroot\**" />
+  </ItemGroup>
+  <Target Name="ForceRebuildOnWwwrootChange"
+          BeforeTargets="BeforeBuild;BeforeCompile;CoreCompile"
+          Inputs="@(_WwwrootInputs)"
+          Outputs="$(IntermediateOutputPath)$(TargetName).dll">
+    <Message Importance="high" Text="[Quartermaster] wwwroot changed - clearing $(TargetName).dll in intermediate ($(IntermediateOutputPath)) + output ($(OutputPath)) to force fresh embed" />
+    <Delete Files="$(IntermediateOutputPath)$(TargetName).dll" Condition="Exists('$(IntermediateOutputPath)$(TargetName).dll')" />
+    <Delete Files="$(OutputPath)$(TargetName).dll" Condition="Exists('$(OutputPath)$(TargetName).dll')" />
+  </Target>
+  <!--
     Embed the UE5 mappings file (.usmap) so a fresh copy of the EXE can
     run setup without the user first dumping one via UE4SS Ctrl+Num6.
     On deployed runs we write this into <DataRoot>\<filename>.usmap if
@@ -80,40 +112,77 @@
   -->
   <PropertyGroup>
     <_IconExtractorProj>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\IconExtractor.csproj</_IconExtractorProj>
-    <_IconExtractorPublishDir>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\publish</_IconExtractorPublishDir>
-    <_IconExtractorZipPath>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor\IconExtractor.publish.zip</_IconExtractorZipPath>
+    <_IconExtractorDir>$(MSBuildThisFileDirectory)..\..\Tools\IconExtractor</_IconExtractorDir>
+    <_IconExtractorPublishDir>$(_IconExtractorDir)\publish</_IconExtractorPublishDir>
+    <_IconExtractorZipPath>$(_IconExtractorDir)\IconExtractor.publish.zip</_IconExtractorZipPath>
+    <_IconExtractorExpectedTfm>net10.0</_IconExtractorExpectedTfm>
   </PropertyGroup>
-  <Target Name="PublishIconExtractorForEmbed"
-          BeforeTargets="PrepareForBuild;BeforeCompile;CoreCompile"
-          Condition="'$(_IsPublishing)' == 'true'">
-    <Message Importance="high" Text="[Quartermaster] Publishing IconExtractor for embedding..." />
-    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained false -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
-    <Delete Files="$(_IconExtractorZipPath)" Condition="Exists('$(_IconExtractorZipPath)')" />
-    <ZipDirectory SourceDirectory="$(_IconExtractorPublishDir)" DestinationFile="$(_IconExtractorZipPath)" />
-    <Message Importance="high" Text="[Quartermaster] IconExtractor.publish.zip created at $(_IconExtractorZipPath)" />
-    <!--
-      Add the EmbeddedResource INSIDE the target. A Condition="Exists(...)"
-      on a top-level ItemGroup evaluates at project-load time, which is
-      before this target runs to create the zip, so the item would be
-      empty. Adding it here, after we've just produced the zip, gets it
-      picked up by the resource compile step that runs after BeforeCompile.
-    -->
-    <ItemGroup>
-      <EmbeddedResource Include="$(_IconExtractorZipPath)">
-        <LogicalName>IconExtractor.publish.zip</LogicalName>
-      </EmbeddedResource>
-    </ItemGroup>
-  </Target>
   <!--
-    Plain `dotnet build` path: if a zip happens to already exist (e.g.
-    from a prior publish) embed it too, so the dev-built Web.dll can
-    serve as a portable test without re-running publish. Conditions on
-    item-group items are evaluated at project load, which is fine here
-    because we don't expect this target to produce the zip.
+    Always-on top-level EmbeddedResource: if the zip exists at evaluation
+    time it's added to the resource set, so the assembly's CoreCompile
+    inputs include the zip's mtime. Touching the zip (via the target
+    below) invalidates the compile cache and triggers a re-embed -
+    that's how we make sure a fresh zip ends up in the published EXE
+    even when the App project itself has no source changes.
   -->
-  <ItemGroup Condition="'$(_IsPublishing)' != 'true' AND Exists('$(_IconExtractorZipPath)')">
+  <ItemGroup Condition="Exists('$(_IconExtractorZipPath)')">
     <EmbeddedResource Include="$(_IconExtractorZipPath)">
       <LogicalName>IconExtractor.publish.zip</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      Source files that, when changed, must trigger a fresh IconExtractor
+      republish + re-zip. csproj covers TFM bumps and dependency changes;
+      Program.cs is the only source file. If we add more .cs files later,
+      they need to be listed here too (or we glob them, see below).
+    -->
+    <_IconExtractorSource Include="$(_IconExtractorProj)" />
+    <_IconExtractorSource Include="$(_IconExtractorDir)\**\*.cs"
+                          Exclude="$(_IconExtractorDir)\bin\**;$(_IconExtractorDir)\obj\**;$(_IconExtractorDir)\publish\**" />
+  </ItemGroup>
+  <Target Name="PublishIconExtractorForEmbed"
+          BeforeTargets="BeforeBuild;BeforeCompile;CoreCompile"
+          Inputs="@(_IconExtractorSource)"
+          Outputs="$(_IconExtractorZipPath)">
+    <!--
+      Inputs/Outputs let MSBuild skip this target on incremental builds
+      when nothing in the IconExtractor source tree is newer than the
+      zip - so dev iteration stays cheap. When IconExtractor.csproj is
+      bumped (e.g. TFM upgrade) the zip is older than csproj -> target
+      runs, fresh build is published, fresh zip is created.
+
+      Hooked into BeforeBuild as the primary anchor (always invoked
+      during `dotnet build` / `dotnet publish` regardless of incremental
+      state) plus BeforeCompile/CoreCompile as belt-and-braces in case
+      a fast path skips BeforeBuild.
+
+      Intentionally NOT gated on _IsPublishing anymore: a stale zip is
+      a build correctness issue even for plain `dotnet build`, and the
+      Inputs/Outputs gate already keeps the cost at near-zero when the
+      tree is up to date.
+    -->
+    <Message Importance="high" Text="[Quartermaster] (Re)publishing IconExtractor for embedding (source changed since last zip)..." />
+    <Exec Command="dotnet publish &quot;$(_IconExtractorProj)&quot; -c Release -r win-x64 --self-contained false -o &quot;$(_IconExtractorPublishDir)&quot; --nologo -v minimal" />
+    <Delete Files="$(_IconExtractorZipPath)" Condition="Exists('$(_IconExtractorZipPath)')" />
+    <ZipDirectory SourceDirectory="$(_IconExtractorPublishDir)" DestinationFile="$(_IconExtractorZipPath)" />
+    <Message Importance="high" Text="[Quartermaster] IconExtractor.publish.zip refreshed at $(_IconExtractorZipPath)" />
+  </Target>
+  <!--
+    Safety net: after the target runs (or short-circuits) verify the
+    fresh publish/IconExtractor.runtimeconfig.json TFM matches
+    _IconExtractorExpectedTfm. Catches the "embedded zip is from an
+    older TFM" failure mode at build time instead of letting it ship
+    to end users. Only runs during publish so plain dotnet build
+    isn't gated on having an up-to-date publish/ folder lying around.
+  -->
+  <Target Name="VerifyIconExtractorTfm"
+          AfterTargets="PublishIconExtractorForEmbed"
+          Condition="'$(_IsPublishing)' == 'true' AND Exists('$(_IconExtractorPublishDir)\IconExtractor.runtimeconfig.json')">
+    <PropertyGroup>
+      <_IconExtractorRuntimeConfig>$([System.IO.File]::ReadAllText('$(_IconExtractorPublishDir)\IconExtractor.runtimeconfig.json'))</_IconExtractorRuntimeConfig>
+    </PropertyGroup>
+    <Error Condition="!$(_IconExtractorRuntimeConfig.Contains('&quot;tfm&quot;: &quot;$(_IconExtractorExpectedTfm)&quot;'))"
+           Text="IconExtractor publish was built against the wrong TFM. Expected '$(_IconExtractorExpectedTfm)', but runtimeconfig.json reports something else. Delete $(_IconExtractorPublishDir) and $(_IconExtractorZipPath) and republish." />
+  </Target>
 </Project>
