@@ -102,12 +102,11 @@ it stays in "dev mode" and reads/writes against the repo paths instead.
 That way the standard `dotnet run` workflow uses the tracked profiles
 under `Profiles\` as the source of truth.
 
-> **End-user prerequisites for the portable EXE**: the .NET **8 desktop
-> runtime** must be installed (the bundled icon extractor is a
-> framework-dependent net8.0 process; the WPF host itself ships its own
-> .NET 10 runtime). Most modern Windows machines already have it via
-> Windows Update or other apps; the runtime installer is a free
-> ~70 MB download from <https://dotnet.microsoft.com/download/dotnet/8.0>.
+> **End-user prerequisites for the portable EXE**: the .NET **10 desktop
+> runtime** must be installed. The WPF host bundles its own runtime, but
+> the icon extractor is a framework-dependent net10.0 process and needs
+> the runtime available on the machine. The installer is a free
+> ~80 MB download from <https://dotnet.microsoft.com/download/dotnet/10.0>.
 > No SDK, Git, or CUE4Parse source needed any more.
 
 ### Browser

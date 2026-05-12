@@ -36,7 +36,7 @@ Each feature has its own toggle and (where applicable) slider, so you can ship a
 
 [list]
 [*][b]Windrose[/b] (any version that supports the [code]~mods[/code] pak loading convention).
-[*][b].NET 8 desktop runtime[/b] (free, ~70 MB - the bundled icon extractor is a framework-dependent net8.0 process; the WPF host ships its own .NET 10 runtime).
+[*][b].NET 10 desktop runtime[/b] (free, ~80 MB - the WPF host bundles its own runtime; the bundled icon extractor is a framework-dependent net10.0 process).
 [*][b]Microsoft Edge WebView2 runtime[/b] - preinstalled on Windows 11 and recent Windows 10 builds.
 [*]No UE4SS, no SML, no other mod loader required.
 [/list]
