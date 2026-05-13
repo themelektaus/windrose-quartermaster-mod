@@ -40,27 +40,41 @@
     CoreCompile to invalidate when any wwwroot file's mtime moves
     past the assembly's mtime. In practice the Web SDK's interaction
     with RID-specific publish paths (bin\Release\netN.0\win-x64\)
-    occasionally skips the rebuild even though wwwroot changed - the
-    no-RID build picks it up, the RID build doesn't, and the
-    single-file EXE ends up bundling a stale RID Web.dll.
+    skips the rebuild for the RID-specific output even when wwwroot
+    changed - the no-RID build picks it up, the RID build doesn't,
+    and the single-file EXE ends up bundling a stale RID Web.dll.
 
-    Fix: explicit Inputs/Outputs target. Inputs = wwwroot\**, Outputs
-    = the assembly. If any wwwroot file is newer than the assembly,
-    the target body deletes the assembly so CoreCompile is forced to
-    rebuild from scratch. In steady state the target body skips
-    (assembly newer than every wwwroot file) so dev iteration is
-    cheap.
+    Fix: when ANY wwwroot file is newer than our sentinel stamp,
+    glob-delete EVERY Web.dll + Up2Date marker + CoreCompileInputs
+    cache across both no-RID and RID-specific obj/bin paths in this
+    project AND in the App project's bin (where MSBuild copies our
+    Web.dll). The Inputs/Outputs check uses the stamp file (not a
+    DLL) so it stays correct regardless of which build context fires
+    the target. In steady state the target body skips (stamp newer
+    than every wwwroot file) so dev iteration is cheap.
   -->
   <ItemGroup>
     <_WwwrootInputs Include="wwwroot\**" />
   </ItemGroup>
   <Target Name="ForceRebuildOnWwwrootChange"
-          BeforeTargets="BeforeBuild;BeforeCompile;CoreCompile"
+          BeforeTargets="BeforeBuild;BeforeCompile;CoreCompile;CopyFilesToOutputDirectory"
           Inputs="@(_WwwrootInputs)"
-          Outputs="$(IntermediateOutputPath)$(TargetName).dll">
-    <Message Importance="high" Text="[Quartermaster] wwwroot changed - clearing $(TargetName).dll in intermediate ($(IntermediateOutputPath)) + output ($(OutputPath)) to force fresh embed" />
-    <Delete Files="$(IntermediateOutputPath)$(TargetName).dll" Condition="Exists('$(IntermediateOutputPath)$(TargetName).dll')" />
-    <Delete Files="$(OutputPath)$(TargetName).dll" Condition="Exists('$(OutputPath)$(TargetName).dll')" />
+          Outputs="$(BaseIntermediateOutputPath)qm-wwwroot.stamp">
+    <ItemGroup>
+      <!-- Web project: all RID variants of Web.dll under obj/ and bin/ -->
+      <_QmStaleWeb Include="$(BaseIntermediateOutputPath)**\$(TargetName).dll" />
+      <_QmStaleWeb Include="$(BaseOutputPath)**\$(TargetName).dll" />
+      <!-- Web project: stale incremental-build markers that would suppress rebuild -->
+      <_QmStaleWeb Include="$(BaseIntermediateOutputPath)**\Quarterm.*.Up2Date" />
+      <_QmStaleWeb Include="$(BaseIntermediateOutputPath)**\$(TargetName).csproj.CoreCompileInputs.cache" />
+      <!-- App project's bin/obj: Web.dll copies that MSBuild produces alongside the WPF host -->
+      <_QmStaleWeb Include="..\App\bin\**\$(TargetName).dll" />
+      <_QmStaleWeb Include="..\App\obj\**\$(TargetName).dll" />
+    </ItemGroup>
+    <Message Importance="high" Text="[Quartermaster] wwwroot changed - purging @(_QmStaleWeb->Count()) stale Web.dll/marker artifacts across no-RID and RID paths to force fresh embed" />
+    <Delete Files="@(_QmStaleWeb)" />
+    <MakeDir Directories="$(BaseIntermediateOutputPath)" />
+    <Touch Files="$(BaseIntermediateOutputPath)qm-wwwroot.stamp" AlwaysCreate="true" />
   </Target>
   <!--
     Embed the UE5 mappings file (.usmap) so a fresh copy of the EXE can
