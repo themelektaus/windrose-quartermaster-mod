@@ -1593,6 +1593,15 @@ footer.collapsed .footer-body {
   color: var(--text-dim);
 }
 
+.buyer-req-select {
+  font-size: var(--font-size-small);
+}
+
+.buyer-req-select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 .buyer-unresolved .buyer-recipe {
   font-family: var(--monospace);
   font-size: var(--monospace-size);

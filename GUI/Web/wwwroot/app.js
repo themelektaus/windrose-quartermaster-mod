@@ -61,11 +61,12 @@ const state = {
     },
 
     // Currently-open picker dropdown. Shared between the Loot tab (add-entry
-    // autocomplete) and the Buyers tab (sold-item / pay-item inputs). The
-    // `source` discriminator picks which dispatcher onPickerClick uses; the
-    // other fields are source-specific:
-    //   loot:  { input, source:'loot',  type:'item'|'table'|'nodrop', ltId, addedIndex }
-    //   buyer: { input, source:'buyer', type:'item', buyerId, recipeId, buyerField }
+    // autocomplete), the Buyers tab and the Sellers tab. The `source`
+    // discriminator picks which dispatcher onPickerClick uses; the other
+    // fields are source-specific:
+    //   loot:   { input, source:'loot',   type:'item'|'table'|'nodrop', ltId, addedIndex }
+    //   buyer:  { input, source:'buyer',  type:'item', buyerId, recipeId, buyerField }
+    //   seller: { input, source:'seller', type:'item', sellerId, recipeId, sellerField }
     // null when no picker is open.
     picker: null,
 };
@@ -621,6 +622,11 @@ async function loadProfile(id) {
     // refs. Initialised to {} so the renderers don't have to null-check.
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
+    // Sellers tab CRUD state - structurally identical to buyer*. The seller
+    // patcher reads from the seller* maps; profile.json keeps them disjoint
+    // so editing the same item id on both tabs doesn't crosscontaminate.
+    state.current.sellerRecipes = state.current.sellerRecipes || {};
+    state.current.sellerLists   = state.current.sellerLists   || {};
     // Item Creator: user-defined items cloned from vanilla templates.
     // Ordered list; the patcher iterates in declaration order at build
     // time. New entries get appended; the UI never reorders.
@@ -649,6 +655,10 @@ async function loadProfile(id) {
     if (state.activeTab === 'buyers' && state.buyers.loaded) {
         renderBuyers();
         renderBuyersStatus();
+    }
+    if (state.activeTab === 'sellers' && state.sellers.loaded) {
+        renderSellers();
+        renderSellersStatus();
     }
     if (state.activeTab === 'creator' && state.itemTemplates.loaded) {
         renderItemCreator();
@@ -2098,6 +2108,8 @@ async function onSave() {
         lootOverrides: p.lootOverrides,
         buyerRecipes: p.buyerRecipes,
         buyerLists: p.buyerLists,
+        sellerRecipes: p.sellerRecipes,
+        sellerLists: p.sellerLists,
         customItems: p.customItems,
     };
     const updated = await api('PUT', '/api/profiles/' + encodeURIComponent(p.id), body);
@@ -2107,6 +2119,8 @@ async function onSave() {
     state.current.lootOverrides = state.current.lootOverrides || {};
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
+    state.current.sellerRecipes = state.current.sellerRecipes || {};
+    state.current.sellerLists   = state.current.sellerLists   || {};
     state.current.customItems   = state.current.customItems   || [];
     // Re-attach the cache-bust tokens captured before the round-trip.
     for (const c of state.current.customItems) {
@@ -2534,7 +2548,7 @@ function buildBuyerCardHtml(b) {
     const allRows = vanillaRows.concat(addedRows);
 
     const rows = allRows.length === 0
-        ? '<tr><td colspan="5" class="buyer-empty-row">(no entries)</td></tr>'
+        ? '<tr><td colspan="6" class="buyer-empty-row">(no entries)</td></tr>'
         : allRows.join('');
 
     const editedCount = countEditedInBuyer(b);
@@ -2564,6 +2578,7 @@ function buildBuyerCardHtml(b) {
          +       '<th class="num">Qty</th>'
          +       '<th>Pay item</th>'
          +       '<th class="num">Pay qty</th>'
+         +       '<th>Requirement</th>'
          +       '<th class="buyer-row-actions">&nbsp;</th>'
          +     '</tr></thead>'
          +     '<tbody>' + rows + '</tbody>'
@@ -2597,7 +2612,7 @@ function countEditedInBuyer(b) {
 function buildBuyerEntryRowHtml(buyerId, e, removed) {
     if (!e.resolved) {
         return '<tr class="buyer-row unresolved">'
-             +   '<td colspan="5" class="buyer-unresolved">'
+             +   '<td colspan="6" class="buyer-unresolved">'
              +     '<span class="buyer-recipe">' + esc(e.recipeId || '(unknown)') + '</span>'
              +     ' <span class="hint">(recipe not found in vanilla extract)</span>'
              +   '</td>'
@@ -2613,6 +2628,13 @@ function buildBuyerEntryRowHtml(buyerId, e, removed) {
     const itemCount = (ovr && ovr.itemCount   != null) ? ovr.itemCount   : (e.itemCount   || 0);
     const payItemId = (ovr && ovr.payItemPath) ? assetPathToId(ovr.payItemPath) : e.payItemId;
     const payCount  = (ovr && ovr.payCount    != null) ? ovr.payCount    : (e.payCount    || 0);
+    // Requirement source-of-truth: override wins when present; otherwise
+    // vanilla's craftRequirement (which is "" when the endpoint dropped a
+    // "None" sentinel - the dropdown treats both as the same "None"
+    // option).
+    const requirement = (ovr && ovr.craftRequirement != null)
+        ? ovr.craftRequirement
+        : (e.craftRequirement || 'None');
 
     const actionBtn = removed
         ? '<button class="btn-link buyer-restore" data-buyer-restore="' + esc(buyerId)
@@ -2641,6 +2663,7 @@ function buildBuyerEntryRowHtml(buyerId, e, removed) {
          +       ' data-buyer-field="payCount" data-recipe-id="' + esc(e.recipeId) + '"'
          +       disabledAttr + '>'
          +   '</td>'
+         +   '<td class="buyer-req">' + buildRequirementSelectHtml(requirement, e.recipeId, disabledAttr) + '</td>'
          +   '<td class="buyer-row-actions">' + actionBtn + '</td>'
          + '</tr>';
 }
@@ -2656,7 +2679,7 @@ function buildBuyerAddedRowHtml(buyerId, recipeId) {
         // a corrupted profile, but surface the orphan so the user can fix
         // it manually rather than silently dropping it.
         return '<tr class="buyer-row added orphan" data-recipe-id="' + esc(recipeId) + '">'
-             +   '<td colspan="5" class="buyer-unresolved">'
+             +   '<td colspan="6" class="buyer-unresolved">'
              +     '<span class="buyer-recipe">' + esc(recipeId) + '</span>'
              +     ' <span class="hint">(added recipe has no edit-spec - profile corrupted)</span>'
              +   '</td>'
@@ -2666,6 +2689,7 @@ function buildBuyerAddedRowHtml(buyerId, recipeId) {
     const payItemId = ovr.payItemPath ? assetPathToId(ovr.payItemPath) : '';
     const itemCount = ovr.itemCount != null ? ovr.itemCount : 0;
     const payCount  = ovr.payCount  != null ? ovr.payCount  : 0;
+    const requirement = ovr.craftRequirement != null ? ovr.craftRequirement : 'None';
     return '<tr class="buyer-row added" data-recipe-id="' + esc(recipeId) + '">'
          +   buildBuyerEditableItemCellHtml(recipeId, 'item', itemId, '')
          +   '<td class="num">'
@@ -2679,6 +2703,7 @@ function buildBuyerAddedRowHtml(buyerId, recipeId) {
          +       ' value="' + esc(String(payCount)) + '"'
          +       ' data-buyer-field="payCount" data-recipe-id="' + esc(recipeId) + '">'
          +   '</td>'
+         +   '<td class="buyer-req">' + buildRequirementSelectHtml(requirement, recipeId, '') + '</td>'
          +   '<td class="buyer-row-actions">'
          +     '<button class="btn-link buyer-delete" data-buyer-delete-added="'
          +       esc(buyerId) + '|' + esc(recipeId) + '" title="Delete added entry">&#x2715;</button>'
@@ -2735,6 +2760,62 @@ function itemIdToAssetPath(itemId) {
     return state.itemPathsByItemId.get(itemId) || null;
 }
 
+// ---------- Requirement (CraftRequirement) helpers ----------------------
+//
+// Vanilla R5BLRecipeData ships a `CraftRequirement` string that's either
+// the literal "None" or an asset path under
+//   /R5BusinessRules/InventoryItems/DefaultItems/Trading/DA_Requirement_<faction>_<n>
+// .DA_Requirement_<faction>_<n>
+// The dropdown surfaces the 16 known faction/level combos plus "None".
+
+const REQUIREMENT_PATH_PREFIX
+    = '/R5BusinessRules/InventoryItems/DefaultItems/Trading/DA_Requirement_';
+const REQUIREMENT_FACTIONS = ['Brethren', 'Bucaneers', 'Civilians', 'Smugglers'];
+const REQUIREMENT_LEVELS   = [1, 2, 3, 4];
+
+// Returns the dropdown options as an ordered list of
+// { value:<assetPath|"None">, label:<short> } pairs.
+function requirementOptions() {
+    const out = [{ value: 'None', label: 'None' }];
+    for (const f of REQUIREMENT_FACTIONS) {
+        for (const n of REQUIREMENT_LEVELS) {
+            const stem = 'DA_Requirement_' + f + '_' + n;
+            const path = REQUIREMENT_PATH_PREFIX + f + '_' + n + '.' + stem;
+            out.push({ value: path, label: f + ' Rep ' + n });
+        }
+    }
+    return out;
+}
+
+// Builds the <select> HTML for an item row. Supports any asset path
+// (vanilla recipes occasionally point to an unknown DA_Requirement_*
+// variant) by injecting a synthetic option at the top so the value isn't
+// silently lost. `disabledAttr` is "" or " disabled".
+function buildRequirementSelectHtml(currentValue, recipeId, disabledAttr) {
+    const value = (currentValue == null || currentValue === '') ? 'None' : currentValue;
+    const opts = requirementOptions();
+    const known = opts.some(o => o.value === value);
+    let html = '';
+    if (!known) {
+        // Surface the raw path so a power-user can see what's there even
+        // if we don't recognise the faction.
+        const short = shortenSellerRequirement(value) || value;
+        html += '<option value="' + esc(value) + '" selected>'
+              + esc(short + ' (custom)') + '</option>';
+    }
+    for (const o of opts) {
+        const sel = (o.value === value && known) ? ' selected' : '';
+        html += '<option value="' + esc(o.value) + '"' + sel + '>'
+              + esc(o.label) + '</option>';
+    }
+    return '<select class="buyer-req-select"'
+         +    ' data-buyer-field="requirement"'
+         +    ' data-recipe-id="' + esc(recipeId) + '"'
+         +    disabledAttr + '>'
+         + html
+         + '</select>';
+}
+
 // ---------- Buyers: CRUD on the per-profile overlay ----------------------
 //
 // The Buyers tab is rendered from two layers: the read-only vanilla list
@@ -2776,6 +2857,12 @@ function getOrCreateBuyerRecipeOverride(recipeId, vanillaEntry) {
             itemCount:   vanillaEntry && vanillaEntry.itemCount   != null ? vanillaEntry.itemCount   : 0,
             payItemPath: vanillaEntry && vanillaEntry.payItemPath ? vanillaEntry.payItemPath : null,
             payCount:    vanillaEntry && vanillaEntry.payCount    != null ? vanillaEntry.payCount    : 0,
+            // Seed CraftRequirement from vanilla so a "change only Qty"
+            // edit doesn't lose the vanilla rep gate (the patcher writes
+            // whatever's on the override).
+            craftRequirement: vanillaEntry && vanillaEntry.craftRequirement
+                ? vanillaEntry.craftRequirement
+                : 'None',
             isCustom:    false,
         };
         state.current.buyerRecipes[recipeId] = ovr;
@@ -2852,6 +2939,11 @@ function setBuyerEntryField(buyerId, recipeId, field, rawValue) {
             }
             ovr[targetField] = path;
         }
+    } else if (field === 'requirement') {
+        // Dropdown emits either "None" or a full DA_Requirement_* asset
+        // path; we persist both verbatim (the patcher writes whatever it
+        // gets back into the CraftRequirement field).
+        ovr.craftRequirement = (rawValue || 'None');
     }
 
     markDirty();
@@ -2922,6 +3014,7 @@ function addBuyerEntry(buyerId) {
         itemCount: 1,
         payItemPath: null,
         payCount: 1,
+        craftRequirement: 'None',
         isCustom: true,
     };
     lo.addedRecipeIds.push(id);
@@ -3150,18 +3243,51 @@ function renderSellers() {
         filtered.length + ' / ' + state.sellers.list.length + ' lists';
 }
 
+// ---------- Sellers tab CRUD --------------------------------------------
+//
+// Structurally identical to the Buyers tab CRUD - same edited / removed /
+// added states, same picker integration, same per-card re-render. The
+// SellerPatcher consumes Profile.SellerRecipes / SellerLists which mirror
+// BuyerRecipes / BuyerLists on the JSON side; the only on-disk difference
+// is that the patcher swaps Cost/Result when writing so the override's
+// "itemPath = what the NPC sells" semantics line up with vanilla
+// PlayerBuys recipes (RecipeResult = item, RecipeCost = currency).
+
 function buildSellerCardHtml(s) {
+    const listOvr = (state.current && state.current.sellerLists
+                     && state.current.sellerLists[s.id]) || null;
+    const removedSet = listOvr && listOvr.removedRecipeIds
+        ? new Set(listOvr.removedRecipeIds)
+        : new Set();
+    const addedIds = (listOvr && listOvr.addedRecipeIds) || [];
+
     const entries = s.entries || [];
-    const rows = entries.length === 0
-        ? '<tr><td colspan="5" class="buyer-empty-row">(no entries)</td></tr>'
-        : entries.map(buildSellerEntryRowHtml).join('');
+    const vanillaRows = entries.map(e => buildSellerEntryRowHtml(s.id, e, removedSet.has(e.recipeId)));
+    const addedRows = addedIds.map(id => buildSellerAddedRowHtml(s.id, id));
+    const allRows = vanillaRows.concat(addedRows);
+
+    const rows = allRows.length === 0
+        ? '<tr><td colspan="6" class="buyer-empty-row">(no entries)</td></tr>'
+        : allRows.join('');
+
+    const editedCount = countEditedInSeller(s);
+    const removedCount = removedSet.size;
+    const addedCount = addedIds.length;
+    const changeBadge = (editedCount + removedCount + addedCount) === 0
+        ? ''
+        : ' <span class="buyer-change-badge">'
+        +   (editedCount  ? '<span class="badge edited">'  + editedCount  + ' edited</span>'  : '')
+        +   (removedCount ? '<span class="badge removed">' + removedCount + ' removed</span>' : '')
+        +   (addedCount   ? '<span class="badge added">'   + addedCount   + ' added</span>'   : '')
+        + '</span>';
 
     const sub = s.id + (s.entries ? '  -  ' + s.entries.length + ' entries' : '');
-    return '<li class="buyer-card">'
+    return '<li class="buyer-card" data-seller-id="' + esc(s.id) + '">'
          +   '<header class="buyer-header">'
          +     '<div class="buyer-title">'
          +       '<span class="buyer-faction">' + esc(s.faction || '(other)') + '</span>'
          +       '<span class="buyer-label">' + esc(s.label || s.id) + '</span>'
+         +       changeBadge
          +     '</div>'
          +     '<span class="buyer-sub">' + esc(sub) + '</span>'
          +   '</header>'
@@ -3172,41 +3298,392 @@ function buildSellerCardHtml(s) {
          +       '<th>Pay item</th>'
          +       '<th class="num">Pay qty</th>'
          +       '<th>Requirement</th>'
+         +       '<th class="buyer-row-actions">&nbsp;</th>'
          +     '</tr></thead>'
          +     '<tbody>' + rows + '</tbody>'
          +   '</table>'
+         +   '<div class="buyer-card-footer">'
+         +     '<button class="buyer-add-btn primary" data-seller-add="' + esc(s.id) + '">Add Entry</button>'
+         +   '</div>'
          + '</li>';
 }
 
-function buildSellerEntryRowHtml(e) {
+function countEditedInSeller(s) {
+    if (!state.current || !state.current.sellerRecipes) return 0;
+    const recipes = state.current.sellerRecipes;
+    let n = 0;
+    for (const e of (s.entries || [])) {
+        if (e.recipeId && recipes[e.recipeId]) n++;
+    }
+    return n;
+}
+
+function buildSellerEntryRowHtml(sellerId, e, removed) {
     if (!e.resolved) {
         return '<tr class="buyer-row unresolved">'
-             +   '<td colspan="5" class="buyer-unresolved">'
+             +   '<td colspan="6" class="buyer-unresolved">'
              +     '<span class="buyer-recipe">' + esc(e.recipeId || '(unknown)') + '</span>'
              +     ' <span class="hint">(recipe not found in vanilla extract)</span>'
              +   '</td>'
              + '</tr>';
     }
 
-    // Same layout as buyer rows. The backend already swapped Cost/Result
-    // semantics so itemId = the item the NPC sells, payItemId = currency.
-    // We reuse buildBuyerItemCellHtml since it's a generic id -> cell
-    // renderer (no buy/sell semantics in the helper itself).
-    //
-    // Unlike buyers, sellers regularly have a CraftRequirement set (faction
-    // reputation gate, e.g. "DA_Requirement_Smugglers_1" = Smugglers Rep 1).
-    // The 5th column surfaces that; empty means "no reputation needed".
-    const req = shortenSellerRequirement(e.craftRequirement);
-    const reqCell = req
-        ? '<td class="buyer-req">' + esc(req) + '</td>'
-        : '<td class="buyer-req buyer-req-none">-</td>';
-    return '<tr class="buyer-row">'
-         +   buildBuyerItemCellHtml(e.itemId)
-         +   '<td class="num">' + esc(String(e.itemCount || 0)) + '</td>'
-         +   buildBuyerItemCellHtml(e.payItemId)
-         +   '<td class="num">' + esc(String(e.payCount || 0)) + '</td>'
-         +   reqCell
+    const ovr = (state.current && state.current.sellerRecipes
+                 && state.current.sellerRecipes[e.recipeId]) || null;
+    const rowClass = removed
+        ? 'buyer-row removed'
+        : (ovr ? 'buyer-row edited' : 'buyer-row');
+    const itemId    = (ovr && ovr.itemPath)    ? assetPathToId(ovr.itemPath)    : e.itemId;
+    const itemCount = (ovr && ovr.itemCount   != null) ? ovr.itemCount   : (e.itemCount   || 0);
+    const payItemId = (ovr && ovr.payItemPath) ? assetPathToId(ovr.payItemPath) : e.payItemId;
+    const payCount  = (ovr && ovr.payCount    != null) ? ovr.payCount    : (e.payCount    || 0);
+    const requirement = (ovr && ovr.craftRequirement != null)
+        ? ovr.craftRequirement
+        : (e.craftRequirement || 'None');
+
+    const actionBtn = removed
+        ? '<button class="btn-link buyer-restore" data-seller-restore="' + esc(sellerId)
+            + '|' + esc(e.recipeId) + '" title="Restore">&#x21BA;</button>'
+        : (ovr
+            ? '<button class="btn-link buyer-reset" data-seller-reset="' + esc(e.recipeId)
+                + '" title="Reset to vanilla">&#x21B6;</button>'
+                + '<button class="btn-link buyer-delete" data-seller-delete="' + esc(sellerId)
+                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>'
+            : '<button class="btn-link buyer-delete" data-seller-delete="' + esc(sellerId)
+                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>');
+
+    const disabledAttr = removed ? ' disabled' : '';
+    return '<tr class="' + rowClass + '" data-recipe-id="' + esc(e.recipeId) + '">'
+         +   buildSellerEditableItemCellHtml(e.recipeId, 'item', itemId, disabledAttr)
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(itemCount)) + '"'
+         +       ' data-seller-field="itemCount" data-recipe-id="' + esc(e.recipeId) + '"'
+         +       disabledAttr + '>'
+         +   '</td>'
+         +   buildSellerEditableItemCellHtml(e.recipeId, 'payItem', payItemId, disabledAttr)
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(payCount)) + '"'
+         +       ' data-seller-field="payCount" data-recipe-id="' + esc(e.recipeId) + '"'
+         +       disabledAttr + '>'
+         +   '</td>'
+         +   '<td class="buyer-req">' + buildSellerRequirementSelectHtml(requirement, e.recipeId, disabledAttr) + '</td>'
+         +   '<td class="buyer-row-actions">' + actionBtn + '</td>'
          + '</tr>';
+}
+
+function buildSellerAddedRowHtml(sellerId, recipeId) {
+    const ovr = (state.current && state.current.sellerRecipes
+                 && state.current.sellerRecipes[recipeId]) || null;
+    if (!ovr) {
+        return '<tr class="buyer-row added orphan" data-recipe-id="' + esc(recipeId) + '">'
+             +   '<td colspan="6" class="buyer-unresolved">'
+             +     '<span class="buyer-recipe">' + esc(recipeId) + '</span>'
+             +     ' <span class="hint">(added recipe has no edit-spec - profile corrupted)</span>'
+             +   '</td>'
+             + '</tr>';
+    }
+    const itemId    = ovr.itemPath    ? assetPathToId(ovr.itemPath)    : '';
+    const payItemId = ovr.payItemPath ? assetPathToId(ovr.payItemPath) : '';
+    const itemCount = ovr.itemCount != null ? ovr.itemCount : 0;
+    const payCount  = ovr.payCount  != null ? ovr.payCount  : 0;
+    const requirement = ovr.craftRequirement != null ? ovr.craftRequirement : 'None';
+    return '<tr class="buyer-row added" data-recipe-id="' + esc(recipeId) + '">'
+         +   buildSellerEditableItemCellHtml(recipeId, 'item', itemId, '')
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(itemCount)) + '"'
+         +       ' data-seller-field="itemCount" data-recipe-id="' + esc(recipeId) + '">'
+         +   '</td>'
+         +   buildSellerEditableItemCellHtml(recipeId, 'payItem', payItemId, '')
+         +   '<td class="num">'
+         +     '<input type="number" class="buyer-num-input" min="0"'
+         +       ' value="' + esc(String(payCount)) + '"'
+         +       ' data-seller-field="payCount" data-recipe-id="' + esc(recipeId) + '">'
+         +   '</td>'
+         +   '<td class="buyer-req">' + buildSellerRequirementSelectHtml(requirement, recipeId, '') + '</td>'
+         +   '<td class="buyer-row-actions">'
+         +     '<button class="btn-link buyer-delete" data-seller-delete-added="'
+         +       esc(sellerId) + '|' + esc(recipeId) + '" title="Delete added entry">&#x2715;</button>'
+         +   '</td>'
+         + '</tr>';
+}
+
+function buildSellerEditableItemCellHtml(recipeId, field, itemId, disabledAttr) {
+    const item = itemId ? state.itemsById.get(itemId) : null;
+    const name = (item && item.meta && item.meta.name) || itemId || '(no item)';
+    const iconHtml = (item && item.icon)
+        ? '<img class="buyer-icon" src="' + esc(item.icon) + '" alt="" loading="lazy">'
+        : '<span class="buyer-icon buyer-icon-empty"></span>';
+    return '<td class="buyer-item">'
+         +   iconHtml
+         +   '<div class="buyer-item-edit">'
+         +     '<span class="buyer-item-name">' + esc(name) + '</span>'
+         +     '<input type="text" class="buyer-item-input"'
+         +       ' value="' + esc(itemId || '') + '"'
+         +       ' data-seller-picker-target="1"'
+         +       ' data-seller-field="' + esc(field) + '"'
+         +       ' data-recipe-id="' + esc(recipeId) + '"'
+         +       ' placeholder="Search items by name or id..."'
+         +       ' autocomplete="off"'
+         +       disabledAttr + '>'
+         +   '</div>'
+         + '</td>';
+}
+
+// Mirror of buildRequirementSelectHtml that emits data-seller-field
+// instead of data-buyer-field so the sellers-side change handler picks
+// up the event without colliding with the buyers handler.
+function buildSellerRequirementSelectHtml(currentValue, recipeId, disabledAttr) {
+    const value = (currentValue == null || currentValue === '') ? 'None' : currentValue;
+    const opts = requirementOptions();
+    const known = opts.some(o => o.value === value);
+    let html = '';
+    if (!known) {
+        const short = shortenSellerRequirement(value) || value;
+        html += '<option value="' + esc(value) + '" selected>'
+              + esc(short + ' (custom)') + '</option>';
+    }
+    for (const o of opts) {
+        const sel = (o.value === value && known) ? ' selected' : '';
+        html += '<option value="' + esc(o.value) + '"' + sel + '>'
+              + esc(o.label) + '</option>';
+    }
+    return '<select class="buyer-req-select"'
+         +    ' data-seller-field="requirement"'
+         +    ' data-recipe-id="' + esc(recipeId) + '"'
+         +    disabledAttr + '>'
+         + html
+         + '</select>';
+}
+
+function refreshSellerCard(sellerId) {
+    const list = document.getElementById('sellers-list');
+    const old = list && list.querySelector('.buyer-card[data-seller-id="' + cssEsc(sellerId) + '"]');
+    if (!old) return;
+    const seller = state.sellers.list.find(s => s.id === sellerId);
+    if (!seller) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = buildSellerCardHtml(seller);
+    const fresh = wrap.firstElementChild;
+    if (fresh) old.replaceWith(fresh);
+}
+
+function getOrCreateSellerRecipeOverride(recipeId, vanillaEntry) {
+    if (!state.current) return null;
+    state.current.sellerRecipes = state.current.sellerRecipes || {};
+    let ovr = state.current.sellerRecipes[recipeId];
+    if (!ovr) {
+        ovr = {
+            itemPath:    vanillaEntry && vanillaEntry.itemPath    ? vanillaEntry.itemPath    : null,
+            itemCount:   vanillaEntry && vanillaEntry.itemCount   != null ? vanillaEntry.itemCount   : 0,
+            payItemPath: vanillaEntry && vanillaEntry.payItemPath ? vanillaEntry.payItemPath : null,
+            payCount:    vanillaEntry && vanillaEntry.payCount    != null ? vanillaEntry.payCount    : 0,
+            craftRequirement: vanillaEntry && vanillaEntry.craftRequirement
+                ? vanillaEntry.craftRequirement
+                : 'None',
+            isCustom:    false,
+        };
+        state.current.sellerRecipes[recipeId] = ovr;
+    }
+    return ovr;
+}
+
+function getOrCreateSellerListOverride(sellerId) {
+    if (!state.current) return null;
+    state.current.sellerLists = state.current.sellerLists || {};
+    let lo = state.current.sellerLists[sellerId];
+    if (!lo) {
+        lo = { addedRecipeIds: [], removedRecipeIds: [] };
+        state.current.sellerLists[sellerId] = lo;
+    }
+    if (!lo.addedRecipeIds)   lo.addedRecipeIds = [];
+    if (!lo.removedRecipeIds) lo.removedRecipeIds = [];
+    return lo;
+}
+
+function pruneSellerListOverride(sellerId) {
+    if (!state.current || !state.current.sellerLists) return;
+    const lo = state.current.sellerLists[sellerId];
+    if (!lo) return;
+    const emptyAdd = !lo.addedRecipeIds || lo.addedRecipeIds.length === 0;
+    const emptyRem = !lo.removedRecipeIds || lo.removedRecipeIds.length === 0;
+    if (emptyAdd && emptyRem) {
+        delete state.current.sellerLists[sellerId];
+    }
+    if (Object.keys(state.current.sellerLists).length === 0) {
+        delete state.current.sellerLists;
+    }
+}
+
+function setSellerEntryField(sellerId, recipeId, field, rawValue) {
+    if (!state.current) return;
+    const seller = state.sellers.list.find(s => s.id === sellerId);
+    const vanilla = seller && seller.entries
+        ? seller.entries.find(e => e.recipeId === recipeId)
+        : null;
+    const ovr = getOrCreateSellerRecipeOverride(recipeId, vanilla);
+    if (!ovr) return;
+
+    if (field === 'itemCount' || field === 'payCount') {
+        const n = parseInt(rawValue, 10);
+        if (!isFinite(n) || n < 0) return;
+        ovr[field] = n;
+    } else if (field === 'item' || field === 'payItem') {
+        const id = (rawValue || '').trim();
+        const targetField = field === 'item' ? 'itemPath' : 'payItemPath';
+        if (!id) {
+            ovr[targetField] = null;
+        } else {
+            const path = itemIdToAssetPath(id);
+            if (!path) return;
+            ovr[targetField] = path;
+        }
+    } else if (field === 'requirement') {
+        ovr.craftRequirement = (rawValue || 'None');
+    }
+
+    markDirty();
+}
+
+function toggleRemoveSellerEntry(sellerId, recipeId) {
+    const lo = getOrCreateSellerListOverride(sellerId);
+    if (!lo) return;
+    const idx = lo.removedRecipeIds.indexOf(recipeId);
+    if (idx >= 0) {
+        lo.removedRecipeIds.splice(idx, 1);
+    } else {
+        lo.removedRecipeIds.push(recipeId);
+    }
+    pruneSellerListOverride(sellerId);
+    markDirty();
+    refreshSellerCard(sellerId);
+}
+
+function resetSellerRecipeOverride(sellerId, recipeId) {
+    if (!state.current || !state.current.sellerRecipes) return;
+    delete state.current.sellerRecipes[recipeId];
+    if (Object.keys(state.current.sellerRecipes).length === 0) {
+        delete state.current.sellerRecipes;
+    }
+    markDirty();
+    refreshSellerCard(sellerId);
+}
+
+function removeAddedSellerEntry(sellerId, recipeId) {
+    const lo = state.current && state.current.sellerLists
+        && state.current.sellerLists[sellerId];
+    if (lo && lo.addedRecipeIds) {
+        const idx = lo.addedRecipeIds.indexOf(recipeId);
+        if (idx >= 0) lo.addedRecipeIds.splice(idx, 1);
+    }
+    pruneSellerListOverride(sellerId);
+    if (state.current && state.current.sellerRecipes) {
+        delete state.current.sellerRecipes[recipeId];
+        if (Object.keys(state.current.sellerRecipes).length === 0) {
+            delete state.current.sellerRecipes;
+        }
+    }
+    markDirty();
+    refreshSellerCard(sellerId);
+}
+
+// Custom-seller-recipe ids use "QM_SCustom_<hex>" so they're disjoint
+// from the buyer-side "QM_Custom_<hex>" namespace - the patchers tell
+// the two apart by prefix.
+function addSellerEntry(sellerId) {
+    if (!state.current) return;
+    const lo = getOrCreateSellerListOverride(sellerId);
+    if (!lo) return;
+    const id = 'QM_SCustom_' + randomHex(8);
+    state.current.sellerRecipes = state.current.sellerRecipes || {};
+    state.current.sellerRecipes[id] = {
+        itemPath: null,
+        itemCount: 1,
+        payItemPath: null,
+        payCount: 1,
+        craftRequirement: 'None',
+        isCustom: true,
+    };
+    lo.addedRecipeIds.push(id);
+    markDirty();
+    refreshSellerCard(sellerId);
+}
+
+function onSellersListClick(e) {
+    const t = e.target.closest && e.target.closest(
+        '[data-seller-add],[data-seller-delete],[data-seller-delete-added],'
+        + '[data-seller-restore],[data-seller-reset]');
+    if (!t) return;
+    if (t.dataset.sellerAdd) {
+        addSellerEntry(t.dataset.sellerAdd);
+        return;
+    }
+    if (t.dataset.sellerDelete) {
+        const [sellerId, recipeId] = t.dataset.sellerDelete.split('|');
+        toggleRemoveSellerEntry(sellerId, recipeId);
+        return;
+    }
+    if (t.dataset.sellerDeleteAdded) {
+        const [sellerId, recipeId] = t.dataset.sellerDeleteAdded.split('|');
+        removeAddedSellerEntry(sellerId, recipeId);
+        return;
+    }
+    if (t.dataset.sellerRestore) {
+        const [sellerId, recipeId] = t.dataset.sellerRestore.split('|');
+        toggleRemoveSellerEntry(sellerId, recipeId);
+        return;
+    }
+    if (t.dataset.sellerReset) {
+        const card = t.closest('.buyer-card');
+        const sellerId = card && card.dataset.sellerId;
+        if (sellerId) resetSellerRecipeOverride(sellerId, t.dataset.sellerReset);
+        return;
+    }
+}
+
+function onSellersListChange(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.sellerField) return;
+    if (t.dataset.sellerPickerTarget) return;
+    const recipeId = t.dataset.recipeId;
+    const card = t.closest('.buyer-card');
+    const sellerId = card && card.dataset.sellerId;
+    if (!sellerId || !recipeId) return;
+    setSellerEntryField(sellerId, recipeId, t.dataset.sellerField, t.value);
+    refreshSellerCard(sellerId);
+}
+
+function onSellersListFocusIn(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.sellerPickerTarget) return;
+    if (t.disabled) return;
+    const recipeId = t.dataset.recipeId;
+    const field    = t.dataset.sellerField;
+    const card     = t.closest('.buyer-card');
+    const sellerId = card && card.dataset.sellerId;
+    if (!sellerId || !recipeId || !field) return;
+    openSellerPicker(t, sellerId, recipeId, field);
+}
+
+function onSellersListInput(e) {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.sellerPickerTarget) return;
+    if (!state.picker || state.picker.input !== t) return;
+    populatePicker(t.value);
+    positionPicker(t);
+}
+
+function openSellerPicker(input, sellerId, recipeId, sellerField) {
+    closePicker();
+    state.picker = { input, source: 'seller', type: 'item', sellerId, recipeId, sellerField };
+    populatePicker('');
+    document.getElementById('picker-dropdown').hidden = false;
+    positionPicker(input);
+    if (input.value) {
+        try { input.select(); } catch (_) { /* ignore */ }
+    }
 }
 
 // Turns a CraftRequirement asset path like
@@ -3284,11 +3761,7 @@ function renderItemCreator() {
     }
     const customs = state.current.customItems || [];
     if (customs.length === 0) {
-        list.innerHTML = '<li class="creator-empty"><div class="hint">'
-            + 'No custom items yet. Click "New Item" to clone a vanilla template '
-            + '(currently only Piastre). You can then edit name, description, max '
-            + 'stack, rarity, and the "keep on death" flag.'
-            + '</div></li>';
+        list.innerHTML = '';
         return;
     }
     const parts = [];
@@ -3819,9 +4292,20 @@ function bindHandlers() {
         }, { passive: true });
     }
 
-    // Sellers page: same read-only filter wiring as Buyers.
+    // Sellers page: filter wiring + same CRUD delegated handlers as Buyers.
     document.getElementById('sellers-filter').addEventListener('input',          renderSellers);
     document.getElementById('sellers-filter-faction').addEventListener('change', renderSellers);
+
+    const sellersList = document.getElementById('sellers-list');
+    if (sellersList) {
+        sellersList.addEventListener('click',   onSellersListClick);
+        sellersList.addEventListener('change',  onSellersListChange);
+        sellersList.addEventListener('focusin', onSellersListFocusIn);
+        sellersList.addEventListener('input',   onSellersListInput);
+        sellersList.addEventListener('scroll', () => {
+            if (state.picker) positionPicker(state.picker.input);
+        }, { passive: true });
+    }
 
     // Item Creator page: a single primary button + delegated change/click
     // handlers on the card list. The change handler covers every editable
@@ -3966,6 +4450,13 @@ function onPickerClick(e) {
         // settle in the cell.
         setBuyerEntryField(picker.buyerId, picker.recipeId, picker.buyerField, li.dataset.pickId);
         refreshBuyerCard(picker.buyerId);
+        return;
+    }
+    if (picker.source === 'seller') {
+        // Mirror of the buyer pick - the seller card re-render picks up
+        // the icon + display name in the cell.
+        setSellerEntryField(picker.sellerId, picker.recipeId, picker.sellerField, li.dataset.pickId);
+        refreshSellerCard(picker.sellerId);
         return;
     }
     // Default / 'loot' source: legacy LT add-entry flow.

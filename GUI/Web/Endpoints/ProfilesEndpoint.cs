@@ -138,6 +138,8 @@ public static class ProfilesEndpoint
                 LootOverrides = CloneLootOverrides(src.LootOverrides),
                 BuyerRecipes = CloneBuyerRecipes(src.BuyerRecipes),
                 BuyerLists = CloneBuyerLists(src.BuyerLists),
+                SellerRecipes = CloneSellerRecipes(src.SellerRecipes),
+                SellerLists = CloneSellerLists(src.SellerLists),
                 CustomItems = CloneCustomItems(src.CustomItems),
             };
 
@@ -424,6 +426,32 @@ public static class ProfilesEndpoint
                 ItemCount = v.ItemCount,
                 PayItemPath = v.PayItemPath,
                 PayCount = v.PayCount,
+                CraftRequirement = v.CraftRequirement,
+                IsCustom = v.IsCustom,
+            };
+        }
+        return result;
+    }
+
+    // Deep-clones the per-recipe edit map for the Sellers tab. Mirrors
+    // CloneBuyerRecipes; the override shape is the same plus
+    // CraftRequirement (which buyers also carry now).
+    static Dictionary<string, SellerRecipeOverride> CloneSellerRecipes(
+        Dictionary<string, SellerRecipeOverride> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, SellerRecipeOverride>(src.Count);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new SellerRecipeOverride
+            {
+                ItemPath = v.ItemPath,
+                ItemCount = v.ItemCount,
+                PayItemPath = v.PayItemPath,
+                PayCount = v.PayCount,
+                CraftRequirement = v.CraftRequirement,
                 IsCustom = v.IsCustom,
             };
         }
@@ -477,6 +505,25 @@ public static class ProfilesEndpoint
         return result;
     }
 
+    // Sellers-side mirror of CloneBuyerLists.
+    static Dictionary<string, SellerListOverride> CloneSellerLists(
+        Dictionary<string, SellerListOverride> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, SellerListOverride>(src.Count);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new SellerListOverride
+            {
+                AddedRecipeIds = v.AddedRecipeIds == null ? null : new List<string>(v.AddedRecipeIds),
+                RemovedRecipeIds = v.RemovedRecipeIds == null ? null : new List<string>(v.RemovedRecipeIds),
+            };
+        }
+        return result;
+    }
+
     // Lightweight summary for the list view - the full profile (including
     // every override) only loads when the user opens it.
     static object ToSummary(Profile p)
@@ -492,6 +539,8 @@ public static class ProfilesEndpoint
             lootOverrideCount = p.LootOverrides == null ? 0 : p.LootOverrides.Count,
             buyerRecipeCount = p.BuyerRecipes == null ? 0 : p.BuyerRecipes.Count,
             buyerListCount = p.BuyerLists == null ? 0 : p.BuyerLists.Count,
+            sellerRecipeCount = p.SellerRecipes == null ? 0 : p.SellerRecipes.Count,
+            sellerListCount = p.SellerLists == null ? 0 : p.SellerLists.Count,
             customItemCount = p.CustomItems == null ? 0 : p.CustomItems.Count,
             hasGlobalStackSize = p.Globals != null && p.Globals.StackSize != null
                                  && (p.Globals.StackSize.Multiplier.HasValue

@@ -46,6 +46,22 @@ namespace Windrose.Quartermaster.Core
         // emits as `id`. Null = no list-level edits for this profile.
         public Dictionary<string, BuyerListOverride> BuyerLists;
 
+        // Per-Recipe edits for the Sellers tab (vendors = PlayerBuys lists).
+        // Mirrors BuyerRecipes structurally: keyed by recipeId basename of
+        // an R5BLRecipeData JSON (e.g. "DA_RD_Piastre_Buy"). For custom
+        // entries the key uses the "QM_SCustom_<hex>" prefix so the seller
+        // and buyer custom namespaces stay disjoint and the patcher can
+        // identify which patcher owns a given synthesized recipe. Like
+        // BuyerRecipes, edits are GLOBAL - if the same recipe appears in
+        // multiple PlayerBuys RecipeLists every list sees the new values.
+        // Null = no seller-recipe overrides for this profile.
+        public Dictionary<string, SellerRecipeOverride> SellerRecipes;
+
+        // Per-RecipeList edits for PlayerBuys rosters (Sellers tab).
+        // Mirrors BuyerLists; same id shape /api/sellers emits. Null = no
+        // list-level edits.
+        public Dictionary<string, SellerListOverride> SellerLists;
+
         // Custom items added via the Item Creator tab. Each entry is a
         // fresh InventoryItem cloned from a vanilla template (currently:
         // DA_DID_Misc_CoinPiastre_T02). The ItemCreatorPatcher loads the
@@ -381,17 +397,19 @@ namespace Windrose.Quartermaster.Core
         public string VanityText;
     }
 
-    // Edit-spec for a single Recipe (R5BLRecipeData) that powers a buyer/
-    // seller entry. The 4 trade fields (sold item + count, paid item +
-    // count) are the only mutable values; everything else (RecipeTag,
-    // CraftRequirement, UIData, ...) is preserved verbatim from vanilla
-    // for IsCustom=false, or synthesized from a template for IsCustom=true.
+    // Edit-spec for a single Recipe (R5BLRecipeData) that powers a buyer
+    // entry (PlayerSells lists). The 4 trade fields (sold item + count,
+    // paid item + count) plus the reputation gate are the mutable values;
+    // everything else (RecipeTag, UIData, ...) is preserved verbatim from
+    // vanilla for IsCustom=false, or synthesized from a template for
+    // IsCustom=true.
     //
     // Sparse: null fields = "vanilla wins" (for IsCustom=false). Custom
-    // recipes (IsCustom=true) must have all four set or the patcher will
-    // refuse to emit the file - there's no vanilla baseline to fall back
-    // to. The patcher validates this and surfaces a warning instead of
-    // writing broken JSON.
+    // recipes (IsCustom=true) must have all four trade fields set or the
+    // patcher will refuse to emit the file - there's no vanilla baseline to
+    // fall back to. The patcher validates this and surfaces a warning
+    // instead of writing broken JSON. CraftRequirement on custom recipes
+    // defaults to "None" when null.
     public sealed class BuyerRecipeOverride
     {
         // Item the player gives up (RecipeCost[0].Item). Full asset path
@@ -404,11 +422,53 @@ namespace Windrose.Quartermaster.Core
         public string PayItemPath;
         public int? PayCount;
 
+        // Reputation gate (CraftRequirement). Full asset path form or the
+        // literal "None". null = "leave at vanilla" (for IsCustom=false) /
+        // "None" (for IsCustom=true). Vanilla PlayerSells recipes ship
+        // with CraftRequirement="None" so the dropdown is mostly cosmetic
+        // for buyers, but exposing it keeps the UI symmetric with sellers
+        // and lets power-users gate buyer recipes too.
+        public string CraftRequirement;
+
         // True = the patcher synthesizes a fresh R5BLRecipeData JSON from
         // an internal template (cloned from a vanilla PlayerSells recipe at
         // build time so the schema matches the live game's expectations).
         // False = the patcher loads the vanilla file matching this key's
         // basename and patches the four fields in-place.
+        public bool IsCustom;
+    }
+
+    // Edit-spec for a single Recipe (R5BLRecipeData) that powers a seller
+    // entry (PlayerBuys lists, i.e. the NPC is a vendor). Field semantics
+    // match BuyerRecipeOverride - itemId / itemCount = the "main" item
+    // being traded (= what the NPC delivers on the Sellers side, =
+    // RecipeResult on disk), payItemId / payCount = the currency the
+    // player pays (= RecipeCost on disk). The SellerPatcher does the
+    // Cost/Result swap on its way to JSON so the override shape stays
+    // uniform across both tabs - the frontend never has to care which
+    // R5BLRecipeData side maps to which UI column.
+    //
+    // Vanilla PlayerBuys recipes regularly have CraftRequirement set to a
+    // faction reputation gate (Smugglers/Brethren/Bucaneers/Civilians,
+    // levels 1-4), so the dropdown is genuinely useful here.
+    public sealed class SellerRecipeOverride
+    {
+        // Item the NPC delivers (RecipeResult[0].Item on disk). Full asset
+        // path form.
+        public string ItemPath;
+        public int? ItemCount;
+
+        // Item the player pays in (RecipeCost[0].Item on disk). Typically
+        // a coin variant.
+        public string PayItemPath;
+        public int? PayCount;
+
+        // Reputation gate (CraftRequirement). Full asset path or "None".
+        // null = "leave at vanilla" for vanilla edits, "None" for customs.
+        public string CraftRequirement;
+
+        // True = synthesize the JSON from a vanilla PlayerBuys template.
+        // False = patch the vanilla file matching this key's basename.
         public bool IsCustom;
     }
 
@@ -433,6 +493,23 @@ namespace Windrose.Quartermaster.Core
         // Recipe basenames to strip from the vanilla RecipeList[]. Matched
         // against the trailing segment of each vanilla ref (after the last
         // '/' and trimmed of any ".AssetName" suffix).
+        public List<string> RemovedRecipeIds;
+    }
+
+    // Edit-spec for a single R5BLRecipeList JSON on the Sellers side
+    // (PlayerBuys rosters). Mirrors BuyerListOverride structurally; the
+    // SellerPatcher applies the diff in the same order (drop vanilla refs
+    // in Removed*, then append Added*). The custom-recipe prefix is
+    // "QM_SCustom_*" (vs "QM_Custom_*" for buyers) so the patcher can tell
+    // which side owns a given synthesized recipe id.
+    public sealed class SellerListOverride
+    {
+        // Recipe basenames to append. "QM_SCustom_*" -> synthesized JSON
+        // under /R5BusinessRules/Recipes/Custom/<id>.<id>; anything else
+        // is looked up in the vanilla recipe map.
+        public List<string> AddedRecipeIds;
+
+        // Recipe basenames to strip from the vanilla RecipeList[].
         public List<string> RemovedRecipeIds;
     }
 }

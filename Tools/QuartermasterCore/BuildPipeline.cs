@@ -70,6 +70,7 @@ namespace Windrose.Quartermaster.Core
         readonly LootPatcher _lootPatcher;
         readonly BellLimitsPatcher _bellPatcher;
         readonly BuyerPatcher _buyerPatcher;
+        readonly SellerPatcher _sellerPatcher;
         readonly ItemCreatorPatcher _itemCreatorPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
@@ -126,6 +127,7 @@ namespace Windrose.Quartermaster.Core
             _lootPatcher = new LootPatcher();
             _bellPatcher = new BellLimitsPatcher();
             _buyerPatcher = new BuyerPatcher();
+            _sellerPatcher = new SellerPatcher();
             _itemCreatorPatcher = new ItemCreatorPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
@@ -255,23 +257,46 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
-                // Buyer/Seller trade-list edits. Writes into the same
-                // tmpDir tree but under disjoint subpaths (Recipes/ +
+                // Buyer trade-list edits (PlayerSells side). Writes into the
+                // same tmpDir tree but under disjoint subpaths (Recipes/ +
                 // RecipeLists/) so it composes cleanly with the other
                 // patchers' output for a single repak invocation.
                 BuyerPatchResult buyerResult = null;
                 if (HasBuyerConfiguration(profile))
                 {
-                    LogLine("Patching buyer/seller trade lists");
+                    LogLine("Patching buyer trade lists (PlayerSells)");
                     buyerResult = _buyerPatcher.PatchToDirectory(
                         _paths.VanillaRecipeLists, _paths.VanillaRecipes, tmpDir, profile);
-                    LogLine("Patched recipes: "
+                    LogLine("Patched buyer recipes: "
                             + buyerResult.RecipesEdited + " edited, "
                             + buyerResult.RecipesAdded + " added; "
                             + "lists: " + buyerResult.ListsWritten + " written ("
                             + buyerResult.RefsAdded + " refs appended, "
                             + buyerResult.RefsRemoved + " refs removed)");
                     foreach (var w in buyerResult.Warnings) LogLine("  warn: " + w);
+                }
+
+                // Seller trade-list edits (PlayerBuys side). Independent of
+                // Buyer* but writes into the SAME tmpDir tree - both patchers
+                // produce disjoint files (PlayerSells/* vs PlayerBuys/*
+                // RecipeLists, vanilla recipes never overlap between the two
+                // tabs because *_Sell and *_Buy basenames are distinct, and
+                // custom recipes use disjoint prefixes "QM_Custom_*" vs
+                // "QM_SCustom_*"). The Custom/ folder is shared and the two
+                // sets coexist cleanly.
+                SellerPatchResult sellerResult = null;
+                if (HasSellerConfiguration(profile))
+                {
+                    LogLine("Patching seller trade lists (PlayerBuys)");
+                    sellerResult = _sellerPatcher.PatchToDirectory(
+                        _paths.VanillaRecipeLists, _paths.VanillaRecipes, tmpDir, profile);
+                    LogLine("Patched seller recipes: "
+                            + sellerResult.RecipesEdited + " edited, "
+                            + sellerResult.RecipesAdded + " added; "
+                            + "lists: " + sellerResult.ListsWritten + " written ("
+                            + sellerResult.RefsAdded + " refs appended, "
+                            + sellerResult.RefsRemoved + " refs removed)");
+                    foreach (var w in sellerResult.Warnings) LogLine("  warn: " + w);
                 }
 
                 // Resolve which CustomItems will get a baked custom icon
@@ -308,6 +333,9 @@ namespace Windrose.Quartermaster.Core
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (buyerResult != null
                         ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
+                        : 0)
+                    + (sellerResult != null
+                        ? sellerResult.RecipesEdited + sellerResult.RecipesAdded + sellerResult.ListsWritten
                         : 0)
                     + (itemCreatorResult != null
                         ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
@@ -413,6 +441,7 @@ namespace Windrose.Quartermaster.Core
                     LootPatchResult = lootResult,
                     BellLimitsResult = bellResult,
                     BuyerPatchResult = buyerResult,
+                    SellerPatchResult = sellerResult,
                     ItemCreatorResult = itemCreatorResult,
                     PakResult = pakResult,
                     PakPath = pakPath,
@@ -1258,16 +1287,33 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // True when the profile has any buyer/seller trade-list edit -
-        // either a recipe override (vanilla edit or synthesized custom) or
-        // a per-list add/remove of recipe refs. Lets the pipeline skip
-        // the BuyerPatcher entirely for stack/loot-only profiles.
+        // True when the profile has any buyer (PlayerSells) trade-list edit
+        // - either a recipe override (vanilla edit or synthesized custom) or
+        // a per-list add/remove of recipe refs. Lets the pipeline skip the
+        // BuyerPatcher entirely for stack/loot-only profiles.
         static bool HasBuyerConfiguration(Profile profile)
         {
             if (profile.BuyerRecipes != null && profile.BuyerRecipes.Count > 0) return true;
             if (profile.BuyerLists != null)
             {
                 foreach (var kv in profile.BuyerLists)
+                {
+                    var v = kv.Value;
+                    if (v == null) continue;
+                    if (v.AddedRecipeIds != null && v.AddedRecipeIds.Count > 0) return true;
+                    if (v.RemovedRecipeIds != null && v.RemovedRecipeIds.Count > 0) return true;
+                }
+            }
+            return false;
+        }
+
+        // Same test for the seller side (PlayerBuys lists).
+        static bool HasSellerConfiguration(Profile profile)
+        {
+            if (profile.SellerRecipes != null && profile.SellerRecipes.Count > 0) return true;
+            if (profile.SellerLists != null)
+            {
+                foreach (var kv in profile.SellerLists)
                 {
                     var v = kv.Value;
                     if (v == null) continue;
@@ -1332,7 +1378,8 @@ namespace Windrose.Quartermaster.Core
         public PatchResult PatchResult;
         public LootPatchResult LootPatchResult;   // null if profile has no loot config
         public BellLimitsPatchResult BellLimitsResult; // null if profile has no bell config
-        public BuyerPatchResult BuyerPatchResult; // null if profile has no buyer/seller edits
+        public BuyerPatchResult BuyerPatchResult; // null if profile has no buyer (PlayerSells) edits
+        public SellerPatchResult SellerPatchResult; // null if profile has no seller (PlayerBuys) edits
         // Item Creator (custom items synthesized from vanilla templates).
         // null when the profile has no CustomItems. When non-null,
         // ItemsWritten counts the new JSONs that landed under the
