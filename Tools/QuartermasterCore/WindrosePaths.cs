@@ -41,6 +41,17 @@ namespace Windrose.Quartermaster.Core
         // spot, but no current code path depends on its contents.
         public string References;
 
+        // Returns the per-profile Icons folder where the GUI stores
+        // user-uploaded PNGs (Profiles/<profileId>/Icons/). Used by the
+        // upload endpoint to land bytes and by IconBakerPatcher to read
+        // them at build time. The folder is created lazily by the
+        // endpoint - this method is purely a path computation.
+        public string ProfileIconsDir(string profileId)
+        {
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
+            return Path.Combine(Profiles, profileId, "Icons");
+        }
+
         public static WindrosePaths FromModRoot(string modRoot)
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");

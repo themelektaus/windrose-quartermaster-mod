@@ -20,6 +20,21 @@
     <PackageReference Include="UAssetAPI" Version="1.1.0" />
 
     <!--
+      IconBakerPatcher dependencies. Together they turn a user-uploaded PNG
+      into the BC7 mip chain that Texture2D.uexp expects:
+        - SixLabors.ImageSharp: PNG decode + per-mip Resize().
+        - BCnEncoder.Net: BC7 encode of each mip level.
+        - Microsoft.Toolkit.HighPerformance: Memory2D<T> backing
+          BcEncoder.EncodeToRawBytes(...).
+      Verified against vanilla T_ItemIcon_Loot_T02_CoinPiastre_01: the
+      9-mip chain (256x256 down to 1x1) lands at 87,408 bytes - exactly
+      matching the offsets the splice step writes into.
+    -->
+    <PackageReference Include="SixLabors.ImageSharp"             Version="3.1.12" />
+    <PackageReference Include="BCnEncoder.Net"                   Version="2.1.0" />
+    <PackageReference Include="Microsoft.Toolkit.HighPerformance" Version="7.1.2" />
+
+    <!--
       IconExtractor (CUE4Parse-backed UTexture2D + locres extractor) is now
       consumed in-process by IconExtractionRunner instead of as a subprocess
       shelled out via `dotnet publish + Process.Start`. Pulling it in via a

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -97,6 +98,17 @@ public static class ProfilesEndpoint
             {
                 if (!store.Delete(id))
                     return Results.NotFound(new { error = "Profile file not found", id });
+
+                // Per-profile Icons/ subfolder lives next to <id>.json. We
+                // own that path entirely (only the upload endpoint writes
+                // to it, only here do we delete it), so a recursive nuke
+                // is safe and preferred over leaving orphaned PNGs behind.
+                var iconsDir = paths.ProfileIconsDir(id);
+                if (Directory.Exists(iconsDir))
+                {
+                    try { Directory.Delete(iconsDir, recursive: true); }
+                    catch { /* best-effort cleanup; not fatal */ }
+                }
             }
             catch (Exception ex)
             {
@@ -132,7 +144,154 @@ public static class ProfilesEndpoint
             try { store.Save(clone); }
             catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 
+            // Mirror any per-item PNG icons into the clone's Icons folder
+            // so the cloned profile is fully self-contained (the cloned
+            // CustomItem entries already carry IconPath via CloneCustomItems,
+            // they just need the bytes copied over). Best-effort: a copy
+            // failure logs but doesn't roll back the clone, since the user
+            // can always re-upload manually.
+            try
+            {
+                var srcIconsDir = paths.ProfileIconsDir(src.Id);
+                if (Directory.Exists(srcIconsDir))
+                {
+                    var dstIconsDir = paths.ProfileIconsDir(clone.Id);
+                    Directory.CreateDirectory(dstIconsDir);
+                    foreach (var file in Directory.EnumerateFiles(srcIconsDir, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        var fname = Path.GetFileName(file);
+                        File.Copy(file, Path.Combine(dstIconsDir, fname), overwrite: true);
+                    }
+                }
+            }
+            catch { /* best-effort */ }
+
             return Results.Created("/api/profiles/" + clone.Id, clone);
+        });
+
+        // ---- Custom-icon upload / clear ----
+        // POST /api/profiles/{id}/icons/{itemId}  multipart -> store PNG
+        //   bytes at Profiles/<id>/Icons/<itemId>.png and update the
+        //   matching CustomItem.IconPath. Server holds two truths in
+        //   sync (file + profile field) so the client doesn't have to
+        //   PUT the profile separately just for the icon link.
+        // DELETE /api/profiles/{id}/icons/{itemId} -> clear IconPath
+        //   and delete the PNG. Idempotent (404 only if profile/item
+        //   missing).
+        app.MapPost("/api/profiles/{id}/icons/{itemId}", async (string id, string itemId, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            var item = profile.CustomItems?.FirstOrDefault(c => c != null && string.Equals(c.Id, itemId, StringComparison.Ordinal));
+            if (item == null) return Results.NotFound(new { error = "CustomItem not found in profile", itemId });
+
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data" });
+
+            IFormFile file;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+            if (file == null || file.Length == 0)
+                return Results.BadRequest(new { error = "No file uploaded (form key 'file' or first file)" });
+
+            // Hard cap to keep accidents from filling the disk. The
+            // Piastre source PNG is ~85 KB; even an extravagantly large
+            // 1024x1024 24-bit master plus alpha would land well under
+            // 8 MB, so 8 MB is a generous "you definitely meant to do
+            // this" ceiling.
+            const long maxBytes = 8L * 1024 * 1024;
+            if (file.Length > maxBytes)
+                return Results.BadRequest(new { error = $"File too large ({file.Length} bytes); max is {maxBytes} bytes" });
+
+            var iconsDir = paths.ProfileIconsDir(id);
+            Directory.CreateDirectory(iconsDir);
+            var iconFileName = itemId + ".png";
+            var diskPath = Path.Combine(iconsDir, iconFileName);
+
+            byte[] bytes;
+            using (var ms = new MemoryStream())
+            {
+                await file.CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            // Sniff PNG magic so we don't store a JPG-with-png-extension
+            // and confuse the baker downstream. The baker re-decodes via
+            // ImageSharp which would surface a clearer error too, but
+            // failing fast at upload is friendlier.
+            if (bytes.Length < 8
+                || bytes[0] != 0x89 || bytes[1] != 0x50 || bytes[2] != 0x4E || bytes[3] != 0x47
+                || bytes[4] != 0x0D || bytes[5] != 0x0A || bytes[6] != 0x1A || bytes[7] != 0x0A)
+            {
+                return Results.BadRequest(new { error = "File is not a PNG (magic mismatch)" });
+            }
+
+            await File.WriteAllBytesAsync(diskPath, bytes);
+
+            item.IconPath = iconFileName;
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new { iconPath = iconFileName, size = bytes.Length });
+        });
+
+        app.MapDelete("/api/profiles/{id}/icons/{itemId}", (string id, string itemId) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            var item = profile.CustomItems?.FirstOrDefault(c => c != null && string.Equals(c.Id, itemId, StringComparison.Ordinal));
+            if (item == null) return Results.NotFound(new { error = "CustomItem not found in profile", itemId });
+
+            // Delete the file if present (don't crash if the PNG was
+            // already manually removed). Always clear the profile field
+            // so the build pipeline stops trying to bake it.
+            var iconsDir = paths.ProfileIconsDir(id);
+            if (!string.IsNullOrEmpty(item.IconPath))
+            {
+                var diskPath = Path.Combine(iconsDir, item.IconPath);
+                if (File.Exists(diskPath))
+                {
+                    try { File.Delete(diskPath); } catch { /* best-effort */ }
+                }
+            }
+
+            item.IconPath = null;
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.NoContent();
+        });
+
+        // GET /api/profiles/{id}/icons/{itemId} -> the raw PNG bytes
+        // (or 404). Used by the frontend to render the preview thumb
+        // in the Item-Creator card. We don't expose a generic static-
+        // file mount because Profiles/ is gitignored / arbitrary user
+        // data and we want every read to go through the path-validating
+        // endpoint instead of an open directory listing.
+        app.MapGet("/api/profiles/{id}/icons/{itemId}", (string id, string itemId) =>
+        {
+            // Itemid sanity: filename-safe characters only. Mirrors the
+            // ItemCreatorPatcher.IsSafeId rule so a malicious "../.." can
+            // never escape the icons dir.
+            if (string.IsNullOrEmpty(itemId)) return Results.BadRequest(new { error = "itemId required" });
+            foreach (var ch in itemId)
+            {
+                if (!(char.IsLetterOrDigit(ch) || ch == '_'))
+                    return Results.BadRequest(new { error = "itemId must be alnum + underscore" });
+            }
+
+            var iconsDir = paths.ProfileIconsDir(id);
+            var diskPath = Path.Combine(iconsDir, itemId + ".png");
+            if (!File.Exists(diskPath)) return Results.NotFound(new { error = "No icon for this item" });
+            return Results.File(diskPath, "image/png");
         });
     }
 
@@ -291,6 +450,7 @@ public static class ProfilesEndpoint
                 KeepInInventoryOnDeath = c.KeepInInventoryOnDeath,
                 ItemTexture = c.ItemTexture,
                 VanityText = c.VanityText,
+                IconPath = c.IconPath,
             });
         }
         return result;

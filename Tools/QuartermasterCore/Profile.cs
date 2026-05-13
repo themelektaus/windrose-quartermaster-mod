@@ -342,10 +342,34 @@ namespace Windrose.Quartermaster.Core
         // Verbatim asset-path to the icon texture. null/empty = inherit
         // from the template (Piastre uses
         // "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T02_CoinPiastre_01.T_..."
-        // ). Phase 1 keeps this read-only in the UI; the field exists so
-        // a future "pick from catalog / upload custom" flow doesn't
-        // require a schema migration.
+        // ).
+        //
+        // Two ways this gets populated:
+        //   - User leaves IconPath empty -> ItemTexture stays null/template.
+        //   - User uploads a PNG via the "Upload Icon..." button -> the
+        //     server stores the bytes at
+        //       Profiles/<profileId>/Icons/<itemId>.png
+        //     and the build pipeline's IconBakerPatcher synthesises a
+        //     legacy uasset+uexp under
+        //       R5/Content/UI/Icons/Items/Custom/T_QmCustomIcon_<id>
+        //     The patcher then overwrites ItemTexture with the matching
+        //     /Game/UI/.../T_QmCustomIcon_<id>.T_QmCustomIcon_<id>
+        //     reference, so the synthesized JSON points at the baked
+        //     texture instead of the template's icon.
         public string ItemTexture;
+
+        // Filename (basename only, no slashes) of the per-profile PNG that
+        // backs this item's custom icon. Stored under
+        //   Profiles/<profileId>/Icons/<IconPath>
+        // by the upload endpoint. null/empty = no custom icon, the build
+        // falls back to whatever ItemTexture references (template default
+        // when ItemTexture is also null).
+        //
+        // Lives separately from ItemTexture so a profile.json on its own
+        // (sans Icons/ folder) is still useful for reading - the asset
+        // path tells you which icon the build TARGETED, IconPath tells
+        // you whether the build can REGENERATE it from local PNG bytes.
+        public string IconPath;
 
         // Italic flavor / vanity text shown at the bottom of the tooltip
         // (the line that reads "Acht-Reales! Acht-Reales!" on the vanilla

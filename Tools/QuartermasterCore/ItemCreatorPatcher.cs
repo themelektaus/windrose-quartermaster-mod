@@ -41,11 +41,20 @@ namespace Windrose.Quartermaster.Core
         // No-BOM UTF-8 (the vanilla CSV / JSON files are saved this way).
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
+        // bakeableItemIds: set of CustomItem.Id values for which the build
+        // pipeline already verified an uploaded PNG exists on disk and a
+        // baked T_QmCustomIcon_<id> texture WILL be produced in the
+        // IoStore composite. Items with IconPath set but missing from
+        // this set fall back to either custom.ItemTexture (if set) or
+        // the cloned template's default. Pass null to disable the
+        // synthesized-icon path entirely (used by CLI / tests that don't
+        // run the IoStore composite).
         public ItemCreatorPatchResult PatchToDirectory(
             string vanillaInventoryItemsDir,
             string vanillaInventoryCsvPath,
             string outDir,
-            Profile profile)
+            Profile profile,
+            HashSet<string> bakeableItemIds = null)
         {
             if (string.IsNullOrEmpty(vanillaInventoryItemsDir)) throw new ArgumentNullException("vanillaInventoryItemsDir");
             if (string.IsNullOrEmpty(vanillaInventoryCsvPath))  throw new ArgumentNullException("vanillaInventoryCsvPath");
@@ -114,7 +123,27 @@ namespace Windrose.Quartermaster.Core
                 // sibling custom item that also clones from it.
                 var root = (JsonObject)template.DeepClone();
 
-                ApplyCustomItemOverrides(root, custom);
+                bool willBakeIcon = bakeableItemIds != null
+                    && !string.IsNullOrEmpty(custom.Id)
+                    && bakeableItemIds.Contains(custom.Id);
+                if (!willBakeIcon
+                    && !string.IsNullOrWhiteSpace(custom.IconPath)
+                    && string.IsNullOrWhiteSpace(custom.ItemTexture))
+                {
+                    // User configured a custom icon but the build pipeline
+                    // can't bake it (file missing, or running under CLI
+                    // with the IoStore composite disabled). Emit a clear
+                    // warning so the user understands why the item ships
+                    // with the template's icon instead of the uploaded
+                    // PNG. Picked up by the Build log via result.Warnings.
+                    result.Warnings.Add("Custom item '" + custom.Id
+                        + "' has IconPath '" + custom.IconPath
+                        + "' but no baked texture will be produced - "
+                        + "item ships with the template icon. "
+                        + "(Re-upload the PNG, or run a GUI build.)");
+                }
+
+                ApplyCustomItemOverrides(root, custom, willBakeIcon);
 
                 // Write the JSON at the conventional Custom/ subfolder.
                 var relFile = Path.Combine("R5", "Plugins", "R5BusinessRules",
@@ -179,8 +208,10 @@ namespace Windrose.Quartermaster.Core
         // Applies the user-editable overrides onto the cloned template root.
         // Each field has its own null/empty handling so the user can leave
         // a property at "inherit from template" by leaving it null in the
-        // profile.
-        static void ApplyCustomItemOverrides(JsonObject root, CustomItem custom)
+        // profile. willBakeIcon comes from the build pipeline's pre-flight
+        // PNG existence check; only when true do we point ItemTexture at
+        // the synthesized Custom/T_QmCustomIcon_<id> asset.
+        static void ApplyCustomItemOverrides(JsonObject root, CustomItem custom, bool willBakeIcon)
         {
             var gpp = root["InventoryItemGppData"] as JsonObject;
             var ui  = root["InventoryItemUIData"]  as JsonObject;
@@ -200,24 +231,37 @@ namespace Windrose.Quartermaster.Core
                     gpp["bKeepInInventoryOnDeath"] = custom.KeepInInventoryOnDeath.Value;
                 }
 
-                // Give the synthesized item a unique GameplayTag so the
-                // engine doesn't conflate it with the template (which
-                // would scramble any downstream code that maps tags ->
-                // items, e.g. recipes that reference the original
-                // Piastre's tag). Vanilla items use namespaces like
-                // ItemData.Misc.CoinPiastre.T02 - we slot ours under a
-                // dedicated QmCustom subspace for easy tag-prefix filtering.
-                if (gpp["ItemTag"] is JsonObject tagObj)
-                {
-                    tagObj["TagName"] = "ItemData.QmCustom." + custom.Id;
-                }
-                else
-                {
-                    gpp["ItemTag"] = new JsonObject
-                    {
-                        ["TagName"] = "ItemData.QmCustom." + custom.Id,
-                    };
-                }
+                // ItemTag handling: we KEEP the template's original tag
+                // verbatim instead of synthesizing a unique one. Two
+                // reasons:
+                //
+                // 1. UE5 validates every GameplayTag against the
+                //    registered tag list at marshalling time. Tags that
+                //    aren't registered (in DefaultGameplayTags.ini or via
+                //    native code) get rejected with an "Invalid gameplay
+                //    tag name" R5Check - which means any code path that
+                //    queries the tag (consume abilities, buffs, recipes)
+                //    silently fails. We can't register new tags from a
+                //    mod pak, so a synthesized tag like
+                //    "ItemData.QmCustom.<id>" or
+                //    "ConsData.Food.Rum.Bottle.T03.QmCustom_<id>" both
+                //    fail validation. Empirically: cloning Rum Bottle
+                //    with an appended tag broke right-click consume.
+                //
+                // 2. Identity-separation between our clone and the
+                //    template is already provided by the unique asset
+                //    path (/R5BusinessRules/InventoryItems/Custom/<id>).
+                //    Buyer recipes / loot tables reference items by
+                //    asset path, not by tag, so the clone won't be
+                //    accidentally matched by recipes asking for the
+                //    template asset.
+                //
+                // Consequence the user should know about: gameplay
+                // systems that filter by tag (e.g. "any Rum Bottle T03")
+                // will now also match our clone. For consumables that's
+                // exactly the desired behaviour - the Use button needs
+                // the tag to fire the consume ability. For purely
+                // cosmetic clones the impact is negligible.
             }
 
             if (ui != null)
@@ -236,10 +280,26 @@ namespace Windrose.Quartermaster.Core
                     ["Key"] = custom.Id + "_ItemDescription",
                 };
 
-                // Custom icon path is opt-in. Empty / null = keep the
-                // template's texture, which is what phase 1 always does
-                // (the frontend renders the field read-only).
-                if (!string.IsNullOrWhiteSpace(custom.ItemTexture))
+                // Custom icon resolution priority:
+                //   1. willBakeIcon true       -> point ItemTexture at the
+                //      synthesized Custom/T_QmCustomIcon_<id> asset that
+                //      IconBakerPatcher will bake into the IoStore composite.
+                //      Helper kept identical to the one the baker uses so
+                //      the synthesised JSON ref always matches the baked
+                //      asset's package path.
+                //   2. custom.ItemTexture set  -> verbatim asset reference
+                //      (used by templates pulled from the catalog or
+                //      hand-written paths). Also the fallback when the
+                //      user configured an IconPath but the bake won't run
+                //      (PNG missing / CLI build).
+                //   3. neither                 -> keep whatever the cloned
+                //      template had (vanilla Piastre uses
+                //      .../T_ItemIcon_Loot_T02_CoinPiastre_01).
+                if (willBakeIcon)
+                {
+                    ui["ItemTexture"] = IconBakerPatcher.ItemTextureRefFor(custom.Id);
+                }
+                else if (!string.IsNullOrWhiteSpace(custom.ItemTexture))
                 {
                     ui["ItemTexture"] = custom.ItemTexture;
                 }

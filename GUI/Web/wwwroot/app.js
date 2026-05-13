@@ -192,6 +192,7 @@ function syncCustomItemsIntoCatalog() {
         }
     }
     if (!state.current) return;
+    const profileId = state.current.id;
     const customs = state.current.customItems || [];
     const tplById = (state.itemTemplates && state.itemTemplates.byId) || new Map();
     for (const c of customs) {
@@ -203,14 +204,23 @@ function syncCustomItemsIntoCatalog() {
             : (tpl ? tpl.defaultMaxCountInSlot : 1);
         const rarity = c.rarity || (tpl ? tpl.defaultRarity : 'Common');
         const trimmedName = (c.name || '').trim();
+        // Icon priority mirrors buildCustomItemCardHtml so the picker/loot-row/
+        // buyer-row icons stay in lockstep with the Item Creator preview:
+        //   1. User-uploaded PNG -> /api/profiles/<id>/icons/<itemId>?t=<bust>
+        //      (cache-bust forces a re-fetch right after upload).
+        //   2. Template -> /Icons/<templateId>.png (vanilla extract).
+        const hasCustomIcon = !!(c.iconPath && profileId);
+        const iconUrl = hasCustomIcon
+            ? '/api/profiles/' + encodeURIComponent(profileId)
+                + '/icons/' + encodeURIComponent(c.id)
+                + '?t=' + (c._iconCacheBust || 0)
+            : (c.templateId ? '/Icons/' + encodeURIComponent(c.templateId) + '.png' : '');
         const entry = {
             id: c.id,
             path,
             isCustom: true,
             meta: { name: trimmedName || c.id, description: c.description || '' },
-            // Reuse the template's icon URL (the Items tab extracts vanilla
-            // icons under /Icons/<id>.png; custom items inherit that).
-            icon: c.templateId ? '/Icons/' + encodeURIComponent(c.templateId) + '.png' : '',
+            icon: iconUrl,
             // 'Custom' as itemClass makes the picker subtitle clearly mark
             // these as user-defined (subtitle reads "<id> - Custom - ...").
             itemClass: 'Custom',
@@ -3227,12 +3237,23 @@ function renderItemCreator() {
 function buildCustomItemCardHtml(custom, index) {
     if (!custom) return '';
     const tpl = state.itemTemplates.byId.get(custom.templateId) || null;
-    // Use the template's vanilla item icon as a thumbnail. We map the
-    // template id to the same /Icons/<id>.png URL the Items tab uses,
-    // so already-extracted icons render without any extra plumbing.
-    const iconUrl = tpl && custom.templateId
-        ? '/Icons/' + encodeURIComponent(custom.templateId) + '.png'
-        : '';
+    const profileId = state.current ? state.current.id : '';
+    // Thumbnail source priority:
+    //   1. User-uploaded custom icon -> /api/profiles/<id>/icons/<itemId>
+    //      (a cache-buster token forces a re-fetch after upload so the
+    //      thumb updates immediately without a hard refresh).
+    //   2. Template default -> /Icons/<templateId>.png (vanilla extracted
+    //      icons that the Items tab already uses).
+    // The "has custom" flag also drives the Reset-button availability so
+    // the reset is greyed out before any upload happened.
+    const hasCustomIcon = !!(custom.iconPath && profileId);
+    const iconUrl = hasCustomIcon
+        ? '/api/profiles/' + encodeURIComponent(profileId)
+            + '/icons/' + encodeURIComponent(custom.id)
+            + '?t=' + (custom._iconCacheBust || 0)
+        : (tpl && custom.templateId
+            ? '/Icons/' + encodeURIComponent(custom.templateId) + '.png'
+            : '');
 
     const rarity = custom.rarity || (tpl ? tpl.defaultRarity : 'Common');
     const maxStack = (custom.maxCountInSlot != null)
@@ -3241,7 +3262,15 @@ function buildCustomItemCardHtml(custom, index) {
     const keepOnDeath = (custom.keepInInventoryOnDeath != null)
         ? !!custom.keepInInventoryOnDeath
         : !!(tpl && tpl.defaultKeepInInventoryOnDeath);
-    const iconPath = custom.itemTexture || (tpl ? tpl.defaultItemTexture : '');
+    // Read-only display: when a PNG is uploaded the build will reroute to
+    // the synthesized Custom/T_QmCustomIcon_<id> reference; show that
+    // path so the user understands the link, otherwise show whichever
+    // template / verbatim path the build will use.
+    const synthesizedTextureRef = '/Game/UI/Icons/Items/Custom/T_QmCustomIcon_'
+        + custom.id + '.T_QmCustomIcon_' + custom.id;
+    const iconPath = hasCustomIcon
+        ? synthesizedTextureRef
+        : (custom.itemTexture || (tpl ? tpl.defaultItemTexture : ''));
 
     const rarityOpts = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
         .map(r => `<option value="${r}"${r === rarity ? ' selected' : ''}>${r}</option>`)
@@ -3309,6 +3338,17 @@ function buildCustomItemCardHtml(custom, index) {
         +       '<span>Icon path (read-only)</span>'
         +       '<input type="text" value="' + escapeHtml(iconPath) + '" readonly disabled>'
         +     '</label>'
+        +     '<div class="creator-field creator-field-wide creator-icon-actions">'
+        +       '<span class="creator-icon-actions-label">Custom icon</span>'
+        +       '<input type="file" accept="image/png" data-creator-action="icon-pick" hidden>'
+        +       '<button type="button" class="btn-link" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
+        +       '<button type="button" class="btn-link" data-creator-action="icon-reset"'
+        +           (hasCustomIcon ? '' : ' disabled')
+        +           ' title="Revert to template icon">Reset</button>'
+        +       '<span class="creator-icon-status">'
+        +           (hasCustomIcon ? 'Custom PNG uploaded' : 'Template icon')
+        +       '</span>'
+        +     '</div>'
         +   '</div>'
         + '</li>';
 }
@@ -3439,7 +3479,7 @@ function onCreatorListChange(e) {
     updateButtons();
 }
 
-// Delegated click handler for per-card buttons (currently just Delete).
+// Delegated click handler for per-card buttons (Delete + icon Upload / Reset).
 async function onCreatorListClick(e) {
     const btn = e.target.closest('button[data-creator-action]');
     if (!btn) return;
@@ -3465,6 +3505,110 @@ async function onCreatorListClick(e) {
         renderItemCreator();
         renderItemCreatorStatus();
         updateButtons();
+    } else if (action === 'icon-upload') {
+        // Upload + reset both touch the on-disk profile.json (the server
+        // persists the iconPath link as part of the request). If the
+        // user has unsaved edits, the on-disk profile doesn't know
+        // about the freshly-created custom item yet -> 404. Block the
+        // flow with a clear hint instead of letting it fail at upload
+        // time.
+        if (state.isDirty) {
+            await alert('Save the profile first - the new custom item must exist on disk before its icon can be uploaded.');
+            return;
+        }
+        // The actual file picker is the sibling <input type="file" hidden>;
+        // delegate to it so the browser shows the native open dialog.
+        // The "change" handler (onCreatorListPickIcon) takes over from
+        // there once the user picks a file.
+        const filePicker = card.querySelector('input[type="file"][data-creator-action="icon-pick"]');
+        if (filePicker) filePicker.click();
+    } else if (action === 'icon-reset') {
+        const c = customs[index];
+        if (!c.iconPath) return;
+        // The DELETE endpoint clears server-side state (icon file +
+        // CustomItem.IconPath in profile.json). Mirror the change in
+        // local state without bumping isDirty: the server is now the
+        // single truth and a subsequent profile-Save would just no-op
+        // for the iconPath field.
+        if (!await confirm('Revert "' + (c.name || c.id) + '" to the template icon?\n\nThe uploaded PNG will be deleted.')) return;
+        try {
+            const resp = await fetch(
+                '/api/profiles/' + encodeURIComponent(state.current.id)
+                + '/icons/' + encodeURIComponent(c.id),
+                { method: 'DELETE' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
+            c.iconPath = null;
+            c._iconCacheBust = Date.now();
+            // Propagate the new icon state into the shared catalog so pickers
+            // (loot tables, buyers) flip back to the template icon too.
+            syncCustomItemsIntoCatalog();
+            renderItemCreator();
+        } catch (err) {
+            await alert('Reset failed: ' + (err && err.message ? err.message : err));
+        }
+    }
+}
+
+// File-picker change handler bound on the same delegated container as
+// onCreatorListChange. Reads the picked PNG and POSTs it as multipart
+// form-data to the per-item icon endpoint. Bound separately because the
+// existing onCreatorListChange handler returns early on data-creator-field
+// (it walks fields, not actions).
+async function onCreatorListPickIcon(e) {
+    const t = e.target;
+    if (!t || !t.dataset || t.dataset.creatorAction !== 'icon-pick') return;
+    const file = t.files && t.files[0];
+    // Reset the input's value so picking the SAME file twice still fires
+    // a "change" - browsers debounce duplicate selections otherwise.
+    t.value = '';
+    if (!file) return;
+
+    const card = t.closest('li.creator-card');
+    if (!card) return;
+    const index = parseInt(card.dataset.customIndex, 10);
+    if (!isFinite(index)) return;
+    const customs = state.current && state.current.customItems;
+    if (!customs || !customs[index]) return;
+    const custom = customs[index];
+
+    // Magic-byte sanity check on the client too, so an obviously-wrong
+    // file (renamed .jpg) gets a clearer error than the server's
+    // generic "magic mismatch" 400.
+    try {
+        const head = await file.slice(0, 8).arrayBuffer();
+        const b = new Uint8Array(head);
+        const isPng = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47
+                   && b[4] === 0x0D && b[5] === 0x0A && b[6] === 0x1A && b[7] === 0x0A;
+        if (!isPng) {
+            await alert('Not a PNG file. Please pick a .png image.');
+            return;
+        }
+    } catch { /* magic check is best-effort; server will catch it too */ }
+
+    try {
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        const resp = await fetch(
+            '/api/profiles/' + encodeURIComponent(state.current.id)
+            + '/icons/' + encodeURIComponent(custom.id),
+            { method: 'POST', body: fd });
+        if (!resp.ok) {
+            let msg = 'HTTP ' + resp.status;
+            try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch { /* not json */ }
+            throw new Error(msg);
+        }
+        const body = await resp.json();
+        custom.iconPath = body.iconPath;
+        custom._iconCacheBust = Date.now();
+        // Server already persisted CustomItem.IconPath into profile.json;
+        // local state mirrors that without dirtying the profile (a
+        // pending Save would no-op for this field).
+        // Re-sync catalog so the pickers (loot/buyer rows + dropdowns) pick
+        // up the new icon URL + cache-bust token.
+        syncCustomItemsIntoCatalog();
+        renderItemCreator();
+    } catch (err) {
+        await alert('Upload failed: ' + (err && err.message ? err.message : err));
     }
 }
 
@@ -3615,6 +3759,7 @@ function bindHandlers() {
     const creatorList = document.getElementById('creator-list');
     if (creatorList) {
         creatorList.addEventListener('change', onCreatorListChange);
+        creatorList.addEventListener('change', onCreatorListPickIcon);
         creatorList.addEventListener('click',  onCreatorListClick);
     }
 

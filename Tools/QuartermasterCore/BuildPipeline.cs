@@ -274,6 +274,18 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in buyerResult.Warnings) LogLine("  warn: " + w);
                 }
 
+                // Resolve which CustomItems will get a baked custom icon
+                // BEFORE running the item-creator patcher: the patcher
+                // needs to know whether to point each item's ItemTexture
+                // at the synthesized Custom/T_QmCustomIcon_<id> asset
+                // (only valid if the PNG actually exists on disk and
+                // will get baked) or fall back to the template icon.
+                // Doing it in this order keeps the JSON-on-disk side
+                // and the texture-on-disk side in lockstep.
+                var iconBakeJobs = ResolveIconBakeJobs(profile);
+                var bakeableItemIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var j in iconBakeJobs) bakeableItemIds.Add(j.ItemId);
+
                 // Item Creator: user-defined custom items synthesized from
                 // vanilla templates. Lands under InventoryItems/Custom/ +
                 // emits an extended copy of InventoryItems.csv (the FText
@@ -284,7 +296,7 @@ namespace Windrose.Quartermaster.Core
                     LogLine("Synthesizing custom items");
                     itemCreatorResult = _itemCreatorPatcher.PatchToDirectory(
                         _paths.VanillaInventoryItems, _paths.VanillaInventoryItemsCsv,
-                        tmpDir, profile);
+                        tmpDir, profile, bakeableItemIds);
                     LogLine("Custom items: " + itemCreatorResult.ItemsWritten
                             + " written, " + itemCreatorResult.CsvRowsAppended
                             + " CSV rows appended");
@@ -309,7 +321,11 @@ namespace Windrose.Quartermaster.Core
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
                 double bonfireMultiplier = ResolveBonfireMultiplier(profile);
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive;
+                // iconBakeJobs was resolved earlier (before ItemCreator);
+                // re-derive activity flag from the same list so the
+                // composite path knows whether to add the icons source.
+                bool iconsActive = iconBakeJobs.Count > 0;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || iconsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -331,17 +347,20 @@ namespace Windrose.Quartermaster.Core
                 PickupTripletResult pickupResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive;
+                List<IconBakerPatcher.BakeResult> iconBakeResults = null;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || iconsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
+                        iconBakeJobs,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
+                    iconBakeResults = compositeResult.Icons;
                 }
 
                 // Raw companion is independent of the composite (see
@@ -455,6 +474,7 @@ namespace Windrose.Quartermaster.Core
             double pickupMultiplier, bool pickupActive,
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
+            List<IconBakerPatcher.BakeJob> iconBakeJobs,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -633,6 +653,43 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            // Icon-bake source: pulls the vanilla Piastre Texture2D as a
+            // template, then synthesises a fresh T_QmCustomIcon_<id> for
+            // every CustomItem with an uploaded PNG. UAssetAPI rewrites
+            // the FName slots so the new asset lives at .../Custom/<id>
+            // (a brand-new asset path, not an override of the Piastre).
+            // The template files themselves are removed from staging
+            // afterwards so to-zen doesn't repackage vanilla bytes.
+            List<IconBakerPatcher.BakeResult> iconResults = null;
+            if (iconBakeJobs != null && iconBakeJobs.Count > 0)
+            {
+                LogLine("Icons source: " + iconBakeJobs.Count
+                        + " custom icon" + (iconBakeJobs.Count == 1 ? "" : "s")
+                        + " (template " + IconBakerPatcher.TemplateAssetStem + ")");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "icons",
+                    InputDir = gamePaksDir,
+                    Filter = IconBakerPatcher.TemplateAssetStem,
+                    AfterExtract = stagingDir =>
+                    {
+                        var baker = new IconBakerPatcher { Log = Log };
+                        iconResults = baker.Bake(stagingDir, iconBakeJobs);
+                        // Remove the unmodified template from staging so
+                        // to-zen doesn't ship a duplicate of vanilla
+                        // (which would then OVERRIDE the vanilla Piastre,
+                        // exactly what we don't want).
+                        baker.RemoveTemplateFromStaging(stagingDir);
+                        foreach (var r in iconResults)
+                        {
+                            LogLine("  baked " + r.ItemId
+                                    + " (PNG=" + r.PngBytesIn + " B, uexp=" + r.UexpBytesOut + " B)"
+                                    + " -> " + r.ItemTextureRef);
+                        }
+                    },
+                });
+            }
+
             LogLine("Building IoStore composite triplet -> staging ("
                     + sources.Count + " source" + (sources.Count == 1 ? "" : "s") + ")");
 
@@ -704,6 +761,7 @@ namespace Windrose.Quartermaster.Core
                 Pickup = pickupOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
+                Icons = iconResults,
             };
         }
 
@@ -714,6 +772,45 @@ namespace Windrose.Quartermaster.Core
             public PickupTripletResult Pickup;
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
+            public List<IconBakerPatcher.BakeResult> Icons;
+        }
+
+        // Walks profile.CustomItems and produces one IconBakerPatcher.BakeJob
+        // per item that has an uploaded PNG (IconPath set + the file
+        // exists on disk under Profiles/<profileId>/Icons/). Items with
+        // a configured-but-missing PNG surface a build-log warning and
+        // get skipped (the baked-asset reference would be a dangling
+        // pointer otherwise, which the engine renders as a broken
+        // checkered icon ingame).
+        List<IconBakerPatcher.BakeJob> ResolveIconBakeJobs(Profile profile)
+        {
+            var jobs = new List<IconBakerPatcher.BakeJob>();
+            if (profile == null || profile.CustomItems == null) return jobs;
+
+            var iconsDir = _paths.ProfileIconsDir(profile.Id);
+            foreach (var ci in profile.CustomItems)
+            {
+                if (ci == null) continue;
+                if (string.IsNullOrWhiteSpace(ci.Id)) continue;
+                if (string.IsNullOrWhiteSpace(ci.IconPath)) continue;
+
+                // IconPath is a basename only (the upload endpoint enforces
+                // "<itemId>.png"); rebuild the absolute path here.
+                var absPath = Path.Combine(iconsDir, ci.IconPath);
+                if (!File.Exists(absPath))
+                {
+                    LogLine("  warn: custom item '" + ci.Id + "' references icon '"
+                            + ci.IconPath + "' but the file is missing at "
+                            + absPath + " - skipping bake (item ships with template icon).");
+                    continue;
+                }
+                jobs.Add(new IconBakerPatcher.BakeJob
+                {
+                    ItemId = ci.Id,
+                    PngPath = absPath,
+                });
+            }
+            return jobs;
         }
 
         // Builds the raw companion under <rawBaseName>.{pak[,ucas,utoc]},

@@ -1807,6 +1807,32 @@ footer.collapsed .footer-body {
   flex-shrink: 0;
 }
 
+/* Custom-icon Upload / Reset row inside the creator card. Sits below the
+   read-only "Icon path" input and reuses the .creator-field-wide grid
+   span, but lays out its label + buttons + status horizontally. */
+.creator-icon-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: .6em;
+  margin-top: .15em;
+}
+.creator-icon-actions-label {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  flex-shrink: 0;
+}
+.creator-icon-actions .btn-link[disabled] {
+  opacity: .4;
+  cursor: not-allowed;
+}
+.creator-icon-status {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  font-style: italic;
+  margin-left: auto;
+}
+
 .creator-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
