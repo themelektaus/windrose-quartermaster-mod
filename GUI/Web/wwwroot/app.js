@@ -3219,12 +3219,14 @@ function renderItemCreator() {
     list.innerHTML = parts.join('');
 }
 
-// Renders one card. The template is read-only (you pick it at create time
-// and can't change it afterwards); all other fields are inline editable.
+// Renders one card. Template is selectable via inline dropdown - switching
+// it doesn't migrate field values, but un-overridden fields will then
+// inherit from the new template's defaults at build time. Name / Description
+// / Flavor text are treated identically: whatever the user typed is the
+// truth, empty string included (no "inherit" semantics).
 function buildCustomItemCardHtml(custom, index) {
     if (!custom) return '';
     const tpl = state.itemTemplates.byId.get(custom.templateId) || null;
-    const tplLabel = tpl ? tpl.label : (custom.templateId || '(unknown template)');
     // Use the template's vanilla item icon as a thumbnail. We map the
     // template id to the same /Icons/<id>.png URL the Items tab uses,
     // so already-extracted icons render without any extra plumbing.
@@ -3245,24 +3247,22 @@ function buildCustomItemCardHtml(custom, index) {
         .map(r => `<option value="${r}"${r === rarity ? ' selected' : ''}>${r}</option>`)
         .join('');
 
+    // Template dropdown: lists every entry from /api/item-templates with
+    // the currently selected one preselected. If the profile references a
+    // template that's not in the current catalog (e.g. backend version
+    // bumped down) we prepend a synthetic stub option so the value still
+    // round-trips and the user sees what's stored.
+    const tplCatalog = state.itemTemplates.list || [];
+    let tplOpts = tplCatalog.map(t =>
+        `<option value="${escapeHtml(t.id)}"${t.id === custom.templateId ? ' selected' : ''}>${escapeHtml(t.label)}</option>`
+    ).join('');
+    if (custom.templateId && !state.itemTemplates.byId.has(custom.templateId)) {
+        tplOpts = `<option value="${escapeHtml(custom.templateId)}" selected>${escapeHtml(custom.templateId)} (unknown)</option>` + tplOpts;
+    }
+
     const safeName = escapeHtml(custom.name || '');
     const safeDesc = escapeHtml(custom.description || '');
-    // VanityText is tri-state: null = inherit from template (tooltip will
-    // show the template's flavor line), any string = override (incl. ""
-    // which hides the line entirely). The input shows the override value
-    // when set, otherwise stays empty with a placeholder explaining the
-    // inherit behavior so the user knows why they see template text in-game.
-    const vanityOverride = custom.vanityText != null;
-    const safeVanity = escapeHtml(vanityOverride ? custom.vanityText : '');
-    const vanityPlaceholder = vanityOverride
-        ? 'Flavor text (italic, shown at tooltip bottom)'
-        : 'Inherits from template - type to override';
-    // Reset button only renders when there's an override to reset. Pre-
-    // computed so the HTML-builder string concat stays a flat sequence of
-    // `+ '...'` chunks (no inline ternaries that the parser dislikes).
-    const vanityResetBtn = vanityOverride
-        ? '<button type="button" class="btn-link" data-creator-action="reset-vanity" title="Reset to template default">Reset</button>'
-        : '';
+    const safeVanity = escapeHtml(custom.vanityText || '');
 
     return ''
         + '<li class="creator-card" data-custom-index="' + index + '">'
@@ -3271,7 +3271,10 @@ function buildCustomItemCardHtml(custom, index) {
         +     '<div class="creator-titles">'
         +       '<div class="creator-title-name">' + (safeName || '<em>(unnamed)</em>') + '</div>'
         +       '<div class="creator-title-id">' + escapeHtml(custom.id) + '</div>'
-        +       '<div class="creator-title-template">based on <strong>' + escapeHtml(tplLabel) + '</strong></div>'
+        +       '<label class="creator-title-template">'
+        +         '<span>Based on:</span>'
+        +         '<select data-creator-field="templateId">' + tplOpts + '</select>'
+        +       '</label>'
         +     '</div>'
         +     '<div class="creator-card-actions">'
         +       '<button type="button" class="btn-link danger" data-creator-action="delete" title="Delete custom item">Delete</button>'
@@ -3300,12 +3303,7 @@ function buildCustomItemCardHtml(custom, index) {
         +     '</label>'
         +     '<label class="creator-field creator-field-wide">'
         +       '<span>Flavor text <small class="creator-field-hint">(italic line at tooltip bottom)</small></span>'
-        +       '<div class="creator-vanity-row">'
-        +         '<input type="text" data-creator-field="vanityText"'
-        +           ' value="' + safeVanity + '"'
-        +           ' placeholder="' + vanityPlaceholder + '">'
-        +         vanityResetBtn
-        +       '</div>'
+        +       '<input type="text" data-creator-field="vanityText" value="' + safeVanity + '" placeholder="Optional flavor text...">'
         +     '</label>'
         +     '<label class="creator-field creator-field-wide">'
         +       '<span>Icon path (read-only)</span>'
@@ -3337,9 +3335,10 @@ function renderItemCreatorStatus() {
         customs.length === 0 ? '' : (customs.length + ' item' + (customs.length === 1 ? '' : 's'));
 }
 
-// Create flow: if there's exactly one template, skip the picker and use
-// it directly. With multiple templates we'd open a modal; phase 1 keeps
-// it simple.
+// Create flow: prompt for a name (the template can be switched in-card
+// later via the dropdown, so we don't bother with a separate template
+// picker step on creation - the user picks Piastre by default and swaps
+// if they want).
 async function onCreatorNew() {
     if (!state.current) return;
     if (!state.itemTemplates.loaded) {
@@ -3350,12 +3349,7 @@ async function onCreatorNew() {
         await alert('No templates available - the backend returned an empty catalog.');
         return;
     }
-    let template = tpls[0];
-    if (tpls.length > 1) {
-        // Future: a modal picker. For now, pick the first; if/when more
-        // templates land, this becomes a select-from-list modal.
-        template = tpls[0];
-    }
+    const template = tpls[0];
     const name = await prompt('Name for the new item:', 'My ' + template.label);
     if (name == null) return;
     const trimmed = String(name).trim();
@@ -3376,10 +3370,9 @@ async function onCreatorNew() {
         rarity: null,
         keepInInventoryOnDeath: null,
         itemTexture: null,
-        // null = inherit the template's VanityText FText (so a fresh
-        // Piastre clone shows "Acht-Reales! Acht-Reales!" until the user
-        // types an override in the Item Creator card).
-        vanityText: null,
+        // Empty string = empty flavor line in the tooltip (the patcher
+        // always overrides VanityText now, identical to Name/Description).
+        vanityText: '',
     });
     state.isDirty = true;
     syncCustomItemsIntoCatalog();
@@ -3424,15 +3417,15 @@ function onCreatorListChange(e) {
     } else if (field === 'keepInInventoryOnDeath') {
         custom.keepInInventoryOnDeath = !!t.checked;
     } else if (field === 'vanityText') {
-        // Empty input -> back to "inherit from template" (null). Any non-
-        // empty value becomes the override; user can use the Reset button
-        // to wipe back to null without having to clear the field manually.
-        const v = t.value;
-        custom.vanityText = (v == null || v === '') ? null : v;
-        // Re-render the card so the placeholder + Reset-button visibility
-        // reflect the new state. Doing this inline (toggling button/
-        // placeholder) would work too but the cost of a single card
-        // rebuild is negligible.
+        // Treated like Name/Description: store exactly what the user typed
+        // (empty string included). No tri-state, no inherit fallback.
+        custom.vanityText = t.value || '';
+    } else if (field === 'templateId') {
+        // Switching template: keep all user-set field values, but un-
+        // overridden defaults (null fields) will now resolve against the
+        // new template's defaults at build time. Full re-render so the
+        // thumbnail, inherited defaults and read-only icon path refresh.
+        custom.templateId = t.value;
         renderItemCreator();
     } else {
         return;
@@ -3469,15 +3462,6 @@ async function onCreatorListClick(e) {
         // reference it stay in place (the user can clean those up by hand)
         // but the picker won't offer the deleted id any more.
         syncCustomItemsIntoCatalog();
-        renderItemCreator();
-        renderItemCreatorStatus();
-        updateButtons();
-    } else if (action === 'reset-vanity') {
-        // Wipe the vanity override back to null so the patcher inherits
-        // the template's FText again. Full re-render so the input clears
-        // and the Reset button disappears.
-        customs[index].vanityText = null;
-        state.isDirty = true;
         renderItemCreator();
         renderItemCreatorStatus();
         updateButtons();

@@ -39,6 +39,23 @@ public static class ItemTemplatesEndpoint
             defaultKeepInInventoryOnDeath = true,
             defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T02_CoinPiastre_01.T_ItemIcon_Loot_T02_CoinPiastre_01",
         },
+        new TemplateDto
+        {
+            id = "DA_CID_Food_Rum_Bottle_T03",
+            label = "Rum Bottle",
+            // Consumable food item: stacks to 20, Rare rarity, NOT kept on
+            // death. References a ConsumableAbilityData asset that powers
+            // the drink animation + effects; the patcher copies this
+            // reference through verbatim so clones share the same behavior
+            // as the vanilla bottle. Different feel from Piastre (drops on
+            // death, smaller stack, edible) - useful as a second starter
+            // template for "potion-like" custom items.
+            kind = "Consumable",
+            defaultMaxCountInSlot = 20,
+            defaultRarity = "Rare",
+            defaultKeepInInventoryOnDeath = false,
+            defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_TradeCraft_Alcohol_Rum.T_ItemIcon_TradeCraft_Alcohol_Rum",
+        },
     };
 
     public static void Map(WebApplication app, string repoRoot)

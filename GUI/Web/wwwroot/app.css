@@ -1781,11 +1781,25 @@ footer.collapsed .footer-body {
   font-family: var(--font-mono, monospace);
 }
 .creator-title-template {
+  display: flex;
+  align-items: center;
+  gap: .4em;
   font-size: var(--font-size-small);
   color: var(--text-dim);
+  margin-top: .15em;
 }
-.creator-title-template strong {
-  color: var(--accent);
+.creator-title-template > span {
+  white-space: nowrap;
+}
+.creator-title-template select {
+  font-family: inherit;
+  font-size: var(--font-size-small);
+  padding: .15em .4em;
+  background: var(--bg-elev-1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-small, 4px);
+  max-width: 12em;
 }
 .creator-card-actions {
   display: flex;
@@ -1861,14 +1875,3 @@ footer.collapsed .footer-body {
   font-style: italic;
 }
 
-/* Inline row: text input + Reset button on the same baseline. The button
-   only shows when there's an override to reset, so the column collapses
-   to a plain input in the inherit case. */
-.creator-vanity-row {
-  display: flex;
-  gap: .5em;
-  align-items: center;
-}
-.creator-vanity-row input[type="text"] {
-  flex: 1 1 auto;
-}

@@ -126,24 +126,18 @@ namespace Windrose.Quartermaster.Core
                 result.ItemsWritten++;
                 result.WrittenItems.Add(custom.Id);
 
-                // Even if Name/Description are empty strings we emit rows -
-                // a custom item with no display name appears as a blank in
-                // the inventory which is rarely what the user wants, but
-                // it's a recoverable mistake (just type the name later).
-                // The empty value still binds the FText key to something,
-                // preventing the engine from falling back to the "missing
-                // key" placeholder.
+                // Even if Name/Description/Vanity are empty strings we emit
+                // rows - a custom item with no display name appears as a
+                // blank in the inventory which is rarely what the user
+                // wants, but it's a recoverable mistake (just type the
+                // name later). The empty value still binds the FText key
+                // to something, preventing the engine from falling back to
+                // the "missing key" placeholder. VanityText follows the
+                // exact same rule as Name/Description: whatever the user
+                // typed is the truth, including "" (hides the flavor line).
                 csvRows.Add(new CsvRow(custom.Id + "_ItemName", custom.Name ?? string.Empty));
                 csvRows.Add(new CsvRow(custom.Id + "_ItemDescription", custom.Description ?? string.Empty));
-
-                // Vanity row only when the user opted in. Symmetric with
-                // ApplyCustomItemOverrides: null means "no CSV row, keep
-                // the template's FText", anything else (including "")
-                // means "emit a row so the engine resolves OUR key".
-                if (custom.VanityText != null)
-                {
-                    csvRows.Add(new CsvRow(custom.Id + "_ItemVanity", custom.VanityText));
-                }
+                csvRows.Add(new CsvRow(custom.Id + "_ItemVanity", custom.VanityText ?? string.Empty));
             }
 
             if (csvRows.Count > 0)
@@ -250,21 +244,16 @@ namespace Windrose.Quartermaster.Core
                     ui["ItemTexture"] = custom.ItemTexture;
                 }
 
-                // VanityText is opt-in: only patched when the user typed
-                // something. null = inherit the template's FText (so the
-                // tooltip shows e.g. "Acht-Reales!" on a Piastre clone).
-                // Any other value (including "") = emit a custom FText
-                // pointing at our own CSV row; the loop at the bottom of
-                // PatchToDirectory appends that row right alongside the
-                // ItemName / ItemDescription rows.
-                if (custom.VanityText != null)
+                // VanityText is always overridden - same flow as Name /
+                // Description. Empty input means empty flavor line in the
+                // tooltip; no "inherit from template" fallback. The loop
+                // at the bottom of PatchToDirectory always emits the
+                // matching CSV row.
+                ui["VanityText"] = new JsonObject
                 {
-                    ui["VanityText"] = new JsonObject
-                    {
-                        ["TableId"] = "InventoryItems",
-                        ["Key"] = custom.Id + "_ItemVanity",
-                    };
-                }
+                    ["TableId"] = "InventoryItems",
+                    ["Key"] = custom.Id + "_ItemVanity",
+                };
             }
         }
 

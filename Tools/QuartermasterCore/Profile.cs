@@ -348,18 +348,12 @@ namespace Windrose.Quartermaster.Core
         public string ItemTexture;
 
         // Italic flavor / vanity text shown at the bottom of the tooltip
-        // (the line that reads "Acht-Reales! Acht-Reales!" on the Piastre).
-        // Goes through the same FText TableId/Key indirection as Name /
-        // Description: the patcher emits an "<Id>_ItemVanity" CSV row and
-        // overwrites InventoryItemUIData.VanityText to reference it.
-        //
-        // Tri-state semantics:
-        //   * null            -> inherit from template (no CSV row, vanilla
-        //                        VanityText FText survives untouched).
-        //   * "" or any value -> override; emits a CSV row with the literal
-        //                        string. Empty string therefore HIDES the
-        //                        flavor line in the tooltip (the engine
-        //                        renders the empty value verbatim).
+        // (the line that reads "Acht-Reales! Acht-Reales!" on the vanilla
+        // Piastre). Treated exactly like Name and Description: the patcher
+        // always overwrites InventoryItemUIData.VanityText with an FText
+        // pointing at "<Id>_ItemVanity", and always emits the matching CSV
+        // row. null is normalized to "" - an empty flavor line in the
+        // tooltip, no inherit-from-template fallback.
         public string VanityText;
     }
 
