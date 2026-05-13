@@ -180,6 +180,25 @@ function indexLootCrossReferences() {
 // Called after every mutation to state.current.customItems (load, save,
 // create, delete, rename/edit). Cheap - the typical custom-item count is
 // in the single digits.
+
+// Snapshot the ids of custom-items that are currently persisted on disk.
+// Called right after a successful GET/PUT/POST roundtrip so the server
+// response is the source of truth. The icon upload handler checks this
+// set: only items that exist on disk can have an icon uploaded, because
+// the upload endpoint mutates profile.json's CustomItem record (404 if
+// missing). Editing OTHER fields on an already-saved item doesn't kick
+// it out of this set, so the user isn't nagged just because the profile
+// happens to be dirty.
+function rebuildSavedCustomItemIds() {
+    const ids = new Set();
+    if (state.current && Array.isArray(state.current.customItems)) {
+        for (const c of state.current.customItems) {
+            if (c && c.id) ids.add(c.id);
+        }
+    }
+    state.savedCustomItemIds = ids;
+}
+
 function syncCustomItemsIntoCatalog() {
     if (!state.items || !state.itemsById || !state.itemPathsByItemId) return;
     // Strip previously-injected custom entries from all three maps.
@@ -584,6 +603,13 @@ async function loadProfile(id) {
     // Ordered list; the patcher iterates in declaration order at build
     // time. New entries get appended; the UI never reorders.
     state.current.customItems   = state.current.customItems   || [];
+    // Snapshot which custom-item ids exist on disk RIGHT NOW. The icon
+    // upload endpoint needs the item's CustomItem record to exist in
+    // profile.json (otherwise it 404s), so the UI uses this set to decide
+    // whether to allow the upload or to nag the user to Save first. Only
+    // brand-new items (added since last Save) are blocked - editing other
+    // fields on an existing item doesn't make its id disappear from disk.
+    rebuildSavedCustomItemIds();
     // Inject the profile's custom items into the catalog maps so the
     // Loot Table + Buyer pickers can offer them and the LT/Buyer rows
     // can resolve display names.
@@ -2030,6 +2056,19 @@ function updateButtons() {
 async function onSave() {
     const p = state.current;
     if (!p) return;
+    // Snapshot the per-item icon cache-bust tokens BEFORE the PUT. The C#
+    // CustomItem DTO has no _iconCacheBust field, so System.Text.Json drops
+    // it on the way back through the round-trip. Without this re-attach,
+    // the catalog URL falls back to "?t=0" after save, and any subsequent
+    // re-render (tab switch, picker open, item-creator re-render on next
+    // edit) loads the previously-cached "?t=0" response from the browser
+    // HTTP cache - which is the pre-upload icon - making it look like the
+    // upload reverted. F5 worked around it via a hard refresh; this fix
+    // makes the in-memory token survive Save so the URL stays stable.
+    const bustById = new Map();
+    for (const c of (p.customItems || [])) {
+        if (c && c.id && c._iconCacheBust) bustById.set(c.id, c._iconCacheBust);
+    }
     const body = {
         id: p.id, name: p.name, description: p.description,
         createdAt: p.createdAt,
@@ -2047,10 +2086,18 @@ async function onSave() {
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
     state.current.customItems   = state.current.customItems   || [];
+    // Re-attach the cache-bust tokens captured before the round-trip.
+    for (const c of state.current.customItems) {
+        if (c && c.id && bustById.has(c.id)) c._iconCacheBust = bustById.get(c.id);
+    }
     // Re-sync after save: the server response is authoritative, so any
     // server-side normalisation of customItems is reflected back into the
     // catalog before the user opens another tab.
     syncCustomItemsIntoCatalog();
+    // Refresh the "exists on disk" set: every custom-item the server just
+    // accepted is now persisted, so future icon uploads against any of
+    // these ids are safe even if the user dirties OTHER fields after this.
+    rebuildSavedCustomItemIds();
     state.isDirty = false;
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -2500,7 +2547,7 @@ function buildBuyerCardHtml(b) {
          +     '<tbody>' + rows + '</tbody>'
          +   '</table>'
          +   '<div class="buyer-card-footer">'
-         +     '<button class="btn-secondary buyer-add-btn" data-buyer-add="' + esc(b.id) + '">+ Add entry</button>'
+         +     '<button class="buyer-add-btn primary" data-buyer-add="' + esc(b.id) + '">Add Entry</button>'
          +   '</div>'
          + '</li>';
 }
@@ -3216,7 +3263,7 @@ function renderItemCreator() {
     const customs = state.current.customItems || [];
     if (customs.length === 0) {
         list.innerHTML = '<li class="creator-empty"><div class="hint">'
-            + 'No custom items yet. Click "+ New Item" to clone a vanilla template '
+            + 'No custom items yet. Click "New Item" to clone a vanilla template '
             + '(currently only Piastre). You can then edit name, description, max '
             + 'stack, rarity, and the "keep on death" flag.'
             + '</div></li>';
@@ -3310,6 +3357,16 @@ function buildCustomItemCardHtml(custom, index) {
         +     '</div>'
         +   '</header>'
         +   '<div class="creator-fields">'
+        +     '<div class="creator-field creator-field-wide creator-icon-actions">'
+        +       '<input type="file" accept="image/png" data-creator-action="icon-pick" hidden>'
+        +       '<button type="button" class="btn-link" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
+        +       '<button type="button" class="btn-link" data-creator-action="icon-reset"'
+        +           (hasCustomIcon ? '' : ' disabled')
+        +           ' title="Revert to template icon">Reset</button>'
+        +       '<span class="creator-icon-status">'
+        +           (hasCustomIcon ? 'Custom PNG uploaded' : 'Template icon')
+        +       '</span>'
+        +     '</div>'
         +     '<label class="creator-field">'
         +       '<span>Name</span>'
         +       '<input type="text" data-creator-field="name" value="' + safeName + '" placeholder="Item display name">'
@@ -3317,6 +3374,10 @@ function buildCustomItemCardHtml(custom, index) {
         +     '<label class="creator-field creator-field-wide">'
         +       '<span>Description</span>'
         +       '<textarea data-creator-field="description" rows="2" placeholder="Tooltip text...">' + safeDesc + '</textarea>'
+        +     '</label>'
+        +     '<label class="creator-field creator-field-wide">'
+        +       '<span>Vanity Text</span>'
+        +       '<input type="text" data-creator-field="vanityText" value="' + safeVanity + '" placeholder="Optional flavor text...">'
         +     '</label>'
         +     '<label class="creator-field">'
         +       '<span>Max stack</span>'
@@ -3330,25 +3391,10 @@ function buildCustomItemCardHtml(custom, index) {
         +       '<input type="checkbox" data-creator-field="keepInInventoryOnDeath"' + (keepOnDeath ? ' checked' : '') + '>'
         +       '<span>Keep in inventory on death</span>'
         +     '</label>'
-        +     '<label class="creator-field creator-field-wide">'
-        +       '<span>Flavor text <small class="creator-field-hint">(italic line at tooltip bottom)</small></span>'
-        +       '<input type="text" data-creator-field="vanityText" value="' + safeVanity + '" placeholder="Optional flavor text...">'
-        +     '</label>'
-        +     '<label class="creator-field creator-field-wide">'
-        +       '<span>Icon path (read-only)</span>'
+        +     '<label class="creator-field creator-field-wide" style="display: none; ">'
+        +       '<span>Icon path</span>'
         +       '<input type="text" value="' + escapeHtml(iconPath) + '" readonly disabled>'
         +     '</label>'
-        +     '<div class="creator-field creator-field-wide creator-icon-actions">'
-        +       '<span class="creator-icon-actions-label">Custom icon</span>'
-        +       '<input type="file" accept="image/png" data-creator-action="icon-pick" hidden>'
-        +       '<button type="button" class="btn-link" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
-        +       '<button type="button" class="btn-link" data-creator-action="icon-reset"'
-        +           (hasCustomIcon ? '' : ' disabled')
-        +           ' title="Revert to template icon">Reset</button>'
-        +       '<span class="creator-icon-status">'
-        +           (hasCustomIcon ? 'Custom PNG uploaded' : 'Template icon')
-        +       '</span>'
-        +     '</div>'
         +   '</div>'
         + '</li>';
 }
@@ -3506,13 +3552,17 @@ async function onCreatorListClick(e) {
         renderItemCreatorStatus();
         updateButtons();
     } else if (action === 'icon-upload') {
-        // Upload + reset both touch the on-disk profile.json (the server
-        // persists the iconPath link as part of the request). If the
-        // user has unsaved edits, the on-disk profile doesn't know
-        // about the freshly-created custom item yet -> 404. Block the
-        // flow with a clear hint instead of letting it fail at upload
-        // time.
-        if (state.isDirty) {
+        // The upload endpoint persists iconPath into profile.json's
+        // CustomItem record - if the record doesn't exist on disk yet,
+        // the server 404s. That happens for items the user just created
+        // in this session and hasn't Saved yet. Items that ARE on disk
+        // can be uploaded to even if the profile is dirty (the upload
+        // mutates only the iconPath field, untouched by the user's other
+        // pending edits). The savedCustomItemIds set tracks the on-disk
+        // identity snapshot from the last load/save roundtrip.
+        const c = customs[index];
+        const savedIds = state.savedCustomItemIds || new Set();
+        if (!savedIds.has(c.id)) {
             await alert('Save the profile first - the new custom item must exist on disk before its icon can be uploaded.');
             return;
         }

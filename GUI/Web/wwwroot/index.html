@@ -45,7 +45,7 @@
       <button type="button" class="tab"        data-tab="buyers"  role="tab" aria-selected="false">Buyers</button>
       <button type="button" class="tab"        data-tab="sellers" role="tab" aria-selected="false">Sellers</button>
       <button type="button" class="tab"        data-tab="mods"    role="tab" aria-selected="false">Mods</button>
-      <button id="btn-build" type="button" class="primary">BUILD</button>
+      <button id="btn-build" type="button" class="primary" style="font-weight: bold; ">BUILD</button>
     </nav>
     <div id="profile-bar" class="profile-bar">
       <label class="profile-select-label">Profile
@@ -475,9 +475,7 @@
           <h2>Item Creator</h2>
           <p class="hint">
             Add brand-new items to the game. Each custom item is cloned
-            from a vanilla template (currently the Piastre coin) and gets
-            its editable properties applied during build. The icon stays
-            the template's for now - the field is read-only.
+            from a vanilla template and gets its editable properties applied during build.
           </p>
         </section>
 
@@ -492,17 +490,16 @@
         <section class="card">
           <h2>Notes</h2>
           <p class="hint">
-            Items are added to <code>InventoryItems/Custom/</code> inside
-            the mod pak. They don't auto-spawn anywhere yet - use the Loot
-            Tables tab to drop them from mobs / containers, or the Buyers
-            tab to make NPCs accept them in trade.
+            Items are added to the mod pak. They don't auto-spawn anywhere yet
+            - use the Loot Tables tab to drop them from mobs / containers,
+            or the Buyers tab to make NPCs accept them in trade.
           </p>
         </section>
       </aside>
 
       <section class="pane right">
         <div class="item-controls">
-          <button id="btn-creator-new" type="button" class="primary">+ New Item</button>
+          <button id="btn-creator-new" type="button" class="primary">New Item</button>
           <span id="creator-count" class="item-count"></span>
         </div>
         <div id="creator-error" class="mods-error" hidden></div>
