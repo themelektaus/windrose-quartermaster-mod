@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -13,6 +14,14 @@ namespace Windrose.Quartermaster.Core
     // bracketed with [step:start name=...] / [step:end name=... ok=...]
     // markers so the frontend can render them as collapsible sections
     // without parsing free-form text.
+    //
+    // Which vanilla sources count as "required" is declared in
+    // VanillaSourceManifest. Adding a new feature that needs a new pak
+    // subtree extracted = append one manifest entry. The probe + the
+    // dumper + the setup overlay all pick it up automatically, so users
+    // upgrading from an older Quartermaster version (whose Sources/Vanilla/
+    // predates the new entry) will see the setup overlay re-open
+    // automatically on next boot until they top up the missing subtree.
     public sealed class SetupRunner
     {
         readonly WindrosePaths _paths;
@@ -29,34 +38,29 @@ namespace Windrose.Quartermaster.Core
         {
             var status = new SetupStatus();
 
-            // All four subtrees (InventoryItems, LootTables, RecipeLists,
-            // Recipes) must be present; a half-extracted Vanilla/ from a
-            // previous run shouldn't be treated as ready. RecipeLists +
-            // Recipes are needed by the Buyers tab; older mod roots from
-            // before the buyers feature will look "stale" until setup
-            // re-runs and tops up the missing folders.
-            status.HasVanillaInventoryItems =
-                Directory.Exists(_paths.VanillaInventoryItems) &&
-                Directory.EnumerateFiles(_paths.VanillaInventoryItems, "*.json", SearchOption.AllDirectories).Any();
-            status.HasVanillaLootTables =
-                Directory.Exists(_paths.VanillaLootTables) &&
-                Directory.EnumerateFiles(_paths.VanillaLootTables, "*.json", SearchOption.AllDirectories).Any();
-            status.HasVanillaRecipeLists =
-                Directory.Exists(_paths.VanillaRecipeLists) &&
-                Directory.EnumerateFiles(_paths.VanillaRecipeLists, "*.json", SearchOption.AllDirectories).Any();
-            status.HasVanillaRecipes =
-                Directory.Exists(_paths.VanillaRecipes) &&
-                Directory.EnumerateFiles(_paths.VanillaRecipes, "*.json", SearchOption.AllDirectories).Any();
-            // The InventoryItems CSV is a single file - the Item Creator
-            // patcher needs it as the baseline string-table. A pre-CSV
-            // mod root (created before this tab existed) is detected as
-            // stale until the dumper re-runs and tops it up.
-            status.HasVanillaInventoryCsv = File.Exists(_paths.VanillaInventoryItemsCsv);
-            status.HasVanillaSources = status.HasVanillaInventoryItems
-                && status.HasVanillaLootTables
-                && status.HasVanillaRecipeLists
-                && status.HasVanillaRecipes
-                && status.HasVanillaInventoryCsv;
+            // Iterate the manifest - the canonical list of "what we need
+            // on disk". One entry per required vanilla subtree / file.
+            // If a future Quartermaster version adds a new requirement,
+            // every existing user's Sources/Vanilla/ probes as not-ready
+            // here, which kicks IsReady to false, which makes boot.js
+            // open the setup overlay automatically. They run setup, the
+            // dumper tops up just the missing entry, done.
+            status.Sources = new List<VanillaSourceStatus>(VanillaSourceManifest.Entries.Length);
+            var allOk = true;
+            foreach (var entry in VanillaSourceManifest.Entries)
+            {
+                var ok = VanillaSourceManifest.Probe(entry, _paths);
+                status.Sources.Add(new VanillaSourceStatus
+                {
+                    Key = entry.Key,
+                    Label = entry.Label,
+                    Description = entry.Description,
+                    DiskPath = entry.DiskPath(_paths),
+                    Ok = ok,
+                });
+                if (!ok) allOk = false;
+            }
+            status.HasVanillaSources = allOk;
 
             // Icons: at least one .png present is good enough - a partial
             // run from a previous failed extraction shouldn't trigger a
@@ -112,8 +116,11 @@ namespace Windrose.Quartermaster.Core
                     "\nInstall Windrose via Steam, or extract the JSONs / icons manually.");
             }
 
-            // Dump step - needed when Sources/Vanilla is empty, or when
-            // ForceAll is set.
+            // Dump step - needed when Sources/Vanilla is empty OR partial
+            // (any manifest entry probes false), or when ForceAll is set.
+            // Partial-Sources is the upgrade case: an older Quartermaster
+            // dumped 3 of 6 subtrees, the new version added 3 more, the
+            // user re-runs setup and the dumper tops up the missing ones.
             if (ForceAll || !status.HasVanillaSources)
             {
                 StepStart("dump", "Extracting vanilla item JSONs from the game pak");
@@ -188,12 +195,11 @@ namespace Windrose.Quartermaster.Core
     public sealed class SetupStatus
     {
         public bool IsReady;          // both Sources + Icons populated
-        public bool HasVanillaSources;        // = InventoryItems && LootTables
-        public bool HasVanillaInventoryItems;
-        public bool HasVanillaLootTables;
-        public bool HasVanillaRecipeLists;
-        public bool HasVanillaRecipes;
-        public bool HasVanillaInventoryCsv;
+        public bool HasVanillaSources;        // every manifest entry probes Ok
+        // Per-manifest-entry status, populated by Probe() in declaration
+        // order. The setup overlay renders one row per entry so the user
+        // sees exactly which vanilla subtree (or single file) is missing.
+        public List<VanillaSourceStatus> Sources;
         public bool HasIcons;
         public string IconsDir;
         public bool HasUsmap;
@@ -203,5 +209,17 @@ namespace Windrose.Quartermaster.Core
         public bool HasVanillaPak;
         public string VanillaPakPath;
         public string VanillaPakError;
+    }
+
+    // One probe result, mirroring a VanillaSourceManifestEntry. The fields
+    // are carried into the /api/setup/status JSON response so the frontend
+    // can render rows without re-knowing the manifest shape.
+    public sealed class VanillaSourceStatus
+    {
+        public string Key;
+        public string Label;
+        public string Description;
+        public string DiskPath;
+        public bool Ok;
     }
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
@@ -38,10 +40,27 @@ public static class SetupEndpoint
         {
             var runner = new SetupRunner(paths);
             var status = runner.Probe();
+            // Per-source rows are flattened to plain objects so the
+            // frontend can render one row per manifest entry without
+            // re-knowing the manifest shape. When a future Quartermaster
+            // release adds a new VanillaSourceManifestEntry, the entry
+            // appears in this array automatically and the overlay shows
+            // it as a new check row with no frontend change.
+            var sources = (status.Sources ?? new List<VanillaSourceStatus>())
+                .Select(s => new
+                {
+                    key = s.Key,
+                    label = s.Label,
+                    description = s.Description,
+                    diskPath = s.DiskPath,
+                    ok = s.Ok,
+                })
+                .ToArray();
             return Results.Json(new
             {
                 isReady = status.IsReady,
                 hasVanillaSources = status.HasVanillaSources,
+                sources = sources,
                 hasIcons = status.HasIcons,
                 iconsDir = status.IconsDir,
                 hasUsmap = status.HasUsmap,

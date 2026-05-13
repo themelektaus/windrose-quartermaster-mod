@@ -304,23 +304,45 @@ function hideSetupOverlay() {
 
 function renderSetupChecks(status) {
     const ul = document.getElementById('setup-checks');
-    const rows = [
-        ['hasVanillaPak',     'Windrose install detected via Steam',
-                              status.vanillaPakPath || status.vanillaPakError],
-        ['hasUsmap',          'UE5 mappings file (.usmap) in mod root',
-                              status.usmapPath || 'Drop a Ctrl+Num6 dump into the mod root.'],
-        ['hasVanillaSources', 'Vanilla item JSONs extracted',
-                              'Sources/Vanilla - produced by the dump step.'],
-        ['hasIcons',          'Item icons extracted',
-                              status.iconsDir + ' - produced by the icons step.'],
+    // Static prereq rows that are not part of the vanilla-source manifest:
+    // the Steam install (so we can find the pak), the usmap (so the icon
+    // extractor can read property names), and the icons folder (output
+    // of the icon-extraction step).
+    const staticRows = [
+        ['hasVanillaPak', 'Windrose install detected via Steam',
+                          status.vanillaPakPath || status.vanillaPakError],
+        ['hasUsmap',      'UE5 mappings file (.usmap) in mod root',
+                          status.usmapPath || 'Drop a Ctrl+Num6 dump into the mod root.'],
     ];
-    ul.innerHTML = rows.map(([key, label, detail]) => {
+    // Per-source rows are driven by the backend manifest. Each entry
+    // arrives with { key, label, description, diskPath, ok }. When the
+    // backend adds a new manifest entry in a future Quartermaster
+    // release, it shows up here as a new row automatically - no
+    // frontend change required. Users upgrading from a version that
+    // predates the new entry will see the row in the 'bad' state until
+    // they re-run setup.
+    const sources = Array.isArray(status.sources) ? status.sources : [];
+    const sourceRows = sources.map(s => {
+        const detail = s.description || s.diskPath || '';
+        return '<li class="' + (s.ok ? 'ok' : 'bad') + '">' +
+            '<div><b>' + esc(s.label || s.key) + '</b>' +
+            (detail ? '<br><small>' + esc(detail) + '</small>' : '') +
+            '</div></li>';
+    });
+    const staticHtml = staticRows.map(([key, label, detail]) => {
         const ok = !!status[key];
         return '<li class="' + (ok ? 'ok' : 'bad') + '">' +
             '<div><b>' + esc(label) + '</b>' +
             (detail ? '<br><small>' + esc(detail) + '</small>' : '') +
             '</div></li>';
-    }).join('');
+    });
+    // Icons row appended last so the user reads the list in pipeline
+    // order: install -> mappings -> source extracts -> icon extracts.
+    const iconsRow = '<li class="' + (status.hasIcons ? 'ok' : 'bad') + '">' +
+        '<div><b>' + esc('Item icons extracted') + '</b>' +
+        '<br><small>' + esc((status.iconsDir || '') + ' - produced by the icons step.') + '</small>' +
+        '</div></li>';
+    ul.innerHTML = staticHtml.concat(sourceRows).concat([iconsRow]).join('');
 }
 
 function renderSetupError(status) {

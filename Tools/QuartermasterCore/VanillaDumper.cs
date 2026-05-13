@@ -9,11 +9,14 @@ namespace Windrose.Quartermaster.Core
     // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
     // pak via repak.exe. Replaces Library/Dump.ps1 +
     // Dump-WindroseVanilla.ps1 - same repak invocation, same default
-    // paths, same "force overwrite" semantics. Five prefixes are extracted
-    // in sequence: InventoryItems (item defs), LootTables (drop pools),
-    // BuildingLimits (DA_BuildLimits_FastTravel.json + siblings), RecipeLists
-    // (per-NPC + per-station recipe rosters), and Recipes (the individual
-    // Cost+Result entries the lists reference).
+    // paths, same "force overwrite" semantics.
+    //
+    // The list of prefixes to extract is read from VanillaSourceManifest -
+    // adding a new required vanilla artifact to that manifest automatically
+    // teaches both this dumper (what to unpack) and SetupRunner.Probe()
+    // (what to check) about it. No more "extracted by Run() but not
+    // checked by Probe()" drift (which previously left BuildingLimits as
+    // an unchecked dependency for the bell-limits patcher).
     //
     // Auto-resolves repak.exe (download on first use) and the vanilla pak
     // (via Steam) when the corresponding inputs are null/empty.
@@ -77,25 +80,16 @@ namespace Windrose.Quartermaster.Core
                 LogLine("OutDir emptied");
             }
 
-            LogLine("Unpacking InventoryItems from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.InventoryItemsPath);
-
-            LogLine("Unpacking LootTables from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.LootTablesPath);
-
-            LogLine("Unpacking BuildingLimits from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.BuildingLimitsPath);
-
-            LogLine("Unpacking RecipeLists from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.RecipeListsPath);
-
-            LogLine("Unpacking Recipes from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.RecipesPath);
-
-            // Pak-internal file path (not a prefix) - repak treats `-i` as a
-            // prefix match so this still works for a single file.
-            LogLine("Unpacking InventoryItems CSV from pak");
-            RunRepakUnpack(repakExe, vanillaPak, outDir, WindroseGameSecrets.InventoryItemsCsvPath);
+            // Manifest-driven: every required vanilla artifact is one
+            // manifest entry, and we unpack them in declaration order so
+            // the log reads as a stable progression. Adding a new entry
+            // to VanillaSourceManifest is the ONLY change needed to make
+            // both this dumper and SetupRunner.Probe() aware of it.
+            foreach (var entry in VanillaSourceManifest.Entries)
+            {
+                LogLine("Unpacking " + entry.Label + " from pak (" + entry.PakIncludePath + ")");
+                RunRepakUnpack(repakExe, vanillaPak, outDir, entry.PakIncludePath);
+            }
 
             return Statistics(outDir);
         }
@@ -139,44 +133,69 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
+        // Walks every manifest entry's on-disk landing spot and produces a
+        // per-category file count plus an overall total - same shape as
+        // the old hand-rolled version, just driven from the manifest now.
+        // Single-file entries (e.g. the CSV) contribute exactly one row
+        // to the breakdown so they remain visible as a heartbeat.
         DumpResult Statistics(string outDir)
         {
-            var invRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
-                "Content", "InventoryItems");
-            var lootRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
-                "Content", "LootTables");
-            var buildLimitsRoot = Path.Combine(outDir, "R5", "Content",
-                "Gameplay", "BuildingLimits");
-            var recipeListsRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
-                "Content", "RecipeLists");
-            var recipesRoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules",
-                "Content", "Recipes");
-            var inventoryCsv = Path.Combine(outDir, "R5", "Content",
-                "Localization", "Data", "InventoryItems.csv");
-
             int totalCount = 0;
             var byCategory = new Dictionary<string, int>(StringComparer.Ordinal);
 
-            CollectStatistics(invRoot, "items", byCategory, ref totalCount);
-            CollectStatistics(lootRoot, "loot", byCategory, ref totalCount);
-            CollectStatistics(buildLimitsRoot, "buildlimits", byCategory, ref totalCount);
-            CollectStatistics(recipeListsRoot, "recipelists", byCategory, ref totalCount);
-            CollectStatistics(recipesRoot, "recipes", byCategory, ref totalCount);
-            // The CSV is a single file, so count it as one entry under a
-            // dedicated "loc" category - keeps the summary readable and
-            // serves as a heartbeat that the extractor succeeded for it.
-            if (File.Exists(inventoryCsv))
+            foreach (var entry in VanillaSourceManifest.Entries)
             {
-                byCategory["loc/InventoryItems.csv"] = 1;
-                totalCount++;
+                // Resolve the on-disk path for this entry, respecting
+                // OutDirOverride. The manifest stores DiskPath as a func of
+                // WindrosePaths whose defaults point to _paths.Vanilla/...;
+                // when the caller redirected the dumper to a different
+                // outDir, rewrite the prefix so stats reflect what was
+                // actually written.
+                var canonical = entry.DiskPath(_paths);
+                var root = RelocateToOutDir(canonical, outDir);
+
+                if (entry.ProbeKind == VanillaSourceProbeKind.SingleFile)
+                {
+                    if (File.Exists(root))
+                    {
+                        byCategory[entry.Key] = 1;
+                        totalCount++;
+                    }
+                    else
+                    {
+                        LogLine("[!] Expected file not produced: " + root);
+                    }
+                    continue;
+                }
+
+                CollectStatistics(root, entry.Key, byCategory, ref totalCount);
             }
 
             LogLine(totalCount + " JSON files extracted");
             foreach (var kv in byCategory.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
-                LogLine(string.Format("  {0,-25} {1,6}", kv.Key, kv.Value));
+                LogLine(string.Format("  {0,-32} {1,6}", kv.Key, kv.Value));
             }
             return new DumpResult { OutDir = outDir, FileCount = totalCount, ByCategory = byCategory };
+        }
+
+        // When OutDirOverride is set, the manifest's canonical disk path
+        // (which is computed from _paths.Vanilla) points to the WRONG
+        // place. Rewrite the prefix so stats land on the actual extraction
+        // target. No-op when outDir == _paths.Vanilla (the production case).
+        string RelocateToOutDir(string canonical, string outDir)
+        {
+            if (string.IsNullOrEmpty(canonical)) return canonical;
+            var defaultRoot = _paths.Vanilla;
+            // Normalize trailing separators so the prefix-match is robust
+            // against minor casing/separator differences from Path.Combine.
+            if (canonical.StartsWith(defaultRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                var tail = canonical.Substring(defaultRoot.Length).TrimStart(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return Path.Combine(outDir, tail);
+            }
+            return canonical;
         }
 
         // Walks one of the extracted prefix-trees and tallies a per-category
