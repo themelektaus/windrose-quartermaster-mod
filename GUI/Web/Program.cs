@@ -163,6 +163,12 @@ public static class Program
         SetupEndpoint.Map(app, resolvedRoot);
         ModsEndpoint.Map(app, resolvedRoot);
 
+        app.MapPost("/api/shutdown", (Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime) =>
+        {
+            lifetime.StopApplication();
+            return Microsoft.AspNetCore.Http.Results.Ok();
+        });
+
         return app;
     }
 

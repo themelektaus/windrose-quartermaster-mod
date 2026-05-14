@@ -1048,6 +1048,12 @@ function cssEsc(s) {
     return s.replace(/(["\\])/g, '\\$1');
 }
 
+async function onQuit() {
+    if (state.isDirty && !await confirm('Unsaved changes will be lost. Exit anyway?')) return;
+    await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+    document.body.innerHTML = '<div class="shutdown-info">Server stopped. This window can be closed.</div>';
+}
+
 function setFooterCollapsed(collapsed) {
     const footer = document.getElementById('footer');
     const btn    = document.getElementById('footer-toggle');
@@ -1071,6 +1077,7 @@ function bindHandlers() {
     document.getElementById('btn-save').addEventListener('click',      onSave);
     document.getElementById('btn-delete').addEventListener('click',    onDelete);
     document.getElementById('btn-build').addEventListener('click',     onBuild);
+    document.getElementById('btn-quit').addEventListener('click',      onQuit);
 
     document.getElementById('footer-toggle').addEventListener('click', () => {
         const isCollapsed = document.getElementById('footer').classList.contains('collapsed');

@@ -36,6 +36,7 @@
   --button-padding: .3em .7em;
   --input-padding: .3em .5em;
   --icon-size: 4.5em;
+  --header-side-width: 29rem;
 }
 
 ::-webkit-scrollbar {
@@ -104,7 +105,7 @@ header:has(.header-left) {
 }
 
 .header-left {
-  width: 27rem;
+  width: var(--header-side-width);
   display: flex;
   align-items: center;
   gap: .5em;
@@ -116,7 +117,7 @@ header:has(.header-left) {
   gap: .5em;
   justify-content: flex-end;
   align-items: center;
-  width: 27rem;;
+  width: var(--header-side-width);
 }
 
 #profile-select {
@@ -243,6 +244,7 @@ main {
   padding: 2em;
   height: 100%;
   min-height: 0;
+  flex: 1;
 }
 
 .no-profile-card {
@@ -274,6 +276,7 @@ main {
 
 body.no-profiles #tabs,
 body.no-profiles #profile-bar,
+body.no-profiles #tab-pages,
 body.no-profiles .tab-page {
   display: none !important;
 }
@@ -705,4 +708,12 @@ footer.collapsed .footer-body {
   color: var(--text-dim);
   text-align: center;
   font-size: var(--font-size-small);
+}
+
+.shutdown-info {
+  display: flex;
+  height: 100vh;
+  align-items:center;
+  justify-content: center;
+  color: var(--text-dim);
 }
