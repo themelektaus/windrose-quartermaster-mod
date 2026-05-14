@@ -1,0 +1,37 @@
+<div class="tab-page" data-tab="creator" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Item Creator</h2>
+      <p class="hint">
+        Add brand-new items to the game. Each custom item is cloned
+        from a vanilla template and gets its editable properties applied during build.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="creator-status-summary">
+        <dt>Custom items</dt><dd id="creator-stat-count">-</dd>
+        <dt>Templates available</dt><dd id="creator-stat-templates">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <p class="hint">
+        Items are added to the mod pak. They don't auto-spawn anywhere yet
+        - use the Loot Tables tab to drop them from mobs / containers,
+        or the Buyers/Sellers tabs to make NPCs trade them.
+      </p>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <button id="btn-creator-new" type="button" class="primary">New Item</button>
+      <span id="creator-count" class="item-count"></span>
+    </div>
+    <div id="creator-error" class="mods-error" hidden></div>
+    <ul id="creator-list" class="buyers-list"></ul>
+  </section>
+</div>

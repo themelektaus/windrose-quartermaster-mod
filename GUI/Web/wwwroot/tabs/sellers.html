@@ -1,0 +1,42 @@
+<div class="tab-page" data-tab="sellers" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Sellers</h2>
+      <p class="hint">
+        NPCs in the world that sell items to the player. Each card shows
+        one trade roster - what the NPC offers and the price (typically
+        piastres, sometimes guineas or barter goods).
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="sellers-status-summary">
+        <dt>Seller lists in vanilla</dt><dd id="sellers-stat-total">-</dd>
+        <dt>Total trade entries</dt><dd id="sellers-stat-entries">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <p class="hint">
+        Each entry is editable: type a new item id (autocompletes from
+        every vanilla item), change quantities, add requirements, or click
+        the X to remove an entry from the list. The reset arrow reverts a
+        single edit to its vanilla baseline; the + Add entry button appends
+        a brand-new custom recipe. All edits live on the current profile
+        and are baked into the pak on Build.
+      </p>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="sellers-filter" placeholder="Search" title="Filter sellers by faction, item id, or recipe id...">
+      <select id="sellers-filter-faction"><option value="">All factions</option></select>
+      <span id="sellers-count" class="item-count"></span>
+    </div>
+    <div id="sellers-error" class="mods-error" hidden></div>
+    <ul id="sellers-list" class="buyers-list"></ul>
+  </section>
+</div>

@@ -1,0 +1,42 @@
+<div class="tab-page" data-tab="buyers" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Buyers</h2>
+      <p class="hint">
+        NPCs in the world that purchase items from the player. Each card
+        shows one trade roster - what the NPC accepts and what they pay
+        in piastres.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="buyers-status-summary">
+        <dt>Buyer lists in vanilla</dt><dd id="buyers-stat-total">-</dd>
+        <dt>Total trade entries</dt><dd id="buyers-stat-entries">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <p class="hint">
+        Each entry is editable: type a new item id (autocompletes from
+        every vanilla item), change quantities, or click the X to remove
+        an entry from the list. The reset arrow reverts a single edit to
+        its vanilla baseline; the + Add entry button appends a brand-new
+        custom recipe. All edits live on the current profile and are
+        baked into the pak on Build.
+      </p>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="buyers-filter" placeholder="Search" title="Filter buyers by faction, item id, or recipe id...">
+      <select id="buyers-filter-faction"><option value="">All factions</option></select>
+      <span id="buyers-count" class="item-count"></span>
+    </div>
+    <div id="buyers-error" class="mods-error" hidden></div>
+    <ul id="buyers-list" class="buyers-list"></ul>
+  </section>
+</div>

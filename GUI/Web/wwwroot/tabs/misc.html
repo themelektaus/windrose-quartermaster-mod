@@ -1,0 +1,182 @@
+<div class="tab-page misc-page" data-tab="misc">
+  <aside class="pane misc">
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(stack-size.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Stack Size</h2>
+        <p class="hint">Global base for every item. Per-item overrides live on the Items tab.</p>
+        <fieldset id="stacksize-globals-misc">
+          <label class="radio-row">
+            <input type="radio" name="ssmode-misc" value="none" checked>
+            None
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="ssmode-misc" value="multiplier">
+            Relative
+          </label>
+          <div class="indent">
+            <label>Multiplier <input type="number" id="m-ss-mult" min="1" step="1" value="4" disabled></label>
+            <label>Cap (0 = none) <input type="number" id="m-ss-cap" min="0" step="1" value="0" disabled></label>
+          </div>
+          <label class="radio-row">
+            <input type="radio" name="ssmode-misc" value="absolute">
+            Absolute
+          </label>
+          <div class="indent">
+            <label>Value <input type="number" id="m-ss-abs" min="0" step="1" value="999" disabled></label>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(pickup-radius.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Pickup Radius</h2>
+        <p class="hint">Auto-pickup magnet range.</p>
+        <label class="check-row">
+          <input type="checkbox" id="pickup-enabled"> Enable pickup-radius patch
+        </label>
+        <div class="pickup-slider indent">
+          <input type="range" id="pickup-multiplier" min="1.0" max="10.0" step="0.1" value="2.0">
+          <span id="pickup-multiplier-value">2.0x</span><span id="pickup-range">8.0 m</span>
+        </div>
+        <p class="hint">
+          vanilla pickup radius: 4 m
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(fast-travel-bells.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Fast-Travel Bells</h2>
+        <p class="hint">Placement caps for fast-travel bells and signal fires.</p>
+        <div class="bell-row">
+          <label>
+            Bell cap
+            <input type="number" id="bell-cap" min="1" max="1000" step="1" value="10">
+          </label>
+          <label>
+            Signal-fire cap
+            <input type="number" id="signal-fire-cap" min="1" max="1000" step="1" value="3">
+          </label>
+        </div>
+        <p class="hint">
+          vanilla bells: 10<br>
+          vanilla signal fires: 3
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(building-stability.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Building Stability</h2>
+        <p class="hint">
+          Buildings stop becoming unstable: structures hold cantilevers and tall towers without collapsing.
+        </p>
+        <label class="check-row">
+          <input type="checkbox" id="building-stability-enabled">
+          Enhanced building stability
+        </label>
+        <p class="hint">
+          Single toggle: on bundles fixed values - off ships nothing.
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(minimap-range.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Minimap Range</h2>
+        <p class="hint">Scales the reveal-range fields.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="minimap-enabled">
+            Enable minimap-range patch
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="minimap-multiplier" min="1.0" max="5.0" step="0.1" value="2.0">
+            <span id="minimap-multiplier-value">2.0x</span>
+            <span id="minimap-foot-readout">5.0 m</span>
+            <span id="minimap-ship-readout">15.0 m</span>
+          </div>
+        </div>
+        <p class="hint">
+          vanilla foot reveal: 2.5 m<br>
+          vanilla ship height: 7.5 m
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(bonfire-radius.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Bonfire Radius</h2>
+        <p class="hint">
+          Scales the influence sphere around a placed building-center / bonfire so you can build farther from it.
+        </p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="bonfire-enabled">
+            Enable bonfire-radius patch
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="bonfire-multiplier" min="1.0" max="5.0" step="0.1" value="2.0">
+            <span id="bonfire-multiplier-value">2.0x</span>
+            <span id="bonfire-radius-readout">100 m</span>
+            <span id="bonfire-height-readout">60 m</span>
+          </div>
+        </div>
+        <p class="hint">
+          vanilla influence radius: 50 m<br>
+          vanilla influence height: 30 m
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(no-smoke.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>No Smoke</h2>
+        <p class="hint">
+          Hide the smoke / flame Niagara FX on selected craft stations and campsites.
+          Self-baked from vanilla: every EmitterHandle on the matching NiagaraSystem is flipped to disabled,
+          then re-packed into the shared IoStore triplet.
+        </p>
+        <div class="nosmoke-rows">
+          <label class="check-row">
+            <input type="checkbox" id="nosmoke-campfire">
+            Campfires &amp; Bonfires
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="nosmoke-furnace">
+            Furnaces
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="nosmoke-kiln">
+            Kilns
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="visibility: hidden; "></section>
+    <section class="card" style="visibility: hidden; "></section>
+  </aside>
+</div>

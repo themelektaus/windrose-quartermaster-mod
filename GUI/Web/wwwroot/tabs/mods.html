@@ -1,0 +1,49 @@
+<div class="tab-page" data-tab="mods" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Mods folder</h2>
+      <p class="hint">Windrose loads every <code>.pak</code> placed here when the game starts.</p>
+      <div id="mods-dir" class="mods-dir">-</div>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="mods-status-summary">
+        <dt>Total mods</dt><dd id="mods-stat-total">-</dd>
+        <dt>Built by Quartermaster</dt><dd id="mods-stat-owned">-</dd>
+        <dt>Foreign / external</dt><dd id="mods-stat-foreign">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>Setup</h2>
+      <p class="hint">
+        Re-open the first-run setup dialog to re-dump vanilla item JSONs or re-extract icon textures - useful after a game update.
+      </p>
+      <button id="btn-open-setup" type="button">Open setup</button>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <p class="hint">
+        Deleting a Quartermaster mod sends it to the Windows recycle bin - you can restore it from Explorer if needed.
+        Foreign mods are read-only; manage them with whatever tool installed them.
+      </p>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="mods-filter" placeholder="Search" title="Filter mods by filename...">
+      <select id="mods-filter-source">
+        <option value="all">All</option>
+        <option value="owned">Quartermaster only</option>
+        <option value="foreign">Foreign only</option>
+      </select>
+      <button id="mods-refresh" type="button">Refresh</button>
+      <span id="mods-count" class="item-count"></span>
+    </div>
+    <div id="mods-error" class="mods-error" hidden></div>
+    <ul id="mods-list" class="mods-list"></ul>
+  </section>
+</div>

@@ -178,7 +178,21 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
+const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'mods'];
+
+async function loadTabHtml() {
+    const host = document.getElementById('tab-pages');
+    if (!host) throw new Error('#tab-pages mount point missing in index.html');
+    const fragments = await Promise.all(TAB_NAMES.map(async name => {
+        const res = await fetch('tabs/' + name + '.html');
+        if (!res.ok) throw new Error('Failed to load tabs/' + name + '.html: HTTP ' + res.status);
+        return await res.text();
+    }));
+    host.innerHTML = fragments.join('\n');
+}
+
 async function boot() {
+    await loadTabHtml();
     bindSetupHandlers();
     bindHandlers();
 

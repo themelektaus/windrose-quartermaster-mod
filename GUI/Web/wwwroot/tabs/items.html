@@ -1,0 +1,54 @@
+<div class="tab-page" data-tab="items" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Base Stack Size</h2>
+      <fieldset id="stacksize-globals">
+        <label class="radio-row">
+          <input type="radio" name="ssmode" value="none" checked>
+          None
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="ssmode" value="multiplier">
+          Relative
+        </label>
+        <div class="indent">
+          <label>Multiplier <input type="number" id="ss-mult" min="1" step="1" value="4" disabled></label>
+          <label>Cap (0 = none) <input type="number" id="ss-cap" min="0" step="1" value="0" disabled></label>
+        </div>
+        <label class="radio-row">
+          <input type="radio" name="ssmode" value="absolute">
+          Absolute
+        </label>
+        <div class="indent">
+          <label>Value <input type="number" id="ss-abs" min="0" step="1" value="999" disabled></label>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="status-summary">
+        <dt>Items in vanilla</dt><dd id="stat-total">-</dd>
+        <dt>Per-item overrides</dt><dd id="stat-overrides">-</dd>
+        <dt>Will be modified</dt><dd id="stat-modified">-</dd>
+        <dt>Of which promoted</dt><dd id="stat-promoted">-</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="item-filter" placeholder="Search" title="Filter items by id or name...">
+      <select id="filter-class"><option value="">All classes</option></select>
+      <select id="filter-rarity"><option value="">All rarities</option></select>
+      <select id="filter-changed">
+        <option value="all">Show all</option>
+        <option value="changed">Only changed</option>
+        <option value="unchanged">Only unchanged</option>
+        <option value="overridden">Only overridden</option>
+      </select>
+      <span id="item-count" class="item-count"></span>
+    </div>
+    <ul id="item-list" class="item-list"></ul>
+  </section>
+</div>

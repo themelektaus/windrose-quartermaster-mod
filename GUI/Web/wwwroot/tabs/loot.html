@@ -1,0 +1,33 @@
+<div class="tab-page" data-tab="loot" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Loot Multipliers</h2>
+      <p class="hint">Per-category factor applied to Min and Max of every entry. Leave blank for vanilla.</p>
+      <div id="loot-globals" class="loot-globals"></div>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="loot-status-summary">
+        <dt>Loot tables in vanilla</dt><dd id="lt-stat-total">-</dd>
+        <dt>Per-LT overrides</dt><dd id="lt-stat-overrides">-</dd>
+        <dt>Will be modified</dt><dd id="lt-stat-modified">-</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="lt-filter" placeholder="Search" title="Filter by table id, item id, item name, sub-table id...">
+      <select id="lt-filter-category"><option value="">All categories</option></select>
+      <select id="lt-filter-type"><option value="">All types</option></select>
+      <select id="lt-filter-changed">
+        <option value="all">Show all</option>
+        <option value="changed">Only changed</option>
+        <option value="overridden">Only overridden</option>
+      </select>
+      <span id="lt-count" class="item-count"></span>
+    </div>
+    <ul id="lt-list" class="lt-list"></ul>
+  </section>
+</div>
