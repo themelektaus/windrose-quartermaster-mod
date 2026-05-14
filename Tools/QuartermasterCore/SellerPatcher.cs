@@ -133,7 +133,8 @@ namespace Windrose.Quartermaster.Core
                 var listId = kv.Key;
                 var ovr = kv.Value;
                 if (string.IsNullOrEmpty(listId) || ovr == null) continue;
-                if ((ovr.AddedRecipeIds == null || ovr.AddedRecipeIds.Count == 0)
+                if (ovr.RecipeOrder == null
+                    && (ovr.AddedRecipeIds == null || ovr.AddedRecipeIds.Count == 0)
                     && (ovr.RemovedRecipeIds == null || ovr.RemovedRecipeIds.Count == 0))
                     continue;
 
@@ -323,38 +324,58 @@ namespace Windrose.Quartermaster.Core
                 return;
             }
 
-            var removed = ovr.RemovedRecipeIds != null
-                ? new HashSet<string>(ovr.RemovedRecipeIds, StringComparer.OrdinalIgnoreCase)
-                : null;
             var newArr = new JsonArray();
-            foreach (var refNode in vanillaRefs)
+            if (ovr.RecipeOrder != null)
             {
-                if (!(refNode is JsonValue refVal)) continue;
-                var refStr = refVal.GetValue<string>();
-                if (string.IsNullOrEmpty(refStr)) continue;
-                var basename = AssetPathToBasename(refStr);
-                if (removed != null && removed.Contains(basename))
-                {
-                    result.RefsRemoved++;
-                    continue;
-                }
-                newArr.Add(refStr);
-            }
-
-            if (ovr.AddedRecipeIds != null)
-            {
-                foreach (var id in ovr.AddedRecipeIds)
+                // Definitive-order mode: output exactly what RecipeOrder says.
+                foreach (var id in ovr.RecipeOrder)
                 {
                     if (string.IsNullOrEmpty(id)) continue;
                     var assetPath = ResolveAddedRecipeAssetPath(id, recipeMap);
                     if (assetPath == null)
                     {
-                        result.Warnings.Add("Added seller recipe id '" + id
-                            + "' (in list '" + listId + "') could not be resolved - skipping ref.");
+                        result.Warnings.Add("Ordered seller recipe id '" + id
+                            + "' (in list '" + listId + "') could not be resolved - skipping.");
                         continue;
                     }
                     newArr.Add(assetPath);
                     result.RefsAdded++;
+                }
+            }
+            else
+            {
+                // Legacy mode: vanilla refs minus removed, then appended ids.
+                var removed = ovr.RemovedRecipeIds != null
+                    ? new HashSet<string>(ovr.RemovedRecipeIds, StringComparer.OrdinalIgnoreCase)
+                    : null;
+                foreach (var refNode in vanillaRefs)
+                {
+                    if (!(refNode is JsonValue refVal)) continue;
+                    var refStr = refVal.GetValue<string>();
+                    if (string.IsNullOrEmpty(refStr)) continue;
+                    var basename = AssetPathToBasename(refStr);
+                    if (removed != null && removed.Contains(basename))
+                    {
+                        result.RefsRemoved++;
+                        continue;
+                    }
+                    newArr.Add(refStr);
+                }
+                if (ovr.AddedRecipeIds != null)
+                {
+                    foreach (var id in ovr.AddedRecipeIds)
+                    {
+                        if (string.IsNullOrEmpty(id)) continue;
+                        var assetPath = ResolveAddedRecipeAssetPath(id, recipeMap);
+                        if (assetPath == null)
+                        {
+                            result.Warnings.Add("Added seller recipe id '" + id
+                                + "' (in list '" + listId + "') could not be resolved - skipping ref.");
+                            continue;
+                        }
+                        newArr.Add(assetPath);
+                        result.RefsAdded++;
+                    }
                 }
             }
 

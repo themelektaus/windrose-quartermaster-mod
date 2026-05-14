@@ -500,6 +500,7 @@ public static class ProfilesEndpoint
             {
                 AddedRecipeIds = v.AddedRecipeIds == null ? null : new List<string>(v.AddedRecipeIds),
                 RemovedRecipeIds = v.RemovedRecipeIds == null ? null : new List<string>(v.RemovedRecipeIds),
+                RecipeOrder = v.RecipeOrder == null ? null : new List<string>(v.RecipeOrder),
             };
         }
         return result;
@@ -519,6 +520,7 @@ public static class ProfilesEndpoint
             {
                 AddedRecipeIds = v.AddedRecipeIds == null ? null : new List<string>(v.AddedRecipeIds),
                 RemovedRecipeIds = v.RemovedRecipeIds == null ? null : new List<string>(v.RemovedRecipeIds),
+                RecipeOrder = v.RecipeOrder == null ? null : new List<string>(v.RecipeOrder),
             };
         }
         return result;

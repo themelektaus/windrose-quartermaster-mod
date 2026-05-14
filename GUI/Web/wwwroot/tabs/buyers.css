@@ -247,7 +247,7 @@
 }
 
 .buyer-row-actions {
-  width: 4em;
+  width: 7em;
   white-space: nowrap;
   text-align: right;
 }
@@ -273,6 +273,14 @@
 
 .buyer-row-actions .buyer-restore:hover {
   color: var(--success);
+}
+
+.buyer-row-actions .buyer-move {
+  font-size: .75rem;
+}
+
+.buyer-row-actions .buyer-move:hover {
+  color: var(--accent);
 }
 
 .buyer-card-footer {

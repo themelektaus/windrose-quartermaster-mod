@@ -494,6 +494,13 @@ namespace Windrose.Quartermaster.Core
         // against the trailing segment of each vanilla ref (after the last
         // '/' and trimmed of any ".AssetName" suffix).
         public List<string> RemovedRecipeIds;
+
+        // Definitive output order when set. Contains all IDs (vanilla
+        // basenames + QM_Custom_* custom ids) that should appear in the
+        // rebuilt RecipeList, in the desired sequence. Vanilla IDs absent
+        // from this list are implicitly removed. null = use legacy mode
+        // (iterate vanilla minus RemovedRecipeIds, then append AddedRecipeIds).
+        public List<string> RecipeOrder;
     }
 
     // Edit-spec for a single R5BLRecipeList JSON on the Sellers side
@@ -511,5 +518,10 @@ namespace Windrose.Quartermaster.Core
 
         // Recipe basenames to strip from the vanilla RecipeList[].
         public List<string> RemovedRecipeIds;
+
+        // Definitive output order when set. Mirrors BuyerListOverride.RecipeOrder
+        // but for the seller side (QM_SCustom_* prefix for custom ids).
+        // null = use legacy mode.
+        public List<string> RecipeOrder;
     }
 }

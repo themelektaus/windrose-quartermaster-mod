@@ -80,11 +80,30 @@ function buildBuyerCardHtml(b) {
         ? new Set(listOvr.removedRecipeIds)
         : new Set();
     const addedIds = (listOvr && listOvr.addedRecipeIds) || [];
+    const recipeOrder = listOvr && listOvr.recipeOrder;
 
     const entries = b.entries || [];
-    const vanillaRows = entries.map(e => buildBuyerEntryRowHtml(b.id, e, removedSet.has(e.recipeId)));
-    const addedRows = addedIds.map(id => buildBuyerAddedRowHtml(b.id, id));
-    const allRows = vanillaRows.concat(addedRows);
+    let allRows;
+
+    if (recipeOrder) {
+        const vanillaMap = new Map(entries.map(e => [e.recipeId, e]));
+        const orderedRows = recipeOrder
+            .map(id => {
+                const ve = vanillaMap.get(id);
+                if (ve) return buildBuyerEntryRowHtml(b.id, ve, false);
+                if (id.startsWith('QM_Custom_')) return buildBuyerAddedRowHtml(b.id, id);
+                return '';
+            })
+            .filter(r => r !== '');
+        const removedRows = entries
+            .filter(e => removedSet.has(e.recipeId))
+            .map(e => buildBuyerEntryRowHtml(b.id, e, true));
+        allRows = orderedRows.concat(removedRows);
+    } else {
+        const vanillaRows = entries.map(e => buildBuyerEntryRowHtml(b.id, e, removedSet.has(e.recipeId)));
+        const addedRows = addedIds.map(id => buildBuyerAddedRowHtml(b.id, id));
+        allRows = vanillaRows.concat(addedRows);
+    }
 
     const rows = allRows.length === 0
         ? '<tr><td colspan="6" class="buyer-empty-row">(no entries)</td></tr>'
@@ -138,6 +157,13 @@ function countEditedInBuyer(b) {
     return n;
 }
 
+function buildBuyerMoveHtml(buyerId, recipeId) {
+    return '<button class="btn-link buyer-move" data-buyer-move="'
+        + esc(buyerId) + '|' + esc(recipeId) + '|-1" title="Move up">&#x25B2;</button>'
+        + '<button class="btn-link buyer-move" data-buyer-move="'
+        + esc(buyerId) + '|' + esc(recipeId) + '|1" title="Move down">&#x25BC;</button>';
+}
+
 function buildBuyerEntryRowHtml(buyerId, e, removed) {
     if (!e.resolved) {
         return '<tr class="buyer-row unresolved">'
@@ -161,15 +187,18 @@ function buildBuyerEntryRowHtml(buyerId, e, removed) {
         ? ovr.craftRequirement
         : (e.craftRequirement || 'None');
 
+    const moveHtml = removed ? '' : buildBuyerMoveHtml(buyerId, e.recipeId);
     const actionBtn = removed
         ? '<button class="btn-link buyer-restore" data-buyer-restore="' + esc(buyerId)
             + '|' + esc(e.recipeId) + '" title="Restore">&#x21BA;</button>'
         : (ovr
-            ? '<button class="btn-link buyer-reset" data-buyer-reset="' + esc(e.recipeId)
+            ? moveHtml
+                + '<button class="btn-link buyer-reset" data-buyer-reset="' + esc(e.recipeId)
                 + '" title="Reset to vanilla">&#x21B6;</button>'
                 + '<button class="btn-link buyer-delete" data-buyer-delete="' + esc(buyerId)
                 + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>'
-            : '<button class="btn-link buyer-delete" data-buyer-delete="' + esc(buyerId)
+            : moveHtml
+                + '<button class="btn-link buyer-delete" data-buyer-delete="' + esc(buyerId)
                 + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>');
 
     const disabledAttr = removed ? ' disabled' : '';
@@ -224,6 +253,7 @@ function buildBuyerAddedRowHtml(buyerId, recipeId) {
          +   '</td>'
          +   '<td class="buyer-req">' + buildRequirementSelectHtml(requirement, recipeId, '') + '</td>'
          +   '<td class="buyer-row-actions">'
+         +     buildBuyerMoveHtml(buyerId, recipeId)
          +     '<button class="btn-link buyer-delete" data-buyer-delete-added="'
          +       esc(buyerId) + '|' + esc(recipeId) + '" title="Delete added entry">&#x2715;</button>'
          +   '</td>'
@@ -330,14 +360,44 @@ function pruneBuyerListOverride(buyerId) {
     if (!state.current || !state.current.buyerLists) return;
     const lo = state.current.buyerLists[buyerId];
     if (!lo) return;
-    const emptyAdd = !lo.addedRecipeIds || lo.addedRecipeIds.length === 0;
-    const emptyRem = !lo.removedRecipeIds || lo.removedRecipeIds.length === 0;
-    if (emptyAdd && emptyRem) {
+    const emptyAdd   = !lo.addedRecipeIds   || lo.addedRecipeIds.length   === 0;
+    const emptyRem   = !lo.removedRecipeIds || lo.removedRecipeIds.length === 0;
+    const hasOrder   = Array.isArray(lo.recipeOrder);
+    if (emptyAdd && emptyRem && !hasOrder) {
         delete state.current.buyerLists[buyerId];
     }
-    if (Object.keys(state.current.buyerLists).length === 0) {
+    if (state.current.buyerLists && Object.keys(state.current.buyerLists).length === 0) {
         delete state.current.buyerLists;
     }
+}
+
+function materializeBuyerRecipeOrder(buyerId) {
+    const buyer = state.buyers.list.find(b => b.id === buyerId);
+    if (!buyer) return null;
+    const lo = getOrCreateBuyerListOverride(buyerId);
+    if (!lo) return null;
+    if (!lo.recipeOrder) {
+        const removedSet = new Set(lo.removedRecipeIds || []);
+        const vanillaIds = (buyer.entries || [])
+            .filter(e => e.resolved && !removedSet.has(e.recipeId))
+            .map(e => e.recipeId);
+        lo.recipeOrder = vanillaIds.concat(lo.addedRecipeIds || []);
+    }
+    return lo;
+}
+
+function moveBuyerEntry(buyerId, recipeId, delta) {
+    const lo = materializeBuyerRecipeOrder(buyerId);
+    if (!lo || !lo.recipeOrder) return;
+    const arr = lo.recipeOrder;
+    const idx = arr.indexOf(recipeId);
+    if (idx < 0) return;
+    const newIdx = idx + delta;
+    if (newIdx < 0 || newIdx >= arr.length) return;
+    arr.splice(idx, 1);
+    arr.splice(newIdx, 0, recipeId);
+    markDirty();
+    refreshBuyerCard(buyerId);
 }
 
 function setBuyerEntryField(buyerId, recipeId, field, rawValue) {
@@ -376,8 +436,15 @@ function toggleRemoveBuyerEntry(buyerId, recipeId) {
     const idx = lo.removedRecipeIds.indexOf(recipeId);
     if (idx >= 0) {
         lo.removedRecipeIds.splice(idx, 1);
+        if (lo.recipeOrder && !lo.recipeOrder.includes(recipeId)) {
+            lo.recipeOrder.push(recipeId);
+        }
     } else {
         lo.removedRecipeIds.push(recipeId);
+        if (lo.recipeOrder) {
+            const orderIdx = lo.recipeOrder.indexOf(recipeId);
+            if (orderIdx >= 0) lo.recipeOrder.splice(orderIdx, 1);
+        }
     }
     pruneBuyerListOverride(buyerId);
     markDirty();
@@ -400,6 +467,10 @@ function removeAddedBuyerEntry(buyerId, recipeId) {
     if (lo && lo.addedRecipeIds) {
         const idx = lo.addedRecipeIds.indexOf(recipeId);
         if (idx >= 0) lo.addedRecipeIds.splice(idx, 1);
+    }
+    if (lo && lo.recipeOrder) {
+        const orderIdx = lo.recipeOrder.indexOf(recipeId);
+        if (orderIdx >= 0) lo.recipeOrder.splice(orderIdx, 1);
     }
     pruneBuyerListOverride(buyerId);
     if (state.current && state.current.buyerRecipes) {
@@ -427,6 +498,7 @@ function addBuyerEntry(buyerId) {
         isCustom: true,
     };
     lo.addedRecipeIds.push(id);
+    if (lo.recipeOrder) lo.recipeOrder.push(id);
     markDirty();
     refreshBuyerCard(buyerId);
 }
@@ -434,10 +506,15 @@ function addBuyerEntry(buyerId) {
 function onBuyersListClick(e) {
     const t = e.target.closest && e.target.closest(
         '[data-buyer-add],[data-buyer-delete],[data-buyer-delete-added],'
-        + '[data-buyer-restore],[data-buyer-reset]');
+        + '[data-buyer-restore],[data-buyer-reset],[data-buyer-move]');
     if (!t) return;
     if (t.dataset.buyerAdd) {
         addBuyerEntry(t.dataset.buyerAdd);
+        return;
+    }
+    if (t.dataset.buyerMove) {
+        const [buyerId, recipeId, deltaStr] = t.dataset.buyerMove.split('|');
+        moveBuyerEntry(buyerId, recipeId, parseInt(deltaStr, 10));
         return;
     }
     if (t.dataset.buyerDelete) {
