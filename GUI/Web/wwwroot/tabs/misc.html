@@ -150,6 +150,32 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(pickaxe-range.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Pickaxe Range</h2>
+        <p class="hint">
+          Scales the trace-scale modifier on each pickaxe tier so you can chop nodes from slightly further away.
+        </p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="pickaxe-enabled">
+            Enable pickaxe-range patch
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="pickaxe-multiplier" min="1.0" max="3.0" step="0.1" value="1.4">
+            <span id="pickaxe-multiplier-value">1.4x</span>
+            <span id="pickaxe-readout">+40%</span>
+          </div>
+        </div>
+        <p class="hint">
+          vanilla trace scale: 1.0 (per tier T00-T03)
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(no-smoke.png); "></div>
       </div>
       <div class="card-content">

@@ -222,6 +222,30 @@ public static class BuildEndpoint
                         },
                     };
                 }
+                // Pickaxe-range: when active, ships 4 patched tier
+                // InstanceParams DataAssets inside the shared IoStore
+                // triplet. Carries per-tier vanilla + effective
+                // TraceScaleModifier for the build-log line.
+                object pickaxeRangeInfo = null;
+                if (result.PickaxeRangeResult != null)
+                {
+                    var pr = result.PickaxeRangeResult;
+                    pickaxeRangeInfo = new
+                    {
+                        multiplier = pr.Multiplier,
+                        ucasPath = pr.UcasPath,
+                        utocPath = pr.UtocPath,
+                        tiers = pr.AssetResults == null
+                            ? null
+                            : pr.AssetResults.Select(ar => new
+                            {
+                                stem = ar.AssetStem,
+                                vanilla = ar.VanillaTraceScaleModifier,
+                                effective = ar.EffectiveTraceScaleModifier,
+                                added = ar.Added,
+                            }).ToArray(),
+                    };
+                }
                 // NoSmoke surfaces the active categories + per-asset patch
                 // counts so the frontend can render "Campfire, Furnace
                 // (5 assets, 38 emitter handles silenced)". null = no
@@ -277,6 +301,7 @@ public static class BuildEndpoint
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,
                     bonfireRadius = bonfireRadiusInfo,
+                    pickaxeRange = pickaxeRangeInfo,
                     log,
                 });
             }

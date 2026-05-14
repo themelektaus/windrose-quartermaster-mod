@@ -357,6 +357,12 @@ public static class ProfilesEndpoint
                 {
                     Multiplier = g.BonfireRadius.Multiplier,
                 },
+            PickaxeRange = g.PickaxeRange == null
+                ? null
+                : new PickaxeRangeGlobal
+                {
+                    Multiplier = g.PickaxeRange.Multiplier,
+                },
         };
     }
 
@@ -592,6 +598,15 @@ public static class ProfilesEndpoint
                                      && p.Globals.BonfireRadius != null
                                      && p.Globals.BonfireRadius.Multiplier.HasValue
                                      && Math.Abs(p.Globals.BonfireRadius.Multiplier.Value - 1.0) > 1e-9,
+            // True when Pickaxe-range is configured with a multiplier
+            // > 1.0 (1.0 / null collapses to "no pickaxe mod"). The
+            // build then patches TraceScaleModifier on each pickaxe tier's
+            // InstanceParams DataAsset and ships the result in the shared
+            // IoStore composite triplet alongside Pickup / Bonfire / NoSmoke.
+            hasGlobalPickaxeRange = p.Globals != null
+                                    && p.Globals.PickaxeRange != null
+                                    && p.Globals.PickaxeRange.Multiplier.HasValue
+                                    && Math.Abs(p.Globals.PickaxeRange.Multiplier.Value - 1.0) > 1e-9,
         };
     }
 

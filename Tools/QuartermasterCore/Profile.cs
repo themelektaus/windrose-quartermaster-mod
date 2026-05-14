@@ -87,6 +87,7 @@ namespace Windrose.Quartermaster.Core
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
         public BonfireRadiusGlobal BonfireRadius;
+        public PickaxeRangeGlobal PickaxeRange;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -250,6 +251,33 @@ namespace Windrose.Quartermaster.Core
     {
         // Final scaling factor applied to both vanilla influence floats.
         // null OR == 1.0 -> no bonfire patch is built for this profile.
+        public double? Multiplier;
+    }
+
+    // Pickaxe range / reach patch. Multiplies the TraceScaleModifier on each
+    // pickaxe tier's InstanceParams DataAsset so the melee trace shapes grow
+    // proportionally - in practice that means the player can chop nodes from
+    // slightly further away. Mirrors the UE4SS reference mod "Pickaxe Range"
+    // but only its TraceScaleModifier axis (variant A): the shared trace
+    // DataAssets and the deeply nested SectionsData/FoliagePrediction trace
+    // entries are left at vanilla, since the engine multiplies them by the
+    // top-level TraceScaleModifier at hit-resolution time anyway.
+    //
+    // Four assets are patched in one shot (one per tier):
+    //   T00 Stone   - DA_MeleeWpn_Pickaxe_T00_Stone_InstanceParams
+    //   T01 Crude   - DA_MeleeWpn_Pickaxe_T01_Crude_InstanceParams
+    //   T02 Regular - DA_MeleeWpn_Pickaxe_T02_Regular_InstanceParams
+    //   T03 Reliable- DA_MeleeWpn_Pickaxe_T03_Reliable_InstanceParams
+    //
+    // The patch ships in the shared IoStore composite triplet
+    // (sharedBaseName.ucas/utoc) alongside Pickup / Bonfire / NoSmoke.
+    //
+    // null OR Multiplier == 1.0 -> no pickaxe-range patch is built for this
+    // profile. Same null-collapse pattern as the other multiplier globals.
+    public sealed class PickaxeRangeGlobal
+    {
+        // Final scaling factor applied to each tier's vanilla
+        // TraceScaleModifier. null OR == 1.0 -> no patch is built.
         public double? Multiplier;
     }
 

@@ -95,6 +95,22 @@ function syncBonfireReadout() {
     document.getElementById('bonfire-height-readout').textContent = (mul * 30).toFixed(0) + ' m'
 }
 
+function syncPickaxeInputState() {
+    const enabled = document.getElementById('pickaxe-enabled');
+    const slider  = document.getElementById('pickaxe-multiplier');
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
+}
+
+function syncPickaxeReadout() {
+    const slider = document.getElementById('pickaxe-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('pickaxe-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    const pct = (mul - 1.0) * 100.0;
+    const sign = pct >= 0 ? '+' : '';
+    document.getElementById('pickaxe-readout').textContent = sign + pct.toFixed(0) + '%';
+}
+
 function setStackSizeFromUI(srcEvt) {
     if (!state.current) return;
     let src = STACK_SIZE_SETS[0];
@@ -212,6 +228,21 @@ function setBonfireRadiusFromUI() {
     markDirty();
 }
 
+function setPickaxeRangeFromUI() {
+    if (!state.current) return;
+    syncPickaxeReadout();
+    syncPickaxeInputState();
+    const enabled = document.getElementById('pickaxe-enabled').checked;
+    const mul = parseFloat(document.getElementById('pickaxe-multiplier').value);
+    state.current.globals = state.current.globals || {};
+    if (!enabled || !isFinite(mul) || Math.abs(mul - 1.0) < 1e-9) {
+        delete state.current.globals.pickaxeRange;
+    } else {
+        state.current.globals.pickaxeRange = { multiplier: mul };
+    }
+    markDirty();
+}
+
 function setNoSmokeFromUI() {
     if (!state.current) return;
     const c = document.getElementById('nosmoke-campfire').checked;
@@ -252,4 +283,6 @@ function bindMiscHandlers() {
     document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
     document.getElementById('bonfire-enabled').addEventListener('change', setBonfireRadiusFromUI);
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);
+    document.getElementById('pickaxe-enabled').addEventListener('change', setPickaxeRangeFromUI);
+    document.getElementById('pickaxe-multiplier').addEventListener('input', setPickaxeRangeFromUI);
 }

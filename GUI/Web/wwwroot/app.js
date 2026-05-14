@@ -560,6 +560,13 @@ function applyProfileToUI() {
     document.getElementById('bonfire-multiplier').value =
         bonfireOn ? bonfireMul : 2.0;
     syncBonfireReadout();
+    const pxr = (p.globals && p.globals.pickaxeRange) || null;
+    const pickaxeMul = pxr && pxr.multiplier != null ? pxr.multiplier : null;
+    const pickaxeOn = pickaxeMul != null && Math.abs(pickaxeMul - 1.0) > 1e-9;
+    document.getElementById('pickaxe-enabled').checked = pickaxeOn;
+    document.getElementById('pickaxe-multiplier').value =
+        pickaxeOn ? pickaxeMul : 1.4;
+    syncPickaxeReadout();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -567,6 +574,7 @@ function applyProfileToUI() {
     syncNoSmokeInputState();
     syncMinimapInputState();
     syncBonfireInputState();
+    syncPickaxeInputState();
     renderProfileMeta();
 }
 
@@ -940,8 +948,23 @@ async function onBuild() {
                     + ' -> ' + bo.effective.influenceRadius + '/' + bo.effective.influenceHeight
                     + ' cm)' });
             }
+            if (data.pickaxeRange) {
+                const px = data.pickaxeRange;
+                const mul = (px.multiplier || 1.0).toFixed(2);
+                const tierCount = px.tiers ? px.tiers.length : 0;
+                let summary = 'DONE - pickaxe range patched (' + mul + 'x; '
+                    + tierCount + ' tier' + (tierCount === 1 ? '' : 's');
+                if (tierCount > 0) {
+                    const sample = px.tiers[0];
+                    summary += ', TraceScaleModifier ' + sample.vanilla.toFixed(2)
+                        + ' -> ' + sample.effective.toFixed(2);
+                }
+                summary += ')';
+                lines.push({ kind: 'ok', msg: summary });
+            }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange && !data.bonfireRadius) {
+                && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
+                && !data.pickaxeRange) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {

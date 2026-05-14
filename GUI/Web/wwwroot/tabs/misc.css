@@ -126,7 +126,8 @@ fieldset .indent input[type="number"] {
 
 #pickup-multiplier-value,
 #minimap-multiplier-value,
-#bonfire-multiplier-value {
+#bonfire-multiplier-value,
+#pickaxe-multiplier-value {
   background-color: var(--warn);
   color: var(--bg);
   border-radius: var(--border-radius);
@@ -140,7 +141,8 @@ fieldset .indent input[type="number"] {
 #minimap-foot-readout,
 #minimap-ship-readout,
 #bonfire-radius-readout,
-#bonfire-height-readout {
+#bonfire-height-readout,
+#pickaxe-readout {
   color: var(--text-dim);
   border-radius: var(--border-radius);
   width: 4em;

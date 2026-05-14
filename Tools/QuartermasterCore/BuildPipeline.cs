@@ -349,11 +349,13 @@ namespace Windrose.Quartermaster.Core
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
                 double bonfireMultiplier = ResolveBonfireMultiplier(profile);
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
+                double pickaxeMultiplier = ResolvePickaxeRangeMultiplier(profile);
+                bool pickaxeActive = pickaxeMultiplier > 0.0 && Math.Abs(pickaxeMultiplier - 1.0) > 1e-9;
                 // iconBakeJobs was resolved earlier (before ItemCreator);
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || iconsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || iconsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -375,19 +377,22 @@ namespace Windrose.Quartermaster.Core
                 PickupTripletResult pickupResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
+                PickaxeRangeResult pickaxeResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || iconsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || iconsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
+                        pickaxeMultiplier, pickaxeActive,
                         iconBakeJobs,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
+                    pickaxeResult = compositeResult.PickaxeRange;
                     iconBakeResults = compositeResult.Icons;
                 }
 
@@ -451,6 +456,7 @@ namespace Windrose.Quartermaster.Core
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
                     BonfireResult = bonfireResult,
+                    PickaxeRangeResult = pickaxeResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -503,6 +509,7 @@ namespace Windrose.Quartermaster.Core
             double pickupMultiplier, bool pickupActive,
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
+            double pickaxeMultiplier, bool pickaxeActive,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
@@ -615,6 +622,56 @@ namespace Windrose.Quartermaster.Core
                             legacyAssetPath, legacyAssetPath, usmapPath, bonfireMultiplier);
                     },
                 });
+            }
+
+            // Pickaxe-range: patches TraceScaleModifier on every pickaxe tier
+            // (4 InstanceParams DataAssets). Each tier rides as an individual
+            // source so retoc to-legacy's --filter targets just that file -
+            // grouping all four under one source would also work (retoc OR-
+            // matches repeated --filter flags) but separating them keeps the
+            // build log self-explanatory: one log line per tier showing the
+            // before/after TraceScaleModifier value.
+            var pickaxePatchResults = new List<PickaxeRangePatchResult>();
+            if (pickaxeActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("PickaxeRange source: vanilla pickaxe InstanceParams"
+                        + " (multiplier=" + pickaxeMultiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", " + PickaxeRangePatcher.TierAssets.Count + " tier"
+                        + (PickaxeRangePatcher.TierAssets.Count == 1 ? "" : "s") + ")");
+
+                // One filter per tier; one AfterExtract callback per source.
+                // Capturing the stem+vpath in a local prevents the lambda
+                // from closing over the loop variable's identity (subtle
+                // bug-trap if foreach captures the same slot in older C#).
+                foreach (var kv in PickaxeRangePatcher.TierAssets)
+                {
+                    var stem = kv.Key;
+                    var virtualPath = kv.Value;
+                    sources.Add(new IoStoreCompositeSource
+                    {
+                        Name = "pickaxe:" + stem,
+                        InputDir = gamePaksDir,
+                        Filter = stem,
+                        AfterExtract = stagingDir =>
+                        {
+                            var legacyAssetPath = Path.Combine(stagingDir,
+                                virtualPath.Replace('/', Path.DirectorySeparatorChar));
+                            if (!File.Exists(legacyAssetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    "retoc to-legacy did not produce the expected pickaxe asset at "
+                                    + legacyAssetPath
+                                    + " - the game container may have moved the asset, or "
+                                    + "the filter '" + stem + "' is wrong.");
+                            }
+                            var patcher = new PickaxeRangePatcher { Log = Log };
+                            var r = patcher.Patch(
+                                legacyAssetPath, legacyAssetPath, usmapPath, pickaxeMultiplier);
+                            pickaxePatchResults.Add(r);
+                        },
+                    });
+                }
             }
 
             NoSmokeResult noSmokeOut = null;
@@ -785,11 +842,26 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            PickaxeRangeResult pickaxeOut = null;
+            if (pickaxeActive)
+            {
+                pickaxeOut = new PickaxeRangeResult
+                {
+                    Enabled = true,
+                    Multiplier = pickaxeMultiplier,
+                    AssetResults = pickaxePatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
+                PickaxeRange = pickaxeOut,
                 Icons = iconResults,
             };
         }
@@ -801,6 +873,7 @@ namespace Windrose.Quartermaster.Core
             public PickupTripletResult Pickup;
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
+            public PickaxeRangeResult PickaxeRange;
             public List<IconBakerPatcher.BakeResult> Icons;
         }
 
@@ -1240,6 +1313,18 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        // Resolves the effective pickaxe-range multiplier (applied to each
+        // tier's TraceScaleModifier). 1.0 (default) means "no pickaxe patch
+        // ships" - same null/1.0 collapse pattern as the other multiplier
+        // globals.
+        static double ResolvePickaxeRangeMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.PickaxeRange == null) return 1.0;
+            var pr = profile.Globals.PickaxeRange;
+            if (pr.Multiplier.HasValue) return pr.Multiplier.Value;
+            return 1.0;
+        }
+
         // Returns the list of NoSmoke categories the profile has actively
         // enabled (in declaration order: Campfire, Furnace, Kiln). Empty
         // list means no NoSmoke source contributes to the IoStore composite.
@@ -1420,6 +1505,12 @@ namespace Windrose.Quartermaster.Core
         // BuildingCenterT01 is part of the same shared IoStore triplet
         // as Pickup / NoSmoke (sharedBaseName.ucas/utoc).
         public BonfireRadiusResult BonfireResult;
+        // Pickaxe-range inclusion result. null when the profile didn't
+        // configure a multiplier or set it to 1.0 (vanilla). When non-
+        // null, carries one PickaxeRangePatchResult per pickaxe tier
+        // patched (currently 4) plus the published triplet paths the
+        // patched DataAssets ride inside (sharedBaseName.ucas/utoc).
+        public PickaxeRangeResult PickaxeRangeResult;
         public string TmpDir;
         public bool Success;
     }
@@ -1498,6 +1589,25 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public BonfireRadiusPatchResult Patch;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    // Standalone summary of "pickaxe-range got included in this build".
+    // The patched InstanceParams DataAssets ride inside the SAME IoStore
+    // triplet as Pickup / Bonfire / NoSmoke (sharedBaseName.ucas/utoc), so
+    // PakPath here mirrors Bonfire's semantics (null when a main Pak1 is
+    // also being built, stub .pak otherwise).
+    //
+    // AssetResults holds one entry per pickaxe tier (4 in 5.6) with each
+    // tier's vanilla + effective TraceScaleModifier - lets the build log
+    // render a "T00:1.00->1.40, T01:1.00->1.40, ..." line per tier.
+    public sealed class PickaxeRangeResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public List<PickaxeRangePatchResult> AssetResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
