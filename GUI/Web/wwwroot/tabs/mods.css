@@ -1,0 +1,117 @@
+.mods-dir {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text);
+  word-break: break-all;
+  background: var(--bg-elev);
+  padding: .35em .5em;
+  border-radius: var(--border-radius);
+}
+
+.mods-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 .5em 0 0;
+  overflow-y: scroll;
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+}
+
+.mod {
+  --mod-color: transparent;
+  background-color: color-mix(in srgb, var(--bg-elev-2), color-mix(in srgb, var(--mod-color), black 50%) 30%);
+  border-radius: var(--border-radius);
+  padding: .5em .75em;
+  display: grid;
+  grid-template-columns: 1.25em 1fr auto auto;
+  align-items: center;
+  gap: .75em;
+  position: relative;
+}
+
+.mod.owned {
+  --mod-color: var(--accent);
+}
+
+.mod.foreign {
+  --mod-color: var(--text-dim);
+}
+
+.mod::after {
+  content: "";
+  width: .75em;
+  height: .75em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background-color: var(--mod-color);
+}
+
+.mod-marker {
+  font-family: var(--monospace);
+  text-align: center;
+  color: var(--mod-color);
+  font-size: var(--font-size-big);
+  line-height: 1;
+}
+
+.mod-name {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+  min-width: 0;
+}
+
+.mod-name .filename {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mod-name .display {
+  font-weight: bold;
+}
+
+.mod-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .15em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mod-actions {
+  display: flex;
+  gap: .25em;
+}
+
+.mod-actions button.danger {
+  background: color-mix(in srgb, var(--danger), black 50%);
+  color: var(--text);
+  border: 1px solid var(--danger);
+}
+
+.mod-actions button.danger:hover {
+  background: var(--danger);
+}
+
+.mod-actions .lock {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  padding: var(--button-padding);
+  user-select: none;
+}
+
+.mods-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}

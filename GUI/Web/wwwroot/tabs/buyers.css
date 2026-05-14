@@ -1,0 +1,287 @@
+.buyers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 .5em 0 0;
+  overflow-y: scroll;
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+}
+
+.buyer-card {
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 70%);
+  border-radius: var(--border-radius);
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.buyer-header {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: .5em;
+}
+
+.buyer-title {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+}
+
+.buyer-faction {
+  font-size: var(--font-size-small);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: bold;
+}
+
+.buyer-label {
+  font-weight: bold;
+}
+
+.buyer-sub {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+}
+
+.buyer-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.buyer-table th {
+  text-align: left;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  font-weight: normal;
+  padding: .25em .5em;
+  border-bottom: 1px solid var(--border);
+}
+
+.buyer-table th.num,
+.buyer-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.buyer-table td {
+  padding: .5em;
+  vertical-align: middle;
+}
+
+.buyer-table th:nth-child(1),
+.buyer-table td:nth-child(1) {
+  width: 30vw;
+}
+
+.buyer-table th:nth-child(2),
+.buyer-table td:nth-child(2) {
+  width: 5em;
+}
+
+.buyer-table th:nth-child(3),
+.buyer-table td:nth-child(3) {
+  width: auto;
+}
+
+.buyer-table th:nth-child(4),
+.buyer-table td:nth-child(4) {
+  width: 5em;
+}
+
+.buyer-table th:nth-child(5),
+.buyer-table td:nth-child(5) {
+  width: 4em;
+}
+
+.buyer-row + .buyer-row td {
+  border-top: 1px solid color-mix(in srgb, var(--border), transparent 50%);
+}
+
+.buyer-item {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  min-width: 0;
+}
+
+.buyer-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.buyer-icon-empty {
+  display: inline-block;
+  background-color: var(--bg-elev);
+  border-radius: var(--border-radius);
+}
+
+.buyer-item-id {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+}
+
+.buyer-row.unresolved td {
+  color: var(--text-dim);
+}
+
+.buyer-req {
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+.buyer-req-none {
+  color: var(--text-dim);
+}
+
+.buyer-req-select {
+  font-size: var(--font-size-small);
+}
+
+.buyer-req-select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.buyer-unresolved .buyer-recipe {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.buyer-empty-row {
+  text-align: center;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 1em;
+}
+
+.buyer-change-badge {
+  display: inline-flex;
+  gap: .5em;
+  margin-left: auto;
+}
+
+.buyer-change-badge .badge {
+  font-size: var(--font-size-small);
+  padding: var(--button-padding);
+  border-radius: var(--border-radius);
+}
+
+.buyer-change-badge .badge.edited {
+  background-color: color-mix(in srgb, var(--accent), transparent 80%);
+  color: var(--accent);
+}
+
+.buyer-change-badge .badge.removed {
+  background-color: color-mix(in srgb, var(--danger), transparent 80%);
+  color: var(--danger);
+}
+
+.buyer-change-badge .badge.added {
+  background-color: color-mix(in srgb, var(--success), transparent 80%);
+  color: var(--success);
+}
+
+.buyer-row {
+  position: relative;
+}
+
+.buyer-row::after {
+  content: "";
+  width: .75em;
+  height: .75em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.buyer-row.edited {
+  background-color: color-mix(in srgb, transparent, var(--accent) 10%);
+
+  &::after {
+    background-color: var(--accent);
+  }
+}
+
+.buyer-row.added {
+  background-color: color-mix(in srgb, transparent, var(--success) 10%);
+
+  &::after {
+    background-color: var(--success);
+  }
+}
+
+.buyer-row.removed {
+  opacity: .5;
+  text-decoration: line-through;
+}
+
+.buyer-row.removed td.buyer-row-actions {
+  opacity: 1;
+  text-decoration: none;
+}
+
+.buyer-item-edit {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  min-width: 0;
+  flex: 1;
+}
+
+.buyer-item-input {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.buyer-num-input {
+  width: 5em;
+}
+
+.buyer-row-actions {
+  width: 4em;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.buyer-row-actions .btn-link {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: .25em;
+}
+
+.buyer-row-actions .btn-link:hover {
+  color: var(--text);
+}
+
+.buyer-row-actions .buyer-delete:hover {
+  color: var(--danger);
+}
+
+.buyer-row-actions .buyer-reset:hover {
+  color: var(--accent);
+}
+
+.buyer-row-actions .buyer-restore:hover {
+  color: var(--success);
+}
+
+.buyer-card-footer {
+  display: flex;
+  padding-top: .25em;
+}
+
+.buyers-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}

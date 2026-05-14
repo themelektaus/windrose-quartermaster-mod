@@ -1,0 +1,132 @@
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 .5em 0 0;
+  overflow-y: scroll;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40em, 1fr));
+  gap: .5em;
+}
+
+.item {
+  --item-color: transparent;
+  display: grid;
+  grid-template-columns: var(--icon-size) 1fr auto auto;
+  align-items: center;
+  gap: .5em;
+  padding: .5em;
+  border-radius: var(--border-radius);
+  border: 1px solid transparent;
+  position: relative;
+  --item-color: transparent;
+  background-color: color-mix(in srgb, var(--bg-elev-2), color-mix(in srgb, var(--item-color), black 50%) 30%);
+}
+
+.item.changed,
+.item.override {
+  background-color: color-mix(in srgb, var(--bg-elev-2), color-mix(in srgb, var(--item-color), black 80%) 50%);
+}
+
+.item::after {
+  content: "";
+  width: .75em;
+  height: .75em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background-color: var(--item-color);
+}
+
+.item.changed {
+  --item-color: var(--success);
+}
+
+.item.changed.overridden {
+  --item-color: var(--accent);
+}
+
+.item.overridden:not(.changed)::after {
+  --item-color: var(--bg-elev-3);
+}
+
+.item img {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  object-fit: contain;
+}
+
+.item .placeholder-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  background: var(--border);
+  border-radius: var(--border-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.item .name {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  min-width: 0;
+}
+
+.item .name b {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item .name small {
+  color: var(--success);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item .name div {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item .compute {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.item .compute b {
+  color: var(--success);
+  font-weight: bold;
+}
+
+.item .compute .skip {
+  color: var(--text-dim);
+}
+
+.item .override-input {
+  width: 6em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.item .override-input::placeholder {
+  color: var(--text-dim);
+  opacity: .5;
+}
+
+.item .override-input:not([disabled]) {
+  background: var(--bg-elev);
+  border-color: var(--bg-elev-3);
+}

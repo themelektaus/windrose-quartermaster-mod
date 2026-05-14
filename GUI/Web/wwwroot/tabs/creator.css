@@ -1,0 +1,136 @@
+.creator-card {
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 70%);
+  border-radius: var(--border-radius);
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+.creator-card-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+.creator-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.creator-icon-placeholder {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-elev);
+  flex-shrink: 0;
+}
+
+.creator-titles {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.creator-title-name {
+  font-weight: bold;
+}
+
+.creator-title-name em {
+  color: var(--text-dim);
+}
+
+.creator-title-id {
+  color: var(--text-dim);
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.creator-title-template {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.creator-title-template > span {
+  white-space: nowrap;
+}
+
+.creator-card-actions {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.creator-field.creator-icon-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: .5em;
+}
+
+.creator-icon-actions .btn-link[disabled] {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.creator-icon-status {
+  color: var(--text-dim);
+}
+
+.creator-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  align-items: end;
+}
+
+.creator-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+}
+
+.creator-field-wide {
+  grid-column: 1 / -1;
+}
+
+.creator-field > span {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.creator-field input[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.creator-field textarea {
+  resize: vertical;
+  min-height: 6em;
+  font-family: inherit;
+}
+
+.creator-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: .5em;
+}
+
+.creator-checkbox > span {
+  color: var(--text);
+  font-size: var(--font-size-base);
+}
+
+.creator-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}
