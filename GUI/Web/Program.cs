@@ -39,6 +39,28 @@ public static class Program
         }
 
         var app = CreateWebApp(args, "http://localhost:17777");
+
+        // Linux/Steam Deck path: there's no WPF/WebView2 host wrapping us,
+        // so the EXE is its own thing. Auto-open the user's default browser
+        // once Kestrel is actually listening. Windows runs go through the
+        // WPF App project (see GUI/App/App.xaml.cs) which embeds a WebView2.
+        if (OperatingSystem.IsLinux())
+        {
+            app.Lifetime.ApplicationStarted.Register(() =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "xdg-open",
+                        Arguments = "http://localhost:17777",
+                        UseShellExecute = false
+                    });
+                }
+                catch { }
+            });
+        }
+
         app.Run();
         return 0;
     }

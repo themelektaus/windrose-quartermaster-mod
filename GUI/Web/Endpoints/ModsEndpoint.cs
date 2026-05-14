@@ -13,8 +13,9 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //   GET    /api/mods               -> list every .pak with metadata + a
 //                                     boolean flag whether the file was
 //                                     produced by us (filename prefix).
-//   DELETE /api/mods/{filename}    -> move the pak to the Windows recycle
-//                                     bin. ONLY allowed for our own paks
+//   DELETE /api/mods/{filename}    -> move the pak to the trash
+//                                     (Windows recycle bin or XDG trash on Linux).
+//                                     ONLY allowed for our own paks
 //                                     (Quartermaster_*_P.pak); foreign mods
 //                                     return 403 so we can never delete a
 //                                     mod the user installed elsewhere.
@@ -42,9 +43,8 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 // belonging to the logical mod so the user can't end up with a half-
 // deleted set that confuses UE5 on next mount.
 //
-// The recycle-bin step uses Microsoft.VisualBasic.FileIO.FileSystem; the
-// assembly ships with the .NET runtime on Windows so no extra NuGet ref
-// is required.
+// The trash step uses CrossPlatformTrash.DeleteToTrash which dispatches
+// to Windows recycle bin or XDG trash spec on Linux/macOS.
 public static class ModsEndpoint
 {
     // Filename prefix that identifies a pak produced by BuildPipeline.
@@ -316,16 +316,8 @@ public static class ModsEndpoint
     // was acted on.
     static void RecycleTriplet(string pakPath, List<string> recycled)
     {
-        // Send to the Windows recycle bin instead of File.Delete so a
-        // misclick is recoverable via Explorer. UIOption.OnlyErrorDialogs
-        // suppresses the standard "do you want to recycle this?" prompt
-        // (we already do our own confirm in the UI) but any actual error
-        // still pops a dialog - fine for a desktop tool.
-        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-            pakPath,
-            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
-            Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+        // Cross-platform trash: Windows recycle bin or XDG trash on Linux/macOS.
+        CrossPlatformTrash.DeleteToTrash(pakPath);
         recycled.Add(Path.GetFileName(pakPath));
 
         var basePath = pakPath.Substring(0, pakPath.Length - ".pak".Length);
@@ -333,11 +325,7 @@ public static class ModsEndpoint
         {
             var companion = basePath + ext;
             if (!File.Exists(companion)) continue;
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                companion,
-                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
-                Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+            CrossPlatformTrash.DeleteToTrash(companion);
             recycled.Add(Path.GetFileName(companion));
         }
     }

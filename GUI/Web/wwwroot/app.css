@@ -212,11 +212,15 @@ button.danger {
 }
 
 main {
-  display: block;
+  display: flex;
   padding: .5em;
   overflow: hidden;
   min-height: 0;
   position: relative;
+}
+
+#tab-pages {
+  flex: 1;
 }
 
 .tab-page {

@@ -120,6 +120,7 @@ namespace Windrose.Quartermaster.Core
                     " -o \"" + outDir + "\"" + (Force ? " -f" : "") +
                     " \"" + vanillaPak + "\"");
 
+            WineHelper.ApplyWine(psi);
             var proc = Process.Start(psi);
             proc.OutputDataReceived += (s, e) => { if (e.Data != null) LogLine(e.Data); };
             proc.ErrorDataReceived  += (s, e) => { if (e.Data != null) LogLine(e.Data); };

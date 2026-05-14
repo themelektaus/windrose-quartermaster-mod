@@ -14,17 +14,12 @@
     <ProjectReference Include="..\CUE4Parse\CUE4Parse\CUE4Parse.csproj" />
     <ProjectReference Include="..\CUE4Parse\CUE4Parse-Conversion\CUE4Parse-Conversion.csproj" />
     <PackageReference Include="SkiaSharp"            Version="2.88.9" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9"
+        Condition="'$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND !$([MSBuild]::IsOSPlatform('Linux')))" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux"   Version="2.88.9"
+        Condition="'$(RuntimeIdentifier)' == 'linux-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOSPlatform('Linux')))" />
   </ItemGroup>
 
-  <!--
-    Initialize the CUE4Parse submodule on demand if it's not checked out
-    yet, so a fresh clone (without the recursive flag) still builds. Only
-    runs once - subsequent builds see the .csproj at the expected path
-    and skip straight through. If git itself isn't on PATH we surface a
-    clear hint instead of letting MSBuild's project-not-found propagate
-    up with a misleading "file is missing" message.
-  -->
   <PropertyGroup>
     <_CUE4ParseCsproj>$(MSBuildThisFileDirectory)..\CUE4Parse\CUE4Parse\CUE4Parse.csproj</_CUE4ParseCsproj>
     <_ModRoot>$(MSBuildThisFileDirectory)..\..</_ModRoot>

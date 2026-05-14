@@ -66,6 +66,7 @@ namespace Windrose.Quartermaster.Core
             psi.ArgumentList.Add(sourceDir);
             psi.ArgumentList.Add(outPakPath);
 
+            WineHelper.ApplyWine(psi);
             var proc = Process.Start(psi);
             var stdout = proc.StandardOutput.ReadToEnd();
             var stderr = proc.StandardError.ReadToEnd();

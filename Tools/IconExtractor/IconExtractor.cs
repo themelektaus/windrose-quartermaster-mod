@@ -641,11 +641,15 @@ public static class IconExtractor
         OodleHelper.Initialize(dllPath);
     }
 
-    // BC7/BC4/BC5/ASTC textures need Detex for decompression. The DLL is shipped
-    // as an embedded resource inside CUE4Parse-Conversion - extract once and
-    // hand the path to DetexHelper.Initialize.
     private static void EnsureDetex()
     {
+        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        {
+            TextureDecoder.UseAssetRipperTextureDecoder = true;
+            Out("[OK] Non-Windows: using AssetRipper pure-C# texture decoders (no Detex)");
+            return;
+        }
+
         var here = AppContext.BaseDirectory;
         var dllPath = Path.Combine(here, DetexHelper.DLL_NAME);
         if (!File.Exists(dllPath))

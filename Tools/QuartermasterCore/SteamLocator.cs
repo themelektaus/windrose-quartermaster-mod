@@ -12,9 +12,8 @@ namespace Windrose.Quartermaster.Core
     // used to do via Get-SteamInstallPath / Get-SteamLibraryPaths /
     // Get-WindroseVanillaPak.
     //
-    // Windows-only (Steam-on-Linux is a different layout) - we throw a
-    // descriptive error on non-Windows and skip the registry lookup. The
-    // .NET CA1416 (Platform compatibility) analyzer is suppressed at the
+    // Supports Windows (via registry) and Linux/Steam Deck (via well-known paths).
+    // The .NET CA1416 (Platform compatibility) analyzer is suppressed at the
     // call sites because we gate every registry call behind an OS check.
     public static class SteamLocator
     {
@@ -28,15 +27,38 @@ namespace Windrose.Quartermaster.Core
             "pakchunk0-WindowsServer.pak",
         };
 
-        // Returns the Steam install directory (e.g. "C:\Program Files (x86)\Steam"),
-        // or null if Steam isn't installed / not on Windows.
+        // Returns the Steam install directory (e.g. "C:\Program Files (x86)\Steam"
+        // on Windows, or "~/.local/share/Steam" on Linux/Steam Deck),
+        // or null if Steam isn't installed / platform unsupported.
         public static string FindSteamInstallPath()
         {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                return null;
-            }
-            return ReadSteamRegistry();
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return ReadSteamRegistry();
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                return ReadSteamLinux();
+            return null;
+        }
+
+        static string ReadSteamLinux()
+        {
+            // Steam Deck / Linux Desktop: try the common install locations in order.
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var steamDot = Path.Combine(home, ".steam");
+
+            // 1. ~/.steam/steam (symlink/dir Steam writes on most distros)
+            var steam = Path.Combine(steamDot, "steam");
+            if (Directory.Exists(Path.Combine(steam, "steamapps"))) return steam;
+
+            // 2. Default install location
+            var standard = Path.Combine(home, ".local", "share", "Steam");
+            if (Directory.Exists(Path.Combine(standard, "steamapps"))) return standard;
+
+            // 3. Flatpak install
+            var flatpak = Path.Combine(home, ".var", "app",
+                "com.valvesoftware.Steam", ".local", "share", "Steam");
+            if (Directory.Exists(Path.Combine(flatpak, "steamapps"))) return flatpak;
+
+            return null;
         }
 
         [SupportedOSPlatform("windows")]
@@ -101,9 +123,11 @@ namespace Windrose.Quartermaster.Core
             var steam = FindSteamInstallPath();
             if (string.IsNullOrEmpty(steam))
             {
+                var hint = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? "no SteamPath in HKCU and no InstallPath in HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam"
+                    : "checked ~/.steam/steam, ~/.local/share/Steam and the Flatpak path";
                 throw new InvalidOperationException(
-                    "Could not locate the Steam install (no SteamPath in HKCU and " +
-                    "no InstallPath in HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam). " +
+                    $"Could not locate the Steam install ({hint}). " +
                     "Pass an explicit pak path to override.");
             }
             var libs = FindLibraryPaths(steam);

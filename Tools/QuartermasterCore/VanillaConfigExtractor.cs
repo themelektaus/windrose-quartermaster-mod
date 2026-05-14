@@ -106,6 +106,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("repak --aes-key <hidden> unpack -i " + includePrefix
                     + " -o \"" + _paths.Vanilla + "\" -f \"" + vanillaPak + "\"");
 
+            WineHelper.ApplyWine(psi);
             var proc = Process.Start(psi);
             var stdout = proc.StandardOutput.ReadToEnd();
             var stderr = proc.StandardError.ReadToEnd();
