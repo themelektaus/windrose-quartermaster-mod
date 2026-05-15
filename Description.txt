@@ -1,6 +1,6 @@
 [size=4][b]Description[/b][/size]
 
-Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, building, navigation and FX, then bakes them into a single [code]_P.pak[/code] you drop into the [code]~mods[/code] folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
+Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, trade, cooldowns, building, navigation and FX, then bakes them into a single [code]_P.pak[/code] you drop into the [code]~mods[/code] folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
 
 There is no UE4SS / SML dependency. Everything ships as a pure data pak that works in singleplayer, on dedicated servers, and on co-op sessions as long as the same pak is installed on both sides.
 
@@ -9,23 +9,28 @@ There is no UE4SS / SML dependency. Everything ships as a pure data pak that wor
 
 [list]
 [*][b]Stack sizes[/b] - per-item or global multiplier/absolute caps; weapons, armor and other unstackable items stay vanilla unless you explicitly promote them.
+[*][b]Item Creator[/b] - clone an existing vanilla item, give it a new name/icon/category and ship it as a brand-new entry in the same build.
 [*][b]Loot tables[/b] - per-category Min/Max multipliers (mobs, plants, chests, fishing, ...) leave everything else alone.
+[*][b]Buyers[/b] - retune what NPC vendors are willing to buy from you and at which price (per-recipe edits with conflict-safe merging).
+[*][b]Sellers[/b] - retune what NPC vendors offer you and at which price; works alongside the Buyers tab without overwriting each other.
+[*][b]Cooldowns[/b] - bidirectional sliders (0.1x to 3.0x) on eight families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload.
 [*][b]Pickup radius[/b] - free slider from 1.0x to 10.0x for the auto-pickup magnet range (vanilla 4 m).
 [*][b]Fast-travel bells & signal fires[/b] - raise the placement caps (vanilla 10 / 3).
 [*][b]Building stability[/b] - structures hold longer cantilevers and taller towers without collapsing.
 [*][b]Minimap range[/b] - 1.0x to 5.0x slider for the foot/ship reveal range (vanilla 2.5 m / 7.5 m).
 [*][b]Bonfire radius[/b] - 1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m).
+[*][b]Pickaxe range[/b] - 1.0x to 3.0x slider that scales the trace radius on every pickaxe tier so you can hit nodes from slightly further away.
 [*][b]No smoke[/b] - hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns.
 [*][b]Mods tab[/b] - lists every [code].pak[/code] in your [code]~mods[/code] folder, marks Quartermaster builds, and lets you recycle-bin them with one click.
 [/list]
 
-Each feature has its own toggle and (where applicable) slider, so you can ship a pak that only changes pickup radius, or one that touches half the game - same pipeline either way.
+Each feature has its own toggle and (where applicable) slider, so you can ship a pak that only changes pickup radius, or one that touches half the game - same pipeline either way. Slider values of exactly 1.0x are treated as no-op and never get baked into the output pak.
 
 
 [size=4][b]Installation[/b][/size]
 
 [list]
-[*][b]1. [/b]Download and run [code]Quartermaster.exe[/code]. On first start it auto-extracts the vanilla item JSONs and icons from your Windrose install - takes 30-90 seconds.
+[*][b]1. [/b]Download and run [code]Quartermaster.exe[/code] (Windows) or [code]Quartermaster.Web[/code] (Linux / Steam Deck). On first start it auto-extracts the vanilla item JSONs and icons from your Windrose install - takes 30-90 seconds.
 [*][b]2. [/b]Create a profile, pick the tweaks you want, hit [b]Build[/b]. The resulting [code]_P.pak[/code] lands directly in [code]<Steam>\steamapps\common\Windrose\R5\Content\Paks\~mods\[/code].
 [*][b]3. [/b]Launch the game (or restart the server). For multiplayer the same pak has to live in the server's [code]~mods[/code] folder.
 [*][b]4. [/b]To switch between configurations, build a new profile and let the Mods tab recycle the old pak - only one Quartermaster build should live in [code]~mods[/code] at a time.
@@ -36,7 +41,8 @@ Each feature has its own toggle and (where applicable) slider, so you can ship a
 
 [list]
 [*][b]Windrose[/b] (any version that supports the [code]~mods[/code] pak loading convention).
-[*][b]Microsoft Edge WebView2 runtime[/b] - preinstalled on Windows 11 and recent Windows 10 builds.
+[*][b]Windows:[/b] Microsoft Edge WebView2 runtime - preinstalled on Windows 11 and recent Windows 10 builds.
+[*][b]Linux / Steam Deck:[/b] any modern browser for the local web UI. Wine is auto-detected from your Steam library (Proton or GE-Proton works out of the box); no extra install needed if you already use Steam.
 [*]No UE4SS, no SML, no other mod loader required.
 [/list]
 
