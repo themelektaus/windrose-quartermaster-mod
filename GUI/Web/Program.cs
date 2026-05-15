@@ -38,6 +38,13 @@ public static class Program
             return PatcherCli.Run(args, cliRoot);
         }
 
+        // Single-instance enforcement: if a prior Quartermaster.Web is still
+        // sitting in the background (typical Linux scenario: user closed the
+        // browser tab without clicking the power button), kill it before we
+        // try to bind port 17777. The WPF wrapper bypasses this path entirely
+        // and uses a dynamic port, so multi-window on Windows still works.
+        TerminatePriorInstances();
+
         var app = CreateWebApp(args, "http://localhost:17777");
 
         // Linux/Steam Deck path: there's no WPF/WebView2 host wrapping us,
@@ -215,6 +222,60 @@ public static class Program
         // deployed EXE bundle nor in <DataRoot>\QuartermasterData\).
         return File.Exists(Path.Combine(root, "Tools", "QuartermasterCore",
                                               "QuartermasterCore.csproj"));
+    }
+
+    /// <summary>
+    /// Hunt down any other process that shares this executable's
+    /// <see cref="System.Diagnostics.Process.ProcessName"/> and kill it. Used
+    /// by the standalone Web entry to free port 17777 before binding - the
+    /// typical Linux scenario is a user closing the browser tab without ever
+    /// clicking the shutdown button, leaving Quartermaster.Web running in the
+    /// background and the port wedged.
+    /// </summary>
+    /// <remarks>
+    /// Matches by <c>ProcessName</c> (not by EXE path) so a binary the user
+    /// re-launched from a different folder still counts as "the same app".
+    /// On Linux that name comes from <c>/proc/&lt;pid&gt;/comm</c> which is
+    /// truncated to 15 chars (e.g. <c>Quartermaster.W</c>) - that's fine, the
+    /// runtime truncates the current process's name the same way so they
+    /// still match. After killing we briefly pause so the kernel releases
+    /// the TCP socket from TIME_WAIT before Kestrel tries to bind.
+    /// </remarks>
+    static void TerminatePriorInstances()
+    {
+        var self = System.Diagnostics.Process.GetCurrentProcess();
+        var name = self.ProcessName;
+        if (string.IsNullOrEmpty(name)) return;
+
+        var killedAny = false;
+        foreach (var p in System.Diagnostics.Process.GetProcessesByName(name))
+        {
+            try
+            {
+                if (p.Id == self.Id) continue;
+                p.Kill(entireProcessTree: true);
+                p.WaitForExit(3000);
+                killedAny = true;
+            }
+            catch
+            {
+                // Race - process already exited - or insufficient
+                // privileges. Either way there's nothing useful we can do
+                // here; if the port is still bound, Kestrel will fail loud
+                // enough below.
+            }
+            finally
+            {
+                p.Dispose();
+            }
+        }
+
+        if (killedAny)
+        {
+            // Give the kernel a beat to release the listening socket so
+            // our own bind doesn't race a still-closing TCP endpoint.
+            System.Threading.Thread.Sleep(300);
+        }
     }
 
     /// <summary>
