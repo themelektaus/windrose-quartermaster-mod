@@ -106,6 +106,11 @@ function indexLootCrossReferences() {
     for (const lt of state.lootTables) {
         if (lt.category) categoryCounts.set(lt.category, (categoryCounts.get(lt.category) || 0) + 1);
         if (lt.type) types.add(lt.type);
+        if (lt.id && !state.tablePathsByLtId.has(lt.id)) {
+            state.tablePathsByLtId.set(
+                lt.id,
+                '/R5BusinessRules/LootTables/' + lt.id + '.' + lastSegment(lt.id));
+        }
         for (const e of lt.entries || []) {
             if (e.lootItemId  && e.lootItemPath  && !state.itemPathsByItemId.has(e.lootItemId)) {
                 state.itemPathsByItemId.set(e.lootItemId, e.lootItemPath);
