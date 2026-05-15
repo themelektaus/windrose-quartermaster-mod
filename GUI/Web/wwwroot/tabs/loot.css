@@ -147,7 +147,7 @@
 
 .lt-entry {
   display: grid;
-  grid-template-columns: 2.5em minmax(10em, 1fr) repeat(3, 4.5em) auto auto;
+  grid-template-columns: var(--icon-size) minmax(10em, 1fr) repeat(3, 4.5em) auto auto;
   align-items: center;
   gap: .25em .5em;
   padding: .15em .25em;
@@ -157,6 +157,9 @@
 
 .lt-entry.removed {
   opacity: .5;
+}
+
+.lt-entry.removed > .target {
   text-decoration: line-through;
 }
 
@@ -168,22 +171,32 @@
   background: color-mix(in srgb, var(--bg-elev-2), var(--accent) 10%);
 }
 
+.lt-entry .value label {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.lt-entry img,
+.lt-entry .placeholder-icon {
+  width: var(--icon-size);
+  aspect-ratio: 1;
+}
+
 .lt-entry img {
-  width: 2em;
-  height: 2em;
   object-fit: contain;
 }
 
 .lt-entry .placeholder-icon {
-  width: 2em;
-  height: 2em;
   background: var(--border);
   border-radius: var(--border-radius);
   color: var(--text-dim);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-small);
+}
+
+.lt-entry .placeholder-icon span {
+  font-size: 2em;
 }
 
 .lt-entry .target {
@@ -226,20 +239,13 @@
   border-color: var(--success);
 }
 
-.lt-entry .vanilla-hint {
-  font-family: var(--monospace);
-  font-size: var(--monospace-size);
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
 .lt-entry .row-actions {
   display: flex;
   gap: .25em;
 }
 
 .lt-entry .row-actions button {
-  padding: .1em .4em;
+  padding: .1em .3em;
   font-size: var(--font-size-small);
 }
 

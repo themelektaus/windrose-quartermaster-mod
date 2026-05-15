@@ -276,20 +276,28 @@ function buildLtEntryRowHtml(lt, e, isReadonly) {
     const maxPh = r.changedByMult ? r.max : e.max;
 
     const removeBtn = '<button type="button" class="danger" data-toggle-remove="' + esc(lt.id) + '" data-index="' + e.index + '"' +
-        (isReadonly ? ' disabled' : '') + '>' + (r.removed ? 'undo' : 'x') + '</button>';
+        (isReadonly ? ' disabled' : '') + '>⨉</button>';
 
     return '<div class="' + classes.join(' ') + '" data-lt-id="' + esc(lt.id) + '" data-vanilla-index="' + e.index + '">' +
         targetHtml +
-        '<input type="number" class="num" placeholder="' + minPh + '" value="' + esc(minVal) +
+        '<div class="value">' +
+        '  <label>Minimum</label>' +
+        '  <input type="number" class="num" placeholder="' + minPh + '" value="' + esc(minVal) +
             '" data-edit-field="min" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
             (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '<input type="number" class="num" placeholder="' + maxPh + '" value="' + esc(maxVal) +
+        '</div>' +
+        '<div class="value">' +
+        '  <label>Maximum</label>' +
+        '  <input type="number" class="num" placeholder="' + maxPh + '" value="' + esc(maxVal) +
             '" data-edit-field="max" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
             (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '<input type="number" class="num" placeholder="' + e.weight + '" value="' + esc(weightVal) +
+        '</div>' +
+        '<div class="value">' +
+        '  <label>Weight</label>' +
+        '  <input type="number" class="num" placeholder="' + e.weight + '" value="' + esc(weightVal) +
             '" data-edit-field="weight" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
             (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '<span class="vanilla-hint">vanilla ' + e.min + '-' + e.max + (e.weight ? ' w' + e.weight : '') + '</span>' +
+        '</div>' +
         '<div class="row-actions">' + removeBtn + '</div>' +
     '</div>';
 }
@@ -309,7 +317,7 @@ function buildEntryTargetHtml(e, item) {
             '</div>';
     }
     if (isTable) {
-        return '<div class="placeholder-icon">▦</div>' +
+        return '<div class="placeholder-icon"><span>▦</span></div>' +
             '<div class="target subtable">' +
                 '<b>' + esc(e.lootTableId) + '</b>' +
                 '<small>(sub-table)</small>' +
@@ -357,19 +365,27 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
 
     return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
         targetHtml +
-        '<input type="number" class="num" value="' + esc(a.min || 1) +
+        '<div class="value">' +
+          '<label>Minimum</label>' +
+          '<input type="number" class="num" value="' + esc(a.min || 1) +
             '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
             (isReadonly ? ' disabled' : '') + '>' +
-        '<input type="number" class="num" value="' + esc(a.max || 1) +
+        '</div>' +
+        '<div class="value">' +
+          '<label>Maximum</label>' +
+          '<input type="number" class="num" value="' + esc(a.max || 1) +
             '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
             (isReadonly ? ' disabled' : '') + '>' +
-        '<input type="number" class="num" value="' + esc(a.weight || 0) +
+        '</div>' +
+        '<div class="value">' +
+          '<label>Weight</label>' +
+          '<input type="number" class="num" value="' + esc(a.weight || 0) +
             '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
             (isReadonly ? ' disabled' : '') + '>' +
-        '<span class="vanilla-hint">added</span>' +
+        '</div>' +
         '<div class="row-actions">' +
             '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                (isReadonly ? ' disabled' : '') + '>x</button>' +
+                (isReadonly ? ' disabled' : '') + '>⨉</button>' +
         '</div>' +
     '</div>';
 }
@@ -390,19 +406,27 @@ function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
                     ' autocomplete="off" spellcheck="false"' +
                     (isReadonly ? ' disabled' : '') + '>' +
             '</div>' +
-            '<input type="number" class="num" value="' + esc(a.min || 1) +
+            '<div class="value">' +
+              '<label>Minimum</label>' +
+              '<input type="number" class="num" value="' + esc(a.min || 1) +
                 '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
                 (isReadonly ? ' disabled' : '') + '>' +
-            '<input type="number" class="num" value="' + esc(a.max || 1) +
+            '</div>' +
+            '<div class="value">' +
+              '<label>Maximum</label>' +
+              '<input type="number" class="num" value="' + esc(a.max || 1) +
                 '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
                 (isReadonly ? ' disabled' : '') + '>' +
-            '<input type="number" class="num" value="' + esc(a.weight || 0) +
+            '</div>' +
+            '<div class="value">' +
+              '<label>Weight</label>' +
+              '<input type="number" class="num" value="' + esc(a.weight || 0) +
                 '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
                 (isReadonly ? ' disabled' : '') + '>' +
-            '<span class="vanilla-hint">new</span>' +
+            '</div>' +
             '<div class="row-actions">' +
                 '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                    (isReadonly ? ' disabled' : '') + '>x</button>' +
+                    (isReadonly ? ' disabled' : '') + '>⨉</button>' +
             '</div>' +
         '</div>' +
     '</div>';

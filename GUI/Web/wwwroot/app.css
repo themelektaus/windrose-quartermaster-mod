@@ -59,6 +59,12 @@
   background: transparent;
 }
 
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 body {
   margin: 0;
   font-family: var(--font);
