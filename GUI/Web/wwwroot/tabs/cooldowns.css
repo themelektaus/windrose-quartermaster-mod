@@ -62,7 +62,17 @@
 #cd-boar-multiplier-value,
 #cd-shipsummon-multiplier-value,
 #cd-reload-multiplier-value,
-#cd-cannon-multiplier-value {
+#cd-cannon-multiplier-value,
+#st-crop-multiplier-value,
+#st-smelting-multiplier-value,
+#st-kiln-multiplier-value,
+#st-tanning-multiplier-value,
+#st-milling-multiplier-value,
+#st-bits-multiplier-value,
+#st-deco-multiplier-value,
+#st-armor-multiplier-value,
+#st-tradeoutpost-multiplier-value,
+#st-other-multiplier-value {
   background-color: var(--warn);
   color: var(--bg);
   border-radius: var(--border-radius);
@@ -79,7 +89,17 @@
 #cd-boar-readout,
 #cd-shipsummon-readout,
 #cd-reload-readout,
-#cd-cannon-readout {
+#cd-cannon-readout,
+#st-crop-readout,
+#st-smelting-readout,
+#st-kiln-readout,
+#st-tanning-readout,
+#st-milling-readout,
+#st-bits-readout,
+#st-deco-readout,
+#st-armor-readout,
+#st-tradeoutpost-readout,
+#st-other-readout {
   color: var(--text-dim);
   border-radius: var(--border-radius);
   width: 5em;

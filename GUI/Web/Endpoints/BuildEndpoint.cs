@@ -281,6 +281,52 @@ public static class BuildEndpoint
                         families,
                     };
                 }
+                // Crop growth: when active, scales every DA_Crop_*.json
+                // GrowthDuration by the user multiplier. Carries the
+                // count of patched crops + a representative vanilla -> effective
+                // sample (the first patched crop) for the build log.
+                object cropGrowthInfo = null;
+                if (result.CropGrowthResult != null && result.CropGrowthResult.Written > 0)
+                {
+                    var cg = result.CropGrowthResult;
+                    var first = cg.PatchedCrops != null && cg.PatchedCrops.Count > 0
+                        ? cg.PatchedCrops[0]
+                        : null;
+                    cropGrowthInfo = new
+                    {
+                        multiplier = cg.Multiplier,
+                        cropCount = cg.Written,
+                        sampleVanillaTicks  = first != null ? first.VanillaTicks   : 0L,
+                        sampleEffectiveTicks = first != null ? first.EffectiveTicks : 0L,
+                    };
+                }
+                // Recipe cooking-duration: one entry per active family,
+                // each carrying assetCount + a vanilla/effective sample
+                // (the family's first patched recipe).
+                object cookingDurationInfo = null;
+                if (result.CookingDurationResult != null
+                    && result.CookingDurationResult.FamilySummaries != null
+                    && result.CookingDurationResult.FamilySummaries.Count > 0)
+                {
+                    var cd2 = result.CookingDurationResult;
+                    var familyArr = cd2.FamilySummaries.Values
+                        .OrderBy(f => f.Family.ToString())
+                        .Select(f => new
+                        {
+                            family = f.Family.ToString(),
+                            multiplier = f.Multiplier,
+                            assetCount = f.AssetCount,
+                            vanillaAvg   = f.AssetCount > 0 ? f.VanillaSum   / f.AssetCount : 0.0,
+                            effectiveAvg = f.AssetCount > 0 ? f.EffectiveSum / f.AssetCount : 0.0,
+                        })
+                        .ToArray();
+                    cookingDurationInfo = new
+                    {
+                        totalPatched = cd2.Written,
+                        mergedWithTrade = cd2.MergedWithTrade,
+                        families = familyArr,
+                    };
+                }
                 // NoSmoke surfaces the active categories + per-asset patch
                 // counts so the frontend can render "Campfire, Furnace
                 // (5 assets, 38 emitter handles silenced)". null = no
@@ -338,6 +384,8 @@ public static class BuildEndpoint
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,
+                    cropGrowth = cropGrowthInfo,
+                    cookingDuration = cookingDurationInfo,
                     log,
                 });
             }

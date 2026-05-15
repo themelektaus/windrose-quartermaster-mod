@@ -46,12 +46,12 @@ namespace Windrose.Quartermaster.Core
     public sealed class CooldownsPatcher
     {
         // Multiplier clamps. 1.0 = vanilla; the GUI hides the asset from
-        // the build when the user leaves it at 1.0. Lower bound prevents
-        // dividing by something close to zero in the rare future case
-        // someone wires the multiplier in reverse; 0.05 = 20x faster which
-        // is faster than any reasonable use case.
-        public const double MinMultiplier = 0.05;
-        public const double MaxMultiplier = 1.0;
+        // the build when the user leaves it at 1.0. The range is
+        // bidirectional: < 1.0 shortens cooldowns (faster), > 1.0 lengthens
+        // them (harder gameplay). 0.1 = 10x faster, 3.0 = 3x longer; both
+        // bounds are well beyond any reasonable design space.
+        public const double MinMultiplier = 0.1;
+        public const double MaxMultiplier = 3.0;
 
         // Property names. Constants both for readability and so a future
         // engine rename only touches one place.
@@ -147,19 +147,17 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
-            var (target, targetIndex) = FindMainExport(asset, inputAssetPath);
-
-            // DurationMagnitude (StructProperty, GameplayEffectModifierMagnitude)
+            // GameplayEffects in UE5.6 use a component-based architecture where
+            // AssetTagsGameplayEffectComponent_0 / TargetTagsGameplayEffectComponent_0
+            // ship as additional NormalExports alongside the Default__GE_*_C CDO.
+            // We cannot blindly pick the first NormalExport - it is often a
+            // sub-component. Instead, search every NormalExport for the one
+            // carrying the DurationMagnitude property.
             var durationName = FName.FromString(asset, DurationMagnitudeProp);
-            var duration = target.Data.OfType<StructPropertyData>()
-                .FirstOrDefault(p => p.Name == durationName);
-            if (duration == null || duration.Value == null)
-            {
-                throw new InvalidOperationException(
-                    "No DurationMagnitude StructProperty found on "
-                    + target.ObjectName + " in " + inputAssetPath
-                    + " - expected a GameplayEffect with a duration magnitude.");
-            }
+            var (target, targetIndex, duration) = FindExportWithStruct(
+                asset, durationName, inputAssetPath,
+                "DurationMagnitude StructProperty",
+                "expected a GameplayEffect with a duration magnitude");
 
             // ScalableFloatMagnitude (StructProperty, ScalableFloat)
             var scalableName = FName.FromString(asset, ScalableFloatMagnitudeProp);
@@ -219,18 +217,14 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
-            var (target, targetIndex) = FindMainExport(asset, inputAssetPath);
-
+            // BP_Calc DataAssets only have a single CDO export (no components),
+            // but we still search every NormalExport for the Magnitude property
+            // for symmetry and resilience.
             var magName = FName.FromString(asset, MagnitudeProp);
-            var magProp = target.Data.OfType<FloatPropertyData>()
-                .FirstOrDefault(p => p.Name == magName);
-            if (magProp == null)
-            {
-                throw new InvalidOperationException(
-                    "No Magnitude FloatProperty on " + target.ObjectName
-                    + " in " + inputAssetPath
-                    + " - expected an R5ModMagCalc_SimpleAttributeBased BP_Calc.");
-            }
+            var (_, targetIndex, magProp) = FindExportWithFloat(
+                asset, magName, inputAssetPath,
+                "Magnitude FloatProperty",
+                "expected an R5ModMagCalc_SimpleAttributeBased BP_Calc");
 
             float vanillaValue = magProp.Value;
             float newValue = (float)(vanillaValue * multiplier);
@@ -254,22 +248,54 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Locates the export carrying the patched property. Both GE and
-        // BP_Calc DataAssets ship as a single NormalExport (the Default__
-        // CDO); picking the first NormalExport is robust against minor
-        // index reshuffles.
-        static (NormalExport target, int index) FindMainExport(UAsset asset, string inputAssetPath)
+        // Searches every NormalExport for a top-level StructProperty with
+        // the given name and returns the export + the matched property.
+        // UE5.6 GameplayEffects ship sub-component exports
+        // (AssetTagsGameplayEffectComponent_0, TargetTagsGameplayEffectComponent_0,
+        // etc.) alongside the Default__GE_*_C CDO; the first NormalExport is
+        // therefore not necessarily the CDO. Locate by property presence
+        // instead of by export index.
+        static (NormalExport target, int index, StructPropertyData prop) FindExportWithStruct(
+            UAsset asset, FName propName, string inputAssetPath,
+            string what, string hint)
         {
             for (int i = 0; i < asset.Exports.Count; i++)
             {
                 if (asset.Exports[i] is NormalExport ne)
                 {
-                    return (ne, i);
+                    var match = ne.Data.OfType<StructPropertyData>()
+                        .FirstOrDefault(p => p.Name == propName && p.Value != null);
+                    if (match != null)
+                    {
+                        return (ne, i, match);
+                    }
                 }
             }
             throw new InvalidOperationException(
-                "No NormalExport found in " + inputAssetPath
-                + " - expected a GameplayEffect or BP_Calc CDO export.");
+                "No " + what + " found in any NormalExport of "
+                + inputAssetPath + " - " + hint + ".");
+        }
+
+        // Same idea for top-level FloatProperty (used by BP_Calc Magnitude).
+        static (NormalExport target, int index, FloatPropertyData prop) FindExportWithFloat(
+            UAsset asset, FName propName, string inputAssetPath,
+            string what, string hint)
+        {
+            for (int i = 0; i < asset.Exports.Count; i++)
+            {
+                if (asset.Exports[i] is NormalExport ne)
+                {
+                    var match = ne.Data.OfType<FloatPropertyData>()
+                        .FirstOrDefault(p => p.Name == propName);
+                    if (match != null)
+                    {
+                        return (ne, i, match);
+                    }
+                }
+            }
+            throw new InvalidOperationException(
+                "No " + what + " found in any NormalExport of "
+                + inputAssetPath + " - " + hint + ".");
         }
 
         static void ValidateArgs(string input, string output, string usmap, double multiplier)

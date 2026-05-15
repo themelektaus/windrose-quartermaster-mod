@@ -57,5 +57,13 @@ namespace Windrose.Quartermaster.Core
         // R5BusinessRules plugin), same as BuildingLimits.
         public const string InventoryItemsCsvPath =
             "R5/Content/Localization/Data/InventoryItems.csv";
+
+        // Pak-internal prefix the dumper extracts (R5BLCropParams DataAssets:
+        // per-crop DA_Crop_*.json files holding the GrowthDuration FTimespan
+        // ticks - 9_000_000_000 ticks = 15 min, etc.). The Stations tab's
+        // "Crop Growth" multiplier needs the vanilla tree on disk to scale
+        // every entry. Lives under the R5BusinessRules plugin tree.
+        public const string FarmingCropsPath =
+            "R5/Plugins/R5BusinessRules/Content/Farming/Crops";
     }
 }

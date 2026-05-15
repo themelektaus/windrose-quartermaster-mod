@@ -105,19 +105,44 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
-            // Find the export carrying the InstanceParams payload. DataAssets
-            // typically ship as a single NormalExport whose ObjectName matches
-            // the asset filename stem - pick the first NormalExport, which is
-            // robust against minor index reshuffles between game patches.
+            // Find the export carrying the InstanceParams payload. UE5.6
+            // DataAssets may ship sub-component exports (ability tasks,
+            // gameplay-effect components) alongside the Default__DA_*_C CDO -
+            // the first NormalExport is therefore NOT necessarily the CDO.
+            // Locate the right export by TraceScaleModifier presence; if no
+            // export carries it (vanilla relies on the C++ class default),
+            // fall back to the first NormalExport and ADD the property there.
+            var propName = FName.FromString(asset, TraceScaleModifierPropertyName);
             NormalExport target = null;
             int targetIndex = -1;
+            UAssetAPI.PropertyTypes.Objects.PropertyData existing = null;
             for (int i = 0; i < asset.Exports.Count; i++)
             {
                 if (asset.Exports[i] is NormalExport ne)
                 {
-                    target = ne;
-                    targetIndex = i;
-                    break;
+                    var match = ne.Data.FirstOrDefault(p => p.Name == propName);
+                    if (match != null)
+                    {
+                        target = ne;
+                        targetIndex = i;
+                        existing = match;
+                        break;
+                    }
+                }
+            }
+            if (target == null)
+            {
+                // Property is not serialized anywhere - fall back to the first
+                // NormalExport so we can ADD it. This mirrors the original
+                // behavior for assets that omit TraceScaleModifier entirely.
+                for (int i = 0; i < asset.Exports.Count; i++)
+                {
+                    if (asset.Exports[i] is NormalExport ne)
+                    {
+                        target = ne;
+                        targetIndex = i;
+                        break;
+                    }
                 }
             }
             if (target == null)
@@ -126,12 +151,6 @@ namespace Windrose.Quartermaster.Core
                     "No NormalExport found in " + inputAssetPath
                     + " - expected an InstanceParams DataAsset export to patch.");
             }
-
-            // Locate the TraceScaleModifier FloatProperty. Vanilla ships it
-            // serialized; if a future engine drops the override we add the
-            // property so our multiplier still has a base to scale against.
-            var propName = FName.FromString(asset, TraceScaleModifierPropertyName);
-            var existing = target.Data.FirstOrDefault(p => p.Name == propName);
             float vanillaValue;
             bool added;
             if (existing is FloatPropertyData existingFloat)

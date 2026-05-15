@@ -72,6 +72,8 @@ namespace Windrose.Quartermaster.Core
         readonly BuyerPatcher _buyerPatcher;
         readonly SellerPatcher _sellerPatcher;
         readonly ItemCreatorPatcher _itemCreatorPatcher;
+        readonly CropGrowthPatcher _cropGrowthPatcher;
+        readonly CookingDurationPatcher _cookingDurationPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
 
@@ -129,6 +131,8 @@ namespace Windrose.Quartermaster.Core
             _buyerPatcher = new BuyerPatcher();
             _sellerPatcher = new SellerPatcher();
             _itemCreatorPatcher = new ItemCreatorPatcher();
+            _cropGrowthPatcher = new CropGrowthPatcher();
+            _cookingDurationPatcher = new CookingDurationPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
         }
@@ -299,6 +303,46 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in sellerResult.Warnings) LogLine("  warn: " + w);
                 }
 
+                // Crop-growth + cooking-duration patches. Both ship JSON
+                // DataAssets inside the same main pak as the other JSON
+                // patchers (no IoStore step needed).
+                //
+                // CropGrowth runs independently: writes new DA_Crop_*.json
+                // files under Farming/Crops/ with a scaled GrowthDuration.
+                //
+                // CookingDuration runs AFTER Buyer/Seller so it can merge
+                // its CookingProcessDuration edit into a recipe file the
+                // trade patchers already touched (preserving both edits).
+                CropGrowthPatchResult cropGrowthResult = null;
+                double cropGrowthMul = ResolveCropGrowthMultiplier(profile);
+                bool cropGrowthActive = cropGrowthMul > 0.0 && Math.Abs(cropGrowthMul - 1.0) > 1e-9;
+                if (cropGrowthActive)
+                {
+                    LogLine("Patching crop growth (" + cropGrowthMul.ToString("0.##") + "x)");
+                    cropGrowthResult = _cropGrowthPatcher.PatchToDirectory(
+                        _paths.VanillaCrops, tmpDir, cropGrowthMul);
+                    LogLine("Patched crops: " + cropGrowthResult.Written
+                            + " written (" + cropGrowthResult.Scanned + " scanned, "
+                            + cropGrowthResult.Skipped + " skipped)");
+                }
+
+                CookingDurationPatchResult cookingDurationResult = null;
+                var cookingFamilies = ResolveCookingFamilies(profile);
+                bool cookingDurationActive = cookingFamilies != null && cookingFamilies.AnyActive();
+                if (cookingDurationActive)
+                {
+                    LogLine("Patching recipe cooking durations");
+                    cookingDurationResult = _cookingDurationPatcher.PatchToDirectory(
+                        _paths.VanillaRecipes, tmpDir, cookingFamilies);
+                    LogLine("Patched recipes: " + cookingDurationResult.Written
+                            + " written (" + cookingDurationResult.MergedWithTrade
+                            + " merged with trade edits, "
+                            + cookingDurationResult.Scanned + " scanned, "
+                            + cookingDurationResult.SkippedFamilyInactive
+                            + " family-inactive, "
+                            + cookingDurationResult.Skipped + " skipped)");
+                }
+
                 // Resolve which CustomItems will get a baked custom icon
                 // BEFORE running the item-creator patcher: the patcher
                 // needs to know whether to point each item's ItemTexture
@@ -339,7 +383,9 @@ namespace Windrose.Quartermaster.Core
                         : 0)
                     + (itemCreatorResult != null
                         ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
-                        : 0);
+                        : 0)
+                    + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
+                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
@@ -463,6 +509,8 @@ namespace Windrose.Quartermaster.Core
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
                     CooldownsResult = cooldownsResult,
+                    CropGrowthResult = cropGrowthResult,
+                    CookingDurationResult = cookingDurationResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -1388,6 +1436,41 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        // Resolves the effective crop-growth multiplier (applied to every
+        // DA_Crop_*.json's GrowthDuration). 1.0 = no crop-growth patch
+        // ships.
+        static double ResolveCropGrowthMultiplier(Profile profile)
+        {
+            var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
+            if (pt == null) return 1.0;
+            if (pt.CropGrowthMultiplier.HasValue) return pt.CropGrowthMultiplier.Value;
+            return 1.0;
+        }
+
+        // Resolves the active cooking-duration family multipliers. Returns
+        // a populated FamilyMultipliers struct even when the user has only
+        // some families active (per-family null collapse happens inside
+        // the patcher). Returns null only when the whole ProductionTimes
+        // block is absent (so the build can skip the patcher entirely
+        // for stack/loot/cooldown-only profiles).
+        static CookingDurationPatcher.FamilyMultipliers ResolveCookingFamilies(Profile profile)
+        {
+            var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
+            if (pt == null) return null;
+            return new CookingDurationPatcher.FamilyMultipliers
+            {
+                Smelting     = pt.SmeltingMultiplier,
+                Kiln         = pt.KilnMultiplier,
+                Tanning      = pt.TanningMultiplier,
+                Milling      = pt.MillingMultiplier,
+                BuildingBits = pt.BuildingBitsMultiplier,
+                Decoration   = pt.DecorationMultiplier,
+                ArmorWeapon  = pt.ArmorWeaponMultiplier,
+                TradeOutpost = pt.TradeOutpostMultiplier,
+                Other        = pt.OtherMultiplier,
+            };
+        }
+
         // Resolves the active set of cooldown patch jobs. Each entry pairs
         // an asset (stem + virtual path) with the multiplier to apply and
         // the patch shape to use. 8 family multipliers fan out into 1..N
@@ -1776,6 +1859,18 @@ namespace Windrose.Quartermaster.Core
         // carries one CooldownJobResult per patched asset (1..N per
         // activated family) plus the shared triplet paths.
         public CooldownsResult CooldownsResult;
+        // Crop-growth patch inclusion result. null when the profile didn't
+        // configure a CropGrowthMultiplier or set it to 1.0 (vanilla). When
+        // non-null, carries the per-crop ticks before/after for the build
+        // log. The patched DA_Crop_*.json files ride in the main pak
+        // alongside the other JSON-patcher output.
+        public CropGrowthPatchResult CropGrowthResult;
+        // Recipe cooking-duration patch result. null when no family
+        // multiplier was set (or all are 1.0). When non-null, carries
+        // the per-recipe patches grouped by family - lets the build
+        // response render "DONE - smelting: 0.5x; 10 recipes; ~4200 -> ~2100"
+        // style lines.
+        public CookingDurationPatchResult CookingDurationResult;
         public string TmpDir;
         public bool Success;
     }

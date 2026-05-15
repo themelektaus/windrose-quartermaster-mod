@@ -38,8 +38,10 @@ namespace Windrose.Quartermaster.Core
     //     -> retoc to-zen      (Legacy -> IoStore triplet)
     public sealed class ShipCannonPatcher
     {
-        public const double MinMultiplier = 0.05;
-        public const double MaxMultiplier = 1.0;
+        // Bidirectional range: < 1.0 shortens reload (faster), > 1.0 lengthens
+        // it (harder gameplay). 1.0 = vanilla; the GUI null-collapses at 1.0.
+        public const double MinMultiplier = 0.1;
+        public const double MaxMultiplier = 3.0;
 
         public const string BatteryDataArrayProp = "BatteryDataArray";
         public const string AimingDataProp       = "AimingData";
@@ -95,32 +97,35 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
+            // UE5.6 DataAssets may ship sub-component exports alongside the
+            // Default__DA_*_C CDO. The first NormalExport is therefore not
+            // necessarily the CDO carrying BatteryDataArray - locate the
+            // right export by property presence instead of by index.
+            var arrayName = FName.FromString(asset, BatteryDataArrayProp);
             NormalExport target = null;
             int targetIndex = -1;
+            ArrayPropertyData batteryArray = null;
             for (int i = 0; i < asset.Exports.Count; i++)
             {
                 if (asset.Exports[i] is NormalExport ne)
                 {
-                    target = ne;
-                    targetIndex = i;
-                    break;
+                    var match = ne.Data.OfType<ArrayPropertyData>()
+                        .FirstOrDefault(p => p.Name == arrayName && p.Value != null);
+                    if (match != null)
+                    {
+                        target = ne;
+                        targetIndex = i;
+                        batteryArray = match;
+                        break;
+                    }
                 }
             }
-            if (target == null)
+            if (target == null || batteryArray == null)
             {
                 throw new InvalidOperationException(
-                    "No NormalExport found in " + inputAssetPath
-                    + " - expected an R5BatteryManagerData DataAsset.");
-            }
-
-            var arrayName = FName.FromString(asset, BatteryDataArrayProp);
-            var batteryArray = target.Data.OfType<ArrayPropertyData>()
-                .FirstOrDefault(p => p.Name == arrayName);
-            if (batteryArray == null || batteryArray.Value == null)
-            {
-                throw new InvalidOperationException(
-                    "No BatteryDataArray ArrayProperty on " + target.ObjectName
-                    + " in " + inputAssetPath + ".");
+                    "No BatteryDataArray ArrayProperty found in any NormalExport of "
+                    + inputAssetPath
+                    + " - expected an R5BatteryManagerData DataAsset with BatteryDataArray.");
             }
 
             var aimingName = FName.FromString(asset, AimingDataProp);

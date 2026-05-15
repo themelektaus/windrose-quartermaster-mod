@@ -138,6 +138,15 @@ namespace Windrose.Quartermaster.Core
                 DiskPath = p => p.VanillaInventoryItemsCsv,
                 ProbeKind = VanillaSourceProbeKind.SingleFile,
             },
+            new VanillaSourceManifestEntry
+            {
+                Key = "crops",
+                Label = "Crop growth definitions",
+                Description = "R5BusinessRules/Content/Farming/Crops - per-crop DA_Crop_*.json DataAssets with GrowthDuration. Needed by the Stations tab's crop-growth slider.",
+                PakIncludePath = WindroseGameSecrets.FarmingCropsPath,
+                DiskPath = p => p.VanillaCrops,
+                ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
+            },
         };
 
         // Convenience: returns true when the on-disk artifact for one

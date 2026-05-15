@@ -32,58 +32,66 @@ namespace Windrose.Quartermaster.Core
     //     -> retoc to-zen      (Legacy -> IoStore triplet)
     public sealed class RangedReloadPatcher
     {
-        public const double MinMultiplier = 0.05;
-        public const double MaxMultiplier = 1.0;
+        // Bidirectional range: < 1.0 shortens reload (faster), > 1.0 lengthens
+        // it (harder gameplay). 1.0 = vanilla; the GUI null-collapses at 1.0.
+        public const double MinMultiplier = 0.1;
+        public const double MaxMultiplier = 3.0;
 
         public const string PassiveReloadGPDataProp = "PassiveReloadGPData";
         public const string ReloadTimeProp          = "ReloadTime";
 
         // Filename stem -> virtual asset path. Covers every player firearm
-        // LogicParams variant present in 5.6 (Base + Advanced for each).
-        // The 20-asset count comes from:
-        //   Pistols (Pistol_*):     Blank, Reliable, Rusty, DrakesDoom, Corrupted (5 x 2)
-        //   Muskets (Musket_*):     Blank, Infantry                              (2 x 2)
-        //   Blunderbuss:            Blank, Reliable, Dragonbreath                (3 x 2)
+        // LogicParams variant present in 5.6.
+        //
+        // IMPORTANT: not every weapon family ships both _Base and _Advanced
+        // variants. The list below was verified against the live game paks
+        // via `retoc list` - assuming a symmetric Base+Advanced matrix is
+        // wrong and produced "retoc did not produce expected asset" errors.
+        // Total: 19 actual LogicParams (7 pistols + 6 muskets + 5 blunderbuss).
+        //   Pistols:     Blank_Base, Reliable_Base + Advanced, Rusty_Base,
+        //                DrakesDoom_Base + Advanced, Corrupted_Advanced
+        //   Muskets:     Blank_Base, Infantry_Base + Advanced,
+        //                Reliable_Base + Advanced, Sniper_Base + Advanced
+        //   Blunderbuss: Blank_Base, Reliable_Base + Advanced,
+        //                Dragonbreath_Base + Advanced
         public static readonly Dictionary<string, string> WeaponAssets =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 // ----- PISTOLS -----
                 { "DA_RangeWpn_Pistol_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Blank_Base/RangeWpn/DA_RangeWpn_Pistol_Blank_Base_LogicParams.uasset" },
-                { "DA_RangeWpn_Pistol_Blank_Advanced_LogicParams",
-                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Blank_Advanced/RangeWpn/DA_RangeWpn_Pistol_Blank_Advanced_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_Reliable_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Reliable_Base/RangeWpn/DA_RangeWpn_Pistol_Reliable_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_Reliable_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Reliable_Advanced/RangeWpn/DA_RangeWpn_Pistol_Reliable_Advanced_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_Rusty_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Rusty_Base/RangeWpn/DA_RangeWpn_Pistol_Rusty_Base_LogicParams.uasset" },
-                { "DA_RangeWpn_Pistol_Rusty_Advanced_LogicParams",
-                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Rusty_Advanced/RangeWpn/DA_RangeWpn_Pistol_Rusty_Advanced_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_DrakesDoom_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_DrakesDoom_Base/RangeWpn/DA_RangeWpn_Pistol_DrakesDoom_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_DrakesDoom_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_DrakesDoom_Advanced/RangeWpn/DA_RangeWpn_Pistol_DrakesDoom_Advanced_LogicParams.uasset" },
-                { "DA_RangeWpn_Pistol_Corrupted_Base_LogicParams",
-                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Corrupted_Base/RangeWpn/DA_RangeWpn_Pistol_Corrupted_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_Corrupted_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Corrupted_Advanced/RangeWpn/DA_RangeWpn_Pistol_Corrupted_Advanced_LogicParams.uasset" },
 
                 // ----- MUSKETS -----
                 { "DA_RangeWpn_Musket_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Blank_Base/RangeWpn/DA_RangeWpn_Musket_Blank_Base_LogicParams.uasset" },
-                { "DA_RangeWpn_Musket_Blank_Advanced_LogicParams",
-                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Blank_Advanced/RangeWpn/DA_RangeWpn_Musket_Blank_Advanced_LogicParams.uasset" },
                 { "DA_RangeWpn_Musket_Infantry_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Infantry_Base/RangeWpn/DA_RangeWpn_Musket_Infantry_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Musket_Infantry_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Infantry_Advanced/RangeWpn/DA_RangeWpn_Musket_Infantry_Advanced_LogicParams.uasset" },
+                { "DA_RangeWpn_Musket_Reliable_Base_LogicParams",
+                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Reliable_Base/RangeWpn/DA_RangeWpn_Musket_Reliable_Base_LogicParams.uasset" },
+                { "DA_RangeWpn_Musket_Reliable_Advanced_LogicParams",
+                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Reliable_Advanced/RangeWpn/DA_RangeWpn_Musket_Reliable_Advanced_LogicParams.uasset" },
+                { "DA_RangeWpn_Musket_Sniper_Base_LogicParams",
+                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Sniper_Base/RangeWpn/DA_RangeWpn_Musket_Sniper_Base_LogicParams.uasset" },
+                { "DA_RangeWpn_Musket_Sniper_Advanced_LogicParams",
+                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Sniper_Advanced/RangeWpn/DA_RangeWpn_Musket_Sniper_Advanced_LogicParams.uasset" },
 
                 // ----- BLUNDERBUSS -----
                 { "DA_RangeWpn_Blunderbuss_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Blunderbuss_Blank_Base/RangeWpn/DA_RangeWpn_Blunderbuss_Blank_Base_LogicParams.uasset" },
-                { "DA_RangeWpn_Blunderbuss_Blank_Advanced_LogicParams",
-                  "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Blunderbuss_Blank_Advanced/RangeWpn/DA_RangeWpn_Blunderbuss_Blank_Advanced_LogicParams.uasset" },
                 { "DA_RangeWpn_Blunderbuss_Reliable_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Blunderbuss_Reliable_Base/RangeWpn/DA_RangeWpn_Blunderbuss_Reliable_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Blunderbuss_Reliable_Advanced_LogicParams",
@@ -121,32 +129,36 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
+            // UE5.6 LogicParams DataAssets ship sub-component exports next to
+            // the Default__DA_*_C CDO (e.g. R5DrawWeaponTaskBase_0, ability
+            // task sub-objects). The first NormalExport is therefore not
+            // necessarily the CDO carrying PassiveReloadGPData - locate the
+            // right export by property presence instead of by index.
+            var passiveName = FName.FromString(asset, PassiveReloadGPDataProp);
             NormalExport target = null;
             int targetIndex = -1;
+            StructPropertyData passive = null;
             for (int i = 0; i < asset.Exports.Count; i++)
             {
                 if (asset.Exports[i] is NormalExport ne)
                 {
-                    target = ne;
-                    targetIndex = i;
-                    break;
+                    var match = ne.Data.OfType<StructPropertyData>()
+                        .FirstOrDefault(p => p.Name == passiveName && p.Value != null);
+                    if (match != null)
+                    {
+                        target = ne;
+                        targetIndex = i;
+                        passive = match;
+                        break;
+                    }
                 }
             }
-            if (target == null)
+            if (target == null || passive == null)
             {
                 throw new InvalidOperationException(
-                    "No NormalExport found in " + inputAssetPath
-                    + " - expected an R5RangeWeaponItemLogicParams DataAsset.");
-            }
-
-            var passiveName = FName.FromString(asset, PassiveReloadGPDataProp);
-            var passive = target.Data.OfType<StructPropertyData>()
-                .FirstOrDefault(p => p.Name == passiveName);
-            if (passive == null || passive.Value == null)
-            {
-                throw new InvalidOperationException(
-                    "No PassiveReloadGPData StructProperty on "
-                    + target.ObjectName + " in " + inputAssetPath + ".");
+                    "No PassiveReloadGPData StructProperty found in any NormalExport of "
+                    + inputAssetPath
+                    + " - expected an R5RangeWeaponItemLogicParams DataAsset with PassiveReloadGPData.");
             }
 
             var reloadName = FName.FromString(asset, ReloadTimeProp);

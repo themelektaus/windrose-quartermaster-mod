@@ -439,13 +439,26 @@ function classifyLogLine(line) {
     return null;
 }
 
+function setTabsMenuOpen(open) {
+    const menu   = document.getElementById('tabs-menu');
+    const toggle = document.getElementById('tabs-toggle');
+    if (!menu || !toggle) return;
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(!!open));
+}
+
 function setActiveTab(tab) {
     state.activeTab = tab;
+    let activeLabel = '';
     for (const b of document.querySelectorAll('.tab')) {
         const isActive = b.dataset.tab === tab;
         b.classList.toggle('active', isActive);
         b.setAttribute('aria-selected', String(isActive));
+        if (isActive) activeLabel = b.textContent;
     }
+    const toggleLabel = document.getElementById('tabs-toggle-label');
+    if (toggleLabel && activeLabel) toggleLabel.textContent = activeLabel;
+    setTabsMenuOpen(false);
     for (const p of document.querySelectorAll('.tab-page')) {
         p.hidden = p.dataset.tab !== tab;
     }
@@ -573,6 +586,7 @@ function applyProfileToUI() {
         pickaxeOn ? pickaxeMul : 1.4;
     syncPickaxeReadout();
     applyCooldownsToUI();
+    applyStationsToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -981,9 +995,39 @@ async function onBuild() {
                         + fam.effective.toFixed(2) + ')' });
                 }
             }
+            if (data.cropGrowth) {
+                const cg = data.cropGrowth;
+                const mul = (cg.multiplier || 1.0).toFixed(2);
+                lines.push({ kind: 'ok', msg:
+                    'DONE - crop growth patched (' + mul + 'x; '
+                    + cg.cropCount + ' crop'
+                    + (cg.cropCount === 1 ? '' : 's')
+                    + ', sample ' + cg.sampleVanillaTicks
+                    + ' -> ' + cg.sampleEffectiveTicks + ' ticks)' });
+            }
+            if (data.cookingDuration) {
+                const cdr = data.cookingDuration;
+                const families = cdr.families || [];
+                for (const fam of families) {
+                    const mul = (fam.multiplier || 1.0).toFixed(2);
+                    lines.push({ kind: 'ok', msg:
+                        'DONE - cooking duration patched: ' + fam.family
+                        + ' (' + mul + 'x; ' + fam.assetCount + ' recipe'
+                        + (fam.assetCount === 1 ? '' : 's')
+                        + ', avg ' + fam.vanillaAvg.toFixed(0)
+                        + 's -> ' + fam.effectiveAvg.toFixed(0) + 's)' });
+                }
+                if (cdr.mergedWithTrade > 0) {
+                    lines.push({ kind: 'ok', msg:
+                        '  ' + cdr.mergedWithTrade
+                        + ' recipe' + (cdr.mergedWithTrade === 1 ? '' : 's')
+                        + ' merged with buyer/seller trade edits' });
+                }
+            }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
-                && !data.pickaxeRange && !data.cooldowns) {
+                && !data.pickaxeRange && !data.cooldowns
+                && !data.cropGrowth && !data.cookingDuration) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -1130,10 +1174,29 @@ function bindHandlers() {
         b.addEventListener('click', () => setActiveTab(b.dataset.tab));
     }
 
+    const tabsToggle = document.getElementById('tabs-toggle');
+    if (tabsToggle) {
+        tabsToggle.addEventListener('click', e => {
+            e.stopPropagation();
+            const menu = document.getElementById('tabs-menu');
+            const isOpen = menu && !menu.hidden;
+            setTabsMenuOpen(!isOpen);
+        });
+    }
+    document.addEventListener('click', e => {
+        const menu = document.getElementById('tabs-menu');
+        if (!menu || menu.hidden) return;
+        if (e.target.closest && e.target.closest('.tab-menu')) return;
+        setTabsMenuOpen(false);
+    });
+
     document.getElementById('picker-dropdown').addEventListener('mousedown', onPickerClick);
     document.addEventListener('click',  onDocClickClosePicker);
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closePicker();
+        if (e.key === 'Escape') {
+            closePicker();
+            setTabsMenuOpen(false);
+        }
     });
     window.addEventListener('resize', () => {
         if (state.picker) positionPicker(state.picker.input);
@@ -1147,6 +1210,7 @@ function bindHandlers() {
     bindSellersHandlers();
     bindCreatorHandlers();
     bindCooldownsHandlers();
+    bindStationsHandlers();
 }
 
 function onPickerClick(e) {

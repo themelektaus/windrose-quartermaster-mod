@@ -376,6 +376,21 @@ public static class ProfilesEndpoint
                     RangedReloadMultiplier   = g.Cooldowns.RangedReloadMultiplier,
                     ShipCannonMultiplier     = g.Cooldowns.ShipCannonMultiplier,
                 },
+            ProductionTimes = g.ProductionTimes == null
+                ? null
+                : new ProductionTimesGlobal
+                {
+                    CropGrowthMultiplier    = g.ProductionTimes.CropGrowthMultiplier,
+                    SmeltingMultiplier      = g.ProductionTimes.SmeltingMultiplier,
+                    KilnMultiplier          = g.ProductionTimes.KilnMultiplier,
+                    TanningMultiplier       = g.ProductionTimes.TanningMultiplier,
+                    MillingMultiplier       = g.ProductionTimes.MillingMultiplier,
+                    BuildingBitsMultiplier  = g.ProductionTimes.BuildingBitsMultiplier,
+                    DecorationMultiplier    = g.ProductionTimes.DecorationMultiplier,
+                    ArmorWeaponMultiplier   = g.ProductionTimes.ArmorWeaponMultiplier,
+                    TradeOutpostMultiplier  = g.ProductionTimes.TradeOutpostMultiplier,
+                    OtherMultiplier         = g.ProductionTimes.OtherMultiplier,
+                },
         };
     }
 
@@ -628,6 +643,15 @@ public static class ProfilesEndpoint
             hasGlobalCooldowns = p.Globals != null
                                  && p.Globals.Cooldowns != null
                                  && AnyCooldownActive(p.Globals.Cooldowns),
+            // True when at least one ProductionTimes axis (CropGrowth or
+            // any of the 9 recipe families: Smelting, Kiln, Tanning,
+            // Milling, BuildingBits, Decoration, ArmorWeapon, TradeOutpost,
+            // Other) is configured with a non-vanilla multiplier. Surfaces
+            // on the profile-list card so the user can see at a glance
+            // which profiles ship Stations-tab patches.
+            hasGlobalProductionTimes = p.Globals != null
+                                       && p.Globals.ProductionTimes != null
+                                       && AnyProductionTimeActive(p.Globals.ProductionTimes),
         };
     }
 
@@ -641,6 +665,20 @@ public static class ProfilesEndpoint
             || IsActive(cd.ShipSummonMultiplier)
             || IsActive(cd.RangedReloadMultiplier)
             || IsActive(cd.ShipCannonMultiplier);
+    }
+
+    static bool AnyProductionTimeActive(ProductionTimesGlobal pt)
+    {
+        return IsActive(pt.CropGrowthMultiplier)
+            || IsActive(pt.SmeltingMultiplier)
+            || IsActive(pt.KilnMultiplier)
+            || IsActive(pt.TanningMultiplier)
+            || IsActive(pt.MillingMultiplier)
+            || IsActive(pt.BuildingBitsMultiplier)
+            || IsActive(pt.DecorationMultiplier)
+            || IsActive(pt.ArmorWeaponMultiplier)
+            || IsActive(pt.TradeOutpostMultiplier)
+            || IsActive(pt.OtherMultiplier);
     }
 
     static bool IsActive(double? m)

@@ -28,6 +28,11 @@ namespace Windrose.Quartermaster.Core
         // mod pak so the engine resolves the FText lookups the new
         // InventoryItem JSONs contain.
         public string VanillaInventoryItemsCsv;
+        // Farming/Crops/ holds R5BLCropParams JSONs - one per crop type
+        // (Aloe, Banana, BlackBean, ...). Read by CropGrowthPatcher to
+        // multiply each crop's GrowthDuration (FTimespan ticks) by the
+        // user-chosen factor for the "Faster crop growth" feature.
+        public string VanillaCrops;
         public string Builds;
         public string Profiles;
         public string BuildTmp;
@@ -78,6 +83,10 @@ namespace Windrose.Quartermaster.Core
             // under the R5BusinessRules plugin).
             var vanillaInvItemsCsv = Path.Combine(vanilla, "R5", "Content",
                 "Localization", "Data", "InventoryItems.csv");
+            // Farming/Crops/ lives under the R5BusinessRules plugin tree,
+            // same level as InventoryItems / LootTables / Recipes.
+            var vanillaCrops = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "Farming", "Crops");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -89,6 +98,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaRecipeLists = vanillaRecipeLists,
                 VanillaRecipes = vanillaRecipes,
                 VanillaInventoryItemsCsv = vanillaInvItemsCsv,
+                VanillaCrops = vanillaCrops,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),

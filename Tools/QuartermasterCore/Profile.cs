@@ -89,6 +89,7 @@ namespace Windrose.Quartermaster.Core
         public BonfireRadiusGlobal BonfireRadius;
         public PickaxeRangeGlobal PickaxeRange;
         public CooldownsGlobal Cooldowns;
+        public ProductionTimesGlobal ProductionTimes;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -347,6 +348,74 @@ namespace Windrose.Quartermaster.Core
         // entry of every hull (Cutter, Brig, Frigate, Ketch, ...).
         // Vanilla 10 s per battery.
         public double? ShipCannonMultiplier;
+    }
+
+    // Production / station-related time scaling. One multiplier per
+    // recipe family (classified by RecipeTag + filename heuristics) plus
+    // the crop-growth axis for the farming side.
+    //
+    // Crop growth patches R5BLCropParams.GrowthDuration (FTimespan ticks)
+    // on every DA_Crop_*.json under Farming/Crops/. The reference mod
+    // "Faster crop growth" sets every duration to 9_000_000_000 ticks
+    // (~15 min) - we scale the vanilla value by the user multiplier.
+    //
+    // Cooking-duration multipliers all patch R5BLRecipeData.
+    // CookingProcessDuration (seconds, top-level integer/float field) on
+    // recipes whose RecipeTag matches the family's classifier. Vanilla
+    // values per family:
+    //   * Smelting    (Furnace recipes)    ~4200 s (1h10) per ingot
+    //   * Kiln        (charcoal/coconut)   ~4200 s
+    //   * Tanning     (TanLeather/Tannin)  ~4200 s
+    //   * Milling     (cornmeal/juices)    varies
+    //   * BuildingBits  (Bits.* tag)       small (often 30 s)
+    //   * Decoration  (Deco.* tag)         varies, often 30..1800 s
+    //   * ArmorWeapon (Armor.*, ItemUpgrade.*) varies
+    //   * TradeOutpost (NPC-order wait)    4200 s (1h10)
+    //   * Other        (everything else)   varies
+    //
+    // null OR Multiplier == 1.0 -> no patch for that family. Each axis
+    // null-collapses independently so the build only ships recipes the
+    // user actually wants modified.
+    //
+    // The CookingDurationPatcher runs AFTER BuyerPatcher and
+    // SellerPatcher, merging into their output files if a recipe was
+    // already modified by a trade-list edit (so the final JSON has
+    // both the new cost/result AND the new duration).
+    public sealed class ProductionTimesGlobal
+    {
+        // Crop growth: R5BLCropParams.GrowthDuration (FTimespan ticks).
+        public double? CropGrowthMultiplier;
+
+        // Furnace: copper/iron/gold/tumbago/holy ingots, ash.
+        public double? SmeltingMultiplier;
+
+        // Kiln: charcoal, coconut oil.
+        public double? KilnMultiplier;
+
+        // Tannery: tannin, tan-leather, elastic leather.
+        public double? TanningMultiplier;
+
+        // Mill / press: cornmeal, grape juice, pineapple juice, varnish,
+        // flax oil.
+        public double? MillingMultiplier;
+
+        // Anvil / workbench - building bits (Bits.*). Highest-volume
+        // family in vanilla (~194 recipes).
+        public double? BuildingBitsMultiplier;
+
+        // Workbench / deco-bench (Deco.* tag). ~106 recipes.
+        public double? DecorationMultiplier;
+
+        // WeaponTable + armor + ItemUpgrade.*. ~25 recipes.
+        public double? ArmorWeaponMultiplier;
+
+        // Trade Outpost NPC order wait times (TradeOutpost.* tag).
+        // ~148 recipes, all 4200 s vanilla.
+        public double? TradeOutpostMultiplier;
+
+        // Catch-all for recipes that didn't match any family above
+        // (~50 recipes). Off by default - user opts in.
+        public double? OtherMultiplier;
     }
 
     public sealed class ItemOverride
