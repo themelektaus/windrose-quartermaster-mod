@@ -351,11 +351,13 @@ namespace Windrose.Quartermaster.Core
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
                 double pickaxeMultiplier = ResolvePickaxeRangeMultiplier(profile);
                 bool pickaxeActive = pickaxeMultiplier > 0.0 && Math.Abs(pickaxeMultiplier - 1.0) > 1e-9;
+                var cooldownJobs = ResolveCooldownJobs(profile);
+                bool cooldownsActive = cooldownJobs.Count > 0;
                 // iconBakeJobs was resolved earlier (before ItemCreator);
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || iconsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || iconsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -378,8 +380,9 @@ namespace Windrose.Quartermaster.Core
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
                 PickaxeRangeResult pickaxeResult = null;
+                CooldownsResult cooldownsResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || iconsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || iconsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -387,12 +390,14 @@ namespace Windrose.Quartermaster.Core
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
                         pickaxeMultiplier, pickaxeActive,
+                        cooldownJobs,
                         iconBakeJobs,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
                     pickaxeResult = compositeResult.PickaxeRange;
+                    cooldownsResult = compositeResult.Cooldowns;
                     iconBakeResults = compositeResult.Icons;
                 }
 
@@ -457,6 +462,7 @@ namespace Windrose.Quartermaster.Core
                     MinimapResult = minimapResult,
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
+                    CooldownsResult = cooldownsResult,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -510,6 +516,7 @@ namespace Windrose.Quartermaster.Core
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
             double pickaxeMultiplier, bool pickaxeActive,
+            List<CooldownJob> cooldownJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
@@ -669,6 +676,47 @@ namespace Windrose.Quartermaster.Core
                             var r = patcher.Patch(
                                 legacyAssetPath, legacyAssetPath, usmapPath, pickaxeMultiplier);
                             pickaxePatchResults.Add(r);
+                        },
+                    });
+                }
+            }
+
+            // Cooldowns: one IoStoreCompositeSource per asset job. Each job
+            // carries its family, asset stem/virtual-path, multiplier, and
+            // which patch shape to apply (ScalableFloat duration vs top-level
+            // Magnitude vs PassiveReload vs ShipCannon battery walk).
+            // Separating one source per asset keeps the build log
+            // self-explanatory and matches the per-tier layout of pickaxe.
+            var cooldownPatchResults = new List<CooldownJobResult>();
+            if (cooldownJobs != null && cooldownJobs.Count > 0)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Cooldowns source: " + cooldownJobs.Count + " asset"
+                        + (cooldownJobs.Count == 1 ? "" : "s")
+                        + " across " + CountCooldownFamilies(cooldownJobs) + " famil"
+                        + (CountCooldownFamilies(cooldownJobs) == 1 ? "y" : "ies"));
+                foreach (var job in cooldownJobs)
+                {
+                    var localJob = job;
+                    sources.Add(new IoStoreCompositeSource
+                    {
+                        Name = "cooldown:" + localJob.AssetStem,
+                        InputDir = gamePaksDir,
+                        Filter = localJob.AssetStem,
+                        AfterExtract = stagingDir =>
+                        {
+                            var legacyAssetPath = Path.Combine(stagingDir,
+                                localJob.VirtualPath.Replace('/', Path.DirectorySeparatorChar));
+                            if (!File.Exists(legacyAssetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    "retoc to-legacy did not produce the expected cooldown asset at "
+                                    + legacyAssetPath
+                                    + " - the game container may have moved the asset, or "
+                                    + "the filter '" + localJob.AssetStem + "' is wrong.");
+                            }
+                            var r = RunCooldownJob(localJob, legacyAssetPath, usmapPath);
+                            cooldownPatchResults.Add(r);
                         },
                     });
                 }
@@ -856,12 +904,26 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            CooldownsResult cooldownsOut = null;
+            if (cooldownPatchResults.Count > 0)
+            {
+                cooldownsOut = new CooldownsResult
+                {
+                    Enabled = true,
+                    JobResults = cooldownPatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
                 PickaxeRange = pickaxeOut,
+                Cooldowns = cooldownsOut,
                 Icons = iconResults,
             };
         }
@@ -874,6 +936,7 @@ namespace Windrose.Quartermaster.Core
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
             public PickaxeRangeResult PickaxeRange;
+            public CooldownsResult Cooldowns;
             public List<IconBakerPatcher.BakeResult> Icons;
         }
 
@@ -1325,6 +1388,203 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        // Resolves the active set of cooldown patch jobs. Each entry pairs
+        // an asset (stem + virtual path) with the multiplier to apply and
+        // the patch shape to use. 8 family multipliers fan out into 1..N
+        // jobs per family (Elixir = 1 asset, ShipRepairKit = 2, RangedReload
+        // = ~20, ShipCannon = ~8). Returns an empty list when every family
+        // is null or at 1.0 (vanilla).
+        static List<CooldownJob> ResolveCooldownJobs(Profile profile)
+        {
+            var jobs = new List<CooldownJob>();
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return jobs;
+
+            if (HasCooldownMultiplier(cd.ElixirMultiplier))
+            {
+                AddScalableFloatJobs(jobs, CooldownsPatcher.ElixirAssets,
+                    cd.ElixirMultiplier.Value, "elixir");
+            }
+            if (HasCooldownMultiplier(cd.MedicineMultiplier))
+            {
+                AddTopLevelMagnitudeJobs(jobs, CooldownsPatcher.MedicineAssets,
+                    cd.MedicineMultiplier.Value, "medicine");
+            }
+            if (HasCooldownMultiplier(cd.RecallMultiplier))
+            {
+                AddTopLevelMagnitudeJobs(jobs, CooldownsPatcher.RecallAssets,
+                    cd.RecallMultiplier.Value, "recall");
+            }
+            if (HasCooldownMultiplier(cd.ShipRepairKitMultiplier))
+            {
+                AddScalableFloatJobs(jobs, CooldownsPatcher.ShipRepairKitAssets,
+                    cd.ShipRepairKitMultiplier.Value, "ship-repair-kit");
+            }
+            if (HasCooldownMultiplier(cd.BoarWhistleMultiplier))
+            {
+                AddScalableFloatJobs(jobs, CooldownsPatcher.BoarWhistleAssets,
+                    cd.BoarWhistleMultiplier.Value, "boar-whistle");
+            }
+            if (HasCooldownMultiplier(cd.ShipSummonMultiplier))
+            {
+                AddScalableFloatJobs(jobs, CooldownsPatcher.ShipSummonAssets,
+                    cd.ShipSummonMultiplier.Value, "ship-summon");
+            }
+            if (HasCooldownMultiplier(cd.RangedReloadMultiplier))
+            {
+                foreach (var kv in RangedReloadPatcher.WeaponAssets)
+                {
+                    jobs.Add(new CooldownJob
+                    {
+                        Family = "ranged-reload",
+                        AssetStem = kv.Key,
+                        VirtualPath = kv.Value,
+                        Multiplier = cd.RangedReloadMultiplier.Value,
+                        Shape = CooldownJobShape.RangedReload,
+                    });
+                }
+            }
+            if (HasCooldownMultiplier(cd.ShipCannonMultiplier))
+            {
+                foreach (var kv in ShipCannonPatcher.HullAssets)
+                {
+                    jobs.Add(new CooldownJob
+                    {
+                        Family = "ship-cannon",
+                        AssetStem = kv.Key,
+                        VirtualPath = kv.Value,
+                        Multiplier = cd.ShipCannonMultiplier.Value,
+                        Shape = CooldownJobShape.ShipCannon,
+                    });
+                }
+            }
+            return jobs;
+        }
+
+        // A multiplier counts as "active" when it's set AND not vanilla.
+        // Same 1e-9 epsilon as the other multiplier globals.
+        static bool HasCooldownMultiplier(double? m)
+        {
+            return m.HasValue && Math.Abs(m.Value - 1.0) > 1e-9;
+        }
+
+        static void AddScalableFloatJobs(List<CooldownJob> jobs,
+            Dictionary<string, string> assets, double multiplier, string family)
+        {
+            foreach (var kv in assets)
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = family,
+                    AssetStem = kv.Key,
+                    VirtualPath = kv.Value,
+                    Multiplier = multiplier,
+                    Shape = CooldownJobShape.ScalableFloatDuration,
+                });
+            }
+        }
+
+        static void AddTopLevelMagnitudeJobs(List<CooldownJob> jobs,
+            Dictionary<string, string> assets, double multiplier, string family)
+        {
+            foreach (var kv in assets)
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = family,
+                    AssetStem = kv.Key,
+                    VirtualPath = kv.Value,
+                    Multiplier = multiplier,
+                    Shape = CooldownJobShape.TopLevelMagnitude,
+                });
+            }
+        }
+
+        // Diagnostic helper for the build log.
+        static int CountCooldownFamilies(List<CooldownJob> jobs)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var j in jobs) if (j != null && j.Family != null) set.Add(j.Family);
+            return set.Count;
+        }
+
+        // Dispatches a single cooldown job to the right patcher and returns
+        // a uniform result envelope. Encapsulates the per-shape patcher
+        // construction so the source-loop stays compact.
+        CooldownJobResult RunCooldownJob(CooldownJob job, string legacyAssetPath, string usmapPath)
+        {
+            switch (job.Shape)
+            {
+                case CooldownJobShape.ScalableFloatDuration:
+                {
+                    var patcher = new CooldownsPatcher { Log = Log };
+                    var r = patcher.PatchScalableFloatDuration(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = 0,
+                        PatchedBatteryCount = 0,
+                    };
+                }
+                case CooldownJobShape.TopLevelMagnitude:
+                {
+                    var patcher = new CooldownsPatcher { Log = Log };
+                    var r = patcher.PatchTopLevelMagnitude(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = 0,
+                        PatchedBatteryCount = 0,
+                    };
+                }
+                case CooldownJobShape.RangedReload:
+                {
+                    var patcher = new RangedReloadPatcher { Log = Log };
+                    var r = patcher.Patch(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaReloadTime,
+                        EffectiveValue = r.EffectiveReloadTime,
+                        BatteryCount = 0,
+                        PatchedBatteryCount = 0,
+                    };
+                }
+                case CooldownJobShape.ShipCannon:
+                {
+                    var patcher = new ShipCannonPatcher { Log = Log };
+                    var r = patcher.Patch(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaReloadTime,
+                        EffectiveValue = r.EffectiveReloadTime,
+                        BatteryCount = r.BatteryCount,
+                        PatchedBatteryCount = r.PatchedCount,
+                    };
+                }
+                default:
+                    throw new InvalidOperationException(
+                        "Unknown CooldownJobShape: " + job.Shape);
+            }
+        }
+
         // Returns the list of NoSmoke categories the profile has actively
         // enabled (in declaration order: Campfire, Furnace, Kiln). Empty
         // list means no NoSmoke source contributes to the IoStore composite.
@@ -1511,6 +1771,11 @@ namespace Windrose.Quartermaster.Core
         // patched (currently 4) plus the published triplet paths the
         // patched DataAssets ride inside (sharedBaseName.ucas/utoc).
         public PickaxeRangeResult PickaxeRangeResult;
+        // Cooldown patches inclusion result. null when no cooldown family
+        // was activated (every multiplier null or 1.0). When non-null,
+        // carries one CooldownJobResult per patched asset (1..N per
+        // activated family) plus the shared triplet paths.
+        public CooldownsResult CooldownsResult;
         public string TmpDir;
         public bool Success;
     }
@@ -1608,6 +1873,62 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public List<PickaxeRangePatchResult> AssetResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    // Discriminator for cooldown jobs - tells the dispatcher which patcher
+    // to invoke for a given asset. Each shape corresponds to one of the
+    // three patcher classes (CooldownsPatcher with two methods, plus
+    // RangedReloadPatcher and ShipCannonPatcher).
+    public enum CooldownJobShape
+    {
+        ScalableFloatDuration,
+        TopLevelMagnitude,
+        RangedReload,
+        ShipCannon,
+    }
+
+    // A single cooldown patch to apply: which asset, which multiplier,
+    // which property shape. ResolveCooldownJobs() fans the 8 family
+    // multipliers out into 1..N of these per family.
+    public sealed class CooldownJob
+    {
+        // Human-readable family id ("elixir", "medicine", "ranged-reload",
+        // "ship-cannon", ...). Used to group per-asset results back into
+        // family-level summaries for the build response.
+        public string Family;
+        public string AssetStem;
+        public string VirtualPath;
+        public double Multiplier;
+        public CooldownJobShape Shape;
+    }
+
+    // Per-asset cooldown patch outcome. Uniform envelope across all four
+    // patch shapes so the build response can render a single table without
+    // branching on Shape. BatteryCount/PatchedBatteryCount carry extra
+    // diagnostic for ShipCannon (zero for the other shapes).
+    public sealed class CooldownJobResult
+    {
+        public string Family;
+        public string AssetStem;
+        public double Multiplier;
+        public float VanillaValue;
+        public float EffectiveValue;
+        public int BatteryCount;
+        public int PatchedBatteryCount;
+    }
+
+    // Standalone summary of "cooldown patches got included in this build".
+    // The patched DataAssets ride inside the SAME IoStore triplet as
+    // Pickup / Bonfire / Pickaxe / NoSmoke (sharedBaseName.ucas/utoc), so
+    // PakPath mirrors the same semantics as the other composite results
+    // (null when a main Pak1 is also being built, stub .pak otherwise).
+    public sealed class CooldownsResult
+    {
+        public bool Enabled;
+        public List<CooldownJobResult> JobResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

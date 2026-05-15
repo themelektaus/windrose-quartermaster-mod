@@ -363,6 +363,19 @@ public static class ProfilesEndpoint
                 {
                     Multiplier = g.PickaxeRange.Multiplier,
                 },
+            Cooldowns = g.Cooldowns == null
+                ? null
+                : new CooldownsGlobal
+                {
+                    ElixirMultiplier         = g.Cooldowns.ElixirMultiplier,
+                    MedicineMultiplier       = g.Cooldowns.MedicineMultiplier,
+                    RecallMultiplier         = g.Cooldowns.RecallMultiplier,
+                    ShipRepairKitMultiplier  = g.Cooldowns.ShipRepairKitMultiplier,
+                    BoarWhistleMultiplier    = g.Cooldowns.BoarWhistleMultiplier,
+                    ShipSummonMultiplier     = g.Cooldowns.ShipSummonMultiplier,
+                    RangedReloadMultiplier   = g.Cooldowns.RangedReloadMultiplier,
+                    ShipCannonMultiplier     = g.Cooldowns.ShipCannonMultiplier,
+                },
         };
     }
 
@@ -607,7 +620,32 @@ public static class ProfilesEndpoint
                                     && p.Globals.PickaxeRange != null
                                     && p.Globals.PickaxeRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickaxeRange.Multiplier.Value - 1.0) > 1e-9,
+            // True when at least one of the 8 cooldown axes (Elixir,
+            // Medicine, Recall, ShipRepairKit, BoarWhistle, ShipSummon,
+            // RangedReload, ShipCannon) is configured with a non-vanilla
+            // multiplier. The build then walks the active families and
+            // ships per-asset patches in the shared IoStore composite.
+            hasGlobalCooldowns = p.Globals != null
+                                 && p.Globals.Cooldowns != null
+                                 && AnyCooldownActive(p.Globals.Cooldowns),
         };
+    }
+
+    static bool AnyCooldownActive(CooldownsGlobal cd)
+    {
+        return IsActive(cd.ElixirMultiplier)
+            || IsActive(cd.MedicineMultiplier)
+            || IsActive(cd.RecallMultiplier)
+            || IsActive(cd.ShipRepairKitMultiplier)
+            || IsActive(cd.BoarWhistleMultiplier)
+            || IsActive(cd.ShipSummonMultiplier)
+            || IsActive(cd.RangedReloadMultiplier)
+            || IsActive(cd.ShipCannonMultiplier);
+    }
+
+    static bool IsActive(double? m)
+    {
+        return m.HasValue && Math.Abs(m.Value - 1.0) > 1e-9;
     }
 
     static bool HasAnyNoSmokeCategory(Profile p)

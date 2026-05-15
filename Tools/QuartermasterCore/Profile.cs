@@ -88,6 +88,7 @@ namespace Windrose.Quartermaster.Core
         public MinimapRangeGlobal MinimapRange;
         public BonfireRadiusGlobal BonfireRadius;
         public PickaxeRangeGlobal PickaxeRange;
+        public CooldownsGlobal Cooldowns;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -279,6 +280,73 @@ namespace Windrose.Quartermaster.Core
         // Final scaling factor applied to each tier's vanilla
         // TraceScaleModifier. null OR == 1.0 -> no patch is built.
         public double? Multiplier;
+    }
+
+    // Cooldown-shortening patches. Each multiplier scales the vanilla
+    // cooldown / reload time of a category by the chosen factor:
+    //   1.0 = vanilla (no patch built for that property)
+    //   0.5 = half the vanilla cooldown
+    //   0.1 = ten times faster
+    //
+    // Eight independent axes, each null-collapses individually so the
+    // build only ships assets the user actually wants modified. Mirrors
+    // the "Faster Player Consumable Cooldown" + "Faster Ship Consumable
+    // Cooldown" reference mods (first five fields), plus four additional
+    // cooldown families found in vanilla that the reference mods skip
+    // (boar whistle, ship summon, ranged reload, ship cannons).
+    //
+    // Patch shapes per field:
+    //   * Elixir, ShipRepairKit, BoarWhistle, ShipSummon - scale a
+    //     ScalableFloatMagnitude.Value FloatProperty on a GameplayEffect
+    //     DataAsset (deep struct walk).
+    //   * Medicine, Recall - scale a top-level Magnitude FloatProperty
+    //     on a BP_Calc R5ModMagCalc_SimpleAttributeBased asset.
+    //   * RangedReload - scale a nested
+    //     PassiveReloadGPData.ReloadTime FloatProperty across ~20
+    //     firearm LogicParams DataAssets.
+    //   * ShipCannon - scale every Battery's AimingData.ReloadTime
+    //     FloatProperty inside an ArrayProperty on each Ship's
+    //     BatteryManagerParams DataAsset.
+    //
+    // All patches ship in the same shared IoStore composite triplet as
+    // pickup / bonfire / pickaxe.
+    public sealed class CooldownsGlobal
+    {
+        // Player consumable: GE_Cooldown_Elixir (vanilla 3 s).
+        public double? ElixirMultiplier;
+
+        // Player consumable: BP_Calc_ConsCdBonus_Medicine.Magnitude
+        // (vanilla 15 - drives GE_Cooldown_Medicine via custom calc class).
+        public double? MedicineMultiplier;
+
+        // Player consumable: BP_Calc_ConsCdBonus_Recall.Magnitude
+        // (vanilla 600 - drives GE_Cooldown_Potion_Recall via custom calc).
+        public double? RecallMultiplier;
+
+        // Ship consumable: BOTH GE_Ship_Cooldown_RepairKit (vanilla 40 s)
+        // and GE_Ship_Cooldown_RepairKit_Small (vanilla 20 s). The mod
+        // treats them as one family because they sit next to each other
+        // and have the same effective cooldown semantics.
+        public double? ShipRepairKitMultiplier;
+
+        // Player consumable: GE_SpawnerCooldown (vanilla 1.0 - the
+        // multiplier on the CurveTable lookup. Setting < 1.0 shortens
+        // boar-whistle cooldown proportionally).
+        public double? BoarWhistleMultiplier;
+
+        // Player ability: GE_ShipSummon_Cooldown
+        // (vanilla 5 s - plain ScalableFloat, no curve).
+        public double? ShipSummonMultiplier;
+
+        // Player firearms: PassiveReloadGPData.ReloadTime across all
+        // pistol / musket / blunderbuss LogicParams variants. Vanilla
+        // ranges from ~12 s (Pistol_Reliable) to ~15 s (Musket_Infantry).
+        public double? RangedReloadMultiplier;
+
+        // Ship combat: AimingData.ReloadTime on every BatteryManager
+        // entry of every hull (Cutter, Brig, Frigate, Ketch, ...).
+        // Vanilla 10 s per battery.
+        public double? ShipCannonMultiplier;
     }
 
     public sealed class ItemOverride

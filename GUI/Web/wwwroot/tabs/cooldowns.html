@@ -1,0 +1,179 @@
+<div class="tab-page misc-page" data-tab="cooldowns">
+  <aside class="pane misc">
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-elixir.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Elixir</h2>
+        <p class="hint">Cooldown after drinking an elixir consumable.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-elixir-enabled">
+            Shorten elixir cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-elixir-multiplier" min="0.05" max="1.0" step="0.05" value="0.5">
+            <span id="cd-elixir-multiplier-value">0.5x</span>
+            <span id="cd-elixir-readout">1.5 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 3 s</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-medicine.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Medicine</h2>
+        <p class="hint">Cooldown after using a medicine consumable (rum, bandages).</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-medicine-enabled">
+            Shorten medicine cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-medicine-multiplier" min="0.05" max="1.0" step="0.05" value="0.5">
+            <span id="cd-medicine-multiplier-value">0.5x</span>
+            <span id="cd-medicine-readout">7.5 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 15 s</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-recall.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Spell of Return</h2>
+        <p class="hint">Cooldown after using the Spell-of-Return potion (recall).</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-recall-enabled">
+            Shorten recall cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-recall-multiplier" min="0.05" max="1.0" step="0.05" value="0.25">
+            <span id="cd-recall-multiplier-value">0.25x</span>
+            <span id="cd-recall-readout">150 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 600 s (10 min)</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-repair.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Ship Repair Kit</h2>
+        <p class="hint">Cooldown between deploying ship repair kits.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-shiprepair-enabled">
+            Shorten repair-kit cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-shiprepair-multiplier" min="0.05" max="1.0" step="0.05" value="0.25">
+            <span id="cd-shiprepair-multiplier-value">0.25x</span>
+            <span id="cd-shiprepair-readout">10 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 40 s (regular), 20 s (small)</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-boar.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Boar Whistle</h2>
+        <p class="hint">Cooldown for summoning a friendly boar via the whistle.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-boar-enabled">
+            Shorten boar-whistle cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-boar-multiplier" min="0.05" max="1.0" step="0.05" value="0.5">
+            <span id="cd-boar-multiplier-value">0.5x</span>
+            <span id="cd-boar-readout">-50%</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 1.0x curve multiplier</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-summon.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Ship Summon</h2>
+        <p class="hint">Cooldown after summoning your ship to the dock.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-shipsummon-enabled">
+            Shorten ship-summon cooldown
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-shipsummon-multiplier" min="0.05" max="1.0" step="0.05" value="0.4">
+            <span id="cd-shipsummon-multiplier-value">0.4x</span>
+            <span id="cd-shipsummon-readout">2.0 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 5 s</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-reload.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Ranged Reload</h2>
+        <p class="hint">Passive reload time for pistols, muskets, blunderbusses (~20 weapons).</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-reload-enabled">
+            Shorten ranged-weapon reload
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-reload-multiplier" min="0.05" max="1.0" step="0.05" value="0.5">
+            <span id="cd-reload-multiplier-value">0.5x</span>
+            <span id="cd-reload-readout">~6.5 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 12-15 s</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(cd-cannon.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Ship Cannons</h2>
+        <p class="hint">Reload time between cannon volleys on every ship hull.</p>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="cd-cannon-enabled">
+            Shorten cannon reload
+          </label>
+          <div class="pickup-slider indent">
+            <input type="range" id="cd-cannon-multiplier" min="0.05" max="1.0" step="0.05" value="0.5">
+            <span id="cd-cannon-multiplier-value">0.5x</span>
+            <span id="cd-cannon-readout">5.0 s</span>
+          </div>
+        </div>
+        <p class="hint">vanilla: 10 s</p>
+      </div>
+    </section>
+  </aside>
+</div>

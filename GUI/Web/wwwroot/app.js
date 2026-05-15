@@ -183,7 +183,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'cooldowns', 'mods'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -572,6 +572,7 @@ function applyProfileToUI() {
     document.getElementById('pickaxe-multiplier').value =
         pickaxeOn ? pickaxeMul : 1.4;
     syncPickaxeReadout();
+    applyCooldownsToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -967,9 +968,22 @@ async function onBuild() {
                 summary += ')';
                 lines.push({ kind: 'ok', msg: summary });
             }
+            if (data.cooldowns) {
+                const cd = data.cooldowns;
+                const families = cd.families || [];
+                for (const fam of families) {
+                    const mul = (fam.multiplier || 1.0).toFixed(2);
+                    lines.push({ kind: 'ok', msg:
+                        'DONE - cooldown patched: ' + fam.family
+                        + ' (' + mul + 'x; ' + fam.assetCount + ' asset'
+                        + (fam.assetCount === 1 ? '' : 's')
+                        + ', ' + fam.vanilla.toFixed(2) + ' -> '
+                        + fam.effective.toFixed(2) + ')' });
+                }
+            }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
-                && !data.pickaxeRange) {
+                && !data.pickaxeRange && !data.cooldowns) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {
@@ -1132,6 +1146,7 @@ function bindHandlers() {
     bindBuyersHandlers();
     bindSellersHandlers();
     bindCreatorHandlers();
+    bindCooldownsHandlers();
 }
 
 function onPickerClick(e) {

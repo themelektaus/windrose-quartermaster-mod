@@ -246,6 +246,41 @@ public static class BuildEndpoint
                             }).ToArray(),
                     };
                 }
+                // Cooldowns: groups per-asset results by family so the
+                // build log can render one line per active family
+                // (Elixir, Medicine, ShipRepairKit, ...) with per-family
+                // multipliers + a representative vanilla/effective sample.
+                // null = every cooldown family was vanilla / disabled.
+                object cooldownsInfo = null;
+                if (result.CooldownsResult != null)
+                {
+                    var cd = result.CooldownsResult;
+                    var families = (cd.JobResults == null
+                        ? Enumerable.Empty<CooldownJobResult>()
+                        : cd.JobResults)
+                        .GroupBy(j => j.Family ?? "")
+                        .Select(g =>
+                        {
+                            var first = g.First();
+                            return new
+                            {
+                                family = g.Key,
+                                multiplier = first.Multiplier,
+                                assetCount = g.Count(),
+                                vanilla = first.VanillaValue,
+                                effective = first.EffectiveValue,
+                                batteryCount = g.Sum(x => x.BatteryCount),
+                                patchedBatteryCount = g.Sum(x => x.PatchedBatteryCount),
+                            };
+                        })
+                        .ToArray();
+                    cooldownsInfo = new
+                    {
+                        ucasPath = cd.UcasPath,
+                        utocPath = cd.UtocPath,
+                        families,
+                    };
+                }
                 // NoSmoke surfaces the active categories + per-asset patch
                 // counts so the frontend can render "Campfire, Furnace
                 // (5 assets, 38 emitter handles silenced)". null = no
@@ -302,6 +337,7 @@ public static class BuildEndpoint
                     minimapRange = minimapRangeInfo,
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
+                    cooldowns = cooldownsInfo,
                     log,
                 });
             }
