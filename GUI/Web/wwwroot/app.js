@@ -439,26 +439,13 @@ function classifyLogLine(line) {
     return null;
 }
 
-function setTabsMenuOpen(open) {
-    const menu   = document.getElementById('tabs-menu');
-    const toggle = document.getElementById('tabs-toggle');
-    if (!menu || !toggle) return;
-    menu.hidden = !open;
-    toggle.setAttribute('aria-expanded', String(!!open));
-}
-
 function setActiveTab(tab) {
     state.activeTab = tab;
-    let activeLabel = '';
     for (const b of document.querySelectorAll('.tab')) {
         const isActive = b.dataset.tab === tab;
         b.classList.toggle('active', isActive);
         b.setAttribute('aria-selected', String(isActive));
-        if (isActive) activeLabel = b.textContent;
     }
-    const toggleLabel = document.getElementById('tabs-toggle-label');
-    if (toggleLabel && activeLabel) toggleLabel.textContent = activeLabel;
-    setTabsMenuOpen(false);
     for (const p of document.querySelectorAll('.tab-page')) {
         p.hidden = p.dataset.tab !== tab;
     }
@@ -1174,28 +1161,11 @@ function bindHandlers() {
         b.addEventListener('click', () => setActiveTab(b.dataset.tab));
     }
 
-    const tabsToggle = document.getElementById('tabs-toggle');
-    if (tabsToggle) {
-        tabsToggle.addEventListener('click', e => {
-            e.stopPropagation();
-            const menu = document.getElementById('tabs-menu');
-            const isOpen = menu && !menu.hidden;
-            setTabsMenuOpen(!isOpen);
-        });
-    }
-    document.addEventListener('click', e => {
-        const menu = document.getElementById('tabs-menu');
-        if (!menu || menu.hidden) return;
-        if (e.target.closest && e.target.closest('.tab-menu')) return;
-        setTabsMenuOpen(false);
-    });
-
     document.getElementById('picker-dropdown').addEventListener('mousedown', onPickerClick);
     document.addEventListener('click',  onDocClickClosePicker);
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             closePicker();
-            setTabsMenuOpen(false);
         }
     });
     window.addEventListener('resize', () => {

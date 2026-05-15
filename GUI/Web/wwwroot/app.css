@@ -36,7 +36,7 @@
   --button-padding: .3em .7em;
   --input-padding: .3em .5em;
   --icon-size: 4.5em;
-  --header-side-width: 29rem;
+  --sidebar-width: 14rem;
 }
 
 ::-webkit-scrollbar {
@@ -73,9 +73,62 @@ body {
   color: var(--text);
   background: var(--bg);
   display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
   grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main"
+    "sidebar footer";
   height: 100vh;
   overflow: hidden;
+}
+
+main {
+  grid-area: main;
+}
+
+footer {
+  grid-area: footer;
+}
+
+.sidebar {
+  grid-area: sidebar;
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-brand {
+  padding: .75em 1em;
+}
+
+.sidebar-brand h1 {
+  font-size: var(--font-size-big);
+}
+
+.sidebar .tabs {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+  margin: 0;
+  padding: .5em;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-items: stretch;
+}
+
+.sidebar .tabs .tab {
+  width: 100%;
+  text-align: left;
+  padding: .5em .75em;
+}
+
+.sidebar .tabs .tab.active {
+  background-color: color-mix(in srgb, var(--accent), #000 70%);
 }
 
 h1 {
@@ -101,17 +154,16 @@ code {
 }
 
 header:has(.header-left) {
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border);
-  padding: .5em 1em;
+  grid-area: header;
+  padding: .5em .5em 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: .5em;
 }
 
 .header-left {
-  width: var(--header-side-width);
   display: flex;
   align-items: center;
   gap: .5em;
@@ -121,9 +173,7 @@ header:has(.header-left) {
   display: flex;
   flex-wrap: wrap;
   gap: .5em;
-  justify-content: flex-end;
   align-items: center;
-  width: var(--header-side-width);
 }
 
 #profile-select {
@@ -199,8 +249,15 @@ button.danger {
 
 .icon-button {
   background-position: center;
-  background-size: 60%;
+  background-size: 1.2em;
   background-repeat: no-repeat;
+}
+
+.button-with-icon {
+  background-position: .5em center;
+  background-size: 1.2em;
+  background-repeat: no-repeat;
+  padding-left: 2em;
 }
 
 .profile-meta {
@@ -280,6 +337,15 @@ main {
   margin-top: .5em;
 }
 
+body.no-profiles {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "header"
+    "main"
+    "footer";
+}
+
+body.no-profiles #sidebar,
 body.no-profiles #tabs,
 body.no-profiles #profile-bar,
 body.no-profiles #tab-pages,
@@ -610,7 +676,6 @@ footer.collapsed .footer-body {
 .tabs {
   display: flex;
   gap: .5em;
-  margin-inline: auto;
   align-items: center;
 }
 
@@ -632,74 +697,6 @@ footer.collapsed .footer-body {
 .tabs .tab.active {
   color: var(--accent);
   border-color: var(--accent);
-}
-
-.tab-menu {
-  position: relative;
-}
-
-.tab-toggle {
-  display: flex;
-  align-items: center;
-  gap: .5em;
-  background-color: var(--bg-elev-2);
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius);
-  color: var(--accent);
-  padding: var(--button-padding);
-  font-weight: bold;
-  text-transform: uppercase;
-  min-width: 12em;
-  justify-content: space-between;
-}
-
-.tab-toggle:hover:not(:disabled) {
-  filter: brightness(1.15);
-  border-color: var(--bg-elev-3);
-}
-
-.tab-toggle .chevron {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-left:  .35em solid transparent;
-  border-right: .35em solid transparent;
-  border-top:   .4em  solid currentColor;
-  transition: transform .15s;
-}
-
-.tab-toggle[aria-expanded="true"] .chevron {
-  transform: rotate(180deg);
-}
-
-.tab-menu-popover {
-  position: absolute;
-  top: calc(100% + .35em);
-  left: 0;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  gap: .15em;
-  min-width: 14em;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius);
-  padding: .35em;
-  box-shadow: 0 .5em 1em rgba(0, 0, 0, .5);
-}
-
-.tab-menu-popover[hidden] {
-  display: none;
-}
-
-.tab-menu-popover .tab {
-  text-align: left;
-  width: 100%;
-  padding: .4em .75em;
-}
-
-.tab-menu-popover .tab.active {
-  background-color: color-mix(in srgb, var(--accent), #000 70%);
 }
 
 .hint {
@@ -787,8 +784,9 @@ footer.collapsed .footer-body {
 
 .shutdown-info {
   display: flex;
+  width: 100vw;
   height: 100vh;
-  align-items:center;
+  align-items: center;
   justify-content: center;
   color: var(--text-dim);
 }

@@ -36,38 +36,35 @@
     </div>
   </div>
 
-  <header>
-    <div class="header-left">
-      <h1>Windrose Quartermaster</h1>
-      <div id="profile-meta" class="profile-meta"></div>
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-brand">
+      <h1>Quartermaster</h1>
     </div>
     <nav id="tabs" class="tabs" role="tablist">
-      <div class="tab-menu">
-        <button id="tabs-toggle" type="button" class="tab-toggle" aria-haspopup="menu" aria-expanded="false">
-          <span id="tabs-toggle-label">Basic</span>
-          <span class="chevron"></span>
-        </button>
-        <div id="tabs-menu" class="tab-menu-popover" hidden role="menu">
-          <button type="button"  class="tab active"  data-tab="misc"       role="menuitem"  aria-selected="true"  >Basic</button>
-          <button type="button"  class="tab"         data-tab="items"      role="menuitem"  aria-selected="false" >Items</button>
-          <button type="button"  class="tab"         data-tab="creator"    role="menuitem"  aria-selected="false" >Item Creator</button>
-          <button type="button"  class="tab"         data-tab="loot"       role="menuitem"  aria-selected="false" >Loot Tables</button>
-          <button type="button"  class="tab"         data-tab="buyers"     role="menuitem"  aria-selected="false" >Buyers</button>
-          <button type="button"  class="tab"         data-tab="sellers"    role="menuitem"  aria-selected="false" >Sellers</button>
-          <button type="button"  class="tab"         data-tab="cooldowns"  role="menuitem"  aria-selected="false" >Cooldowns</button>
-          <button type="button"  class="tab"         data-tab="mods"       role="menuitem"  aria-selected="false" >Mods</button>
-        </div>
-      </div>
-      <button id="btn-build" type="button" class="primary" style="font-weight: bold; ">BUILD</button>
+      <button type="button"  class="tab active"  data-tab="misc"       role="tab"  aria-selected="true"  >Basic</button>
+      <button type="button"  class="tab"         data-tab="items"      role="tab"  aria-selected="false" >Items</button>
+      <button type="button"  class="tab"         data-tab="creator"    role="tab"  aria-selected="false" >Item Creator</button>
+      <button type="button"  class="tab"         data-tab="loot"       role="tab"  aria-selected="false" >Loot Tables</button>
+      <button type="button"  class="tab"         data-tab="buyers"     role="tab"  aria-selected="false" >Buyers</button>
+      <button type="button"  class="tab"         data-tab="sellers"    role="tab"  aria-selected="false" >Sellers</button>
+      <button type="button"  class="tab"         data-tab="cooldowns"  role="tab"  aria-selected="false" >Cooldowns</button>
+      <button type="button"  class="tab"         data-tab="mods"       role="tab"  aria-selected="false" >Mods</button>
     </nav>
+  </aside>
+
+  <header>
+    <div class="header-left">
+      <button id="btn-save"  type="button" class="button-with-icon success" style="background-image: url(save.svg); " disabled>Save</button>
+      <button id="btn-build" type="button" class="button-with-icon primary" style="background-image: url(hammer.svg); ">Build</button>
+      <button id="btn-quit"  type="button" class="button-with-icon danger" style="background-image: url(poweroff.svg); ">Exit</button>
+      <div id="profile-meta" class="profile-meta"></div>
+    </div>
     <div id="profile-bar" class="profile-bar">
       <select id="profile-select"></select>
       <button id="btn-rename"    type="button" class="icon-button" style="background-image: url(edit.svg); ">&nbsp;&nbsp;</button>
       <button id="btn-new"       type="button" class="icon-button" style="background-image: url(add.svg); ">&nbsp;&nbsp;</button>
       <button id="btn-duplicate" type="button" class="icon-button" style="background-image: url(contentcopy.svg); ">&nbsp;&nbsp;</button>
-      <button id="btn-save"      type="button" class="icon-button success" style="background-image: url(save.svg); " disabled>&nbsp;&nbsp;</button>
       <button id="btn-delete"    type="button" class="icon-button danger" style="background-image: url(delete.svg); ">&nbsp;&nbsp;</button>
-      <button id="btn-quit"      type="button" class="icon-button danger" style="background-image: url(poweroff.svg); ">&nbsp;&nbsp;</button>
     </div>
   </header>
 
