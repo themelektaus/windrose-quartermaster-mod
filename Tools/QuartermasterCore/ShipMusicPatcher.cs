@@ -199,12 +199,15 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading usmap: " + usmapPath);
             var mappings = new Usmap(usmapPath);
             LogLine("Loading template uasset: " + destUassetAbs);
-            // The template was cooked with UE5.7's Editor (the source-build
-            // of UE the user installed for the Bink encoder static lib).
-            // The other patchers parse vanilla game assets cooked with
-            // UE5.6 and use VER_UE5_6; this one is the only place we hit a
-            // UE5.7-cooked package, so it's the only place we bump.
-            var asset = new UAsset(destUassetAbs, EngineVersion.VER_UE5_7, mappings);
+            // The template was originally cooked with UE5.7's Editor (the
+            // source-build UE we installed for the Bink encoder static lib),
+            // but retoc 0.1.5 chokes on the UE5.7 PackageFileSummary layout
+            // (custom-version container, GenerationCount entries) with
+            // "failed to fill whole buffer" during to-zen. We re-cooked the
+            // template under UE5.6 (matching the game's engine version
+            // 5.6.1) so it serializes back through retoc cleanly. All
+            // patchers across the codebase now stay on VER_UE5_6.
+            var asset = new UAsset(destUassetAbs, EngineVersion.VER_UE5_6, mappings);
 
             // Compute the /Game/-prefixed package path that should sit
             // in FolderName + the corresponding NameMap entry, derived
