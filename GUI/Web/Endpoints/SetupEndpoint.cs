@@ -70,6 +70,8 @@ public static class SetupEndpoint
                 hasVanillaPak = status.HasVanillaPak,
                 vanillaPakPath = status.VanillaPakPath,
                 vanillaPakError = status.VanillaPakError,
+                hasFfmpeg = status.HasFfmpeg,
+                ffmpegPath = status.FfmpegPath,
                 isRunning = _running == 1,
             });
         });

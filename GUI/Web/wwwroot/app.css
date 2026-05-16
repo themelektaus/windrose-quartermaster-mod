@@ -585,6 +585,19 @@ footer.collapsed .footer-body {
   font-weight: bold;
 }
 
+/* Optional setup items (ffmpeg today) render in a neutral state when
+ * absent - they're not blockers, just nice-to-haves the user can stage
+ * up-front. We use the same monospaced marker style as ok/bad so the
+ * column stays aligned, but with a dim "-" glyph and a muted color. */
+.setup-checks li.optional::before {
+  content: " -";
+  white-space: pre;
+  color: var(--text-dim);
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  font-weight: bold;
+}
+
 .setup-checks li small {
   color: var(--text-dim);
   font-size: var(--font-size-small);

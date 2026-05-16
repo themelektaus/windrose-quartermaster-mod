@@ -261,7 +261,18 @@ function renderSetupChecks(status) {
         '<div><b>' + esc('Item icons extracted') + '</b>' +
         '<br><small>' + esc((status.iconsDir || '') + ' - produced by the icons step.') + '</small>' +
         '</div></li>';
-    ul.innerHTML = staticHtml.concat(sourceRows).concat([iconsRow]).join('');
+    // ffmpeg is optional - WAV-only users never need it - so we render
+    // the row in a neutral "info" state when absent (not red). Re-running
+    // setup downloads it; absence does not block the configurator.
+    const ffmpegCls = status.hasFfmpeg ? 'ok' : 'optional';
+    const ffmpegDetail = status.hasFfmpeg
+        ? (status.ffmpegPath || '')
+        : 'Optional - one-time ~190 MB download. Only needed if you upload mp3 / ogg / flac / m4a / aac / opus in the Ship Music tab.';
+    const ffmpegRow = '<li class="' + ffmpegCls + '">' +
+        '<div><b>' + esc('ffmpeg (audio transcoder)') + '</b>' +
+        '<br><small>' + esc(ffmpegDetail) + '</small>' +
+        '</div></li>';
+    ul.innerHTML = staticHtml.concat(sourceRows).concat([iconsRow, ffmpegRow]).join('');
 }
 
 function renderSetupError(status) {

@@ -10,14 +10,18 @@
           A replacement applies to all ship sizes automatically.
         </p>
         <p class="hint">
-          Drop a <code>.wav</code> file per slot - Quartermaster encodes
-          it to Bink Audio at build time and splices it into a
-          SoundWave template. No UE5 Editor cook needed.
+          Drop an audio file per slot - Quartermaster transcodes it to
+          a 44.1 kHz stereo WAV (if needed), encodes it to Bink Audio
+          and splices the result into a SoundWave template at build
+          time. No UE5 Editor cook needed.
         </p>
         <p class="hint">
-          <b>Format:</b> 44.1 kHz, stereo, 16-bit PCM. Convert other
-          formats first with Audacity or ffmpeg
-          (<code>ffmpeg -i in.mp3 -ar 44100 -ac 2 -sample_fmt s16 out.wav</code>).
+          <b>Accepted formats:</b> <code>.wav</code>, <code>.mp3</code>,
+          <code>.ogg</code>, <code>.flac</code>, <code>.m4a</code>,
+          <code>.aac</code>, <code>.opus</code>. Non-WAV files are
+          transcoded by <code>ffmpeg.exe</code> (~190 MB) which is staged
+          during first-time setup. If you skipped that step, re-open
+          setup to enable non-WAV uploads.
         </p>
       </div>
     </section>
@@ -26,9 +30,8 @@
       <div class="card-content">
         <h2>Vanilla Shanty Slots</h2>
         <p class="hint">
-          Click <b>Browse...</b> to pick a <code>.wav</code> file for a
-          shanty slot. Click <b>Reset</b> to drop the override and fall
-          back to vanilla.
+          Click <b>Browse...</b> to pick an audio file for a shanty slot.
+          Click <b>Reset</b> to drop the override and fall back to vanilla.
         </p>
         <div id="shipmusic-slot-list" class="shipmusic-slot-list">
           <p class="hint" id="shipmusic-empty-note">Loading slot list...</p>

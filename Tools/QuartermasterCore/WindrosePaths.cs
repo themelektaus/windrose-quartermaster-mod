@@ -80,6 +80,18 @@ namespace Windrose.Quartermaster.Core
             get { return Path.Combine(Tools, "binkaudioenc.exe"); }
         }
 
+        // Absolute path to ffmpeg.exe at the workspace root. Not shipped
+        // with the repo (gitignored); FfmpegResolver downloads it on
+        // first use from BtbN/FFmpeg-Builds (LGPL variant, ~190 MB ZIP)
+        // and extracts only ffmpeg.exe here. Used by the audio
+        // preprocessor to transcode arbitrary user-uploaded audio
+        // (mp3/ogg/flac/m4a/aac/opus/wav) into the 44.1 kHz stereo
+        // 16-bit PCM WAV the Bink encoder accepts.
+        public string FfmpegPath
+        {
+            get { return Path.Combine(ModRoot, "ffmpeg.exe"); }
+        }
+
         // Absolute path to the pre-cooked ForceInline USoundWave
         // template the ship-music patcher splices Bink Audio bytes
         // into. .uasset + .uexp pair; ForceInline cooks have no .ubulk

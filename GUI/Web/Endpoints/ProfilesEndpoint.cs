@@ -334,16 +334,17 @@ public static class ProfilesEndpoint
         // ---- Ship-music triplet upload / clear / status ----
         //
         // POST /api/profiles/{id}/ship-music/{slotStem}
-        //   multipart, expects a single .wav file keyed "wav" (or any
-        //   form-file with a .wav extension). Stores it as audio.wav
-        //   under Profiles/<id>/ShipMusic/<slotStem>/ and creates/updates
-        //   the matching ShipMusicGlobal.Songs[slotStem] entry with the
-        //   user's original filename + optional display name (form field
-        //   "name"). Replaces any prior upload for the same slot. The
-        //   upload is hard-validated against the WAV format the in-tree
-        //   Bink encoder accepts (44.1 kHz / stereo / 16-bit PCM); a
-        //   format error is surfaced as 400 with a remediation hint
-        //   ("resample with ffmpeg") so the GUI can render it inline.
+        //   multipart, expects a single audio file keyed "audio" (or
+        //   "wav" for back-compat, or any form-file with a supported
+        //   extension: wav/mp3/ogg/flac/m4a/aac/opus). For non-WAV
+        //   inputs the server transcodes via ffmpeg.exe (auto-downloaded
+        //   on first use); for WAVs already at 44.1 kHz / stereo /
+        //   16-bit PCM the transcode is skipped. Stores the cleaned WAV
+        //   as audio.wav under Profiles/<id>/ShipMusic/<slotStem>/ and
+        //   creates/updates the matching ShipMusicGlobal.Songs[slotStem]
+        //   entry with the user's original filename + optional display
+        //   name (form field "name"). Replaces any prior upload for the
+        //   same slot.
         //
         // DELETE /api/profiles/{id}/ship-music/{slotStem}
         //   Removes the per-slot dir and clears the Songs entry. Idempotent
@@ -416,42 +417,85 @@ public static class ProfilesEndpoint
                 return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
             }
 
-            // Match the WAV by form-key first, then by .wav extension as
-            // a fallback. The GUI ships it under key "wav" but a curl
-            // user dropping any single .wav file gets the same behavior.
-            IFormFile wavFile = files.GetFile("wav")
+            // Match the audio file by form-key first, then by supported
+            // extension as a fallback. The GUI ships it under key "audio"
+            // (or legacy "wav"); curl users dropping any single supported
+            // audio file get the same behavior.
+            IFormFile audioFile = files.GetFile("audio")
+                ?? files.GetFile("wav")
                 ?? files.FirstOrDefault(f => f.FileName != null
-                    && f.FileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase));
-            if (wavFile == null)
+                    && AudioPreprocessor.IsSupportedExtension(f.FileName));
+            if (audioFile == null)
             {
                 return Results.BadRequest(new {
-                    error = "Need a single .wav file. The ship-music tab encodes "
-                          + "it to Bink Audio and splices it into a SoundWave "
-                          + "template at build time - no UE5 Editor cook needed."
+                    error = "Need a single audio file (" + AudioPreprocessor.SupportedExtensionsList()
+                          + "). The ship-music tab transcodes it to a 44.1 kHz "
+                          + "stereo WAV via ffmpeg, encodes that to Bink Audio "
+                          + "and splices the result into a SoundWave template at "
+                          + "build time - no UE5 Editor cook needed."
+                });
+            }
+            if (!AudioPreprocessor.IsSupportedExtension(audioFile.FileName))
+            {
+                return Results.BadRequest(new {
+                    error = "Unsupported audio format: " + audioFile.FileName
+                          + ". Allowed: " + AudioPreprocessor.SupportedExtensionsList() + "."
                 });
             }
 
             // Hard cap. A 5-minute 44.1 kHz stereo 16-bit PCM WAV lands
             // around 50 MB (CD-quality is 10 MB / min). 150 MB lets users
-            // upload up to ~15 minutes of music per slot; beyond that the
-            // upload is almost certainly an accident.
+            // upload up to ~15 minutes of music per slot - generous for
+            // raw WAVs and absurdly so for compressed formats (~150 MB
+            // of MP3 is ~3 hours of audio).
             const long maxBytes = 150L * 1024 * 1024;
-            if (wavFile.Length > maxBytes)
+            if (audioFile.Length > maxBytes)
                 return Results.BadRequest(new {
-                    error = "File too large: " + wavFile.FileName
-                          + " (" + wavFile.Length + " bytes, cap " + maxBytes + ")"
+                    error = "File too large: " + audioFile.FileName
+                          + " (" + audioFile.Length + " bytes, cap " + maxBytes + ")"
                 });
+
+            // Stage the upload into a temp file with the original
+            // extension so ffmpeg can pick the right demuxer (it
+            // sniffs magic bytes but also peeks at the extension as a
+            // tiebreaker). We can't write straight to the slot dir
+            // because the final filename is always audio.wav - the
+            // preprocessor produces that as the cleaned target.
+            var srcExt = Path.GetExtension(audioFile.FileName);
+            if (string.IsNullOrEmpty(srcExt)) srcExt = ".bin";
+            var stagedSrc = Path.Combine(Path.GetTempPath(),
+                "qm_audio_" + Guid.NewGuid().ToString("N") + srcExt);
+            await SaveFormFile(audioFile, stagedSrc);
 
             var slotDir = paths.ProfileShipMusicSlotDir(id, slotStem);
             Directory.CreateDirectory(slotDir);
             var wavOut = Path.Combine(slotDir, "audio.wav");
-            await SaveFormFile(wavFile, wavOut);
 
-            // Validate the freshly-saved file with the same WavInfo
-            // reader the patcher uses - if it doesn't accept the file
-            // now, the build will fail later anyway, and surfacing the
-            // error here lets the GUI keep the slot in "vanilla" state
-            // instead of saving a broken upload.
+            AudioPreprocessor.Result prep;
+            try
+            {
+                // Preprocess: short-circuit copy for already-correct WAV,
+                // ffmpeg-resample otherwise (downloads ffmpeg on first
+                // use via FfmpegResolver - that blocks the response by a
+                // few seconds the very first time).
+                prep = await AudioPreprocessor.PreprocessAsync(
+                    paths, stagedSrc, wavOut,
+                    log: null);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            finally
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+            }
+
+            // Validate the cleaned WAV with the same reader the patcher
+            // uses. Anything the preprocessor produced should pass - but
+            // a sanity pass catches regressions in ffmpeg-argument tuning.
             WavInfo.Info wavInfo;
             try
             {
@@ -460,29 +504,24 @@ public static class ProfilesEndpoint
             catch (Exception ex)
             {
                 try { File.Delete(wavOut); } catch { /* best-effort */ }
-                return Results.BadRequest(new { error = ex.Message });
-            }
-            if (wavInfo.SampleRate != 44100)
-            {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
                 return Results.BadRequest(new {
-                    error = "Ship-music WAV must be 44.1 kHz (got " + wavInfo.SampleRate
-                          + " Hz). Resample first: `ffmpeg -i in.wav -ar 44100 out.wav`."
+                    error = "Preprocessed WAV failed validation: " + ex.Message
+                          + " - this is a bug in the audio preprocessor."
                 });
             }
-            if (wavInfo.Channels != 2)
+            if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
             {
                 try { File.Delete(wavOut); } catch { /* best-effort */ }
                 return Results.BadRequest(new {
-                    error = "Ship-music WAV must be stereo (got " + wavInfo.Channels
-                          + "-channel). Convert first: `ffmpeg -i in.wav -ac 2 out.wav`."
+                    error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
+                          + wavInfo.Describe() + ") - this is a bug in the audio preprocessor."
                 });
             }
 
-            // Pick the user's original WAV filename if the form didn't
-            // pass an explicit override.
+            // Pick the user's original filename if the form didn't pass
+            // an explicit override.
             if (string.IsNullOrEmpty(originalFilename))
-                originalFilename = wavFile.FileName ?? slot.Stem + ".wav";
+                originalFilename = audioFile.FileName ?? slot.Stem + srcExt;
 
             // Ensure the Globals chain exists, then update Songs.
             if (profile.Globals == null) profile.Globals = new ProfileGlobals();
@@ -504,8 +543,10 @@ public static class ProfilesEndpoint
                 title = slot.Title,
                 displayName = profile.Globals.ShipMusic.Songs[slotStem].DisplayName,
                 originalFilename,
-                wavBytes = wavFile.Length,
+                wavBytes = new FileInfo(wavOut).Length,
                 durationSeconds = wavInfo.DurationSeconds,
+                transcoded = prep.WasTranscoded,
+                sourceFormat = prep.SourceFormat,
             });
         });
 

@@ -81,6 +81,19 @@ namespace Windrose.Quartermaster.Core
             // tautologically true as long as the host is running.
             status.HasIconExtractor = true;
 
+            // ffmpeg is the audio transcoder used by the ship-music tab to
+            // convert mp3 / ogg / flac / m4a / aac / opus uploads to the
+            // 44.1 kHz stereo 16-bit PCM WAV the Bink encoder accepts.
+            // It's a ~190 MB one-time auto-download (BtbN LGPL build)
+            // and lives at <ModRoot>/ffmpeg.exe. Optional: a user who only
+            // uploads correctly-formatted WAVs never needs it, so absence
+            // does NOT block IsReady (we don't want the setup overlay to
+            // re-open just because ffmpeg is missing). But we surface it
+            // as a setup row so first-time users can have it staged
+            // ahead-of-time in one click.
+            status.FfmpegPath = _paths.FfmpegPath;
+            status.HasFfmpeg = FfmpegResolver.IsCached(_paths);
+
             // Steam-detected vanilla pak - don't throw, just report.
             try
             {
@@ -175,6 +188,45 @@ namespace Windrose.Quartermaster.Core
             {
                 LogLine("[skip] Icons already present (" + status.IconsDir + ")");
             }
+
+            // ffmpeg step - downloads the ~190 MB portable build from
+            // BtbN's GitHub releases to <ModRoot>/ffmpeg.exe. Pulled into setup so users
+            // don't get a surprise download when they upload their first
+            // mp3 in the ship-music tab. Failure here is logged but
+            // doesn't abort setup: vanilla extraction + icons are the
+            // hard prerequisites for everything else, ffmpeg is only
+            // needed for non-WAV ship-music uploads. If the download
+            // fails (offline / firewall), the user can either drop a
+            // ffmpeg.exe manually at the workspace root or just stick
+            // to WAV uploads.
+            if (ForceAll || !status.HasFfmpeg)
+            {
+                StepStart("ffmpeg", "Downloading ffmpeg.exe (portable, for ship-music transcoding)");
+                try
+                {
+                    // Block on the async resolver - we're already on a
+                    // worker thread (SetupEndpoint funnels Run() into
+                    // Task.Run) so GetAwaiter().GetResult() is fine and
+                    // there's no SynchronizationContext to deadlock on.
+                    FfmpegResolver.ResolveAsync(_paths, Log).GetAwaiter().GetResult();
+                    StepEnd("ffmpeg", true, null);
+                }
+                catch (Exception ex)
+                {
+                    // Soft failure: log + mark step as failed, but don't
+                    // throw. The configurator stays usable; user just
+                    // can't upload mp3 / ogg / etc. until ffmpeg is
+                    // present.
+                    LogLine("[!] ffmpeg download failed: " + ex.Message);
+                    LogLine("[!] You can still upload .wav files in the ship-music tab.");
+                    LogLine("[!] To enable mp3 / ogg / flac / m4a / aac / opus, drop an ffmpeg.exe at " + _paths.FfmpegPath + " or re-run setup with internet access.");
+                    StepEnd("ffmpeg", false, ex.Message);
+                }
+            }
+            else
+            {
+                LogLine("[skip] ffmpeg already present (" + _paths.FfmpegPath + ")");
+            }
         }
 
         void StepStart(string name, string description)
@@ -209,6 +261,12 @@ namespace Windrose.Quartermaster.Core
         public bool HasVanillaPak;
         public string VanillaPakPath;
         public string VanillaPakError;
+        // Portable ffmpeg.exe for ship-music transcoding (mp3/ogg/flac/
+        // m4a/aac/opus -> WAV). Optional - WAV-only users never need it.
+        // The setup overlay surfaces a check row so users can stage the
+        // download up-front, but absence does NOT block IsReady.
+        public bool HasFfmpeg;
+        public string FfmpegPath;
     }
 
     // One probe result, mirroring a VanillaSourceManifestEntry. The fields

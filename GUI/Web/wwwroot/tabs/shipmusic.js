@@ -1,11 +1,33 @@
 'use strict';
 
 // Ship-music tab. Renders one card per vanilla shanty slot; each card
-// hosts a file picker for a single .wav (44.1 kHz / stereo / 16-bit
-// PCM, validated server-side), an optional display-name input, and
-// per-slot upload status. The slot catalog comes from
-// GET /api/profiles/{id}/ship-music so backend and frontend always
-// agree on what's available.
+// hosts a file picker for a single audio file (wav/mp3/ogg/flac/m4a/
+// aac/opus, validated + transcoded server-side via ffmpeg.exe), an
+// optional display-name input, and per-slot upload status. The slot
+// catalog comes from GET /api/profiles/{id}/ship-music so backend and
+// frontend always agree on what's available.
+
+// File extensions the backend's AudioPreprocessor accepts. Keep in
+// sync with AudioPreprocessor.SupportedExtensions on the C# side - the
+// server validates the same list, this is just so the OS file picker
+// pre-filters out obviously-wrong files.
+const SHIPMUSIC_AUDIO_EXTS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac', '.opus'];
+
+function shipmusicAcceptList() {
+    // Comma-separated for the file picker's accept attribute. Include
+    // generic audio/* so phones / tablets still show their audio picker
+    // when the browser doesn't know our extension list.
+    return SHIPMUSIC_AUDIO_EXTS.join(',') + ',audio/*';
+}
+
+function shipmusicIsSupportedFile(name) {
+    if (!name) return false;
+    const lower = name.toLowerCase();
+    for (const ext of SHIPMUSIC_AUDIO_EXTS) {
+        if (lower.endsWith(ext)) return true;
+    }
+    return false;
+}
 
 function shipmusicProfileId() {
     return state.current && state.current.id ? state.current.id : null;
@@ -102,21 +124,27 @@ function renderShipMusicSlot(slot) {
     // other buttons instead of using the ugly browser default).
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.wav,audio/wav,audio/x-wav';
+    fileInput.accept = shipmusicAcceptList();
     fileInput.style.display = 'none';
-    fileInput.addEventListener('change', () => {
-        uploadShipMusicSlot(slot, fileInput.files, nameInput.value).catch(ex => {
-            alert('Upload failed: ' + (ex && ex.message ? ex.message : ex));
-        }).finally(() => {
-            fileInput.value = '';
-        });
-    });
-    row.appendChild(fileInput);
-
     const browseBtn = document.createElement('button');
     browseBtn.type = 'button';
     browseBtn.className = 'btn';
     browseBtn.textContent = 'Browse...';
+
+    fileInput.addEventListener('change', () => {
+        const originalText = browseBtn.textContent;
+        browseBtn.disabled = true;
+        browseBtn.textContent = 'Uploading...';
+        uploadShipMusicSlot(slot, fileInput.files, nameInput.value).catch(ex => {
+            alert('Upload failed: ' + (ex && ex.message ? ex.message : ex));
+        }).finally(() => {
+            fileInput.value = '';
+            browseBtn.disabled = false;
+            browseBtn.textContent = originalText;
+        });
+    });
+    row.appendChild(fileInput);
+
     browseBtn.addEventListener('click', () => fileInput.click());
     nameRow.appendChild(browseBtn);
 
@@ -145,32 +173,33 @@ async function uploadShipMusicSlot(slot, fileList, displayName) {
     }
     if (!fileList || fileList.length === 0) return;
 
-    // Find the .wav in the picked files. The input is set to single
-    // selection but we still guard defensively.
-    let wav = null;
+    // Find the first supported audio file in the picked list. The
+    // input is single-select but we guard defensively for users who
+    // drag multiple files in via a future drag-drop handler.
+    let audio = null;
     for (const f of fileList) {
-        const lower = (f.name || '').toLowerCase();
-        if (lower.endsWith('.wav')) { wav = f; break; }
+        if (shipmusicIsSupportedFile(f.name)) { audio = f; break; }
     }
-    if (!wav) {
-        alert('Pick a .wav file. Other audio formats need to be converted '
-            + 'first (Audacity, or ffmpeg: '
-            + '`ffmpeg -i in.mp3 -ar 44100 -ac 2 -sample_fmt s16 out.wav`).');
+    if (!audio) {
+        alert('Pick an audio file. Supported formats: '
+            + SHIPMUSIC_AUDIO_EXTS.join(', ') + '.');
         return;
     }
 
     const form = new FormData();
-    form.append('wav', wav, wav.name);
+    // Send under "audio" (new key) - the endpoint also accepts the
+    // legacy "wav" key for back-compat.
+    form.append('audio', audio, audio.name);
     if (displayName) form.append('name', displayName);
-    form.append('filename', wav.name);
+    form.append('filename', audio.name);
 
     const url = '/api/profiles/' + encodeURIComponent(id)
               + '/ship-music/' + encodeURIComponent(slot.stem);
     const res = await fetch(url, { method: 'POST', body: form });
     if (!res.ok) {
-        // The endpoint returns clean JSON errors with a "remediate
-        // with ffmpeg" hint for the common format-mismatch case; show
-        // those verbatim instead of the raw HTTP status when we can.
+        // The endpoint returns clean JSON errors with the failure
+        // reason verbatim (ffmpeg stderr, format mismatch, oversize,
+        // ...); show those instead of the raw HTTP status when we can.
         let msg = 'HTTP ' + res.status;
         try {
             const j = await res.json();
