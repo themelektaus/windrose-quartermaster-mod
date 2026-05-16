@@ -128,17 +128,6 @@
   gap: .5em;
   align-items: center;
 
-  .shipmusic-name-input {
-    flex: 1 1 20em;
-    min-width: 12em;
-    padding: .4em .6em;
-    background-color: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--border-radius);
-    font-size: var(--font-size-small);
-  }
-
   .btn {
     padding: .4em 1em;
   }

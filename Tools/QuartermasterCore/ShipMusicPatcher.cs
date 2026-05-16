@@ -443,12 +443,11 @@ namespace Windrose.Quartermaster.Core
         public string SlotStem;
         public string SlotTitle;
         public string OriginalUserStem;
-        // Display-only echoes of the per-slot ProfileGlobals.ShipMusic.Songs
-        // metadata - the pipeline copies these in after Patch() returns so
-        // the build-response JSON can render "Custom: My Pirate Banger
-        // (mysong.wav)" without re-loading the profile.
+        // Display-only echo of the per-slot ProfileGlobals.ShipMusic.Songs
+        // metadata - the pipeline copies this in after Patch() returns so
+        // the build-response JSON can render "Custom: mysong.wav" without
+        // re-loading the profile.
         public string OriginalFilename;
-        public string DisplayName;
         public int NameMapEntriesRenamed;
         public int ExportsRetargeted;
         public int DataResourcesPatched;

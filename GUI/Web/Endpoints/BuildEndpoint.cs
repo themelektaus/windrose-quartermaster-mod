@@ -299,7 +299,6 @@ public static class BuildEndpoint
                         {
                             stem = s.SlotStem,
                             title = s.SlotTitle,
-                            displayName = s.DisplayName,
                             originalFilename = s.OriginalFilename,
                             sampleRate = s.SampleRate,
                             numChannels = s.NumChannels,

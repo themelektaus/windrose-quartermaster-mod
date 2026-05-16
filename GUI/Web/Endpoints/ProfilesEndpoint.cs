@@ -342,9 +342,8 @@ public static class ProfilesEndpoint
         //   16-bit PCM the transcode is skipped. Stores the cleaned WAV
         //   as audio.wav under Profiles/<id>/ShipMusic/<slotStem>/ and
         //   creates/updates the matching ShipMusicGlobal.Songs[slotStem]
-        //   entry with the user's original filename + optional display
-        //   name (form field "name"). Replaces any prior upload for the
-        //   same slot.
+        //   entry with the user's original filename. Replaces any prior
+        //   upload for the same slot.
         //
         // DELETE /api/profiles/{id}/ship-music/{slotStem}
         //   Removes the per-slot dir and clears the Songs entry. Idempotent
@@ -383,7 +382,6 @@ public static class ProfilesEndpoint
                     state = ov == null ? "vanilla"
                           : wavPresent ? "custom"
                           : "broken",
-                    displayName = ov?.DisplayName,
                     originalFilename = ov?.OriginalFilename,
                     wavBytes,
                 };
@@ -403,13 +401,11 @@ public static class ProfilesEndpoint
             if (!req.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data" });
 
             IFormFileCollection files;
-            string displayName;
             string originalFilename;
             try
             {
                 var form = await req.ReadFormAsync();
                 files = form.Files;
-                displayName = form["name"].ToString();
                 originalFilename = form["filename"].ToString();
             }
             catch (Exception ex)
@@ -531,7 +527,6 @@ public static class ProfilesEndpoint
             profile.Globals.ShipMusic.Songs[slotStem] = new ShipMusicSlotOverride
             {
                 OriginalFilename = originalFilename,
-                DisplayName = string.IsNullOrEmpty(displayName) ? null : displayName,
             };
 
             try { store.Save(profile); }
@@ -541,7 +536,6 @@ public static class ProfilesEndpoint
             {
                 stem = slotStem,
                 title = slot.Title,
-                displayName = profile.Globals.ShipMusic.Songs[slotStem].DisplayName,
                 originalFilename,
                 wavBytes = new FileInfo(wavOut).Length,
                 durationSeconds = wavInfo.DurationSeconds,
@@ -697,7 +691,6 @@ public static class ProfilesEndpoint
                                 : new ShipMusicSlotOverride
                                 {
                                     OriginalFilename = kvp.Value.OriginalFilename,
-                                    DisplayName = kvp.Value.DisplayName,
                                 }),
                 },
         };

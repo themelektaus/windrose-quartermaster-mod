@@ -823,7 +823,6 @@ namespace Windrose.Quartermaster.Core
                                 localJob.Slot,
                                 usmapPath);
                             r.OriginalFilename = localJob.OriginalFilename;
-                            r.DisplayName = localJob.DisplayName;
                             shipMusicPatchResults.Add(r);
                         },
                     });
@@ -1663,7 +1662,6 @@ namespace Windrose.Quartermaster.Core
                     Slot = slot,
                     UserWavPath = userWav,
                     OriginalFilename = ov.OriginalFilename,
-                    DisplayName = ov.DisplayName,
                 });
             }
             return jobs;
@@ -2164,7 +2162,6 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicSlots.SlotInfo Slot;
         public string UserWavPath;
         public string OriginalFilename;
-        public string DisplayName;
     }
 
     // Standalone summary of "ship-music slots got replaced in this

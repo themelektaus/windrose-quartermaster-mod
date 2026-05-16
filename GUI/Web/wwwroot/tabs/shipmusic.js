@@ -2,10 +2,10 @@
 
 // Ship-music tab. Renders one card per vanilla shanty slot; each card
 // hosts a file picker for a single audio file (wav/mp3/ogg/flac/m4a/
-// aac/opus, validated + transcoded server-side via ffmpeg.exe), an
-// optional display-name input, and per-slot upload status. The slot
-// catalog comes from GET /api/profiles/{id}/ship-music so backend and
-// frontend always agree on what's available.
+// aac/opus, validated + transcoded server-side via ffmpeg.exe) plus
+// per-slot upload status. The slot catalog comes from GET
+// /api/profiles/{id}/ship-music so backend and frontend always agree
+// on what's available.
 
 // File extensions the backend's AudioPreprocessor accepts. Keep in
 // sync with AudioPreprocessor.SupportedExtensions on the C# side - the
@@ -94,30 +94,19 @@ function renderShipMusicSlot(slot) {
     titleLine.appendChild(stateBadge);
     row.appendChild(titleLine);
 
-    // Custom-name + filename line (only when the slot is overridden).
+    // Filename + size line (only when the slot is overridden).
     if (slot.state !== 'vanilla') {
         const meta = document.createElement('div');
         meta.className = 'shipmusic-slot-meta hint';
         const parts = [];
-        if (slot.displayName) parts.push(slot.displayName);
-        if (slot.originalFilename) parts.push('(' + slot.originalFilename + ')');
-        if (slot.wavBytes) parts.push(formatBytes(slot.wavBytes) + ' wav');
+        if (slot.originalFilename) parts.push(slot.originalFilename);
+        if (slot.wavBytes) parts.push('(' + formatBytes(slot.wavBytes) + ' wav)');
         meta.textContent = parts.join(' ');
         row.appendChild(meta);
     }
 
-    // Display-name input - only meaningful with an upload to attach
-    // to. When the slot is vanilla we still show the field so the
-    // user can pre-fill a name before browsing.
-    const nameRow = document.createElement('div');
-    nameRow.className = 'shipmusic-slot-controls';
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.placeholder = 'Optional display name (e.g. "My Pirate Banger")';
-    nameInput.className = 'shipmusic-name-input';
-    nameInput.value = slot.displayName || '';
-    nameRow.appendChild(nameInput);
+    const controls = document.createElement('div');
+    controls.className = 'shipmusic-slot-controls';
 
     // Hidden file input (we trigger it programmatically from the
     // visible "Browse..." button so we can dress the button up like
@@ -135,7 +124,7 @@ function renderShipMusicSlot(slot) {
         const originalText = browseBtn.textContent;
         browseBtn.disabled = true;
         browseBtn.textContent = 'Uploading...';
-        uploadShipMusicSlot(slot, fileInput.files, nameInput.value).catch(ex => {
+        uploadShipMusicSlot(slot, fileInput.files).catch(ex => {
             alert('Upload failed: ' + (ex && ex.message ? ex.message : ex));
         }).finally(() => {
             fileInput.value = '';
@@ -146,7 +135,7 @@ function renderShipMusicSlot(slot) {
     row.appendChild(fileInput);
 
     browseBtn.addEventListener('click', () => fileInput.click());
-    nameRow.appendChild(browseBtn);
+    controls.appendChild(browseBtn);
 
     if (slot.state !== 'vanilla') {
         const resetBtn = document.createElement('button');
@@ -158,14 +147,14 @@ function renderShipMusicSlot(slot) {
                 alert('Reset failed: ' + (ex && ex.message ? ex.message : ex));
             });
         });
-        nameRow.appendChild(resetBtn);
+        controls.appendChild(resetBtn);
     }
 
-    row.appendChild(nameRow);
+    row.appendChild(controls);
     return row;
 }
 
-async function uploadShipMusicSlot(slot, fileList, displayName) {
+async function uploadShipMusicSlot(slot, fileList) {
     const id = shipmusicProfileId();
     if (!id) {
         alert('No profile is loaded.');
@@ -190,7 +179,6 @@ async function uploadShipMusicSlot(slot, fileList, displayName) {
     // Send under "audio" (new key) - the endpoint also accepts the
     // legacy "wav" key for back-compat.
     form.append('audio', audio, audio.name);
-    if (displayName) form.append('name', displayName);
     form.append('filename', audio.name);
 
     const url = '/api/profiles/' + encodeURIComponent(id)

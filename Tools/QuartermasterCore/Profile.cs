@@ -459,10 +459,6 @@ namespace Windrose.Quartermaster.Core
         // Original filename the user picked, e.g. "MyAwesomeShanty.uasset".
         // Display-only - the patcher reads the renamed copy from disk.
         public string OriginalFilename;
-
-        // Optional human-readable name the user typed for the replacement
-        // (e.g. "My Pirate Banger"). Display-only.
-        public string DisplayName;
     }
 
     public sealed class ItemOverride
