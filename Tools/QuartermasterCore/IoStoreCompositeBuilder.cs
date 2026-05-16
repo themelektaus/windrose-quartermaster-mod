@@ -92,8 +92,29 @@ namespace Windrose.Quartermaster.Core
                 if (src == null) throw new ArgumentException("Null source spec");
                 if (string.IsNullOrEmpty(src.Name))
                     throw new ArgumentException("Source.Name is required");
+
+                // Two source modes:
+                //   * InputDir set -> classic vanilla / mod-pak extraction
+                //     via retoc to-legacy, then optional AfterExtract patch.
+                //   * InputDir null -> "pre-staged" mode: the caller drops
+                //     its files into the staging tree from AfterExtract
+                //     directly (e.g. ShipMusicPatcher copies a user-cooked
+                //     SoundWave triplet straight into legacy/<vanilla path>).
+                //     AfterExtract is REQUIRED in this mode - otherwise the
+                //     source would contribute nothing.
                 if (string.IsNullOrEmpty(src.InputDir))
-                    throw new ArgumentException("Source.InputDir is required");
+                {
+                    if (src.AfterExtract == null)
+                        throw new ArgumentException(
+                            "Source '" + src.Name + "' has no InputDir and no "
+                            + "AfterExtract callback - pre-staged sources must "
+                            + "supply an AfterExtract to provide their files.");
+                    LogLine("Pre-staging [" + src.Name + "] into " + stagingDir);
+                    src.AfterExtract(stagingDir);
+                    sourceResults.Add(new IoStoreCompositeSourceResult { Name = src.Name });
+                    continue;
+                }
+
                 if (!Directory.Exists(src.InputDir))
                     throw new DirectoryNotFoundException(
                         "Source '" + src.Name + "' input dir not found: " + src.InputDir);
@@ -231,6 +252,13 @@ namespace Windrose.Quartermaster.Core
         // adoption, point this at a directory containing the mod's
         // .pak/.ucas/.utoc PLUS a copy of the game's global.{ucas,utoc}
         // (retoc needs them to resolve ScriptObjects).
+        //
+        // Optional. When null/empty the builder skips the retoc to-legacy
+        // step entirely and only invokes AfterExtract; useful when the
+        // caller already owns the bytes (e.g. ShipMusicPatcher copying
+        // a user-supplied SoundWave triplet straight into staging) and
+        // wants the IoStoreCompositeBuilder to handle just the to-zen
+        // packing at the end.
         public string InputDir;
         // Optional --filter for retoc to-legacy. Empty means "extract every
         // asset in InputDir" - only safe for tightly scoped mod extracts.

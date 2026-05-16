@@ -1,0 +1,40 @@
+<div class="tab-page shipmusic-page" data-tab="shipmusic">
+  <aside class="pane shipmusic" style="align-items: flex-start; ">
+
+    <section class="card shipmusic-help-card" style="height: unset; ">
+      <div class="card-content">
+        <h2>Custom Ship Shanties</h2>
+        <p class="hint">
+          Replace any of the 10 vanilla sea-shanties the crew sings on
+          board (Cutter, Brig, Ketch, Frigate; player or crew-only).
+          A replacement applies to all ship sizes automatically.
+        </p>
+        <p class="hint">
+          Drop a <code>.wav</code> file per slot - Quartermaster encodes
+          it to Bink Audio at build time and splices it into a
+          SoundWave template. No UE5 Editor cook needed.
+        </p>
+        <p class="hint">
+          <b>Format:</b> 44.1 kHz, stereo, 16-bit PCM. Convert other
+          formats first with Audacity or ffmpeg
+          (<code>ffmpeg -i in.mp3 -ar 44100 -ac 2 -sample_fmt s16 out.wav</code>).
+        </p>
+      </div>
+    </section>
+
+    <section class="card shipmusic-slots-card" style="height: unset; ">
+      <div class="card-content">
+        <h2>Vanilla Shanty Slots</h2>
+        <p class="hint">
+          Click <b>Browse...</b> to pick a <code>.wav</code> file for a
+          shanty slot. Click <b>Reset</b> to drop the override and fall
+          back to vanilla.
+        </p>
+        <div id="shipmusic-slot-list" class="shipmusic-slot-list">
+          <p class="hint" id="shipmusic-empty-note">Loading slot list...</p>
+        </div>
+      </div>
+    </section>
+
+  </aside>
+</div>

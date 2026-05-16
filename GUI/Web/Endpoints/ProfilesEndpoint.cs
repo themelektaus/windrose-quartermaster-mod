@@ -109,6 +109,17 @@ public static class ProfilesEndpoint
                     try { Directory.Delete(iconsDir, recursive: true); }
                     catch { /* best-effort cleanup; not fatal */ }
                 }
+                // Same cleanup for the ShipMusic subtree - the per-slot
+                // dirs hold up to ~30 MB of triplet bytes per slot (ubulk
+                // is the bulk), so leaving them behind on profile delete
+                // would slowly fill the disk.
+                var shipMusicRoot = Path.Combine(
+                    paths.Profiles, id, "ShipMusic");
+                if (Directory.Exists(shipMusicRoot))
+                {
+                    try { Directory.Delete(shipMusicRoot, recursive: true); }
+                    catch { /* best-effort cleanup; not fatal */ }
+                }
             }
             catch (Exception ex)
             {
@@ -163,6 +174,30 @@ public static class ProfilesEndpoint
                     {
                         var fname = Path.GetFileName(file);
                         File.Copy(file, Path.Combine(dstIconsDir, fname), overwrite: true);
+                    }
+                }
+            }
+            catch { /* best-effort */ }
+
+            // Same story for the per-slot ShipMusic triplets - the cloned
+            // ShipMusicGlobal.Songs dict points at on-disk bytes that need
+            // to live under the clone's profile id to stay loadable.
+            try
+            {
+                if (src.Globals != null && src.Globals.ShipMusic != null
+                    && src.Globals.ShipMusic.Songs != null)
+                {
+                    foreach (var slotStem in src.Globals.ShipMusic.Songs.Keys)
+                    {
+                        var srcSlotDir = paths.ProfileShipMusicSlotDir(src.Id, slotStem);
+                        if (!Directory.Exists(srcSlotDir)) continue;
+                        var dstSlotDir = paths.ProfileShipMusicSlotDir(clone.Id, slotStem);
+                        Directory.CreateDirectory(dstSlotDir);
+                        foreach (var file in Directory.EnumerateFiles(srcSlotDir, "*", SearchOption.TopDirectoryOnly))
+                        {
+                            var fname = Path.GetFileName(file);
+                            File.Copy(file, Path.Combine(dstSlotDir, fname), overwrite: true);
+                        }
                     }
                 }
             }
@@ -295,6 +330,223 @@ public static class ProfilesEndpoint
             if (!File.Exists(diskPath)) return Results.NotFound(new { error = "No icon for this item" });
             return Results.File(diskPath, "image/png");
         });
+
+        // ---- Ship-music triplet upload / clear / status ----
+        //
+        // POST /api/profiles/{id}/ship-music/{slotStem}
+        //   multipart, expects a single .wav file keyed "wav" (or any
+        //   form-file with a .wav extension). Stores it as audio.wav
+        //   under Profiles/<id>/ShipMusic/<slotStem>/ and creates/updates
+        //   the matching ShipMusicGlobal.Songs[slotStem] entry with the
+        //   user's original filename + optional display name (form field
+        //   "name"). Replaces any prior upload for the same slot. The
+        //   upload is hard-validated against the WAV format the in-tree
+        //   Bink encoder accepts (44.1 kHz / stereo / 16-bit PCM); a
+        //   format error is surfaced as 400 with a remediation hint
+        //   ("resample with ffmpeg") so the GUI can render it inline.
+        //
+        // DELETE /api/profiles/{id}/ship-music/{slotStem}
+        //   Removes the per-slot dir and clears the Songs entry. Idempotent
+        //   (returns 204 even when the slot was already vanilla).
+        //
+        // GET /api/profiles/{id}/ship-music
+        //   Lists all 10 vanilla slots with current status (vanilla vs
+        //   custom + per-slot metadata). The frontend renders one card
+        //   per row.
+        app.MapGet("/api/profiles/{id}/ship-music", (string id) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            var songs = profile.Globals?.ShipMusic?.Songs;
+            var rows = ShipMusicSlots.All.Select(slot =>
+            {
+                ShipMusicSlotOverride ov = null;
+                if (songs != null) songs.TryGetValue(slot.Stem, out ov);
+                bool wavPresent = false;
+                long wavBytes = 0;
+                if (ov != null)
+                {
+                    var slotDir = paths.ProfileShipMusicSlotDir(id, slot.Stem);
+                    var wavPath = Path.Combine(slotDir, "audio.wav");
+                    wavPresent = File.Exists(wavPath);
+                    if (wavPresent)
+                    {
+                        try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                    }
+                }
+                return new
+                {
+                    stem = slot.Stem,
+                    title = slot.Title,
+                    state = ov == null ? "vanilla"
+                          : wavPresent ? "custom"
+                          : "broken",
+                    displayName = ov?.DisplayName,
+                    originalFilename = ov?.OriginalFilename,
+                    wavBytes,
+                };
+            }).ToArray();
+            return Results.Json(new { slots = rows });
+        });
+
+        app.MapPost("/api/profiles/{id}/ship-music/{slotStem}",
+            async (string id, string slotStem, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            if (!ShipMusicSlots.ByStem.TryGetValue(slotStem, out var slot))
+                return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
+
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data" });
+
+            IFormFileCollection files;
+            string displayName;
+            string originalFilename;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                files = form.Files;
+                displayName = form["name"].ToString();
+                originalFilename = form["filename"].ToString();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+
+            // Match the WAV by form-key first, then by .wav extension as
+            // a fallback. The GUI ships it under key "wav" but a curl
+            // user dropping any single .wav file gets the same behavior.
+            IFormFile wavFile = files.GetFile("wav")
+                ?? files.FirstOrDefault(f => f.FileName != null
+                    && f.FileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase));
+            if (wavFile == null)
+            {
+                return Results.BadRequest(new {
+                    error = "Need a single .wav file. The ship-music tab encodes "
+                          + "it to Bink Audio and splices it into a SoundWave "
+                          + "template at build time - no UE5 Editor cook needed."
+                });
+            }
+
+            // Hard cap. A 5-minute 44.1 kHz stereo 16-bit PCM WAV lands
+            // around 50 MB (CD-quality is 10 MB / min). 150 MB lets users
+            // upload up to ~15 minutes of music per slot; beyond that the
+            // upload is almost certainly an accident.
+            const long maxBytes = 150L * 1024 * 1024;
+            if (wavFile.Length > maxBytes)
+                return Results.BadRequest(new {
+                    error = "File too large: " + wavFile.FileName
+                          + " (" + wavFile.Length + " bytes, cap " + maxBytes + ")"
+                });
+
+            var slotDir = paths.ProfileShipMusicSlotDir(id, slotStem);
+            Directory.CreateDirectory(slotDir);
+            var wavOut = Path.Combine(slotDir, "audio.wav");
+            await SaveFormFile(wavFile, wavOut);
+
+            // Validate the freshly-saved file with the same WavInfo
+            // reader the patcher uses - if it doesn't accept the file
+            // now, the build will fail later anyway, and surfacing the
+            // error here lets the GUI keep the slot in "vanilla" state
+            // instead of saving a broken upload.
+            WavInfo.Info wavInfo;
+            try
+            {
+                wavInfo = WavInfo.Read(wavOut);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            if (wavInfo.SampleRate != 44100)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Ship-music WAV must be 44.1 kHz (got " + wavInfo.SampleRate
+                          + " Hz). Resample first: `ffmpeg -i in.wav -ar 44100 out.wav`."
+                });
+            }
+            if (wavInfo.Channels != 2)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Ship-music WAV must be stereo (got " + wavInfo.Channels
+                          + "-channel). Convert first: `ffmpeg -i in.wav -ac 2 out.wav`."
+                });
+            }
+
+            // Pick the user's original WAV filename if the form didn't
+            // pass an explicit override.
+            if (string.IsNullOrEmpty(originalFilename))
+                originalFilename = wavFile.FileName ?? slot.Stem + ".wav";
+
+            // Ensure the Globals chain exists, then update Songs.
+            if (profile.Globals == null) profile.Globals = new ProfileGlobals();
+            if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
+            if (profile.Globals.ShipMusic.Songs == null)
+                profile.Globals.ShipMusic.Songs = new Dictionary<string, ShipMusicSlotOverride>(StringComparer.OrdinalIgnoreCase);
+            profile.Globals.ShipMusic.Songs[slotStem] = new ShipMusicSlotOverride
+            {
+                OriginalFilename = originalFilename,
+                DisplayName = string.IsNullOrEmpty(displayName) ? null : displayName,
+            };
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new
+            {
+                stem = slotStem,
+                title = slot.Title,
+                displayName = profile.Globals.ShipMusic.Songs[slotStem].DisplayName,
+                originalFilename,
+                wavBytes = wavFile.Length,
+                durationSeconds = wavInfo.DurationSeconds,
+            });
+        });
+
+        app.MapDelete("/api/profiles/{id}/ship-music/{slotStem}",
+            (string id, string slotStem) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (!ShipMusicSlots.IsKnown(slotStem))
+                return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
+
+            // Drop the on-disk bytes - best-effort, missing dir is fine.
+            var slotDir = paths.ProfileShipMusicSlotDir(id, slotStem);
+            if (Directory.Exists(slotDir))
+            {
+                try { Directory.Delete(slotDir, recursive: true); }
+                catch { /* best-effort */ }
+            }
+
+            // Drop the profile entry too. We leave the empty dict around
+            // (vs nulling ShipMusic outright) so re-uploads don't have to
+            // re-instantiate the global - it's harmless and the build
+            // pipeline treats empty Songs as "no shanties replaced".
+            if (profile.Globals != null
+                && profile.Globals.ShipMusic != null
+                && profile.Globals.ShipMusic.Songs != null)
+            {
+                profile.Globals.ShipMusic.Songs.Remove(slotStem);
+            }
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.NoContent();
+        });
+    }
+
+    static async Task SaveFormFile(IFormFile file, string diskPath)
+    {
+        using var fs = new FileStream(diskPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await file.CopyToAsync(fs);
     }
 
     static ProfileGlobals CloneGlobals(ProfileGlobals g)
@@ -390,6 +642,22 @@ public static class ProfilesEndpoint
                     ArmorWeaponMultiplier   = g.ProductionTimes.ArmorWeaponMultiplier,
                     TradeOutpostMultiplier  = g.ProductionTimes.TradeOutpostMultiplier,
                     OtherMultiplier         = g.ProductionTimes.OtherMultiplier,
+                },
+            ShipMusic = g.ShipMusic == null
+                ? null
+                : new ShipMusicGlobal
+                {
+                    Songs = g.ShipMusic.Songs == null
+                        ? null
+                        : g.ShipMusic.Songs.ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value == null
+                                ? null
+                                : new ShipMusicSlotOverride
+                                {
+                                    OriginalFilename = kvp.Value.OriginalFilename,
+                                    DisplayName = kvp.Value.DisplayName,
+                                }),
                 },
         };
     }
@@ -652,6 +920,14 @@ public static class ProfilesEndpoint
             hasGlobalProductionTimes = p.Globals != null
                                        && p.Globals.ProductionTimes != null
                                        && AnyProductionTimeActive(p.Globals.ProductionTimes),
+            // True when at least one ship-music slot has a configured
+            // replacement. The Songs dict only ever holds active entries
+            // (the upload endpoint adds keys, the delete endpoint removes
+            // them), so a non-empty Songs is itself the signal.
+            hasGlobalShipMusic = p.Globals != null
+                                 && p.Globals.ShipMusic != null
+                                 && p.Globals.ShipMusic.Songs != null
+                                 && p.Globals.ShipMusic.Songs.Count > 0,
         };
     }
 

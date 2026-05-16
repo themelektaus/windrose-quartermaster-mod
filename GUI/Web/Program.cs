@@ -100,6 +100,23 @@ public static class Program
             opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             opts.SerializerOptions.WriteIndented = false;
         });
+
+        // Bump the upload ceiling so the ship-music WAV picker can stream
+        // multi-minute tracks without Kestrel killing the TCP connection.
+        // A 5-minute 44.1 kHz stereo 16-bit PCM file is ~50 MB - well over
+        // the framework defaults (Kestrel: 30 MB, FormOptions: 128 MB) -
+        // and the endpoint handler enforces its own 150 MB cap on top of
+        // this, so we leave 50 MB of headroom for multipart framing.
+        const long uploadCeiling = 200L * 1024 * 1024;
+        builder.WebHost.ConfigureKestrel(opts =>
+        {
+            opts.Limits.MaxRequestBodySize = uploadCeiling;
+        });
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(opts =>
+        {
+            opts.MultipartBodyLengthLimit = uploadCeiling;
+        });
+
         builder.WebHost.UseUrls(url);
 
         var app = builder.Build();

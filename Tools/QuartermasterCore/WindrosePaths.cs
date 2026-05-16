@@ -57,6 +57,43 @@ namespace Windrose.Quartermaster.Core
             return Path.Combine(Profiles, profileId, "Icons");
         }
 
+        // Per-profile per-slot folder for user-uploaded ship-music WAVs.
+        // The ship-music upload endpoint stores the single file as
+        // audio.wav under this dir; the ShipMusicPatcher reads it back
+        // at build time and runs binkaudioenc.exe + template splice on
+        // it. slotStem is the vanilla SWAV stem (e.g.
+        // "SWAV_Shanti_DrunkenSailor") and also serves as a tampering
+        // safeguard - the endpoint validates it against
+        // ShipMusicSlots.ByStem before touching disk.
+        public string ProfileShipMusicSlotDir(string profileId, string slotStem)
+        {
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
+            if (string.IsNullOrEmpty(slotStem)) throw new ArgumentNullException("slotStem");
+            return Path.Combine(Profiles, profileId, "ShipMusic", slotStem);
+        }
+
+        // Absolute path to the in-tree Bink Audio encoder CLI. We ship
+        // it next to repak.exe / retoc.exe under Tools/ so it travels
+        // with the published app. Source under Tools/BinkAudioEnc/.
+        public string BinkAudioEncoderPath
+        {
+            get { return Path.Combine(Tools, "binkaudioenc.exe"); }
+        }
+
+        // Absolute path to the pre-cooked ForceInline USoundWave
+        // template the ship-music patcher splices Bink Audio bytes
+        // into. .uasset + .uexp pair; ForceInline cooks have no .ubulk
+        // sidecar. Cooked once by hand from a 5-second 44.1 kHz stereo
+        // PCM WAV (References/AudioEncoder project).
+        public string ShipMusicTemplateUasset
+        {
+            get { return Path.Combine(Tools, "Templates", "SoundWave_BinkInline.uasset"); }
+        }
+        public string ShipMusicTemplateUexp
+        {
+            get { return Path.Combine(Tools, "Templates", "SoundWave_BinkInline.uexp"); }
+        }
+
         public static WindrosePaths FromModRoot(string modRoot)
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");

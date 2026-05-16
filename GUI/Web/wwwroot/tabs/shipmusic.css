@@ -1,0 +1,145 @@
+.tab-page[data-tab="shipmusic"] {
+  justify-content: start;
+  overflow: auto;
+
+  &:not([hidden]) {
+    display: flex;
+  }
+
+  .pane.shipmusic {
+    flex-direction: column;
+    gap: 1em;
+    margin-inline: auto;
+    padding: 2em;
+    width: 100%;
+    max-width: 70em;
+    height: 0;
+
+    .card {
+      width: 100%;
+      display: flex;
+      gap: 1em;
+
+      .card-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: .75em;
+
+        h2 {
+          margin: 0;
+          text-transform: unset;
+          color: var(--text);
+        }
+      }
+    }
+  }
+}
+
+.shipmusic-howto {
+  background-color: var(--bg-sunk);
+  border-radius: var(--border-radius);
+  padding: .5em 1em;
+  margin-top: .5em;
+
+  summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--text);
+  }
+
+  ol {
+    margin: .75em 0 .5em 1.5em;
+    padding: 0;
+
+    li {
+      margin-bottom: .35em;
+    }
+  }
+
+  code {
+    background-color: var(--bg);
+    padding: 0 .35em;
+    border-radius: 3px;
+    font-size: var(--font-size-small);
+  }
+}
+
+.shipmusic-slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.shipmusic-slot {
+  display: flex;
+  flex-direction: column;
+  gap: .4em;
+  padding: .75em 1em;
+  background-color: var(--bg-sunk);
+  border-radius: var(--border-radius);
+}
+
+.shipmusic-slot-title {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+
+  strong {
+    color: var(--text);
+    font-size: 1.05em;
+  }
+}
+
+.shipmusic-state {
+  font-size: var(--font-size-small);
+  padding: 0 .6em;
+  border-radius: var(--border-radius);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.shipmusic-state-vanilla {
+  background-color: var(--bg);
+  color: var(--text-dim);
+}
+
+.shipmusic-state-custom {
+  background-color: var(--ok);
+  color: var(--bg);
+  font-weight: bold;
+}
+
+.shipmusic-state-broken {
+  background-color: var(--accent);
+  color: var(--bg);
+  font-weight: bold;
+}
+
+.shipmusic-slot-meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.shipmusic-slot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5em;
+  align-items: center;
+
+  .shipmusic-name-input {
+    flex: 1 1 20em;
+    min-width: 12em;
+    padding: .4em .6em;
+    background-color: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-small);
+  }
+
+  .btn {
+    padding: .4em 1em;
+  }
+}

@@ -281,6 +281,34 @@ public static class BuildEndpoint
                         families,
                     };
                 }
+                // Ship music: one entry per replaced shanty slot with the
+                // user's display name + filename + decoded SoundWave
+                // diagnostics (sample rate, channels, duration). The
+                // frontend renders one row per slot card.
+                object shipMusicInfo = null;
+                if (result.ShipMusicResult != null
+                    && result.ShipMusicResult.SlotResults != null
+                    && result.ShipMusicResult.SlotResults.Count > 0)
+                {
+                    var sm = result.ShipMusicResult;
+                    shipMusicInfo = new
+                    {
+                        ucasPath = sm.UcasPath,
+                        utocPath = sm.UtocPath,
+                        slots = sm.SlotResults.Select(s => new
+                        {
+                            stem = s.SlotStem,
+                            title = s.SlotTitle,
+                            displayName = s.DisplayName,
+                            originalFilename = s.OriginalFilename,
+                            sampleRate = s.SampleRate,
+                            numChannels = s.NumChannels,
+                            durationSeconds = s.DurationSeconds,
+                            ubulkSize = s.UbulkSize,
+                            diagnostic = s.FormatDiagnostic(),
+                        }).ToArray(),
+                    };
+                }
                 // Crop growth: when active, scales every DA_Crop_*.json
                 // GrowthDuration by the user multiplier. Carries the
                 // count of patched crops + a representative vanilla -> effective
@@ -384,6 +412,7 @@ public static class BuildEndpoint
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,
+                    shipMusic = shipMusicInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,
                     log,

@@ -183,7 +183,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'cooldowns', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'mods'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -574,6 +574,7 @@ function applyProfileToUI() {
     syncPickaxeReadout();
     applyCooldownsToUI();
     applyStationsToUI();
+    applyShipMusicToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -982,6 +983,17 @@ async function onBuild() {
                         + fam.effective.toFixed(2) + ')' });
                 }
             }
+            if (data.shipMusic) {
+                const sm = data.shipMusic;
+                const slots = sm.slots || [];
+                for (const slot of slots) {
+                    const name = slot.displayName || slot.originalFilename || '(unnamed)';
+                    const diag = slot.diagnostic ? ' [' + slot.diagnostic + ']' : '';
+                    lines.push({ kind: 'ok', msg:
+                        'DONE - ship music replaced: ' + slot.title
+                        + ' -> ' + name + diag });
+                }
+            }
             if (data.cropGrowth) {
                 const cg = data.cropGrowth;
                 const mul = (cg.multiplier || 1.0).toFixed(2);
@@ -1014,6 +1026,7 @@ async function onBuild() {
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
+                && !data.shipMusic
                 && !data.cropGrowth && !data.cookingDuration) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
@@ -1181,6 +1194,7 @@ function bindHandlers() {
     bindCreatorHandlers();
     bindCooldownsHandlers();
     bindStationsHandlers();
+    bindShipMusicHandlers();
 }
 
 function onPickerClick(e) {

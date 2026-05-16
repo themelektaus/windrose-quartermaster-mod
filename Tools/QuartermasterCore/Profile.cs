@@ -90,6 +90,7 @@ namespace Windrose.Quartermaster.Core
         public PickaxeRangeGlobal PickaxeRange;
         public CooldownsGlobal Cooldowns;
         public ProductionTimesGlobal ProductionTimes;
+        public ShipMusicGlobal ShipMusic;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -416,6 +417,52 @@ namespace Windrose.Quartermaster.Core
         // Catch-all for recipes that didn't match any family above
         // (~50 recipes). Off by default - user opts in.
         public double? OtherMultiplier;
+    }
+
+    // Ship-music (sea-shanty) replacement. Vanilla ships 10 SoundWave
+    // assets under R5/Content/Audio/Game/Music/Shanti/SWAV/ (Blow The
+    // Man Down, Bully In The Alley, Drunken Sailor, Good Morning Ladies,
+    // Leave Her Johnny, Maggie May, Old Maui, Rolling Home, The British
+    // Tars, Whiskey Johnny). Each is referenced by four SoundCues (per
+    // ship size Small/Medium/Large plus a VoiceNoPlayer crew variant),
+    // so replacing one SWAV automatically affects all four playback
+    // contexts.
+    //
+    // The audio sits in BINK Audio format (RAD proprietary) inside the
+    // .ubulk bulk-data. There's no open-source Bink encoder, so the
+    // user has to cook their replacement audio through the UE5 Editor
+    // first - they import a WAV as USoundWave, let the editor cook the
+    // project for Windows, then hand the resulting .uasset+.uexp+.ubulk
+    // triplet to Quartermaster. ShipMusicPatcher then re-writes the
+    // FName table inside the user's .uasset so the engine resolves the
+    // file under the vanilla slot's asset path, and copies all three
+    // files into the IoStore composite staging tree.
+    //
+    // Storage: per-profile under Profiles/<id>/ShipMusic/<slotStem>/
+    //   audio.uasset, audio.uexp, audio.ubulk
+    //
+    // Songs is keyed by the vanilla SWAV stem (e.g.
+    // "SWAV_Shanti_DrunkenSailor"). Missing key = vanilla shanty plays.
+    // null Songs OR empty dict = no ship-music source contributes to
+    // the IoStore composite.
+    public sealed class ShipMusicGlobal
+    {
+        public Dictionary<string, ShipMusicSlotOverride> Songs;
+    }
+
+    // One replaced shanty slot. The audio bytes themselves live on
+    // disk under Profiles/<id>/ShipMusic/<slotStem>/audio.{uasset,uexp,ubulk};
+    // this struct only holds metadata for the GUI (so the card can show
+    // "Custom: MyTune.uasset" instead of an opaque hash).
+    public sealed class ShipMusicSlotOverride
+    {
+        // Original filename the user picked, e.g. "MyAwesomeShanty.uasset".
+        // Display-only - the patcher reads the renamed copy from disk.
+        public string OriginalFilename;
+
+        // Optional human-readable name the user typed for the replacement
+        // (e.g. "My Pirate Banger"). Display-only.
+        public string DisplayName;
     }
 
     public sealed class ItemOverride

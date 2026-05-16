@@ -399,11 +399,13 @@ namespace Windrose.Quartermaster.Core
                 bool pickaxeActive = pickaxeMultiplier > 0.0 && Math.Abs(pickaxeMultiplier - 1.0) > 1e-9;
                 var cooldownJobs = ResolveCooldownJobs(profile);
                 bool cooldownsActive = cooldownJobs.Count > 0;
+                var shipMusicJobs = ResolveShipMusicJobs(profile);
+                bool shipMusicActive = shipMusicJobs.Count > 0;
                 // iconBakeJobs was resolved earlier (before ItemCreator);
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || iconsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     throw new InvalidOperationException(
@@ -427,8 +429,9 @@ namespace Windrose.Quartermaster.Core
                 BonfireRadiusResult bonfireResult = null;
                 PickaxeRangeResult pickaxeResult = null;
                 CooldownsResult cooldownsResult = null;
+                ShipMusicResult shipMusicResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || iconsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -437,6 +440,7 @@ namespace Windrose.Quartermaster.Core
                         bonfireMultiplier, bonfireActive,
                         pickaxeMultiplier, pickaxeActive,
                         cooldownJobs,
+                        shipMusicJobs,
                         iconBakeJobs,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
@@ -444,6 +448,7 @@ namespace Windrose.Quartermaster.Core
                     bonfireResult = compositeResult.Bonfire;
                     pickaxeResult = compositeResult.PickaxeRange;
                     cooldownsResult = compositeResult.Cooldowns;
+                    shipMusicResult = compositeResult.ShipMusic;
                     iconBakeResults = compositeResult.Icons;
                 }
 
@@ -509,6 +514,7 @@ namespace Windrose.Quartermaster.Core
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
                     CooldownsResult = cooldownsResult,
+                    ShipMusicResult = shipMusicResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
                     TmpDir = tmpDir,
@@ -565,6 +571,7 @@ namespace Windrose.Quartermaster.Core
             double bonfireMultiplier, bool bonfireActive,
             double pickaxeMultiplier, bool pickaxeActive,
             List<CooldownJob> cooldownJobs,
+            List<ShipMusicJob> shipMusicJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
@@ -770,6 +777,59 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
+            // Ship music: each replaced shanty slot is a "pre-staged"
+            // source - we don't run retoc to-legacy at all because the
+            // user's UE5-Editor-cooked SoundWave triplet already IS the
+            // legacy bytes. The AfterExtract callback copies the user's
+            // uasset+uexp+ubulk into the staging tree and re-writes the
+            // NameMap entries so the engine resolves the file under the
+            // vanilla slot's asset path.
+            var shipMusicPatchResults = new List<ShipMusicPatchResult>();
+            if (shipMusicJobs != null && shipMusicJobs.Count > 0)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                var encoderPath = _paths.BinkAudioEncoderPath;
+                var templateUassetPath = _paths.ShipMusicTemplateUasset;
+                var templateUexpPath = _paths.ShipMusicTemplateUexp;
+                if (!File.Exists(encoderPath))
+                    throw new FileNotFoundException(
+                        "Bink Audio encoder not found at " + encoderPath
+                        + " - ship-music slots cannot be built without it.");
+                if (!File.Exists(templateUassetPath) || !File.Exists(templateUexpPath))
+                    throw new FileNotFoundException(
+                        "Ship-music template missing under " + Path.GetDirectoryName(templateUassetPath)
+                        + " - expected SoundWave_BinkInline.uasset + .uexp.");
+                LogLine("ShipMusic source: " + shipMusicJobs.Count + " custom shanty"
+                        + (shipMusicJobs.Count == 1 ? "" : "s"));
+                foreach (var job in shipMusicJobs)
+                {
+                    var localJob = job;
+                    sources.Add(new IoStoreCompositeSource
+                    {
+                        Name = "ship-music:" + localJob.Slot.Stem,
+                        // InputDir intentionally null - this source is
+                        // pre-staged via the callback below; the builder
+                        // skips retoc to-legacy entirely for it.
+                        InputDir = null,
+                        AfterExtract = stagingDir =>
+                        {
+                            var patcher = new ShipMusicPatcher { Log = Log };
+                            var r = patcher.PatchFromWav(
+                                localJob.UserWavPath,
+                                templateUassetPath,
+                                templateUexpPath,
+                                encoderPath,
+                                stagingDir,
+                                localJob.Slot,
+                                usmapPath);
+                            r.OriginalFilename = localJob.OriginalFilename;
+                            r.DisplayName = localJob.DisplayName;
+                            shipMusicPatchResults.Add(r);
+                        },
+                    });
+                }
+            }
+
             NoSmokeResult noSmokeOut = null;
             if (noSmokeCategories != null && noSmokeCategories.Count > 0)
             {
@@ -965,6 +1025,19 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            ShipMusicResult shipMusicOut = null;
+            if (shipMusicPatchResults.Count > 0)
+            {
+                shipMusicOut = new ShipMusicResult
+                {
+                    Enabled = true,
+                    SlotResults = shipMusicPatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
@@ -972,6 +1045,7 @@ namespace Windrose.Quartermaster.Core
                 Bonfire = bonfireOut,
                 PickaxeRange = pickaxeOut,
                 Cooldowns = cooldownsOut,
+                ShipMusic = shipMusicOut,
                 Icons = iconResults,
             };
         }
@@ -985,6 +1059,7 @@ namespace Windrose.Quartermaster.Core
             public BonfireRadiusResult Bonfire;
             public PickaxeRangeResult PickaxeRange;
             public CooldownsResult Cooldowns;
+            public ShipMusicResult ShipMusic;
             public List<IconBakerPatcher.BakeResult> Icons;
         }
 
@@ -1551,6 +1626,49 @@ namespace Windrose.Quartermaster.Core
             return m.HasValue && Math.Abs(m.Value - 1.0) > 1e-9;
         }
 
+        // Resolves the active ship-music replacement slots. Walks the
+        // profile's per-slot dict, validates each entry against the
+        // ShipMusicSlots catalog (rejecting tampered profiles with
+        // unknown stems), and checks that the audio.wav file actually
+        // exists on disk. Missing WAVs are logged and skipped - the
+        // slot falls back to vanilla. Empty list = no ship-music
+        // source contributes to the IoStore composite.
+        List<ShipMusicJob> ResolveShipMusicJobs(Profile profile)
+        {
+            var jobs = new List<ShipMusicJob>();
+            var sm = profile.Globals != null ? profile.Globals.ShipMusic : null;
+            if (sm == null || sm.Songs == null || sm.Songs.Count == 0) return jobs;
+            foreach (var kv in sm.Songs)
+            {
+                var stem = kv.Key;
+                var ov = kv.Value;
+                if (ov == null) continue;
+                if (!ShipMusicSlots.ByStem.TryGetValue(stem, out var slot))
+                {
+                    LogLine("ShipMusic: skipping unknown slot stem '"
+                            + stem + "' (not in vanilla catalog)");
+                    continue;
+                }
+                var slotDir = _paths.ProfileShipMusicSlotDir(profile.Id, stem);
+                var userWav = Path.Combine(slotDir, "audio.wav");
+                if (!File.Exists(userWav))
+                {
+                    LogLine("ShipMusic: slot '" + stem
+                            + "' is configured but its audio.wav is missing in "
+                            + slotDir + " - falling back to vanilla.");
+                    continue;
+                }
+                jobs.Add(new ShipMusicJob
+                {
+                    Slot = slot,
+                    UserWavPath = userWav,
+                    OriginalFilename = ov.OriginalFilename,
+                    DisplayName = ov.DisplayName,
+                });
+            }
+            return jobs;
+        }
+
         static void AddScalableFloatJobs(List<CooldownJob> jobs,
             Dictionary<string, string> assets, double multiplier, string family)
         {
@@ -1859,6 +1977,12 @@ namespace Windrose.Quartermaster.Core
         // carries one CooldownJobResult per patched asset (1..N per
         // activated family) plus the shared triplet paths.
         public CooldownsResult CooldownsResult;
+        // Ship-music slot replacement result. null when the profile didn't
+        // configure any custom shanties (or all configured slots were
+        // missing their on-disk triplets). When non-null, carries one
+        // ShipMusicPatchResult per replaced slot plus the shared triplet
+        // paths.
+        public ShipMusicResult ShipMusicResult;
         // Crop-growth patch inclusion result. null when the profile didn't
         // configure a CropGrowthMultiplier or set it to 1.0 (vanilla). When
         // non-null, carries the per-crop ticks before/after for the build
@@ -2024,6 +2148,35 @@ namespace Windrose.Quartermaster.Core
     {
         public bool Enabled;
         public List<CooldownJobResult> JobResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    // One scheduled ship-music slot replacement. The pipeline's
+    // ResolveShipMusicJobs() fans the profile's Songs dict out into
+    // one of these per replaced shanty, each pointing at the on-disk
+    // user .wav. The patcher runs binkaudioenc.exe on it and splices
+    // the resulting Bink Audio bytes into a fresh copy of the
+    // SoundWave_BinkInline template.
+    public sealed class ShipMusicJob
+    {
+        public ShipMusicSlots.SlotInfo Slot;
+        public string UserWavPath;
+        public string OriginalFilename;
+        public string DisplayName;
+    }
+
+    // Standalone summary of "ship-music slots got replaced in this
+    // build". The patched SoundWaves ride inside the SAME IoStore
+    // triplet as Pickup / Bonfire / Pickaxe / NoSmoke / Cooldowns
+    // (sharedBaseName.ucas/utoc), so PakPath mirrors the same
+    // semantics as the other composite results (null when a main
+    // Pak1 is also being built, stub .pak otherwise).
+    public sealed class ShipMusicResult
+    {
+        public bool Enabled;
+        public List<ShipMusicPatchResult> SlotResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
