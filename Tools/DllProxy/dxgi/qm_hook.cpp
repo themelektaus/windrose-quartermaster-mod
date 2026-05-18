@@ -10,6 +10,7 @@
 #include "qm_ue.hpp"
 #include "qm_state.hpp"
 #include "qm_log.hpp"
+#include "qm_config.hpp"
 #include "qm_inject.hpp"
 #include "qm_diag.hpp"
 
@@ -121,16 +122,19 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
     }
     else if (fi.status && strcmp(fi.status, "injected") == 0)
     {
+        const char* itemName = (fi.itemIdx >= 0 && fi.itemIdx < g_injectableItemCount)
+            ? g_injectableItems[fi.itemIdx].name : "<?>";
         if (logHeader)
         {
-            QM_LOG_DEBUG("[Foreign] hit#%ld INJECTED donor=0x%p Asset='%s' -> targetGroup=0x%p slot[%d], Items.Num: %d -> %d (Max=%d) [total=%ld]",
-                n, fi.donorItem, snap.donorAssetName, fi.targetGroup, fi.newNum - 1,
-                fi.oldNum, fi.newNum, fi.max, snap.injectsDone);
+            QM_LOG_DEBUG("[Foreign] hit#%ld INJECTED item[%d]='%s' donor=0x%p -> targetGroup=0x%p slot[%d], Items.Num: %d -> %d (Max=%d) [total=%ld, fanout: t=%d i=%d s=%d f=%d]",
+                n, fi.itemIdx, itemName, fi.donorItem, fi.targetGroup, fi.newNum - 1,
+                fi.oldNum, fi.newNum, fi.max, snap.injectsDone,
+                ff.total, ff.injected, ff.skipped, ff.faulted);
         }
         else if (snap.injectsDone <= 50 || snap.injectsDone % 25 == 0)
         {
-            QM_LOG_TRACE("[Foreign] hit#%ld inject#%ld -> targetGroup=0x%p Items %d->%d",
-                n, snap.injectsDone, fi.targetGroup, fi.oldNum, fi.newNum);
+            QM_LOG_TRACE("[Foreign] hit#%ld inject#%ld item[%d]='%s' -> targetGroup=0x%p Items %d->%d",
+                n, snap.injectsDone, fi.itemIdx, itemName, fi.targetGroup, fi.oldNum, fi.newNum);
         }
     }
     else if (fi.status && strcmp(fi.status, "already-present") == 0)
@@ -160,20 +164,27 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
     if (n == 1)
     {
         QM_LOG_INFO("[Hook] *** PHASE 2a SUCCESS *** GetBuildingGroupsByCategoryTag is reachable from our detour");
-        QM_LOG_INFO("[Hook] active - spawn widget + Conv_StringToName SoftPath to '%s::%s' (fallback to donor-clone if FNameFromString fails)",
-            kOverrideClassName, kOverrideAssetName);
-        QM_LOG_INFO("[Hook] target-category-filter: %s (group's first-item package path must contain substring)",
-            kTargetGroupPathSubstring ? kTargetGroupPathSubstring : "<disabled - inject into every group>");
-        QM_LOG_INFO("[Hook] inject-policy: single-shot + tab-purity (ALL groups in result must be decoration - skips mixed tabs like 'Aufbewahrung+Betten')");
-        QM_LOG_INFO("[Hook] plan-B+ : CategoryTag still <none>, falling back to all-groups-decoration heuristic - watch [Tab] purity classification");
-        QM_LOG_INFO("[Hook] spawn-policy: fresh widget per inject (pool cap=%d) - no widget sharing across groups", kSpawnedPoolMax);
+        QM_LOG_INFO("[Hook] active - %d injectable item(s) configured (workstream B - multi-item):", g_injectableItemCount);
+        for (int i = 0; i < g_injectableItemCount; ++i)
+        {
+            const InjectableItem& it = g_injectableItems[i];
+            QM_LOG_INFO("[Hook]   item[%d] '%s' -> %s::%s (target='%s')",
+                i, it.name, it.className, it.assetName,
+                it.targetCategorySubstring ? it.targetCategorySubstring : "<match-all>");
+        }
+        QM_LOG_INFO("[Hook] tab-purity-gate: %s (ALL groups in result must match - skips mixed tabs)",
+            kTabPurityFilterSubstring ? kTabPurityFilterSubstring : "<disabled>");
+        QM_LOG_INFO("[Hook] inject-policy: single-shot per item (each item produces at most one slot per hit, in first matching group)");
+        QM_LOG_INFO("[Hook] spawn-policy: fresh widget per inject (pool cap=%d, %d slots per full-decoration hit)",
+            kSpawnedPoolMax, g_injectableItemCount);
     }
 
     if (n == 1 || (n % 50 == 0))
     {
-        QM_LOG_DEBUG("[Spawn] state: pool=%d (attempts=%ld successes=%ld) donor=0x%p override={resolved=%d applied=%ld attempts=%ld} cat-skips=%ld",
+        QM_LOG_DEBUG("[Spawn] state: pool=%d (attempts=%ld successes=%ld) donor=0x%p overrides={resolved=%d/%d applied=%ld attempts=%ld} cat-skips=%ld",
             snap.spawnedPoolCount, snap.spawnAttempts, snap.spawnSuccesses, snap.donorItem,
-            snap.overrideResolved ? 1 : 0, snap.overrideApplied, snap.overrideLookupAttempts, snap.skippedCategory);
+            snap.overridesResolvedCount, g_injectableItemCount,
+            snap.overrideApplied, snap.overrideLookupAttempts, snap.skippedCategory);
     }
 }
 

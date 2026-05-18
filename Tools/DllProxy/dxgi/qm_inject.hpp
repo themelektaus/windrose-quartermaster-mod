@@ -15,18 +15,10 @@
 #include <stdint.h>
 #include "qm_ue.hpp"
 
-// ----- Module-level config (overridden later via runtime config) ------------
-// Asset that replaces the donor's SoftPath on every spawned widget.
-//
-// kTargetGroupPathSubstring filters which Groups receive an inject. A group is
-// a target iff its Items[0].PackageName contains this substring. Set to
-// nullptr to disable filtering (legacy fan-out into every group).
-extern const wchar_t* const kOverridePackagePathW;
-extern const wchar_t* const kOverrideAssetNameW;
-extern const char*    const kOverrideAssetName;     // log only
-extern const char*    const kOverrideClassName;     // log only
-extern const char*    const kTargetGroupPathSubstring;
-extern const int            kSpawnedPoolMax;
+// ----- Module-level config --------------------------------------------------
+// Item table is in qm_config.{hpp,cpp}. The spawn pool cap stays here because
+// it is intimately tied to the inject pipeline.
+extern const int kSpawnedPoolMax;
 
 // ----- Per-call inject reporting --------------------------------------------
 // Filled by InjectIntoGroup / CaptureOrInjectForeignItem and consumed by the
@@ -38,11 +30,12 @@ struct ForeignInjectReport
     int   oldNum;
     int   newNum;
     int   max;
+    int   itemIdx;         // which InjectableItem (-1 if N/A: capture/empty)
     const char* status;    // "captured", "injected", "already-present",
                            // "skipped-same-group", "skipped-no-slack",
                            // "skipped-empty", "skipped-no-target",
                            // "skipped-category", "skipped-tab-impure",
-                           // nullptr if FAULT
+                           // "skipped-bad-item", nullptr if FAULT
 };
 
 struct ForeignFanoutReport
@@ -75,11 +68,12 @@ bool GroupMatchesTargetCategory(const GroupCategoryProbe& probe);
 //  -1 = indeterminate (no groups / fault).
 int ClassifyTabPurity(void* Result);
 
-// ----- Override resolution (FName-from-String, cached) ----------------------
-// First call resolves and caches the FNames for kOverridePackagePathW +
-// kOverrideAssetNameW. Subsequent calls are no-ops returning the cached state.
-bool QmIsOverrideResolved();
-bool QmGetOverrideTarget(QmUE::FName* pkgOut, QmUE::FName* assetOut);
+// ----- Override resolution (FName-from-String, cached per item) ------------
+// One override target per InjectableItem. Lazy-resolved on first use, cached
+// thereafter. itemIdx is into g_injectableItems[].
+bool QmIsOverrideResolved(int itemIdx);
+bool QmGetOverrideTarget(int itemIdx, QmUE::FName* pkgOut, QmUE::FName* assetOut);
+int  QmCountOverridesResolved();   // for state-log line
 
 // ----- Hook param reader (used unconditionally by the hook) ----------------
 // Resolves CategoryTag from the GetBuildingGroupsByCategoryTag param block.
@@ -106,7 +100,7 @@ struct QmInjectSnapshot
     long  spawnSuccesses;
     long  overrideApplied;
     long  overrideLookupAttempts;
-    bool  overrideResolved;
+    int   overridesResolvedCount;     // how many items have their FName-pair cached
     long  skippedCategory;
     const char* donorAssetName;
 };
