@@ -96,6 +96,50 @@ User entschied "blind alle drei batchen, einmal testen". Drei orthogonale Hypoth
 
 User-Entscheidung: Stop fuer heute, frisch morgen weiter mit neuem Ansatz.
 
+## Recon C - Ship-Music-Analogie ist NICHT uebertragbar
+
+**Ausloeser:** Insight aus `Docs/PLAN-ShipMusicAddTracks.md` - bei Ship-Music funktioniert "Add new track" ueber Direct Asset Reference (`DA_*_AudioParams` haelt `SoftObjectPath[]`-Liste). Frage: gibt es ein analoges Index-Asset fuer Build-Items das wir nur erweitern muessten statt AR-Patching?
+
+**Methode:** Vier parallele Explore-Agenten + direkte retoc-Recon ueber alle 5 `pakchunk0_s*`-paks.
+
+### Eliminierte Hypothesen
+
+| Hypothese | Wie geprueft | Befund |
+|---|---|---|
+| **`DA_BuildingUICategories` als zentrales Index-Asset** | `retoc list` ueber alle chunks0_s* + grep | **Tot.** Existiert in keinem pak. INI-Verweis aus `DefaultR5BuildingSettings.ini` ist dev-only / dead reference. |
+| **`DA_BuildList_*` oder analoges Index-Asset** | grep nach allen Variant-Mustern (`DA_Build*`, `DA_BI_List*`, `DA_Item*List*`) ueber alle pak-Listings | **Existiert nicht.** Kein zentrales Index-Asset fuer Build-Items im Spiel. |
+| **Recipe-DA als Discovery-Anchor** | Bedroll-Asset extrahiert, Recipe-SoftRef dekodiert | Bedroll referenziert `/R5BusinessRules/Recipes/Building/Items/Utility/DA_RD_BuildObject_Utility_Bed_T01` - **aber das Recipe-Asset existiert in keinem pak!** Nur als String-Reference. Discovery laeuft also definitiv nicht ueber Recipes. |
+| **`WBP_Building_SelectionScreen` hat hartkodierte Item-Liste** | UI-Widget extrahiert + String-Dump | **Keine Liste.** Widget nutzt nur die C++ Klassen `R5BuildingGroupWidget` / `R5BuildingItemWidget` - dynamische Population via AssetManager. |
+| **`PrimaryAssetLabel`-basierte Whitelist** | grep im vanilla AR nach `PrimaryAssetLabel` Klassen-Eintraegen | **Existiert nicht.** Kein Label-Mechanismus aktiv. |
+| **B27 AR-Eintrag strukturell defekt** | retoc-native AR-Parser auf unseren B27-patch (`retoc` hat eigenen AR-Reader) | **Strukturell byte-perfekt:** package_name, asset_name, NativeClass, PrimaryAssetName, PrimaryAssetType, chunk_ids[0], package_flags - alles byte-identisch zur vanilla Bedroll-Record. |
+
+### Konsistenz-Verifikation
+
+- **862 unique `DA_BI_*` Eintraege im pak-Listing** = **862 unique `DA_BI_*` Eintraege in vanilla AR**. Perfekt konsistent.
+- Unser B27-Modded-AR haette 863 Eintraege (vanilla 862 + QmBedrl). Trotzdem wird unser zusaetzlicher Eintrag silent gefiltert.
+
+### Strukturvergleich: warum Ship-Music funktioniert, Build-Items nicht
+
+|  | Ship-Music | Build-Items |
+|---|---|---|
+| Discovery-Mechanismus | `DA_*_AudioParams` haelt `SoftObjectPath[]`-Liste, UE5 iteriert | AssetManager scannt PrimaryAssetType `R5BuildingItem` via `Directories=/Game/Gameplay/Building` |
+| Add-Operation | DA-Liste erweitern + neue Audio-Cues anhaengen, fertig | AR-Eintrag haengen + utoc-PackageStore - **wird silent gefiltert** |
+| Mod-Discovery | Asset-Reference-Graph (deterministisch) | AssetManager-Scan (mit unbekanntem nativen Filter) |
+
+### Was Recon C bedeutet
+
+Die "vielleicht gibts einen einfachen Discovery-Pfad den wir uebersehen haben"-Hoffnung ist tot. Es existiert kein Index-Asset, kein UI-Widget mit Whitelist, kein Recipe-Discovery-Pfad. **Discovery laeuft ausschliesslich ueber AssetManager-Scan plus einen nativen Filter den wir nicht inspizieren koennen** - Verbose-Logs greifen nicht (B3.3-Problem), und der AR-Eintrag selbst ist strukturell perfekt.
+
+**Konsequenz fuer Pickup-Plan:** Weitere AR-Format-Iterationen sind sinnlos. Es bleiben nur zwei Wege mit Aussicht auf Erfolg:
+
+| Pfad | Aufwand | Erfolgschance | Kollateral-Nutzen |
+|---|---|---|---|
+| **B4 - UE5-Source-Studium** | 1-3 Tage. `UAssetManager::ScanPathsForPrimaryAssets`, `GetPrimaryAssetIdList`, R5-Custom-Subclass-Filter studieren | Mittel - sehr abhaengig davon ob R5 einen Custom-Filter hat den wir umgehen koennen | Wenig - nur dieser eine Problem-Fall |
+| **B5 - Native UE5 DLL-Plugin** | 5-10 Tage. C++ DLL die `R5BuildingItem::GetAllItems` (oder hoeher) zur Runtime hooked und unsere Items injiziert | Hoch falls Plugin-Loading moeglich ist - umgeht den nativen Filter komplett indem wir nach ihm injizieren | **Gross** - eine Plugin-Toolchain ermoeglicht auch andere Hooks (Gameplay-Tweaks, Stat-Patches, Recipe-Injection, UI-Hooks). Wuerde die Quartermaster-Engineering-Decke insgesamt heben |
+| **Override-only Pivot** | 0 Tage. A1-A3 generalisieren + GUI | Sicher - liefert Mehrwert ohne Discovery-Engineering | Null - bleibt bei Override-Workflow |
+
+Beim Wiedereinstieg: erst entscheiden welcher Pfad, dann starten. Recon C hat den Suchraum auf diese drei reduziert.
+
 ## Reference-Artefakte
 
 | Datei | Zweck |
@@ -121,33 +165,46 @@ User-Entscheidung: Stop fuer heute, frisch morgen weiter mit neuem Ansatz.
 6. **Asset-Pak alleine wird nicht enumeriert** - PackageStore in utoc reicht nicht, AR-Eintrag ist Pflicht.
 7. **Substring-Kollisionen sind teuer** - `Bucket_01` ist Substring von `T_BI_Bucket_01`, `Bedroll_01` ist Substring von `FX_BI_Bedroll_01`. Immer mit dem l?ngsten eindeutigen Prefix umbenennen (`DA_BI_Bucket_01`).
 
-## Naechste Schritte (Pickup-Plan fuer morgen)
+## Naechste Schritte (Pickup-Plan nach Recon C)
 
-### Schritt 1: Diagnose-Tooling reparieren (Pflicht vor weiterem Iterieren)
+Recon C hat den Suchraum reduziert: weitere AR-Format-Iterationen sind aussichtslos. Es bleiben drei Wege, in absteigender Erfolgschance bei zunehmendem Aufwand.
 
-Ohne Logs sind alle Iterationen blind raten. Drei Wege Verbose-Output zu erzwingen:
+### Schritt 0 (immer noch sinnvoll): Diagnose-Tooling reparieren
 
-1. **User-Engine.ini direkt:** `%LOCALAPPDATA%/R5/Saved/Config/Windows/Engine.ini` mit `[Core.Log]` Sektion editieren - wird VOR Mod-Paks geladen, weil aus User-Config-Pfad.
-2. **Steam Launch-Options:** `-LogCmds="LogAssetManager Verbose, LogAssetRegistry VeryVerbose, LogStreaming Verbose, LogR5BuildingItem Verbose"`
-3. **Game.ini Sanity:** Pruefen ob Game.ini-Mod-Override ueberhaupt greift (kein Hinweis im Log).
+Ohne Verbose-Logs ist auch B4 (Source-Studium) muehsamer. Drei Wege Verbose-Output zu erzwingen, die B3.3 nicht versucht hat:
 
-Erst wenn der naechste Test-Lauf `LogAssetManager: Verbose` Eintraege fuer QmBedrl produziert, sind weitere AR-Patches sinnvoll.
+1. **User-Engine.ini direkt:** `%LOCALAPPDATA%/R5/Saved/Config/Windows/Engine.ini` mit `[Core.Log]`-Sektion editieren - wird VOR Mod-Paks geladen, weil aus User-Config-Pfad.
+2. **Steam Launch-Options:** `-LogCmds="LogAssetManager Verbose, LogAssetRegistry VeryVerbose, LogStreaming Verbose, LogR5BuildingItem Verbose"` direkt in Steam-Launch-Optionen.
+3. **Game.ini Sanity-Check:** Pruefen ob Mod-Game.ini-Override ueberhaupt greift (kein Hinweis im Log).
 
-### Schritt 2: UE5-Source / retoc-Source Studium
+Falls eine dieser drei greift, vereinfacht das B4 erheblich.
+
+### Pfad B4: UE5-Source / retoc-Source Studium (1-3 Tage, Mittel-Risiko)
 
 Open questions die Source-Lesen beantwortet:
 
 - **`UAssetManager::ScanPathsForPrimaryAssets`** - welche Filter-Schritte sind zwischen "AssetRegistry-Eintrag gefunden" und "Slot im UI sichtbar"? Was filtert silent?
 - **`UAssetManager::GetPrimaryAssetIdForObject`** - genau wie wird die PrimaryAssetID aus FStore-Tags abgeleitet? Validiert es zusaetzliche Tags die wir nicht setzen?
-- **R5-spezifisch:** Wo wird `R5BuildingItem` GetAllItems aufgerufen? Hat R5 einen zusaetzlichen Filter (Whitelist, Hash-Lookup gegen statischen Index) on top des Standard-AssetManagers?
+- **R5-spezifisch:** Wo wird `UR5BuildingItem::GetAllItems` aufgerufen? Hat R5 einen zusaetzlichen Filter (Whitelist, Hash-Lookup gegen statischen Index) on top des Standard-AssetManagers?
 - **retoc `to-zen`-Source:** Was schreibt `to-zen` ins PackageStore das `pack-raw` nicht schreibt? Gibt es einen statischen Hash der zur Cook-Time eingefroren wird?
 
-### Schritt 3: Plan-B Pivot bereithalten
+### Pfad B5: Native UE5 DLL-Plugin (5-10 Tage, Hoch-Risiko-Hoch-Reward)
 
-Wenn UE5-Source-Studium auch keine Aufloesung liefert: Override-only Pivot. Quartermaster bringt z.B. 20 thematische Custom-Decorations die jeweils einen langweiligen Vanilla-Slot ersetzen. A1-A3 Pipeline ist nachweislich solide. GUI + Asset-Library + IconBaker (existiert bereits in `tools/IconExtractor`) waeren der Mehrwert ohne weiteren Recon-Spike.
+Eigene C++ DLL die nach dem nativen Filter Items zur Liste injiziert. Bypassed das Discovery-Problem komplett. Strategischer Vorteil: **eine funktionierende Plugin-Toolchain hebt die gesamte Quartermaster-Engineering-Decke** - Gameplay-Tweaks, Stat-Patches, Recipe-Injection, UI-Hooks waeren dann ebenfalls erreichbar, nicht nur Build-Item-Add.
+
+Offene Fragen bevor B5 startbar ist:
+- Laedt das Spiel UE5-Plugins aus `~mods/` automatisch, oder braucht es einen separaten Lade-Mechanismus?
+- Gibt es Reference-Mods im `References/`-Ordner die schon native DLLs verwenden? (Lohnt Recon.)
+- Welche UE5-Version-spezifischen Symbol-Exports sind im Windrose-Binary verfuegbar?
+
+### Pfad Override-only Pivot (0 zusaetzlich, Sicher)
+
+A1-A3 Pipeline ist nachweislich solide. Quartermaster bringt z.B. 20 thematische Custom-Decorations die jeweils einen langweiligen Vanilla-Slot ersetzen. GUI + Asset-Library + IconBaker (existiert bereits in `tools/IconExtractor`) waeren der Mehrwert ohne weiteren Recon-Spike.
 
 ## Wichtige Erkenntnis fuer den Wiedereinstieg
 
-**Wir sind nicht "nahe am Ziel".** Wir wissen NICHT was AssetManager mit unserem QmBedrl-Eintrag macht. Ohne Verbose-Logs ist jede weitere Iteration ein Schuss ins Blaue. Erst Tooling fixen, dann iterieren.
+**Wir sind nicht "nahe am Ziel" auf dem AR-Pfad.** Recon C hat sechs separate Sub-Hypothesen eliminiert. Unser AR-Eintrag ist nachweislich strukturell perfekt, es gibt kein patchbares Index-Asset, kein patchbares Widget, kein Recipe-Discovery-Pfad. Discovery laeuft ueber nativen Filter den wir mit ar_patcher.py nicht erreichen koennen.
 
-Stand `~mods/` beim Schluss heute: **komplett geleert** auf User-Wunsch. Frisch-Start morgen mit Vanilla-Windrose.
+**Entscheidung beim Wiedereinstieg:** B4 (Source-Studium, weiter mit existierender Toolchain) vs. B5 (Plugin-Toolchain, hoeherer Aufwand aber breiter Mehrwert) vs. Pivot (sicherer Mehrwert ohne Discovery-Engineering). Diese Entscheidung sollte zuerst fallen, bevor weiter iteriert wird.
+
+Stand `~mods/` beim letzten Schluss: **komplett geleert** auf User-Wunsch. Frisch-Start mit Vanilla-Windrose.

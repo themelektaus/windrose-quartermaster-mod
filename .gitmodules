@@ -1,3 +1,9 @@
 [submodule "Tools/CUE4Parse"]
 	path = Tools/CUE4Parse
 	url = https://github.com/FabianFG/CUE4Parse.git
+[submodule "Tools/Dumper7"]
+	path = Tools/Dumper7
+	url = https://github.com/Encryqed/Dumper-7.git
+[submodule "Tools/DllProxy/dxgi/minhook"]
+	path = Tools/DllProxy/dxgi/minhook
+	url = https://github.com/TsudaKageyu/minhook.git
