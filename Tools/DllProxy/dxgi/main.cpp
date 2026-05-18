@@ -553,6 +553,7 @@ static volatile LONG   g_overrideApplied      = 0;
 
 static volatile LONG   g_foreignInjectsDone   = 0;
 static volatile LONG   g_foreignAlreadyPresent = 0;
+static volatile LONG   g_foreignSkippedCategory = 0;
 
 // Returns true if `needle` already appears anywhere in items[0..num).
 // SEH-guarded; on fault returns false so we don't double-inject blindly.
@@ -711,6 +712,114 @@ static void* GetInjectTarget()
     return g_mySpawnedItem ? static_cast<void*>(g_mySpawnedItem) : g_donorItem;
 }
 
+// ---- Category targeting (Plan B - identify groups by first item's path) ---
+//
+// Strategy: Each group's Items[0] points to a UR5BuildingItemWidget whose
+// ItemData.PackageName is something like
+//   /Game/Gameplay/Building/BuildingDecoration/DA_BI_Bedroll_01
+//   /Game/Gameplay/Building/BuildingItems/DA_BI_BasementT01_BBB_A
+//   /Game/Gameplay/Building/BuildingUtilities/DA_BI_Utilities_BuildingCenterT01
+// The middle segment ("BuildingDecoration", "BuildingItems", "BuildingUtilities")
+// classifies the group. We pick a substring to match against -- groups whose
+// first item's package contains it are considered injection targets.
+//
+// QmBedrl is a bedroll => Decoration group, so we filter on "BuildingDecoration".
+// Set kTargetGroupPathSubstring to nullptr to disable filtering (legacy fan-out).
+static constexpr const char* kTargetGroupPathSubstring = "BuildingDecoration";
+
+// Probe report - filled by ProbeGroupCategory.
+struct GroupCategoryProbe
+{
+    void* firstItem;       // Items[0] widget pointer (or null on empty)
+    char  pkgName[256];    // resolved package path string ("" on fault)
+    char  tagName[128];    // hydrated UR5BuildingItem::BuildingItemTag string ("" if unhydrated/fault)
+    bool  hasItems;        // true if BuildingItems TArray had at least one entry
+    bool  pkgValid;        // true if pkgName resolved to a non-empty string
+};
+
+// FGameplayTag is a 1-FName struct - offset of BuildingItemTag on UR5BuildingItem
+// (Dumper-7 R5_classes.hpp: UR5BuildingItem @ 0x0048).
+static constexpr size_t kBuildingItemTagOffset = 0x48;
+
+// FWeakObjectPtr packs {int32 ObjectIndex, int32 ObjectSerialNumber}. Used to
+// hydrate the soft-ref to the actual UR5BuildingItem data asset.
+static QmUE::UObject* ResolveWeakObjectPtr(int32_t objectIndex)
+{
+    if (objectIndex <= 0) return nullptr;
+    if (!QmUE::IsReady()) return nullptr;
+    QmUE::TUObjectArray* arr = QmUE::GetGObjects();
+    if (objectIndex >= arr->Num()) return nullptr;
+    return arr->GetByIndex(objectIndex);
+}
+
+// Read group's first item, resolve its package name and (if hydrated) its
+// building tag. SEH-guarded; on fault leaves out->* in safe-empty state.
+static void ProbeGroupCategory(void* group, GroupCategoryProbe* out)
+{
+    if (!out) return;
+    out->firstItem = nullptr;
+    out->pkgName[0] = '\0';
+    out->tagName[0] = '\0';
+    out->hasItems = false;
+    out->pkgValid = false;
+    if (!group) return;
+
+    QmUE::FTArrayHeader itemsHdr = {};
+    if (SafeReadTArrayHeader(
+        reinterpret_cast<uint8_t*>(group) + kBuildingItemsOffset, &itemsHdr) != 0) return;
+    if (!itemsHdr.Data || itemsHdr.Num < 1) return;
+    out->hasItems = true;
+
+    void* firstItem = nullptr;
+    QmUE::FName pkgName = {};
+    int32_t weakIdx = 0;
+    __try
+    {
+        firstItem = reinterpret_cast<void**>(itemsHdr.Data)[0];
+        if (firstItem)
+        {
+            uint8_t* w = reinterpret_cast<uint8_t*>(firstItem);
+            pkgName = *reinterpret_cast<QmUE::FName*>(w + ItemDataLayout::kPackageName);
+            weakIdx = *reinterpret_cast<int32_t*>(w + ItemDataLayout::kWeakPtr);
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+    if (!firstItem) return;
+    out->firstItem = firstItem;
+
+    if (!pkgName.IsNone())
+    {
+        if (QmUE::ResolveFNameNarrow(pkgName, out->pkgName, sizeof(out->pkgName))
+            && out->pkgName[0])
+            out->pkgValid = true;
+    }
+
+    // Try to hydrate the BuildingItemTag if the soft-ref is already resolved.
+    if (weakIdx > 0)
+    {
+        QmUE::UObject* hydrated = ResolveWeakObjectPtr(weakIdx);
+        if (hydrated)
+        {
+            __try
+            {
+                QmUE::FName tag = *reinterpret_cast<QmUE::FName*>(
+                    reinterpret_cast<uint8_t*>(hydrated) + kBuildingItemTagOffset);
+                if (!tag.IsNone())
+                    QmUE::ResolveFNameNarrow(tag, out->tagName, sizeof(out->tagName));
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { out->tagName[0] = '\0'; }
+        }
+    }
+}
+
+// Return true if this group's category matches our target (or filter disabled).
+static bool GroupMatchesTargetCategory(const GroupCategoryProbe& probe)
+{
+    if (!kTargetGroupPathSubstring) return true;   // disabled => match all
+    if (!probe.pkgValid) return false;             // no path => can't classify
+    return strstr(probe.pkgName, kTargetGroupPathSubstring) != nullptr;
+}
+
 // Per-group injection outcome - filled by InjectIntoGroup, consumed by logging.
 struct ForeignInjectReport
 {
@@ -721,7 +830,8 @@ struct ForeignInjectReport
     int max;
     const char* status;    // "captured", "injected", "already-present",
                            // "skipped-same-group", "skipped-no-slack",
-                           // "skipped-empty", "skipped-no-target", nullptr if FAULT
+                           // "skipped-empty", "skipped-no-target",
+                           // "skipped-category", nullptr if FAULT
 };
 
 struct ForeignFanoutReport
@@ -748,6 +858,20 @@ static int InjectIntoGroup(void* group, ForeignInjectReport* out)
     // right next to its original slot).
     if (group == g_donorSourceGroup) { if (out) out->status = "skipped-same-group"; return -1; }
 
+    // Category-targeting (Plan B): only inject into groups whose first item's
+    // package path matches our target category. Skip everything else.
+    if (kTargetGroupPathSubstring)
+    {
+        GroupCategoryProbe probe = {};
+        ProbeGroupCategory(group, &probe);
+        if (!GroupMatchesTargetCategory(probe))
+        {
+            InterlockedIncrement(&g_foreignSkippedCategory);
+            if (out) out->status = "skipped-category";
+            return -1;
+        }
+    }
+
     QmUE::FTArrayHeader* itemsArr = reinterpret_cast<QmUE::FTArrayHeader*>(
         reinterpret_cast<uint8_t*>(group) + kBuildingItemsOffset);
 
@@ -761,6 +885,7 @@ static int InjectIntoGroup(void* group, ForeignInjectReport* out)
         if (out) out->status = "already-present";
         return -1;
     }
+
 
     if (!itemsHdr.Data)              { if (out) out->status = "skipped-empty";    return -1; }
     if (itemsHdr.Num >= itemsHdr.Max){ if (out) out->status = "skipped-no-slack"; return -1; }
@@ -837,7 +962,9 @@ static int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
         capturedThisCall = true;
     }
 
-    // ----- Inject phase: fan-out every group every hit --------------------
+    // ----- Inject phase: walk groups, inject into the FIRST matching one ---
+    // Stop after the first successful inject per hit - we want the donor to
+    // appear exactly once, not once per matching decoration subgroup.
     if (fanout)
     {
         for (int g = 0; g < grpHdr.Num; ++g)
@@ -854,10 +981,14 @@ static int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
             else if (rc == -2) fanout->faulted++;
             else               fanout->skipped++;
 
-            if (out && rc == 0 && (out->status == nullptr ||
-                strcmp(out->status, "captured") != 0))
+            if (rc == 0)
             {
-                *out = sub;
+                if (out && (out->status == nullptr ||
+                    strcmp(out->status, "captured") != 0))
+                {
+                    *out = sub;
+                }
+                break; // single-inject policy: one slot per hit, done
             }
         }
     }
@@ -912,6 +1043,30 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
     //   2. CaptureOrInjectForeignItem - capture donor once, then fan-out inject
     //   3. (diag) deep result dump + soft-path recon
     MaybeRetryOverride();
+
+    // Plan B - log a per-group category probe for the first few hits so we can
+    // see which group's first-item path maps to which target classification.
+    if (logHeader)
+    {
+        QmUE::FTArrayHeader grpHdr = {};
+        if (SafeReadTArrayHeader(Result, &grpHdr) == 0 && grpHdr.Data && grpHdr.Num > 0)
+        {
+            for (int g = 0; g < grpHdr.Num; ++g)
+            {
+                void* gp = nullptr;
+                __try { gp = reinterpret_cast<void**>(grpHdr.Data)[g]; }
+                __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
+                if (!gp) continue;
+                GroupCategoryProbe probe = {};
+                ProbeGroupCategory(gp, &probe);
+                const bool match = GroupMatchesTargetCategory(probe);
+                QM_LOG_DEBUG("[Group] hit#%ld G%d=0x%p match=%d pkg='%s' tag='%s'",
+                    n, g, gp, match ? 1 : 0,
+                    probe.pkgValid ? probe.pkgName : "<unresolved>",
+                    probe.tagName[0] ? probe.tagName : "<unhydrated>");
+            }
+        }
+    }
 
     ForeignInjectReport fi = {};
     ForeignFanoutReport ff = {};
@@ -968,13 +1123,16 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
         QM_LOG_INFO("[Hook] *** PHASE 2a SUCCESS *** GetBuildingGroupsByCategoryTag is reachable from our detour");
         QM_LOG_INFO("[Hook] active - spawn widget + Conv_StringToName SoftPath to '%s::%s' (fallback to donor-clone if FNameFromString fails)",
             kOverrideClassName, kOverrideAssetName);
+        QM_LOG_INFO("[Hook] target-category-filter: %s (groups whose first item's package path lacks the substring are skipped)",
+            kTargetGroupPathSubstring ? kTargetGroupPathSubstring : "<disabled - inject into every group>");
+        QM_LOG_INFO("[Hook] inject-policy: single-shot (first matching group per hit only - donor appears exactly once per category open)");
     }
 
     if (n == 1 || (n % 50 == 0))
     {
-        QM_LOG_DEBUG("[Spawn] state: spawned=0x%p (attempts=%ld successes=%ld) donor=0x%p target=0x%p override={resolved=%d applied=%ld attempts=%ld}",
+        QM_LOG_DEBUG("[Spawn] state: spawned=0x%p (attempts=%ld successes=%ld) donor=0x%p target=0x%p override={resolved=%d applied=%ld attempts=%ld} cat-skips=%ld",
             g_mySpawnedItem, g_spawnAttempts, g_spawnSuccesses, g_donorItem, GetInjectTarget(),
-            g_overrideTarget.resolved ? 1 : 0, g_overrideApplied, g_overrideLookupAttempts);
+            g_overrideTarget.resolved ? 1 : 0, g_overrideApplied, g_overrideLookupAttempts, g_foreignSkippedCategory);
     }
 }
 
