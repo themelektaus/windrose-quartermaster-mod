@@ -72,6 +72,10 @@ void QmLogF(const char* fmt, ...);
 
 #ifdef __cplusplus
 }
+
+// C++-only lifecycle helpers - call from DllMain process-attach / detach.
+void QmLogInit();
+void QmLogShutdown();
 #endif
 
 // ----- Level-gated macros ---------------------------------------------------
