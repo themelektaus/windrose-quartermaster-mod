@@ -27,8 +27,8 @@ Thumbs.db
 GUI/*/Properties/launchSettings.json
 
 # Dumper7 submodule extras: dump output (regenerated per run) + msbuild artifacts
-/Tools/Dumper7/output/
 /Tools/Dumper7/x64/
+/Tools/Dumper7Setup/output/
 /Tools/Dumper7Setup/inject/inject.exe
 /Tools/Dumper7Setup/inject/inject.obj
 

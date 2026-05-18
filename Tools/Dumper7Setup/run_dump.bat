@@ -46,4 +46,4 @@ if not %RC%==0 (
 
 echo.
 echo [OK] Injector returned. Watch the in-game console for progress.
-echo [OK] SDK output goes to: %DUMPER_DIR%\output\
+echo [OK] SDK output goes to: %~dp0output\
