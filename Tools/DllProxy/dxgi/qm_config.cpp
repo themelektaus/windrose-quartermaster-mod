@@ -20,17 +20,17 @@ const InjectableItem g_injectableItems[] =
         /*.targetCategorySubstring=*/"BuildingDecoration",
     },
 
-    // Item 1 - DA_BI_WallTorch (vanilla asset, no mod pak required).
-    // Test duplicate to verify multi-item injection works. The build slot
-    // will show the real wall-torch icon and be buildable as a wall torch.
-    // Exists in the BuildingDecoration tab in vanilla so the slot ends up
-    // as a visible duplicate next to the original wall torch - intended.
+    // Item 1 - QmPainting_01 (custom mod asset, shipped via QmPainting_P.pak).
+    // Built from a vanilla HighLands_02 painting DA via DataAssetPatcher:
+    // NameMap renames point Mesh/Icon refs to /Game/Quartermaster/Items/.
+    // Inherits wall-snap, collision, FX, sound, crafting cost from vanilla;
+    // overrides Mesh (user-cooked frame), Icon (user-cooked PNG), DisplayName.
     {
-        /*.name=*/                   "WallTorch (vanilla test duplicate)",
+        /*.name=*/                   "QmPainting_01",
         /*.className=*/              "R5BuildingItem",
-        /*.assetName=*/              "DA_BI_WallTorch",
-        /*.packagePathW=*/           L"/Game/Gameplay/Building/BuildingDecoration/DA_BI_WallTorch",
-        /*.assetNameW=*/             L"DA_BI_WallTorch",
+        /*.assetName=*/              "DA_BI_QmPainting_01",
+        /*.packagePathW=*/           L"/Game/Quartermaster/Items/DA_BI_QmPainting_01",
+        /*.assetNameW=*/             L"DA_BI_QmPainting_01",
         /*.targetCategorySubstring=*/"BuildingDecoration",
     },
 };
