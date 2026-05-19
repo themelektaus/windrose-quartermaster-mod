@@ -26,12 +26,28 @@ static void*    g_donorItem            = nullptr;
 static void*    g_donorSourceGroup     = nullptr;
 static char     g_donorAssetName[128]  = "<?>";
 
-// ---- Spawned widget pool (one per inject) ---------------------------------
-static QmUE::UObject*  g_spawnedPool[16] = {};
-static int             g_spawnedPoolCount    = 0;
-static QmUE::UClass*   g_itemWidgetClass     = nullptr;
-static volatile LONG   g_spawnAttempts       = 0;
-static volatile LONG   g_spawnSuccesses      = 0;
+// ---- Spawned widget pool --------------------------------------------------
+// Each entry remembers which item the widget was customized for and the last
+// target-group it was injected into. On re-entry we prefer reusing an entry
+// whose widget belongs to the requested item and whose lastGroup differs from
+// the current target-group - that's a widget that the previous (now-stale)
+// group still references but the live UI no longer renders. Reusing it lets
+// the pool size stay tiny (typically == g_injectableItemCount) regardless of
+// how often the Build menu is reopened. Spawning a fresh widget every time
+// would grow the pool unbounded and hit the kSpawnedPoolMax ceiling.
+struct PoolEntry
+{
+    QmUE::UObject* widget;
+    int            itemIdx;
+    void*          lastGroup;
+    long           reuseCount;  // diagnostic only
+};
+static PoolEntry        g_spawnedPool[16] = {};
+static int              g_spawnedPoolCount    = 0;
+static QmUE::UClass*    g_itemWidgetClass     = nullptr;
+static volatile LONG    g_spawnAttempts       = 0;
+static volatile LONG    g_spawnSuccesses      = 0;
+static volatile LONG    g_spawnReuses         = 0;
 
 // ---- Override targets (one per InjectableItem) ----------------------------
 // Index parallels g_injectableItems[]. Resolved lazily on first use, cached.
@@ -67,6 +83,7 @@ QmInjectSnapshot QmGetInjectSnapshot()
     s.spawnedPoolCount        = g_spawnedPoolCount;
     s.spawnAttempts           = g_spawnAttempts;
     s.spawnSuccesses          = g_spawnSuccesses;
+    s.spawnReuses             = g_spawnReuses;
     s.overrideApplied         = g_overrideApplied;
     s.overrideLookupAttempts  = g_overrideLookupAttempts;
     s.overridesResolvedCount  = QmCountOverridesResolved();
@@ -188,18 +205,117 @@ static bool ApplyOverrideToSpawned(QmUE::UObject* spawned, int itemIdx)
 }
 
 // ============================================================================
-// Fresh-widget spawn with override applied (per item).
+// Donor-class validation. The Build-Menu uses 'WBP_Building_Item_C' widgets in
+// every decoration/utility group. Other widget classes (e.g. 'WBP_Shortcut_C'
+// used in the bottom-row hotbar) live at recyclable UObject addresses - if the
+// player builds with a custom item once and the donor's old WBP_Building_Item_C
+// gets GC'd, the same address can be reused for a WBP_Shortcut_C the next time
+// the build menu opens. Cloning that as a building-group item causes a
+// class-mismatch crash a few frames later. Guard via class-name substring.
 // ============================================================================
-static QmUE::UObject* SpawnFreshItemWithOverride(QmUE::UObject* donor, int itemIdx, const char* contextTag)
+static const char* kExpectedDonorClassSubstr = "Building_Item";
+
+static bool IsDonorClassValid(QmUE::UObject* candidate, char* clsNameOut, size_t clsNameOutSz)
+{
+    if (clsNameOut && clsNameOutSz) clsNameOut[0] = 0;
+    if (!candidate) return false;
+
+    QmUE::UClass* cls = nullptr;
+    __try { cls = candidate->Class; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { cls = nullptr; }
+    if (!cls) return false;
+
+    char buf[128] = "<?>";
+    bool resolved = false;
+    __try { resolved = QmUE::ResolveFNameNarrow(cls->Name, buf, sizeof(buf)); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { resolved = false; }
+
+    if (clsNameOut && clsNameOutSz) {
+        strncpy(clsNameOut, buf, clsNameOutSz - 1);
+        clsNameOut[clsNameOutSz - 1] = 0;
+    }
+    if (!resolved) return false;
+    return strstr(buf, kExpectedDonorClassSubstr) != nullptr;
+}
+
+// ============================================================================
+// Pool reuse: find an existing widget for the same itemIdx whose lastGroup
+// differs from currentGroup. That widget is owned by a previous (no-longer
+// rendered) group - reusing it both avoids spawning N widgets per session and
+// keeps the kSpawnedPoolMax ceiling out of reach. The widget's class is
+// re-validated before reuse to guard against UE recycling the address.
+//
+// Returns the pool index of a reusable widget, or -1 if none qualifies.
+// ============================================================================
+static int FindReusablePoolEntry(int itemIdx, void* currentGroup)
+{
+    for (int i = 0; i < g_spawnedPoolCount; ++i)
+    {
+        PoolEntry& e = g_spawnedPool[i];
+        if (!e.widget) continue;
+        if (e.itemIdx != itemIdx) continue;
+        if (e.lastGroup == currentGroup) continue;  // already in this group
+        if (!IsDonorClassValid(e.widget, nullptr, 0)) continue;  // class stale
+        return i;
+    }
+    return -1;
+}
+
+// ============================================================================
+// Spawn-or-reuse a widget for `itemIdx`. Reuse path: previously-spawned widget
+// taken from the pool, override re-applied (idempotent). Spawn path: fresh
+// UObject created via UFunction, ItemData cloned from donor, override applied.
+// The currentGroup pointer is recorded on the pool entry so subsequent reuse
+// can avoid placing the same widget into the same group twice.
+// ============================================================================
+static QmUE::UObject* SpawnOrReuseItemWithOverride(QmUE::UObject* donor, int itemIdx,
+                                                   void* currentGroup, const char* contextTag)
 {
     if (!donor) return nullptr;
     if (itemIdx < 0 || itemIdx >= g_injectableItemCount) return nullptr;
     const InjectableItem& item = g_injectableItems[itemIdx];
 
+    // ----- Reuse path -----------------------------------------------------
+    int reuseIdx = FindReusablePoolEntry(itemIdx, currentGroup);
+    if (reuseIdx >= 0)
+    {
+        PoolEntry& e = g_spawnedPool[reuseIdx];
+        QmUE::UObject* reused = e.widget;
+        void* oldGroup = e.lastGroup;
+        e.lastGroup = currentGroup;
+        e.reuseCount++;
+        InterlockedIncrement(&g_spawnReuses);
+
+        // Re-apply override (idempotent) in case anything mutated the
+        // Pkg/Asset slots while the widget sat in the previous group.
+        if (ResolveOverrideTarget(itemIdx))
+            ApplyOverrideToSpawned(reused, itemIdx);
+
+        QM_LOG_INFO("[Spawn] *** REUSE *** widget=0x%p ctx=%s item[%d]='%s' poolIdx=%d reuseCount=%ld oldGroup=0x%p newGroup=0x%p",
+            reused, contextTag ? contextTag : "?", itemIdx, item.name,
+            reuseIdx, e.reuseCount, oldGroup, currentGroup);
+        return reused;
+    }
+
+    // ----- Pool full guard (only matters for fresh spawns) ----------------
     if (g_spawnedPoolCount >= kSpawnedPoolMax)
     {
         QM_LOG_WARN("[Spawn] pool full (%d) - refusing to spawn more (ctx=%s item='%s')",
             g_spawnedPoolCount, contextTag ? contextTag : "?", item.name);
+        return nullptr;
+    }
+
+    // Stale-donor detection: the cached g_donorItem may point to recycled
+    // memory now backing a different widget class (e.g. WBP_Shortcut_C). If so,
+    // clear it so the next hit re-captures a fresh, valid donor. Spawning the
+    // wrong class into a decoration group causes a class-mismatch crash.
+    char itemClsName[128] = "<?>";
+    if (!IsDonorClassValid(donor, itemClsName, sizeof(itemClsName)))
+    {
+        QM_LOG_WARN("[Spawn] STALE-DONOR detected: donor=0x%p class='%s' does not match '%s' - clearing g_donorItem (ctx=%s item='%s')",
+            donor, itemClsName, kExpectedDonorClassSubstr,
+            contextTag ? contextTag : "?", item.name);
+        if (donor == g_donorItem) { g_donorItem = nullptr; g_donorSourceGroup = nullptr; }
         return nullptr;
     }
 
@@ -210,14 +326,10 @@ static QmUE::UObject* SpawnFreshItemWithOverride(QmUE::UObject* donor, int itemI
 
     if (!itemCls)
     {
-        QM_LOG_WARN("[Spawn] FAULT reading donor->Class for donor=0x%p (ctx=%s item='%s')",
+        QM_LOG_WARN("[Spawn] FAULT reading donor->Class/Outer for donor=0x%p (ctx=%s item='%s')",
             donor, contextTag ? contextTag : "?", item.name);
         return nullptr;
     }
-
-    char itemClsName[128] = "<?>";
-    __try { QmUE::ResolveFNameNarrow(itemCls->Name, itemClsName, sizeof(itemClsName)); }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
 
     InterlockedIncrement(&g_spawnAttempts);
     g_itemWidgetClass = itemCls;
@@ -248,11 +360,17 @@ static QmUE::UObject* SpawnFreshItemWithOverride(QmUE::UObject* donor, int itemI
         ApplyOverrideToSpawned(spawned, itemIdx);
 
     if (g_spawnedPoolCount < kSpawnedPoolMax)
-        g_spawnedPool[g_spawnedPoolCount++] = spawned;
+    {
+        PoolEntry& e = g_spawnedPool[g_spawnedPoolCount++];
+        e.widget     = spawned;
+        e.itemIdx    = itemIdx;
+        e.lastGroup  = currentGroup;
+        e.reuseCount = 0;
+    }
     InterlockedIncrement(&g_spawnSuccesses);
-    QM_LOG_INFO("[Spawn] *** SUCCESS *** %s spawned @ 0x%p (outer=0x%p) ItemData=%s ctx=%s item[%d]='%s' pool=%d",
+    QM_LOG_INFO("[Spawn] *** SUCCESS *** %s spawned @ 0x%p (outer=0x%p) ItemData=%s ctx=%s item[%d]='%s' pool=%d group=0x%p",
         itemClsName, spawned, outer, copyOK ? "cloned-from-donor" : "FAULT",
-        contextTag ? contextTag : "?", itemIdx, item.name, g_spawnedPoolCount);
+        contextTag ? contextTag : "?", itemIdx, item.name, g_spawnedPoolCount, currentGroup);
 
     return spawned;
 }
@@ -459,10 +577,13 @@ static int InjectIntoGroup(void* group, int itemIdx, ForeignInjectReport* out)
     if (!itemsHdr.Data)              { if (out) out->status = "skipped-empty";    return -1; }
     if (itemsHdr.Num >= itemsHdr.Max){ if (out) out->status = "skipped-no-slack"; return -1; }
 
-    // Spawn AFTER the slack/empty gates so we don't allocate widgets that won't
-    // be used. Each successful inject consumes one pool slot.
-    QmUE::UObject* injectWidget = SpawnFreshItemWithOverride(
-        reinterpret_cast<QmUE::UObject*>(g_donorItem), itemIdx, "inject");
+    // Spawn-or-reuse AFTER the slack/empty gates so we don't allocate widgets
+    // that won't be used. The pool prefers reusing a previously-spawned widget
+    // for the same item whose lastGroup differs from this one - that's a
+    // widget the previous (now-stale) group still references but the live UI
+    // no longer renders. Falling back to fresh spawn only when no reuse fits.
+    QmUE::UObject* injectWidget = SpawnOrReuseItemWithOverride(
+        reinterpret_cast<QmUE::UObject*>(g_donorItem), itemIdx, group, "inject");
     if (!injectWidget) { if (out) out->status = "skipped-no-target"; return -1; }
     if (out) out->donorItem = injectWidget;
 
@@ -500,6 +621,25 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
     if (!group0) { if (out) out->status = "skipped-empty"; return -1; }
     if (out) out->targetGroup = group0;
 
+    // ----- Stale-donor invalidation ---------------------------------------
+    // If we have a cached donor but its memory has been recycled by UE to back
+    // a different widget class (e.g. WBP_Shortcut_C from the hotbar after the
+    // player built+placed our custom item), clear it so the capture phase
+    // below re-acquires a fresh, valid WBP_Building_Item_C from group0.
+    if (g_donorItem)
+    {
+        char staleClsName[128] = "<?>";
+        if (!IsDonorClassValid(reinterpret_cast<QmUE::UObject*>(g_donorItem),
+                               staleClsName, sizeof(staleClsName)))
+        {
+            QM_LOG_WARN("[Capture] STALE-DONOR detected at re-entry: g_donorItem=0x%p class='%s' (expected substring '%s') - re-capturing",
+                g_donorItem, staleClsName, kExpectedDonorClassSubstr);
+            g_donorItem = nullptr;
+            g_donorSourceGroup = nullptr;
+            strcpy(g_donorAssetName, "<?>");
+        }
+    }
+
     // ----- Capture phase ---------------------------------------------------
     bool capturedThisCall = false;
     if (!g_donorItem)
@@ -523,6 +663,18 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
         __except (EXCEPTION_EXECUTE_HANDLER) { return -2; }
         if (!firstItem) { if (out) out->status = "skipped-empty"; return -1; }
 
+        // Class-check the candidate before we commit it. Capturing the wrong
+        // class once would lead to a class-mismatch crash on the next inject.
+        char captureClsName[128] = "<?>";
+        if (!IsDonorClassValid(reinterpret_cast<QmUE::UObject*>(firstItem),
+                               captureClsName, sizeof(captureClsName)))
+        {
+            QM_LOG_WARN("[Capture] REJECTED candidate firstItem=0x%p class='%s' (expected substring '%s')",
+                firstItem, captureClsName, kExpectedDonorClassSubstr);
+            if (out) out->status = "skipped-bad-class";
+            return -1;
+        }
+
         g_donorItem = firstItem;
         g_donorSourceGroup = group0;
         if (!assetName.IsNone())
@@ -535,6 +687,9 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
 
         // No pre-spawn here: spawning happens lazily inside InjectIntoGroup,
         // one fresh widget per inject (each group gets its own).
+
+        QM_LOG_INFO("[Capture] donor accepted: donor=0x%p class='%s' assetName='%s' sourceGroup=0x%p",
+            g_donorItem, captureClsName, g_donorAssetName, g_donorSourceGroup);
 
         if (out) { out->donorItem = firstItem; out->status = "captured"; }
         capturedThisCall = true;

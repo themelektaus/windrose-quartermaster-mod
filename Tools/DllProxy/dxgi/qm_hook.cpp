@@ -175,14 +175,14 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
         QM_LOG_INFO("[Hook] tab-purity-gate: %s (ALL groups in result must match - skips mixed tabs)",
             kTabPurityFilterSubstring ? kTabPurityFilterSubstring : "<disabled>");
         QM_LOG_INFO("[Hook] inject-policy: single-shot per item (each item produces at most one slot per hit, in first matching group)");
-        QM_LOG_INFO("[Hook] spawn-policy: fresh widget per inject (pool cap=%d, %d slots per full-decoration hit)",
-            kSpawnedPoolMax, g_injectableItemCount);
+        QM_LOG_INFO("[Hook] spawn-policy: spawn-or-reuse per inject (pool cap=%d - reuses prior widgets whose lastGroup differs from current)",
+            kSpawnedPoolMax);
     }
 
     if (n == 1 || (n % 50 == 0))
     {
-        QM_LOG_DEBUG("[Spawn] state: pool=%d (attempts=%ld successes=%ld) donor=0x%p overrides={resolved=%d/%d applied=%ld attempts=%ld} cat-skips=%ld",
-            snap.spawnedPoolCount, snap.spawnAttempts, snap.spawnSuccesses, snap.donorItem,
+        QM_LOG_DEBUG("[Spawn] state: pool=%d (attempts=%ld successes=%ld reuses=%ld) donor=0x%p overrides={resolved=%d/%d applied=%ld attempts=%ld} cat-skips=%ld",
+            snap.spawnedPoolCount, snap.spawnAttempts, snap.spawnSuccesses, snap.spawnReuses, snap.donorItem,
             snap.overridesResolvedCount, g_injectableItemCount,
             snap.overrideApplied, snap.overrideLookupAttempts, snap.skippedCategory);
     }

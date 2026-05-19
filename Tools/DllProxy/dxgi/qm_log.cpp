@@ -80,11 +80,67 @@ extern "C" void QmLogF(const char* fmt, ...)
 
 // ----- Lifecycle ------------------------------------------------------------
 
+// Rotate an existing Quartermaster_Inject.log out of the way before the new
+// session starts writing. Name carries the file's last-write timestamp so the
+// rotated copy reflects when the previous session ended (not when this one began).
+// Falls back to "_001", "_002" suffixes if the timestamp-derived name already
+// exists (e.g. same-millisecond rotation after a fast crash-restart).
+static void RotateExistingLog()
+{
+    if (!g_logPath[0]) return;
+
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesExA(g_logPath, GetFileExInfoStandard, &fad))
+        return; // no previous log -> nothing to rotate
+
+    FILETIME localFt;
+    SYSTEMTIME st;
+    if (!FileTimeToLocalFileTime(&fad.ftLastWriteTime, &localFt) ||
+        !FileTimeToSystemTime(&localFt, &st))
+        return;
+
+    char dir[MAX_PATH];
+    strncpy(dir, g_logPath, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = '\0';
+    char* lastSep = strrchr(dir, '\\');
+    if (!lastSep) return;
+    *lastSep = '\0';
+
+    char target[MAX_PATH];
+    snprintf(target, sizeof(target),
+        "%s\\Quartermaster_Inject_%04d-%02d-%02d_%02d%02d%02d_%03d.log",
+        dir, st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+    // Collision retry (paranoia, e.g. clock skew): _001..._999
+    if (GetFileAttributesA(target) != INVALID_FILE_ATTRIBUTES)
+    {
+        for (int i = 1; i < 1000; ++i)
+        {
+            char retry[MAX_PATH];
+            snprintf(retry, sizeof(retry),
+                "%s\\Quartermaster_Inject_%04d-%02d-%02d_%02d%02d%02d_%03d_%03d.log",
+                dir, st.wYear, st.wMonth, st.wDay,
+                st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, i);
+            if (GetFileAttributesA(retry) == INVALID_FILE_ATTRIBUTES)
+            {
+                MoveFileA(g_logPath, retry);
+                return;
+            }
+        }
+        return; // give up - new session will append to existing log
+    }
+
+    MoveFileA(g_logPath, target);
+}
+
 void QmLogInit()
 {
     if (g_logLockInit) return;
     InitializeCriticalSection(&g_logLock);
     g_logLockInit = TRUE;
+    EnsureLogPath();
+    RotateExistingLog();
 }
 
 void QmLogShutdown()

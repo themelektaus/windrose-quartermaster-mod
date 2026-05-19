@@ -98,6 +98,7 @@ struct QmInjectSnapshot
     int   spawnedPoolCount;
     long  spawnAttempts;
     long  spawnSuccesses;
+    long  spawnReuses;
     long  overrideApplied;
     long  overrideLookupAttempts;
     int   overridesResolvedCount;     // how many items have their FName-pair cached
