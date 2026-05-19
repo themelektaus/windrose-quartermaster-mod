@@ -186,6 +186,7 @@ public static class Program
         BuildEndpoint.Map(app, resolvedRoot);
         SetupEndpoint.Map(app, resolvedRoot);
         ModsEndpoint.Map(app, resolvedRoot);
+        ExportEndpoint.Map(app, resolvedRoot);
 
         app.MapPost("/api/shutdown", (Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime) =>
         {

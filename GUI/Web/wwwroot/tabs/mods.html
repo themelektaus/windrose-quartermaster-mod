@@ -24,6 +24,18 @@
     </section>
 
     <section class="card">
+      <h2>Export</h2>
+      <p class="hint">
+        Extracts every building asset (DataAssets, Blueprints, Static Meshes, Materials, Textures, audio cues) from the vanilla IoStore container to <code>Sources/Vanilla/R5/Content/</code> so you can clone them in the UE editor.
+      </p>
+      <p class="hint">
+        <strong>Heads up:</strong> writes several hundred MB to disk and takes 1-3 minutes the first time. Re-running is incremental - existing files are kept.
+      </p>
+      <div id="export-status" class="export-status">Not yet checked</div>
+      <button id="btn-export-building" type="button">Export building assets</button>
+    </section>
+
+    <section class="card">
       <h2>Notes</h2>
       <p class="hint">
         Deleting a Quartermaster mod sends it to the Windows recycle bin - you can restore it from Explorer if needed.

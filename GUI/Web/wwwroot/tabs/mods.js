@@ -136,10 +136,131 @@ function bindModsHandlers() {
     document.getElementById('mods-filter-source').addEventListener('change',  renderMods);
     document.getElementById('mods-refresh').addEventListener('click',         loadMods);
     document.getElementById('btn-open-setup').addEventListener('click',       openSetupManually);
+    document.getElementById('btn-export-building').addEventListener('click',  runBuildingExport);
     document.getElementById('mods-list').addEventListener('click', e => {
         const t = e.target;
         if (t && t.dataset && t.dataset.deleteMod) {
             deleteMod(t.dataset.deleteMod);
         }
+    });
+    // Status-Probe beim Tab-Wechsel auf "Mods": ist verlustfrei (HEAD-style),
+    // wird auch beim ersten Rendern ausgeloest.
+    loadExportStatus();
+}
+
+// Liest /api/export/status und zeigt im Status-DIV wie viele Assets bereits
+// extrahiert wurden. Schnell (nur Directory-Counts), kein CUE4Parse-Init.
+async function loadExportStatus() {
+    const statusEl = document.getElementById('export-status');
+    if (!statusEl) return;
+    try {
+        const r = await fetch('/api/export/status');
+        const data = await r.json();
+        if (!r.ok || data.error) {
+            statusEl.textContent = 'Status check failed: ' + ((data && data.error) || ('HTTP ' + r.status));
+            return;
+        }
+        if (data.isRunning) {
+            statusEl.textContent = 'An export is currently running...';
+            return;
+        }
+        const total = data.totalUassetCount || 0;
+        if (total === 0) {
+            statusEl.textContent = 'No assets extracted yet';
+        } else {
+            const parts = [];
+            if (data.gameplay && data.gameplay.uassetCount > 0)
+                parts.push(data.gameplay.uassetCount + ' gameplay');
+            if (data.environment && data.environment.uassetCount > 0)
+                parts.push(data.environment.uassetCount + ' environment');
+            if (data.audio && data.audio.uassetCount > 0)
+                parts.push(data.audio.uassetCount + ' audio');
+            statusEl.textContent = total + ' .uasset files on disk (' + parts.join(', ') + ')';
+        }
+    } catch (e) {
+        statusEl.textContent = 'Status check failed: ' + e.message;
+    }
+}
+
+// Streamt /api/export/building als SSE und schreibt Log-Lines ins globale
+// Footer-Log (#build-log), das via setFooterCollapsed(false) automatisch
+// aufgeklappt wird. Mirrors die SSE-Consumption aus app.js::runSetup.
+function runBuildingExport() {
+    const btn = document.getElementById('btn-export-building');
+    const statusEl = document.getElementById('export-status');
+    const logEl = document.getElementById('build-log');
+    if (!btn || !statusEl || !logEl) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Exporting...';
+    statusEl.textContent = 'Export running...';
+
+    // Footer aufklappen + Log leeren - exakt das Verhalten von onBuild,
+    // damit ein laufender Export visuell genauso "live" wie ein Build
+    // wirkt (auch wenn das Tab-Pane oben den Status weiter anzeigt).
+    setFooterCollapsed(false);
+    logEl.innerHTML = '';
+
+    const append = (line, kind) => {
+        const span = document.createElement('span');
+        if (kind) span.className = kind;
+        span.textContent = line;
+        logEl.appendChild(span);
+        logEl.appendChild(document.createTextNode('\n'));
+        logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    fetch('/api/export/building', { method: 'POST' }).then(async resp => {
+        if (!resp.ok) {
+            const text = await resp.text().catch(() => resp.statusText);
+            append('HTTP ' + resp.status + ': ' + text, 'err');
+            btn.disabled = false;
+            btn.textContent = 'Export building assets';
+            return;
+        }
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        let finalPayload = null;
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+                const frame = buf.slice(0, idx);
+                buf = buf.slice(idx + 2);
+                let event = 'message', data = '';
+                for (const ln of frame.split('\n')) {
+                    if      (ln.startsWith('event: ')) event = ln.slice(7).trim();
+                    else if (ln.startsWith('data: '))  data  = ln.slice(6);
+                }
+                if (event === 'log') {
+                    append(data, classifyLogLine(data));
+                } else if (event === 'done') {
+                    try { finalPayload = JSON.parse(data); } catch (e) { /* keep null */ }
+                }
+            }
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Export building assets';
+        if (finalPayload && finalPayload.success) {
+            const w = finalPayload.filesWritten || 0;
+            const s = finalPayload.filesSkippedExisting || 0;
+            const f = finalPayload.filesFailed || 0;
+            append('', null);
+            append('Done. ' + w + ' written, ' + s + ' skipped, ' + f + ' failed.', 'ok');
+        } else if (finalPayload && finalPayload.error) {
+            append('', null);
+            append('Export failed: ' + finalPayload.error, 'err');
+        }
+        loadExportStatus();
+    }).catch(err => {
+        append('Network error: ' + err.message, 'err');
+        btn.disabled = false;
+        btn.textContent = 'Export building assets';
+        statusEl.textContent = 'Export failed';
     });
 }

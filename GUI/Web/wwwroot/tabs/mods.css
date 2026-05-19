@@ -115,3 +115,14 @@
   color: var(--text-dim);
   text-align: center;
 }
+
+.export-status {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+  background: var(--bg-elev);
+  padding: .35em .5em;
+  border-radius: var(--border-radius);
+  margin: .5em 0;
+  word-break: break-word;
+}
