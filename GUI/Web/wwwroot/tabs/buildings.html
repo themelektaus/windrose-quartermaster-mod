@@ -1,0 +1,41 @@
+<div class="tab-page" data-tab="buildings" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Building Creator</h2>
+      <p class="hint">
+        Add brand-new buildables to the game's build menu. Each custom
+        building is cloned from a Vanilla "Buildable" template, with
+        your cooked mesh / icon / image swapped in via post-cook NameMap
+        rewrites.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="buildings-status-summary">
+        <dt>Custom buildings</dt><dd id="buildings-stat-count">-</dd>
+        <dt>Templates available</dt><dd id="buildings-stat-templates">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>How it works</h2>
+      <p class="hint">
+        Cook your assets in the UE editor first (mesh + icon + Albedo
+        image), then point the building at the cooked folder. The build
+        skips user-cooked Materials/MIs (they crash shipping) and
+        replaces them with Vanilla-MI clones - your textures take over
+        via NameMap rewrites.
+      </p>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <button id="btn-buildings-new" type="button" class="primary">New Building</button>
+      <span id="buildings-count" class="item-count"></span>
+    </div>
+    <div id="buildings-error" class="mods-error" hidden></div>
+    <ul id="buildings-list" class="buyers-list"></ul>
+  </section>
+</div>

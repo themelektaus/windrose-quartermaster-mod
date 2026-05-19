@@ -1,0 +1,234 @@
+/* Buildings tab styling. Mirrors creator.css (the Item Creator
+ * tab) since the layouts share the same "card list of editable
+ * entries" pattern, with extras for the per-slot inputs and the
+ * cooked-folder scan summary. */
+
+.building-card {
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 70%);
+  border-radius: var(--border-radius);
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+.building-card-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+.building-titles {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.building-title-name {
+  font-weight: bold;
+}
+
+.building-title-name em {
+  color: var(--text-dim);
+}
+
+.building-title-id {
+  color: var(--text-dim);
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-title-template {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-title-template > span {
+  white-space: nowrap;
+}
+
+.building-card-actions {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.building-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  align-items: end;
+}
+
+.building-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+}
+
+.building-field-wide {
+  grid-column: 1 / -1;
+}
+
+.building-field > span {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.building-field input[disabled],
+.building-field textarea[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.building-field textarea {
+  resize: vertical;
+  min-height: 4em;
+  font-family: inherit;
+}
+
+/* Cooked-folder picker + scan summary -------------------------- */
+
+.building-folder-row {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+}
+
+.building-folder-row input {
+  flex: 1 1 auto;
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-folder-row .btn-link {
+  flex-shrink: 0;
+}
+
+.building-scan {
+  background-color: var(--bg-elev);
+  border-radius: var(--border-radius);
+  padding: .5em .75em;
+  margin-top: .25em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+}
+
+.building-scan-error {
+  color: var(--danger, #e16464);
+}
+
+.building-scan-status {
+  display: flex;
+  gap: .75em;
+  flex-wrap: wrap;
+}
+
+.building-scan-status .bad {
+  color: var(--danger, #e16464);
+}
+
+.building-scan-status .skip {
+  color: var(--text-dim);
+}
+
+.building-scan-files {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  list-style: none;
+  padding: 0;
+  margin: .25em 0 0 0;
+  max-height: 8em;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+}
+
+.building-scan-files li {
+  display: flex;
+  gap: .5em;
+  align-items: baseline;
+}
+
+.building-scan-files .kind {
+  flex-shrink: 0;
+  min-width: 7em;
+  color: var(--text-dim);
+}
+
+.building-scan-files .kind.skip {
+  color: var(--warning, #e0a01c);
+}
+
+.building-scan-files .kind.bad {
+  color: var(--danger, #e16464);
+}
+
+.building-scan-files .name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Per-slot inputs --------------------------------------------- */
+
+.building-slots {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  grid-column: 1 / -1;
+}
+
+.building-slot {
+  background-color: var(--bg-elev);
+  border-radius: var(--border-radius);
+  padding: .5em .75em;
+  display: flex;
+  flex-direction: column;
+  gap: .35em;
+}
+
+.building-slot-header {
+  display: flex;
+  align-items: baseline;
+  gap: .5em;
+}
+
+.building-slot-name {
+  font-weight: bold;
+}
+
+.building-slot-required {
+  color: var(--warning, #e0a01c);
+  font-size: var(--font-size-small);
+}
+
+.building-slot-row {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+}
+
+.building-slot-row > label {
+  flex-shrink: 0;
+  min-width: 5em;
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.building-slot-row > input {
+  flex: 1 1 auto;
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}

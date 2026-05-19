@@ -42,6 +42,13 @@ const state = {
         error: null,
     },
 
+    buildingTemplates: {
+        loaded: false,
+        list: [],
+        byId: new Map(),
+        error: null,
+    },
+
     picker: null,
 };
 
@@ -82,6 +89,7 @@ async function loadAppData() {
     indexLootCrossReferences();
 
     loadItemTemplates();
+    loadBuildingTemplates();
 
     populateProfileSelect();
     populateValueFilter('filter-class',  'itemClass', 'All classes');
@@ -183,7 +191,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'mods'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -500,6 +508,17 @@ function setActiveTab(tab) {
             renderItemCreatorStatus();
         }
     }
+    if (tab === 'buildings') {
+        if (!state.buildingTemplates.loaded) {
+            loadBuildingTemplates().then(() => {
+                renderBuildingCreator();
+                renderBuildingCreatorStatus();
+            });
+        } else {
+            renderBuildingCreator();
+            renderBuildingCreatorStatus();
+        }
+    }
 }
 
 async function loadProfile(id) {
@@ -511,7 +530,8 @@ async function loadProfile(id) {
     state.current.buyerLists    = state.current.buyerLists    || {};
     state.current.sellerRecipes = state.current.sellerRecipes || {};
     state.current.sellerLists   = state.current.sellerLists   || {};
-    state.current.customItems   = state.current.customItems   || [];
+    state.current.customItems     = state.current.customItems     || [];
+    state.current.customBuildings = state.current.customBuildings || [];
     rebuildSavedCustomItemIds();
     syncCustomItemsIntoCatalog();
     state.isDirty = false;
@@ -535,6 +555,10 @@ async function loadProfile(id) {
     if (state.activeTab === 'creator' && state.itemTemplates.loaded) {
         renderItemCreator();
         renderItemCreatorStatus();
+    }
+    if (state.activeTab === 'buildings' && state.buildingTemplates.loaded) {
+        renderBuildingCreator();
+        renderBuildingCreatorStatus();
     }
     updateButtons();
     setBuildLog([{ kind: 'info', msg: 'Profile loaded: ' + state.current.name }]);
@@ -810,6 +834,7 @@ async function onSave() {
         sellerRecipes: p.sellerRecipes,
         sellerLists: p.sellerLists,
         customItems: p.customItems,
+        customBuildings: p.customBuildings,
     };
     const updated = await api('PUT', '/api/profiles/' + encodeURIComponent(p.id), body);
     state.current = updated;
@@ -819,8 +844,9 @@ async function onSave() {
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
     state.current.sellerRecipes = state.current.sellerRecipes || {};
-    state.current.sellerLists   = state.current.sellerLists   || {};
-    state.current.customItems   = state.current.customItems   || [];
+    state.current.sellerLists     = state.current.sellerLists     || {};
+    state.current.customItems     = state.current.customItems     || [];
+    state.current.customBuildings = state.current.customBuildings || [];
     for (const c of state.current.customItems) {
         if (c && c.id && bustById.has(c.id)) c._iconCacheBust = bustById.get(c.id);
     }
@@ -846,6 +872,7 @@ async function onNew() {
         buyerRecipes: {},
         buyerLists: {},
         customItems: [],
+        customBuildings: [],
     });
     state.profiles = await api('GET', '/api/profiles');
     populateProfileSelect();
@@ -1203,6 +1230,7 @@ function bindHandlers() {
     bindBuyersHandlers();
     bindSellersHandlers();
     bindCreatorHandlers();
+    bindBuildingsHandlers();
     bindCooldownsHandlers();
     bindStationsHandlers();
     bindShipMusicHandlers();

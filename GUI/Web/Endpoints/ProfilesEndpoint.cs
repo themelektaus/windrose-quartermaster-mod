@@ -152,6 +152,7 @@ public static class ProfilesEndpoint
                 SellerRecipes = CloneSellerRecipes(src.SellerRecipes),
                 SellerLists = CloneSellerLists(src.SellerLists),
                 CustomItems = CloneCustomItems(src.CustomItems),
+                CustomBuildings = CloneCustomBuildings(src.CustomBuildings),
             };
 
             try { store.Save(clone); }
@@ -820,6 +821,56 @@ public static class ProfilesEndpoint
         return result;
     }
 
+    // Deep-clones the custom buildings list. Each CustomBuilding has a
+    // nested Slots dict whose values are flat (just texture stems +
+    // paths), but we still copy element-by-element so future field
+    // additions to CustomBuildingSlot can't accidentally share state
+    // between the source and clone.
+    static List<CustomBuilding> CloneCustomBuildings(List<CustomBuilding> src)
+    {
+        if (src == null) return null;
+        var result = new List<CustomBuilding>(src.Count);
+        foreach (var b in src)
+        {
+            if (b == null) { result.Add(null); continue; }
+            result.Add(new CustomBuilding
+            {
+                Id = b.Id,
+                TemplateId = b.TemplateId,
+                Name = b.Name,
+                Description = b.Description,
+                CookedFolderPath = b.CookedFolderPath,
+                AssetPrefix = b.AssetPrefix,
+                MeshStem = b.MeshStem,
+                IconStem = b.IconStem,
+                Slots = CloneCustomBuildingSlots(b.Slots),
+            });
+        }
+        return result;
+    }
+
+    static Dictionary<string, CustomBuildingSlot> CloneCustomBuildingSlots(
+        Dictionary<string, CustomBuildingSlot> src)
+    {
+        if (src == null) return null;
+        var result = new Dictionary<string, CustomBuildingSlot>(src.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in src)
+        {
+            var v = kvp.Value;
+            if (v == null) { result[kvp.Key] = null; continue; }
+            result[kvp.Key] = new CustomBuildingSlot
+            {
+                CustomAlbedoStem = v.CustomAlbedoStem,
+                CustomAlbedoPath = v.CustomAlbedoPath,
+                CustomNormalStem = v.CustomNormalStem,
+                CustomNormalPath = v.CustomNormalPath,
+                CustomMtrmStem   = v.CustomMtrmStem,
+                CustomMtrmPath   = v.CustomMtrmPath,
+            };
+        }
+        return result;
+    }
+
     // Deep-clones the per-list edit map. List values are reference-sharing
     // hazards (AddedRecipeIds / RemovedRecipeIds are mutable Lists), so
     // the clone copies the lists explicitly.
@@ -880,6 +931,7 @@ public static class ProfilesEndpoint
             sellerRecipeCount = p.SellerRecipes == null ? 0 : p.SellerRecipes.Count,
             sellerListCount = p.SellerLists == null ? 0 : p.SellerLists.Count,
             customItemCount = p.CustomItems == null ? 0 : p.CustomItems.Count,
+            customBuildingCount = p.CustomBuildings == null ? 0 : p.CustomBuildings.Count,
             hasGlobalStackSize = p.Globals != null && p.Globals.StackSize != null
                                  && (p.Globals.StackSize.Multiplier.HasValue
                                      || p.Globals.StackSize.Absolute.HasValue),
