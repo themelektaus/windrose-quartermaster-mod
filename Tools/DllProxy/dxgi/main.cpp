@@ -114,6 +114,17 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
     // clean.
     QmConfigLoad();
 
+    // Self-disable mode: when the JSON is missing or has zero items, this DLL
+    // is along for the ride (e.g. profile has only custom items / recipes -
+    // those don't need injection). Skip MinHook + UE probe entirely so we have
+    // zero per-frame overhead and zero crash surface. Re-loading requires a
+    // game restart anyway (Build button replaces the pak too).
+    if (g_injectableItemCount == 0)
+    {
+        QM_LOG_INFO("[Config] no injectable items configured - DLL goes idle (no MinHook, no UE probe)");
+        return 0;
+    }
+
     MH_STATUS st = MH_Initialize();
     if (st != MH_OK)
     {
