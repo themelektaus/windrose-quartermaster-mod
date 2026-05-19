@@ -46,9 +46,24 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem Optional: copy the dev qm_items.json next to the DLL so the spike list
+rem (QmBedrl + QmPainting) keeps working without going through the GUI. When
+rem the GUI takes over deploys it will overwrite this file; if neither side
+rem provides one, the DLL loads idle (no injects, no harm).
+if exist "%SCRIPT_DIR%qm_items.json" (
+    echo [deploy] Copying config: %SCRIPT_DIR%qm_items.json -^> %TARGET%\qm_items.json
+    copy /Y "%SCRIPT_DIR%qm_items.json" "%TARGET%\qm_items.json" >nul
+    if errorlevel 1 (
+        echo [deploy] Failed to copy qm_items.json.
+        exit /b 1
+    )
+) else (
+    echo [deploy] No qm_items.json in source dir - DLL will run idle until GUI deploys one.
+)
+
 echo.
 echo [deploy] Deploy complete. Files in target:
-dir /b "%TARGET%\dxgi*.dll"
+dir /b "%TARGET%\dxgi*.dll" "%TARGET%\qm_items.json" 2>nul
 
 echo.
 echo [deploy] Test plan:

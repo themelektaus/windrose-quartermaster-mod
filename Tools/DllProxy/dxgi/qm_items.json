@@ -1,0 +1,19 @@
+{
+  "tabPurityFilter": "BuildingDecoration",
+  "items": [
+    {
+      "name":                    "QmBedrl_01",
+      "className":               "R5BuildingItem",
+      "assetName":               "DA_BI_QmBedrl_01",
+      "packagePath":             "/Game/Gameplay/Building/BuildingDecoration/DA_BI_QmBedrl_01",
+      "targetCategorySubstring": "BuildingDecoration"
+    },
+    {
+      "name":                    "QmPainting_01",
+      "className":               "R5BuildingItem",
+      "assetName":               "DA_BI_QmPainting_01",
+      "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmPainting_01",
+      "targetCategorySubstring": "BuildingDecoration"
+    }
+  ]
+}

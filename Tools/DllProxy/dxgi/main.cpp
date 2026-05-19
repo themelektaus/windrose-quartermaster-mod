@@ -29,6 +29,7 @@
 #include "qm_log.hpp"
 #include "qm_crash.hpp"
 #include "qm_hook.hpp"
+#include "qm_config.hpp"
 
 // ============================================================================
 // 1. PE export forwarders - dxgi_org.dll is the real DXGI; we tunnel through.
@@ -106,6 +107,12 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
 
     // Crash diagnostics first so any subsequent failure gets captured.
     QmCrashInstallHandler();
+
+    // Load injectable-item list from qm_items.json (sits next to this DLL).
+    // The GUI writes that file on "Build" / "Deploy"; missing file = no
+    // injects (DLL stays idle, no harm). Done off DllMain to keep Loader-Lock
+    // clean.
+    QmConfigLoad();
 
     MH_STATUS st = MH_Initialize();
     if (st != MH_OK)
