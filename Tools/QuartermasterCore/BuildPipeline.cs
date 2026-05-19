@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Windrose.Quartermaster.Core.BuildingCreator;
+using Windrose.Quartermaster.Core.Deploy;
 
 namespace Windrose.Quartermaster.Core
 {
@@ -76,6 +78,7 @@ namespace Windrose.Quartermaster.Core
         readonly CookingDurationPatcher _cookingDurationPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
+        readonly BuildingPatcher _buildingPatcher;
 
         public Action<string> Log;
 
@@ -135,6 +138,7 @@ namespace Windrose.Quartermaster.Core
             _cookingDurationPatcher = new CookingDurationPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
+            _buildingPatcher = new BuildingPatcher();
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -372,6 +376,33 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in itemCreatorResult.Warnings) LogLine("  warn: " + w);
                 }
 
+                // Custom Buildings: user-defined buildings (e.g. Paintings
+                // with their own image and frame). Each building's user-
+                // cooked mesh + icon + textures get staged under
+                // tmpDir/R5/Content/Quartermaster/Items/, the per-slot
+                // Vanilla MIs get cloned + retargeted at the user's
+                // textures, and the per-building Vanilla DA gets renamed
+                // to DA_BI_<BuildingId>. The cloned MI / DA / mesh refs
+                // get wired together via NameMap rewrites done by
+                // DataAssetPatcher.
+                //
+                // Output: the in-pak assets the DLL inject pipeline targets
+                // at runtime - the qm_items.json next to dxgi.dll picks
+                // them up via the GameDeployer hook AFTER the pak is built.
+                List<BuildingPatchResult> buildingResults = null;
+                if (HasCustomBuildingsConfiguration(profile))
+                {
+                    LogLine("Patching custom buildings");
+                    buildingResults = PatchCustomBuildings(profile, tmpDir);
+                    int written = buildingResults != null ? buildingResults.Count : 0;
+                    LogLine("Patched buildings: " + written + " written");
+                    if (buildingResults != null)
+                    {
+                        foreach (var br in buildingResults)
+                            foreach (var w in br.Warnings) LogLine("  warn: " + w);
+                    }
+                }
+
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
@@ -385,7 +416,8 @@ namespace Windrose.Quartermaster.Core
                         ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
-                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0);
+                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
+                    + (buildingResults != null ? buildingResults.Count : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
@@ -495,6 +527,50 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
+                // GameDeployer: write qm_items.json + (if needed) install
+                // dxgi.dll into the game's Binaries/Win64. Idempotent and
+                // narrow - only this folder is touched, the pak triple was
+                // already shipped to ~mods/ via OutputDir. Per Variant C
+                // (PENDING.md #13): DLL stays permanently once installed;
+                // empty JSON makes it idle without uninstalling. We only
+                // touch the game folder when the user has actually used
+                // the buildings feature - never silently inject our DLL
+                // into a stack/loot-only profile.
+                int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
+                if (buildingsCount > 0)
+                {
+                    LogLine("Deploying DLL + qm_items.json to game Binaries/Win64");
+                    var deployer = new GameDeployer(_paths.ModRoot);
+                    deployer.Log = Log;
+                    deployer.EnsureDllInstalled();
+                    deployer.WriteItemsJson(buildingResults);
+                }
+                else
+                {
+                    // User has no buildings now - if DLL was previously
+                    // deployed, write empty JSON so it goes idle (no stale
+                    // injects against assets that aren't in the pak any
+                    // more). If DLL was never deployed: skip entirely,
+                    // never invasively touch the game folder.
+                    try
+                    {
+                        var deployer = new GameDeployer(_paths.ModRoot);
+                        deployer.Log = Log;
+                        if (File.Exists(deployer.TargetDllPath()))
+                        {
+                            LogLine("No custom buildings - writing empty qm_items.json to keep deployed DLL idle");
+                            deployer.WriteItemsJson(new List<BuildingPatchResult>());
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Locating the game folder is optional here - if it
+                        // fails we just skip the idle write. The user can
+                        // run CleanupGame manually.
+                        LogLine("Warning: skipped idle JSON write (game folder lookup failed): " + ex.Message);
+                    }
+                }
+
                 return new BuildPipelineResult
                 {
                     Profile = profile,
@@ -517,6 +593,7 @@ namespace Windrose.Quartermaster.Core
                     ShipMusicResult = shipMusicResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
+                    BuildingResults = buildingResults,
                     TmpDir = tmpDir,
                     Success = true,
                 };
@@ -530,6 +607,7 @@ namespace Windrose.Quartermaster.Core
                         tmpDir,
                         Path.Combine(_paths.BuildTmp, profile.Id + "__iostore"),
                         Path.Combine(_paths.BuildTmp, profile.Id + "__raw"),
+                        Path.Combine(_paths.BuildTmp, profile.Id + "__buildings"),
                     })
                     {
                         if (!Directory.Exists(dir)) continue;
@@ -1832,6 +1910,182 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // True when the profile has at least one CustomBuilding with the
+        // minimum fields populated (Id, TemplateId, AssetPrefix,
+        // CookedFolderPath, MeshStem). Skeleton entries (e.g. a "New
+        // Building" card without a cooked folder yet) get filtered so the
+        // patch step doesn't try to extract a non-existent template or
+        // walk a missing folder.
+        static bool HasCustomBuildingsConfiguration(Profile profile)
+        {
+            var buildings = profile.CustomBuildings;
+            if (buildings == null || buildings.Count == 0) return false;
+            foreach (var b in buildings)
+            {
+                if (b == null) continue;
+                if (string.IsNullOrWhiteSpace(b.Id)) continue;
+                if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
+                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
+                if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
+                if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+                return true;
+            }
+            return false;
+        }
+
+        // Per-building patch loop. Resolves the external tools once (retoc,
+        // usmap, vanilla paks dir, AES key, temp work area) and calls into
+        // BuildingPatcher for each fully-configured building.
+        //
+        // Skeleton entries that fail HasCustomBuildingsConfiguration's
+        // per-entry checks are silently dropped here; the validity gate is
+        // intentionally generous so the user can save half-finished cards
+        // and Build will simply not include them.
+        //
+        // Throws if a building entry IS valid but the per-building patch
+        // fails (missing vanilla template, retoc error, etc.) - those
+        // errors bubble up to the SSE stream the same way the other
+        // patchers' errors do.
+        List<BuildingPatchResult> PatchCustomBuildings(Profile profile, string tmpDir)
+        {
+            // Resolve external tools (lazy, only when this stage runs).
+            LogLine("Resolving retoc.exe + usmap for building patcher...");
+            _retocResolver.Log = Log;
+            var retocExe = _retocResolver.Resolve();
+            var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+            if (GamePaksDirProvider == null)
+            {
+                throw new InvalidOperationException(
+                    "Custom-building patch needs a Paks dir provider; "
+                    + "wire pipeline.GamePaksDirProvider before calling Build().");
+            }
+            var gamePaksDir = GamePaksDirProvider();
+            if (string.IsNullOrEmpty(gamePaksDir) || !Directory.Exists(gamePaksDir))
+            {
+                throw new InvalidOperationException(
+                    "Custom-building patch could not locate the live game's Paks dir: "
+                    + (gamePaksDir ?? "<null>"));
+            }
+
+            // BuildingPatcher writes assets into staging under the standard
+            // /Game/Quartermaster/Items/ in-pak path. The temp dir sits
+            // alongside (NOT inside) the main tmpDir so repak's recursive
+            // sweep over tmpDir doesn't pick up retoc-to-legacy artefacts.
+            var stagingItemsDir = Path.Combine(tmpDir,
+                "R5", "Content", "Quartermaster", "Items");
+            var buildingTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__buildings");
+            if (Directory.Exists(buildingTmp)) Directory.Delete(buildingTmp, true);
+            Directory.CreateDirectory(buildingTmp);
+
+            _buildingPatcher.Log = Log;
+            _buildingPatcher.RetocExe = retocExe;
+            _buildingPatcher.UsmapPath = usmapPath;
+            _buildingPatcher.VanillaPaksDir = gamePaksDir;
+            _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
+            _buildingPatcher.TempDir = buildingTmp;
+
+            var results = new List<BuildingPatchResult>();
+            foreach (var b in profile.CustomBuildings)
+            {
+                if (b == null) continue;
+                // Same skeleton gate as HasCustomBuildingsConfiguration so
+                // half-finished cards in the profile silently get skipped.
+                if (string.IsNullOrWhiteSpace(b.Id)) continue;
+                if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
+                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
+                if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
+                if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+
+                var template = ResolveBuildingTemplate(b.TemplateId);
+                if (template == null)
+                {
+                    LogLine("  warn: unknown templateId='" + b.TemplateId
+                            + "' for building id='" + b.Id + "' - skipping");
+                    continue;
+                }
+
+                var inputs = BuildBuildingInputs(b, template);
+                LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
+                var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
+                results.Add(result);
+            }
+            return results;
+        }
+
+        // Maps a template id (string in the profile) to a concrete
+        // BuildingTemplate factory. Today only one template exists; adding
+        // a new one is a single case here plus the GUI catalog endpoint.
+        static BuildingTemplate ResolveBuildingTemplate(string templateId)
+        {
+            if (string.IsNullOrWhiteSpace(templateId)) return null;
+            switch (templateId.Trim())
+            {
+                case "Painting": return BuildingTemplate.Painting();
+                default:         return null;
+            }
+        }
+
+        // Translates the persisted CustomBuilding profile entry into the
+        // BuildingPatcher's input bundle. Per-slot user textures are pulled
+        // from CustomBuilding.Slots (dict keyed by slot name); slots not
+        // listed in the dict (or with blank fields) fall back to the
+        // template-shipped defaults.
+        static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template)
+        {
+            var inputs = new BuildingInputs
+            {
+                BuildingId        = b.Id,
+                AssetPrefix       = b.AssetPrefix,
+                CookedFolderPath  = b.CookedFolderPath,
+                MeshStem          = b.MeshStem,
+                IconStem          = b.IconStem,
+                DisplayName       = b.Name,
+                Description       = b.Description,
+                SkipUserCookedMaterialStems = new List<string>(),
+                SlotInputs        = new Dictionary<string, BuildingSlotInputs>(StringComparer.Ordinal),
+                // The shared default-VT texture stems / package paths follow
+                // a fixed naming convention - the user is expected to have
+                // cooked these once (or copied them in) and shipped them
+                // alongside the per-building user assets. The patcher only
+                // emits NameMap refs pointing at them; the staging step
+                // picks the actual .uasset/.uexp/.ubulk up from the cooked
+                // folder via the prefix filter.
+                DefaultAlbedoStem = "T_QmPainting_White",
+                DefaultAlbedoPath = "/Game/Quartermaster/Items/T_QmPainting_White",
+                DefaultNormalStem = "T_QmPainting_NormalFlat",
+                DefaultNormalPath = "/Game/Quartermaster/Items/T_QmPainting_NormalFlat",
+                DefaultMtrmStem   = "T_QmPainting_MTRMDefault",
+                DefaultMtrmPath   = "/Game/Quartermaster/Items/T_QmPainting_MTRMDefault",
+            };
+            // The user-cooked material stems for THIS building's slots are
+            // the names the staging step skips (user-cooked materials crash
+            // shipping). Derived from template + asset prefix.
+            foreach (var slot in template.Slots)
+            {
+                inputs.SkipUserCookedMaterialStems.Add(
+                    "M_" + b.AssetPrefix + "_" + slot.SlotName);
+            }
+
+            if (b.Slots != null)
+            {
+                foreach (var kv in b.Slots)
+                {
+                    if (string.IsNullOrWhiteSpace(kv.Key) || kv.Value == null) continue;
+                    inputs.SlotInputs[kv.Key] = new BuildingSlotInputs
+                    {
+                        CustomAlbedoStem = kv.Value.CustomAlbedoStem,
+                        CustomAlbedoPath = kv.Value.CustomAlbedoPath,
+                        CustomNormalStem = kv.Value.CustomNormalStem,
+                        CustomNormalPath = kv.Value.CustomNormalPath,
+                        CustomMtrmStem   = kv.Value.CustomMtrmStem,
+                        CustomMtrmPath   = kv.Value.CustomMtrmPath,
+                    };
+                }
+            }
+
+            return inputs;
+        }
+
         // True when the profile has any buyer (PlayerSells) trade-list edit
         // - either a recipe override (vanilla edit or synthesized custom) or
         // a per-list add/remove of recipe refs. Lets the pipeline skip the
@@ -1993,6 +2247,11 @@ namespace Windrose.Quartermaster.Core
         // response render "DONE - smelting: 0.5x; 10 recipes; ~4200 -> ~2100"
         // style lines.
         public CookingDurationPatchResult CookingDurationResult;
+        // Custom-building patch results, one per CustomBuilding in the
+        // profile. null when the profile has no CustomBuildings. Each
+        // entry carries the patched asset stems + warnings; the GameDeployer
+        // step turns this list into the qm_items.json the DLL reads.
+        public List<BuildingPatchResult> BuildingResults;
         public string TmpDir;
         public bool Success;
     }

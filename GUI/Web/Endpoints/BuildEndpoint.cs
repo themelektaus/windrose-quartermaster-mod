@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
+using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
@@ -354,6 +355,31 @@ public static class BuildEndpoint
                         families = familyArr,
                     };
                 }
+                // Custom-buildings: one entry per BuildingPatchResult so
+                // the frontend can render a per-building line in the build
+                // log (e.g. "QmPainting_01 (template Painting): 7 staged
+                // files, 0 warnings"). null when the profile has no
+                // buildings or none passed validation. Note: the qm_items.json
+                // + dxgi.dll write happened inside the pipeline already;
+                // we just report what got included.
+                object customBuildingsInfo = null;
+                if (result.BuildingResults != null && result.BuildingResults.Count > 0)
+                {
+                    customBuildingsInfo = new
+                    {
+                        count = result.BuildingResults.Count,
+                        items = result.BuildingResults.Select(b => new
+                        {
+                            buildingId = b.BuildingId,
+                            templateId = b.TemplateId,
+                            outputDaStem = b.OutputDaStem,
+                            outputDaPath = b.OutputDaPath,
+                            stagedFileCount = b.StagedFiles != null ? b.StagedFiles.Count : 0,
+                            warningCount = b.Warnings != null ? b.Warnings.Count : 0,
+                            warnings = b.Warnings,
+                        }).ToArray(),
+                    };
+                }
                 // NoSmoke surfaces the active categories + per-asset patch
                 // counts so the frontend can render "Campfire, Furnace
                 // (5 assets, 38 emitter handles silenced)". null = no
@@ -414,6 +440,7 @@ public static class BuildEndpoint
                     shipMusic = shipMusicInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,
+                    customBuildings = customBuildingsInfo,
                     log,
                 });
             }

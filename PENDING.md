@@ -40,6 +40,23 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
   - `GUI/Web/Program.cs`: neue Endpoints registriert.
   - **Status:** QuartermasterCore baut clean. Web baut, sobald die laufende Quartermaster.Web-Instanz beendet wird (Datei-Lock auf bin\Debug\net10.0\Quartermaster.Web.dll). **Noch nicht End-to-End-getestet**.
 
+- Etappe E: Game-Deployer + Build-Pipeline-Integration.
+  - `Tools/QuartermasterCore/SteamLocator.cs`: neuer `FindBinariesWin64Dir()` Helper - resolved Game's R5/Binaries/Win64 vom Vanilla-Pak abgeleitet.
+  - `Tools/QuartermasterCore/Deploy/GameDeployer.cs` neu:
+    - `EnsureDllInstalled()`: idempotente DLL-Installation (skipped wenn schon da, mit Guard gegen Game-eigene dxgi.dll), kopiert `C:\Windows\System32\dxgi.dll` -> `<Game>/Binaries/Win64/dxgi_org.dll` als Renamer falls noch nicht da, dann Proxy-DLL.
+    - `WriteItemsJson(buildings, tabFilter)`: schreibt `qm_items.json` neben die DLL. Empty list -> leere `items`-Array, DLL geht in Idle-Mode dank Etappe A.1.
+    - `CleanupGame(pakBasename?)`: explizite Total-Uninstall-Action (DLL + JSON + optional Pak-Triple).
+  - `Tools/QuartermasterCore/BuildPipeline.cs` erweitert:
+    - `_buildingPatcher` Field + Construction
+    - `PatchCustomBuildings(profile, tmpDir)`: pro Building Tool-Resolution (retoc, usmap, AES, paks dir) + `BuildingPatcher.Patch(...)` Aufruf
+    - `ResolveBuildingTemplate(id)` + `BuildBuildingInputs(b, template)` Helper
+    - `HasCustomBuildingsConfiguration(profile)` Helper mit Per-Entry-Validity-Gate (skipped skeleton cards)
+    - Nach Pak-Build: GameDeployer wird invoked nur wenn `buildings.Count > 0` (DLL deploy) ODER wenn DLL bereits im Target (dann empty JSON fuer Idle-Mode). Stack/Loot-Only-Profile bleiben unbehelligt.
+    - `BuildPipelineResult.BuildingResults` neu fuer Per-Building-Report
+    - Cleanup-Liste um `__buildings`-Temp-Dir erweitert
+  - `GUI/Web/Endpoints/BuildEndpoint.cs` erweitert: `customBuildings`-Block im JSON-Response mit BuildingId/TemplateId/OutputDaStem/StagedFileCount/Warnings pro Building.
+  - **Status:** `QuartermasterCore` baut clean. Web-Compile blockiert durch laufende Quartermaster.Web (PID 13760) + VS Insiders Lock auf `bin\Debug\net10.0\Quartermaster.Web.dll`. Aenderung in BuildEndpoint.cs ist trivial typeof-konsistent (`Linq.Select` ueber `List<BuildingPatchResult>` mit `using BuildingCreator;` neu), kein Risiko fuer Compile-Fail. **End-to-End-Test kommt in Etappe F**.
+
 - Etappe D: Frontend Building-Tab.
   - `GUI/Web/wwwroot/tabs/buildings.{html,css,js}` neu (Card-Liste, Cooked-Folder-Picker mit Debounce-Scan, Per-Slot-Inputs fuer Image-Stem/Path).
   - `GUI/Web/wwwroot/index.html`: neuer Tab-Button + CSS/JS-Link.
@@ -54,17 +71,19 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 
 ## Naechste Schritte
 
-### Etappen E-F (in dieser Reihenfolge)
-- [ ] **Etappe E**: Game-Deployer + Build-Orchestrator-Verbindung
-  - `Tools/QuartermasterCore/Deploy/GameDeployer.cs` neu:
-    - `EnsureDllInstalled()`: Kopiert `dxgi.dll` + `dxgi_org.dll`-Renamer nach `<Game>/R5/Binaries/Win64/` **falls nicht schon da** (idempotent, one-time install pro Game-Installation)
-    - `WriteItemsJson(buildings)`: Schreibt `qm_items.json` mit allen CustomBuildings des aktiven Profils. Bei `buildings.Count == 0` -> schreibt leeres JSON (DLL geht in Idle-Mode dank Etappe A.1).
-    - `DeployPak(pakTriple)`: Schreibt Pak nach `<Game>/R5/Content/Paks/~mods/Quartermaster_P.{pak,ucas,utoc}`
-    - `CleanupGame()`: explizite "Total Cleanup"-Action (entfernt DLL + JSON + Pak) - **nicht** vom Build-Button getriggert, separate User-Action im Mods-Tab
-  - `Tools/QuartermasterCore/BuildPipeline.cs` erweitern: pro CustomBuilding `BuildingPatcher.PatchBuilding(...)` aufrufen, Default-Texturen ins Staging, retoc to-zen, dann GameDeployer.
-  - `GUI/Web/Endpoints/BuildEndpoint.cs` (oder existierendes): Build-Button-Endpoint triggert die Pipeline. SSE-Stream der Logs.
-  - Geschaetzt 3-5h
+### Etappe F (in dieser Reihenfolge)
 - [ ] **Etappe F**: End-to-End-Test - QmPainting via GUI anlegen -> Build -> im Game testen
+  - Schritte:
+    1. Quartermaster.Web restarten (App + VS-Insiders schliessen damit der Lock weg ist, dann normal starten)
+    2. Buildings-Tab oeffnen, "New Building" klicken
+    3. Vanilla-Painting-Template auswaehlen, AssetPrefix `QmPainting`, CookedFolderPath auf den UE-Cook-Ordner, MeshStem `SM_QmPainting_01`, IconStem `T_QmPainting_Icon`
+    4. Canvas-Slot: Image stem `T_QmPainting_Image` + Path `/Game/Quartermaster/Items/T_QmPainting_Image`
+    5. Save profile
+    6. Build-Button klicken (Mods-Tab oder via Buildings-Tab)
+    7. Verifizieren: Pak landet in `~mods/`, `dxgi.dll` + `qm_items.json` landen in `<Game>/R5/Binaries/Win64/`, JSON enthaelt den Painting-Eintrag
+    8. Windrose starten, Build-Menue -> Decoration -> Custom Painting suchen + platzieren
+    9. Smart-Reuse-Test: 30+ Re-Opens, Painting bleibt in der Liste, Pool=1
+    10. Profile mit 0 Buildings testen (alle loeschen, Build druecken): JSON sollte leer geschrieben werden, DLL geht in Idle-Mode beim naechsten Game-Start (Log: `[Config] no injectable items configured - DLL goes idle`)
 
 ---
 
@@ -152,8 +171,10 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 | `GUI/Web/wwwroot/tabs/buildings.{html,css,js}` | DONE | Frontend-Tab mit Cooked-Scan + Per-Slot-Inputs |
 | `GUI/Web/wwwroot/index.html` | DONE | Tab-Registration + CSS/JS-Links |
 | `GUI/Web/wwwroot/app.js` | DONE (D-Teil) | State, Tab-Switch, loadProfile/onSave/onNew Init, bindBuildingsHandlers |
-| `Tools/QuartermasterCore/Deploy/GameDeployer.cs` | TODO Etappe E | `Deploy()` + `Rollback()` |
-| `Tools/QuartermasterCore/BuildPipeline.cs` | TODO Etappe E | Call into BuildingPatcher per CustomBuilding |
+| `Tools/QuartermasterCore/Deploy/GameDeployer.cs` | DONE | `EnsureDllInstalled()` + `WriteItemsJson(buildings)` + `CleanupGame(pak?)` |
+| `Tools/QuartermasterCore/SteamLocator.cs` | DONE (E-Teil) | neuer `FindBinariesWin64Dir()` |
+| `Tools/QuartermasterCore/BuildPipeline.cs` | DONE | CustomBuildings-Stage + GameDeployer-Hook nach Pak-Build |
+| `GUI/Web/Endpoints/BuildEndpoint.cs` | DONE (E-Teil) | `customBuildings`-Block im Response |
 
 ---
 
@@ -204,3 +225,5 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Beim Profile-Wechsel: **soll** der bisherige Deploy stehen bleiben oder weg? Per Entscheidung 4+5: bleibt stehen bis User explizit auf "Build" drueckt (= Profil-Wechsel triggert nichts).
 - **DLL-Source fuer GameDeployer (Etappe E)**: Wo holt der GameDeployer die `dxgi.dll` her die er ins Game kopiert? Aktuelle Annahme: `<Workspace>/Tools/DllProxy/dxgi/dxgi.dll` (Dev-Workflow - GUI laeuft im Source-Tree). Spaeter beim Shipping: Bundled mit der GUI-Installation in einem `Assets/`-Ordner. Vorerst dev-only.
 - Test-Plan fuer Etappe F: mindestens **2** Buildings mit gleichem Template anlegen + deployen + im Game beide platzieren + 30+ Re-Opens (Smart-Reuse muss weiter funktionieren).
+- **Default-VT-Texturen (Punkt 9 aus PENDING)**: Aktuell muss der User die 3 Texturen (`T_QmPainting_White`, `T_QmPainting_NormalFlat`, `T_QmPainting_MTRMDefault`) selber im UE-Editor cooken und in den Cooked-Folder seines Buildings legen. Der Staging-Step pickt sie via Asset-Prefix `QmPainting` auf. Spaeter: Builder shipt sie automatisch (ergo: Embedded-Resources mit fertig gecooketen .uasset/.uexp/.ubulk). Workaround fuer Etappe F: User stellt sicher dass die Default-Texturen in seinem Cooked-Output liegen.
+- **CSV-Localization fuer DisplayName/Description (Punkt 10 aus PENDING)**: NICHT in Etappe E implementiert. Bei Tests wird der Game vermutlich den Localization-Key ("Decoration_<BuildingId>_Name") als Anzeigetext zeigen statt "Mein Bild". Polish-Task fuer Etappe F+ (Pattern wie ItemCreatorPatcher.CsvWritten).

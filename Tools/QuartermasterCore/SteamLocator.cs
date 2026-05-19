@@ -170,5 +170,35 @@ namespace Windrose.Quartermaster.Core
             Directory.CreateDirectory(mods);
             return mods;
         }
+
+        // Returns the absolute path to Windrose's Binaries/Win64 folder
+        //   <SteamLib>\steamapps\common\Windrose\R5\Binaries\Win64
+        // which is where the game executable lives and where the dxgi.dll
+        // proxy + qm_items.json have to land for the inject pipeline to
+        // load. Derived from FindVanillaPak (.../Content/Paks/<pak>) by
+        // walking up to the R5 root and back down to Binaries/Win64.
+        // Throws via FindVanillaPak when the game can't be located so
+        // callers see a single uniform "no install" error shape.
+        public static string FindBinariesWin64Dir()
+        {
+            var paksDir = FindVanillaPaksDir();
+            // paksDir = <...>/R5/Content/Paks; go up 2 to <...>/R5, then
+            // into Binaries/Win64. The folder must exist already (it ships
+            // with the game). Missing folder = broken install.
+            var r5Root = Path.GetDirectoryName(Path.GetDirectoryName(paksDir));
+            if (string.IsNullOrEmpty(r5Root))
+            {
+                throw new InvalidOperationException(
+                    "Could not derive R5 root from Paks dir: " + paksDir);
+            }
+            var bin = Path.Combine(r5Root, "Binaries", "Win64");
+            if (!Directory.Exists(bin))
+            {
+                throw new InvalidOperationException(
+                    "Windrose Binaries/Win64 folder missing under R5 root: " + bin
+                    + " - the game install looks broken.");
+            }
+            return bin;
+        }
     }
 }
