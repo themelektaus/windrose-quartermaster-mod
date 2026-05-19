@@ -4,6 +4,14 @@ Stand: 2026-05-18
 
 Diese Anleitung beschreibt, wie ein eigenes Mod-Building-Item mit eigenem Mesh, Material, Icon und Anzeigename erstellt wird. Collision und Spielverhalten werden vom Vanilla-Item geerbt - wir ersetzen nur die visuellen Komponenten.
 
+> **Abkuerzung statt Schritt 4 + Teile von Schritt 8**: Es gibt einen
+> einmal-auszufuehrenden Python-Helper, der dir ein wiederverwendbares
+> Template-Set im UE-Projekt anlegt (Blueprint-Klasse + DataAsset +
+> Placeholder-Material). Details und Setup-Schritte siehe
+> [`Tools/UeBuildingItem/README.md`](../Tools/UeBuildingItem/README.md).
+> Mit dem Template entfaellt das Vanilla-Asset-Extrahieren als
+> Inspirations-Quelle und das manuelle Class-Picking im DataAsset-Dialog.
+
 ## Was am Ende rauskommt
 
 - Eigener Pak (`.pak`/`.ucas`/`.utoc`) mit:
@@ -127,7 +135,39 @@ Wartezeit: 1-2 Min beim ersten Mal (Shader-Compile).
 - **"Cook everything in the project content directory"** an
 - **"Use Pak File"** aus (wir nehmen retoc, nicht den eingebauten Pak-Builder)
 
-### 3.2 (Optional) Plugin-Mount fuer Pfad-Inheritance
+### 3.2 Template-Set erzeugen (empfohlen - 5 Min)
+
+Statt jedes neue Mod-Item von Hand anzulegen, einmal das Template-Script
+ausfuehren - danach ist `DA_Template_QmItem` der Start-Punkt fuer jedes
+weitere Item (duplicate-rename-fill).
+
+- Plugin **"Python Editor Script Plugin"** in **Edit -> Plugins** aktivieren, Editor neu starten
+- **Window -> Output Log**, Eingabe-Modus von "Cmd" auf **"Python"** stellen
+- Folgende Zeile einfuegen (Pfad anpassen):
+
+  ```python
+  exec(open(r"E:\Windrose\Mods\Quartermaster\Tools\UeBuildingItem\create_template.py").read())
+  ```
+
+Output-Log zeigt `=== Quartermaster template generator ===` und legt
+folgendes unter `/Game/Quartermaster/Template/` an:
+
+| Asset | Inhalt |
+|---|---|
+| `BP_QmBuildingItem` | Blueprint-Klasse (Parent: `PrimaryDataAsset`) - Container fuer Properties |
+| `DA_Template_QmItem` | DataAsset-Instanz von BP - dein leeres Start-Asset zum Duplizieren |
+| `M_Template_QmItem` | Placeholder-Material - editieren oder durch eigenes ersetzen |
+
+Danach **einmalig** 5 Variablen im BP anlegen
+(`Mesh`/`Material`/`Icon`/`DisplayName`/`Description`) - genaue
+Schritt-fuer-Schritt in
+[`Tools/UeBuildingItem/README.md`](../Tools/UeBuildingItem/README.md)
+Abschnitt "Properties einrichten".
+
+Ab jetzt: pro neues Item nur noch **Duplicate -> Rename -> Refs setzen**
+(siehe Schritt 8).
+
+### 3.3 (Optional) Plugin-Mount fuer Pfad-Inheritance
 
 Wenn wir wollen dass der Cooked-Output unter `/Game/Gameplay/Building/BuildingDecoration/...` landet (wie Vanilla), muss das Projekt diesen virtuellen Pfad mounten. Zwei Optionen:
 
@@ -228,7 +268,30 @@ Diese Werte ueberschreiben wir in unserem eigenen DataAsset.
 
 ## Schritt 8: Eigenes DataAsset anlegen
 
-Hier wird's interessant. Das DataAsset muss Klasse `R5BuildingItem` haben - die kennen wir aber im Editor nicht (kommt aus der Game-EXE, kein Source). Drei Optionen:
+Hier kommt die Abkuerzung ins Spiel: statt manuell ein DataAsset mit
+Class-Picking anzulegen, **duplizierst du das Template-Asset** aus
+Schritt 3.2 und fuellst nur die Refs.
+
+### 8.1 Anlegen via Template-Duplicate (empfohlen)
+
+1. Content Browser -> `/Game/Quartermaster/Template/`
+2. Rechtsklick auf `DA_Template_QmItem` -> **Duplicate** (oder Strg+D)
+3. Verschiebe das Duplikat per Drag&Drop nach
+   `/Game/Quartermaster/Mods/MyItem/`
+4. Umbenennen auf `DA_BI_MyItem_01`
+5. Doppelklick zum Bearbeiten - die 5 Slots
+   (Mesh/Material/Icon/DisplayName/Description) sind leer und bereit zum
+   Befuellen.
+
+> **Class-Ref-Hinweis**: Das Template-DataAsset hat Class `BP_QmBuildingItem_C`,
+> nicht `R5BuildingItem`. Beim ersten echten Cook + In-Game-Test zeigt
+> sich, ob das Game den Class-Ref braucht. Falls ja: Post-Cook-Patcher
+> wird ergaenzt der die NameMap im cooked `.uasset` umschreibt. Siehe
+> `Tools/UeBuildingItem/README.md` Abschnitt "Bekannte Einschraenkungen".
+
+### 8.1-alt Manueller Weg (falls Template nicht verfuegbar)
+
+Falls du das Template-Script nicht laufen lassen willst:
 
 | Option | Wie | Anmerkung |
 |---|---|---|
@@ -236,9 +299,7 @@ Hier wird's interessant. Das DataAsset muss Klasse `R5BuildingItem` haben - die 
 | **B: Custom DataAsset C++-Klasse** mit gleichen Properties | C++-Klasse `MyR5BuildingItem` mit den Properties aus dem Dump, ueberschreibt die Vanilla-Klasse zur Cook-Zeit | Mehr Aufwand, aber Editor-Polish moeglich. |
 | **C: Post-Cook FName-Patch** | DA als `DataAsset` speichern, **NameMap im uasset post-cook** auf `R5BuildingItem` umpatchen | Etablierte Quartermaster-Methode (siehe Ship-Music-Patcher). Einmaliger Tool-Aufwand. |
 
-> **Empfehlung fuer ersten Test**: **Option A**. Im Editor ein `DataAsset` von Typ `R5BuildingItem` (falls Editor das durch usmap kennt) **oder** `PrimaryDataAsset` (generic) anlegen, mit Mesh-, Material-, Icon-Refs, und auf den Runtime-Override durch unsere DLL setzen.
-
-### 8.1 Anlegen
+Anlegen:
 
 1. Content Browser -> `/Game/Quartermaster/Mods/MyItem/`
 2. Rechtsklick -> **Miscellaneous** -> **Data Asset**

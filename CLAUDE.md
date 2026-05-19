@@ -11,6 +11,7 @@ Mehrere parallele Mod-Workstreams fuer das Spiel
 | **DLL-Mod (Build-Mode-Slot-Inject)** | `Tools/DllProxy/dxgi/` | C++ DXGI-Proxy, UE5-Reflection-Hook auf `GetBuildingGroupsByCategoryTag` |
 | **Asset-Mods** (Pak-only) | diverse `Docs/WIP_*.md` | Pak-Triplets (`.pak`/`.ucas`/`.utoc`) gebaut via `retoc` |
 | **Tooling** | `Tools/ar_writer/`, `Tools/Dumper7Setup/` | Python AR-Patcher, Dumper-7 SDK-Generator |
+| **UE-Editor-Templates** | `Tools/UeBuildingItem/` | Python-Helper fuer UE5.6, erzeugt Mod-Asset-Template (BP + DataAsset) |
 
 ## Wichtige Pfade
 
