@@ -75,6 +75,20 @@ namespace Windrose.Quartermaster.Core
         // user-visible list and order matters for stability of card
         // positions during editing. The Id field is the primary key.
         public List<CustomItem> CustomItems;
+
+        // Custom buildings added via the Building Creator tab. Each entry
+        // describes one user-supplied "Buildable" (currently only the
+        // "Painting" template - a wall painting) that the BuildingPatcher
+        // synthesises from a Vanilla DA + Vanilla MI clone + the user's
+        // cooked mesh / icon / image texture. The patcher pipeline lives
+        // in Tools/QuartermasterCore/BuildingCreator/ and is invoked by
+        // the orchestrator (Etappe E) once per entry during Build.
+        //
+        // Like CustomItems, this is an ordered list (not dict) so the UI
+        // renders deterministic card positions while editing. Id is the
+        // primary key and is used for both the output DA stem
+        // (DA_BI_<Id>) and the localization key (Decoration_<Id>_Name).
+        public List<CustomBuilding> CustomBuildings;
     }
 
     public sealed class ProfileGlobals
@@ -709,6 +723,119 @@ namespace Windrose.Quartermaster.Core
         // from this list are implicitly removed. null = use legacy mode
         // (iterate vanilla minus RemovedRecipeIds, then append AddedRecipeIds).
         public List<string> RecipeOrder;
+    }
+
+    // A user-defined custom building, cloned from a Vanilla "Buildable"
+    // template (currently only "Painting" - wall painting). The
+    // BuildingPatcher pipeline:
+    //   1. Stages the user's cooked assets (mesh + icon + image texture)
+    //      into the mod-pak's /Game/Quartermaster/Items/ folder. User-
+    //      cooked custom Materials/MIs are SKIPPED - we bisected to the
+    //      fact that those crash the shipping game.
+    //   2. Rewrites the user-cooked mesh's NameMap so its per-slot
+    //      material refs (M_<AssetPrefix>_<SlotName>) point at our
+    //      cloned MI stems (MI_<AssetPrefix>_<SlotName>).
+    //   3. Extracts the Vanilla DA + Vanilla MI(s) via retoc to-legacy,
+    //      then clones each under our mod path with the NameMap rewritten
+    //      (texture refs -> user-custom or shared default-VTs; mesh+icon
+    //      refs -> user-cooked stems; localization key -> per-building
+    //      synthesized key).
+    //   4. Patches the cloned MI's VectorParameterValues in-place via
+    //      UAssetAPI to apply template-declared color overrides (Painting
+    //      forces Canvas EdgeColor/AOColor to white so the user's image
+    //      renders untinted).
+    //
+    // The DLL's qm_items.json picks up DA_BI_<Id> via the orchestrator
+    // (Etappe E) so the engine spawns one widget per Building under the
+    // template's CategoryTag tab at inject-time.
+    //
+    // Id convention "QmBldg_<8hex>" mirrors the CustomItem pattern. The
+    // 8-hex suffix is frontend-generated at create-time and never changes,
+    // so per-building state survives re-saves cleanly.
+    public sealed class CustomBuilding
+    {
+        // Stable id, frontend-generated. Filename-safe (alnum +
+        // underscore only). Drives:
+        //   * Output DA stem: DA_BI_<Id>
+        //   * Localization key: Decoration_<Id>_Name
+        //   * qm_items.json entry name
+        public string Id;
+
+        // Template stem the BuildingTemplatesEndpoint serves (currently
+        // only "Painting"). The patcher uses this to look up the
+        // BuildingTemplate (Vanilla donor paths, slot list, category tag).
+        public string TemplateId;
+
+        // Free-text display name (shown in the in-game build menu). Stored
+        // verbatim, emitted into a per-profile CSV under the key
+        // "Decoration_<Id>_Name" so the engine resolves the FText ref
+        // the patched DA carries.
+        public string Name;
+
+        // Free-text description (shown in the in-game build menu tooltip).
+        // Same CSV-Synthese pattern as Name, under the key
+        // "Decoration_<Id>_Desc".
+        public string Description;
+
+        // Absolute path to the user's cooked-output folder for this
+        // building's assets. Typically the per-project
+        //   <UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/Quartermaster/Items/
+        // The build pipeline scans this folder for files whose stem
+        // starts with AssetPrefix and stages them; user-cooked materials
+        // (stem matching M_<AssetPrefix>_<SlotName>) are skipped because
+        // those crash the shipping game.
+        public string CookedFolderPath;
+
+        // Asset-prefix the user picked in the UE editor (e.g.
+        // "QmPainting"). Drives:
+        //   * Cooked-folder scan filter (only files whose stem starts
+        //     with this prefix get staged)
+        //   * Per-slot user material stems (M_<AssetPrefix>_<SlotName>)
+        //     that the mesh's NameMap references and the patcher rewrites
+        //   * Per-slot MI clone stems (MI_<AssetPrefix>_<SlotName>) the
+        //     patcher emits into the mod pak
+        public string AssetPrefix;
+
+        // User-cooked mesh stem (no extension, no slashes). Expected to
+        // exist as <CookedFolderPath>/<MeshStem>.uasset.
+        public string MeshStem;
+
+        // User-cooked icon stem (Texture2D for the build-menu thumbnail).
+        // Same path/extension expectation as MeshStem.
+        public string IconStem;
+
+        // Per-slot user inputs, keyed by MaterialSlotTemplate.SlotName
+        // (e.g. "Frame", "Canvas" for the Painting template). null for a
+        // given key = use the shared default-VTs for all three texture
+        // channels. The Painting Canvas slot has UserAlbedoRequired=true,
+        // so the patcher refuses to build until Slots["Canvas"]
+        // .CustomAlbedoStem is set.
+        public Dictionary<string, CustomBuildingSlot> Slots;
+    }
+
+    // Per-slot user input. Each field is optional; null/empty falls back
+    // to the shared default-VT (T_QmPainting_White / NormalFlat /
+    // MTRMDefault, shipped once per pak by the orchestrator). The slot
+    // name comes from the template (e.g. "Canvas" for Painting) - the
+    // dict key in CustomBuilding.Slots binds the inputs to a specific
+    // material-slot definition in the BuildingTemplate.
+    public sealed class CustomBuildingSlot
+    {
+        // Texture2D stem the user cooked for this slot's albedo channel
+        // (e.g. "T_QmPainting_Image"). null/empty = use shared default
+        // (which is white -> Canvas slot would render blank; the
+        // patcher enforces this for slots flagged UserAlbedoRequired).
+        public string CustomAlbedoStem;
+        public string CustomAlbedoPath;
+
+        // Texture2D stems for the Normal and MTRM channels. Almost
+        // nobody overrides these (the shared NormalFlat / MTRMDefault VTs
+        // already give a sensible matte-look default), but we expose
+        // them for power-users who want a bumped or metallic finish.
+        public string CustomNormalStem;
+        public string CustomNormalPath;
+        public string CustomMtrmStem;
+        public string CustomMtrmPath;
     }
 
     // Edit-spec for a single R5BLRecipeList JSON on the Sellers side
