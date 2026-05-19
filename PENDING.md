@@ -72,18 +72,27 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 ## Naechste Schritte
 
 ### Etappe F (in dieser Reihenfolge)
-- [ ] **Etappe F**: End-to-End-Test - QmPainting via GUI anlegen -> Build -> im Game testen
-  - Schritte:
-    1. Quartermaster.Web restarten (App + VS-Insiders schliessen damit der Lock weg ist, dann normal starten)
-    2. Buildings-Tab oeffnen, "New Building" klicken
-    3. Vanilla-Painting-Template auswaehlen, AssetPrefix `QmPainting`, CookedFolderPath auf den UE-Cook-Ordner, MeshStem `SM_QmPainting_01`, IconStem `T_QmPainting_Icon`
-    4. Canvas-Slot: Image stem `T_QmPainting_Image` + Path `/Game/Quartermaster/Items/T_QmPainting_Image`
-    5. Save profile
-    6. Build-Button klicken (Mods-Tab oder via Buildings-Tab)
-    7. Verifizieren: Pak landet in `~mods/`, `dxgi.dll` + `qm_items.json` landen in `<Game>/R5/Binaries/Win64/`, JSON enthaelt den Painting-Eintrag
-    8. Windrose starten, Build-Menue -> Decoration -> Custom Painting suchen + platzieren
-    9. Smart-Reuse-Test: 30+ Re-Opens, Painting bleibt in der Liste, Pool=1
-    10. Profile mit 0 Buildings testen (alle loeschen, Build druecken): JSON sollte leer geschrieben werden, DLL geht in Idle-Mode beim naechsten Game-Start (Log: `[Config] no injectable items configured - DLL goes idle`)
+
+**Game-Verzeichnis-Pre-State (19.05. abends bereinigt - bereit fuer Reproduktion via GUI):**
+- `~mods/` ist **leer** (alte Spike-Paks QmBedrl_P* + QmPainting_P* geloescht)
+- `qm_items.json` in `Binaries/Win64/` ist auf `{ "items": [] }` zurueckgesetzt -> DLL geht beim naechsten Game-Start in Idle-Mode (Log: `[Config] no injectable items configured - DLL goes idle`). Damit ist verifizierbar dass die nachfolgenden Aktivierungen wirklich von der GUI-Pipeline kommen.
+- `dxgi.dll` + `dxgi_org.dll` bleiben liegen (Variant C: One-Time-Install)
+
+**Cooked-Folder fuer Test-Building** (aus dem 19.05. Spike-Staging, identisch zu dem was der UE-Editor produziert haette):
+- Pfad: `E:\Windrose\Mods\Quartermaster\.build-tmp\qm-painting-build\staging\R5\Content\Quartermaster\Items`
+- Enthaelt: SM_QmPainting_01, T_QmPainting_Icon, T_QmPainting_Image (Default-Bild), T_QmPainting_White/NormalFlat/MTRMDefault (Shared-VT-Defaults, Punkt 9), MI_QmPainting_Canvas/Frame (User-cooked MIs - werden vom Patcher per Skip-List ignoriert), DA_BI_QmPainting_01 (Vorlage, kein direkter Pickup), MI sind irrelevant da Patcher Vanilla-MI klont
+
+**Test-Schritte:**
+1. Quartermaster.Web starten (App schliessen falls noch offen, dann frisch `dotnet run` oder via Quartermaster.App)
+2. Buildings-Tab oeffnen, "New Building" klicken
+3. Template "Painting" auswaehlen, Name z.B. "Mein Bild", AssetPrefix `QmPainting`, CookedFolderPath = `E:\Windrose\Mods\Quartermaster\.build-tmp\qm-painting-build\staging\R5\Content\Quartermaster\Items`, MeshStem `SM_QmPainting_01`, IconStem `T_QmPainting_Icon`
+4. Canvas-Slot: Image stem `T_QmPainting_Image` + Path `/Game/Quartermaster/Items/T_QmPainting_Image`. Frame-Slot leer lassen (nutzt Defaults).
+5. Save profile
+6. Build-Button im Mods-Tab klicken
+7. Verifizieren: `Quartermaster_P.{pak,ucas,utoc}` in `~mods/`, `qm_items.json` in `Binaries/Win64/` enthaelt den Painting-Eintrag (sollte vom Patcher generierte Asset-ID + Path zeigen)
+8. Windrose starten, Logs checken: `[Config] loaded 1 item(s)`, Build-Menue -> Decoration -> "Mein Bild" platzieren
+9. Smart-Reuse-Test: 30+ Build-Mode Re-Opens, Painting bleibt in Liste, Pool=1
+10. Idle-Mode-Test: Building in der GUI loeschen + Save + Build druecken. Verifizieren: JSON wird leer geschrieben, neuer Game-Start landet im Idle-Mode-Log
 
 ---
 
