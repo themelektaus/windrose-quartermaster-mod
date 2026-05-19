@@ -81,6 +81,27 @@
   font-size: var(--font-size-small);
 }
 
+/* Red asterisk after a label to flag fields the BuildPipeline gate
+ * requires (Asset prefix / Mesh stem / Icon stem). Inline span so the
+ * marker sits flush with the label text. */
+.required-marker {
+  color: var(--danger, #e16464);
+  margin-left: .25em;
+  font-weight: bold;
+}
+
+/* Per-card warning banner that lists missing required fields. Same
+ * visual weight as .building-scan-error so the user can't miss it. */
+.building-missing-fields {
+  grid-column: 1 / -1;
+  background-color: color-mix(in srgb, var(--danger, #e16464), black 75%);
+  border-left: 3px solid var(--danger, #e16464);
+  border-radius: var(--border-radius);
+  padding: .5em .75em;
+  font-size: var(--font-size-small);
+  color: var(--danger, #e16464);
+}
+
 .building-field input[disabled],
 .building-field textarea[disabled] {
   opacity: .6;

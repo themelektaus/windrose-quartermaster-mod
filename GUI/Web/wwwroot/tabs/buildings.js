@@ -98,6 +98,7 @@ function buildCustomBuildingCardHtml(custom, index) {
     const safeIcon   = escapeHtml(custom.iconStem || '');
 
     const slotsHtml = renderBuildingSlots(custom, tpl);
+    const missingHtml = renderMissingRequiredBanner(custom, tpl);
 
     const tplHint = tpl
         ? escapeHtml(tpl.description || '') + (tpl.categoryTag ? ' (tab: ' + escapeHtml(tpl.categoryTag) + ')' : '')
@@ -120,12 +121,13 @@ function buildCustomBuildingCardHtml(custom, index) {
         +     '</div>'
         +   '</header>'
         +   '<div class="building-fields">'
+        +     missingHtml
         +     '<label class="building-field">'
         +       '<span>Name (in-game)</span>'
         +       '<input type="text" data-building-field="name" value="' + safeName + '" placeholder="Building display name">'
         +     '</label>'
         +     '<label class="building-field">'
-        +       '<span>Asset prefix</span>'
+        +       '<span>Asset prefix<span class="required-marker" title="required">*</span></span>'
         +       '<input type="text" data-building-field="assetPrefix" value="' + safePrefix + '" placeholder="QmPainting">'
         +     '</label>'
         +     '<label class="building-field building-field-wide">'
@@ -133,7 +135,7 @@ function buildCustomBuildingCardHtml(custom, index) {
         +       '<textarea data-building-field="description" rows="2" placeholder="Tooltip text...">' + safeDesc + '</textarea>'
         +     '</label>'
         +     '<label class="building-field building-field-wide">'
-        +       '<span>Cooked folder path</span>'
+        +       '<span>Cooked folder path<span class="required-marker" title="required">*</span></span>'
         +       '<div class="building-folder-row">'
         +         '<input type="text" data-building-field="cookedFolderPath" value="' + safePath
         +           '" placeholder="E:\\UEProj\\Saved\\Cooked\\Windows\\<Project>\\Content\\Quartermaster\\Items">'
@@ -146,7 +148,7 @@ function buildCustomBuildingCardHtml(custom, index) {
                     : '<div class="building-scan"><em>Pick a folder above and click Scan, or just type a path - we&apos;ll scan automatically when you stop editing.</em></div>')
         +     '</div>'
         +     '<label class="building-field">'
-        +       '<span>Mesh stem (SM_...)</span>'
+        +       '<span>Mesh stem (SM_...)<span class="required-marker" title="required">*</span></span>'
         +       '<input type="text" data-building-field="meshStem" value="' + safeMesh + '" placeholder="SM_QmPainting_01">'
         +     '</label>'
         +     '<label class="building-field">'
@@ -156,6 +158,52 @@ function buildCustomBuildingCardHtml(custom, index) {
         +     slotsHtml
         +   '</div>'
         + '</li>';
+}
+
+// Mirrors BuildPipeline.HasCustomBuildingsConfiguration so the user
+// sees the SAME gate before clicking Build. Listed fields are the ones
+// that, if empty, will cause the building to be silently filtered out
+// of the build (and trigger the "Profile has custom building(s) but
+// required field(s) are empty" error). Id + templateId aren't shown
+// because they're never user-editable here.
+function renderMissingRequiredBanner(custom, _tpl) {
+    if (!custom) return '';
+    const missing = [];
+    if (!custom.assetPrefix      || !custom.assetPrefix.trim())      missing.push('Asset prefix');
+    if (!custom.cookedFolderPath || !custom.cookedFolderPath.trim()) missing.push('Cooked folder path');
+    if (!custom.meshStem         || !custom.meshStem.trim())         missing.push('Mesh stem');
+    if (missing.length === 0) return '';
+    return '<div class="building-missing-fields">'
+        + 'Required field' + (missing.length === 1 ? '' : 's') + ' empty: <strong>'
+        + missing.map(escapeHtml).join(', ')
+        + '</strong>. This building will be skipped at Build time.'
+        + '</div>';
+}
+
+// Live-update the per-card required-fields banner without re-rendering
+// the whole card (full re-render would steal focus from the input the
+// user is typing in). Three states:
+//   * banner exists + new content empty -> remove banner
+//   * banner exists + new content       -> swap innerHTML
+//   * no banner + new content           -> insert as first child of
+//                                          .building-fields (the same
+//                                          slot renderMissingRequiredBanner
+//                                          uses at first render)
+function refreshMissingFieldsBanner(card, custom) {
+    if (!card) return;
+    const fields = card.querySelector('.building-fields');
+    if (!fields) return;
+    const html = renderMissingRequiredBanner(custom, null);
+    const existing = fields.querySelector(':scope > .building-missing-fields');
+    if (!html) {
+        if (existing) existing.remove();
+        return;
+    }
+    if (existing) {
+        existing.outerHTML = html;
+    } else {
+        fields.insertAdjacentHTML('afterbegin', html);
+    }
 }
 
 function renderBuildingSlots(custom, tpl) {
@@ -292,10 +340,13 @@ function onBuildingListChange(e) {
             // keystroke. The scan is read-only, but typing a long path
             // would otherwise trigger 30+ FS reads.
             debounceScan(card, index, custom.cookedFolderPath);
+            refreshMissingFieldsBanner(card, custom);
         } else if (field === 'assetPrefix') {
             custom.assetPrefix = t.value || '';
+            refreshMissingFieldsBanner(card, custom);
         } else if (field === 'meshStem') {
             custom.meshStem = t.value || '';
+            refreshMissingFieldsBanner(card, custom);
         } else if (field === 'iconStem') {
             custom.iconStem = t.value || '';
         } else if (field === 'templateId') {
