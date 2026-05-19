@@ -169,17 +169,29 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             int copied = 0;
             int skipped = 0;
+            int rejected = 0;
+            var rejectedSample = new List<string>();
             foreach (var f in Directory.GetFiles(inputs.CookedFolderPath))
             {
                 var name = Path.GetFileName(f);
                 var stem = Path.GetFileNameWithoutExtension(name);
 
-                // Asset-prefix filter: if the user supplied one, only
-                // files whose stem starts with it (case-insensitive) get
-                // copied. Empty prefix => take everything.
+                // Asset-prefix filter: match the user prefix as a NAME
+                // COMPONENT inside the stem - not via StartsWith. UE files
+                // are named with a type prefix (SM_/T_/M_/MI_/DA_/...) +
+                // user project token + suffix, e.g.:
+                //   SM_QmPainting_01  T_QmPainting_Icon  M_QmPainting_Canvas
+                // The project token "QmPainting" is the second component,
+                // so the original StartsWith check rejected every file.
+                // Boundary-rule:
+                //   - left of the match must be start-of-stem or '_'
+                //   - right of the match must be end-of-stem or '_' or '.'
+                // Empty prefix => take everything.
                 if (!string.IsNullOrEmpty(inputs.AssetPrefix) &&
-                    !stem.StartsWith(inputs.AssetPrefix, StringComparison.OrdinalIgnoreCase))
+                    !StemContainsPrefixAsComponent(stem, inputs.AssetPrefix))
                 {
+                    rejected++;
+                    if (rejectedSample.Count < 5) rejectedSample.Add(name);
                     continue;
                 }
 
@@ -199,13 +211,53 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             if (copied == 0)
             {
+                // Build a directory-listing snapshot so the user can see
+                // immediately what's actually in the folder vs what they
+                // typed as prefix.
+                var allFiles = Directory.GetFiles(inputs.CookedFolderPath);
+                var sample = new List<string>();
+                foreach (var f in allFiles)
+                {
+                    if (sample.Count >= 10) break;
+                    sample.Add(Path.GetFileName(f));
+                }
+                var sampleMsg = allFiles.Length == 0
+                    ? "(folder is empty)"
+                    : string.Join(", ", sample) + (allFiles.Length > sample.Count ? ", ..." : "");
+
                 throw new InvalidOperationException(
                     "No files matched asset-prefix '" + (inputs.AssetPrefix ?? "<empty>")
                     + "' in cooked folder " + inputs.CookedFolderPath
-                    + " - check the prefix or re-cook the assets.");
+                    + " - check the prefix or re-cook the assets. "
+                    + "Files in folder: " + sampleMsg);
             }
             LogLine("[OK] " + copied + " file(s) staged"
-                + (skipped > 0 ? " (" + skipped + " user-cooked material(s) skipped)" : ""));
+                + (skipped > 0 ? " (" + skipped + " user-cooked material(s) skipped)" : "")
+                + (rejected > 0 ? " (" + rejected + " file(s) didn't match prefix"
+                    + (rejectedSample.Count > 0 ? ", e.g. " + string.Join(", ", rejectedSample) : "") + ")" : ""));
+        }
+
+        // Returns true if `prefix` appears as a name component in `stem`:
+        // i.e. surrounded by '_' (or start/end of stem). Case-insensitive.
+        // Matches "QmPainting" against "SM_QmPainting_01", "T_QmPainting",
+        // "DA_BI_QmPainting_01", "QmPainting_01", "QmPainting"; rejects
+        // "SM_QmPaintingTest" (no right boundary) and "SomethingQmPainting"
+        // (no left boundary).
+        static bool StemContainsPrefixAsComponent(string stem, string prefix)
+        {
+            if (string.IsNullOrEmpty(stem) || string.IsNullOrEmpty(prefix)) return false;
+            int from = 0;
+            while (from <= stem.Length - prefix.Length)
+            {
+                int idx = stem.IndexOf(prefix, from, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) return false;
+                bool leftOk  = idx == 0 || stem[idx - 1] == '_';
+                int end = idx + prefix.Length;
+                bool rightOk = end == stem.Length || stem[end] == '_' || stem[end] == '.';
+                if (leftOk && rightOk) return true;
+                from = idx + 1;
+            }
+            return false;
         }
 
         // -----------------------------------------------------------------

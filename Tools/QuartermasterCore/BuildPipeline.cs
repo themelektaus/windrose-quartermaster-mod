@@ -386,22 +386,21 @@ namespace Windrose.Quartermaster.Core
                 // get wired together via NameMap rewrites done by
                 // DataAssetPatcher.
                 //
+                // NOTE: building assets MUST end up in the IoStore composite
+                // triplet (.ucas/.utoc), NOT the legacy .pak. UE5 IoStore
+                // resolves LoadPackage() lookups via the global package
+                // index built from .utoc files - new asset paths in a
+                // legacy .pak get mounted but stay invisible to LoadPackage.
+                // That's why we defer the actual patcher call into
+                // BuildIoStoreComposite() as a pre-staged source - it
+                // writes building bytes into the composite's staging tree
+                // which then goes through retoc to-zen at the end.
+                //
                 // Output: the in-pak assets the DLL inject pipeline targets
                 // at runtime - the qm_items.json next to dxgi.dll picks
                 // them up via the GameDeployer hook AFTER the pak is built.
                 List<BuildingPatchResult> buildingResults = null;
-                if (HasCustomBuildingsConfiguration(profile))
-                {
-                    LogLine("Patching custom buildings");
-                    buildingResults = PatchCustomBuildings(profile, tmpDir);
-                    int written = buildingResults != null ? buildingResults.Count : 0;
-                    LogLine("Patched buildings: " + written + " written");
-                    if (buildingResults != null)
-                    {
-                        foreach (var br in buildingResults)
-                            foreach (var w in br.Warnings) LogLine("  warn: " + w);
-                    }
-                }
+                bool buildingsActive = HasCustomBuildingsConfiguration(profile);
 
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
@@ -416,8 +415,7 @@ namespace Windrose.Quartermaster.Core
                         ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
-                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
-                    + (buildingResults != null ? buildingResults.Count : 0);
+                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
@@ -437,9 +435,26 @@ namespace Windrose.Quartermaster.Core
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
+                    // If the profile carries CustomBuildings that all got
+                    // skeleton-filtered (HasCustomBuildingsConfiguration
+                    // requires Id+TemplateId+AssetPrefix+CookedFolderPath
+                    // +MeshStem), surface WHICH fields are missing per
+                    // building - otherwise the user sees a generic "no
+                    // changes" error even though they clearly added a
+                    // building card. Same gate as the Has* check + the
+                    // PatchCustomBuildings loop so the diagnostic stays
+                    // in sync if either is loosened later.
+                    var skeleton = DescribeSkeletonBuildings(profile);
+                    if (skeleton != null)
+                    {
+                        throw new InvalidOperationException(
+                            "Profile has custom building(s) but required field(s) are empty:\n"
+                            + skeleton
+                            + "\nFill the missing field(s) in the Buildings tab and Save, then Build again.");
+                    }
                     throw new InvalidOperationException(
                         "Profile produces no changes - nothing to pack. "
                         + "Adjust globals or add per-item / per-loot-table overrides.");
@@ -463,7 +478,7 @@ namespace Windrose.Quartermaster.Core
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -474,6 +489,7 @@ namespace Windrose.Quartermaster.Core
                         cooldownJobs,
                         shipMusicJobs,
                         iconBakeJobs,
+                        buildingsActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
@@ -482,6 +498,7 @@ namespace Windrose.Quartermaster.Core
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
                     iconBakeResults = compositeResult.Icons;
+                    buildingResults = compositeResult.Buildings;
                 }
 
                 // Raw companion is independent of the composite (see
@@ -651,6 +668,7 @@ namespace Windrose.Quartermaster.Core
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
+            bool buildingsActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -1009,6 +1027,74 @@ namespace Windrose.Quartermaster.Core
                 });
             }
 
+            // Buildings: pre-staged source (InputDir = null) - the
+            // BuildingPatcher already handles its own retoc-to-legacy
+            // extraction of the Vanilla DA/MI internally, then writes the
+            // patched bytes (user-cooked mesh + icon + textures + cloned
+            // MIs + cloned DA) directly into stagingDir at
+            // /R5/Content/Quartermaster/Items/. These need to land in the
+            // IoStore .ucas/.utoc - LoadPackage("/Game/Quartermaster/Items/
+            // DA_BI_<id>") only resolves when the package is in the IoStore
+            // global index, not in a legacy .pak. New asset paths (vs DT
+            // overrides) MUST go through retoc to-zen.
+            List<BuildingPatchResult> buildingResults = null;
+            if (buildingsActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                var buildingTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__buildings");
+                LogLine("Buildings source: "
+                        + CountBuildableBuildings(profile)
+                        + " custom building(s)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "buildings",
+                    // No InputDir - patcher writes directly into stagingDir.
+                    InputDir = null,
+                    AfterExtract = stagingDir =>
+                    {
+                        if (Directory.Exists(buildingTmp)) Directory.Delete(buildingTmp, true);
+                        Directory.CreateDirectory(buildingTmp);
+
+                        var stagingItemsDir = Path.Combine(stagingDir,
+                            "R5", "Content", "Quartermaster", "Items");
+
+                        _buildingPatcher.Log = Log;
+                        _buildingPatcher.RetocExe = retocExe;
+                        _buildingPatcher.UsmapPath = usmapPath;
+                        _buildingPatcher.VanillaPaksDir = gamePaksDir;
+                        _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
+                        _buildingPatcher.TempDir = buildingTmp;
+
+                        buildingResults = new List<BuildingPatchResult>();
+                        foreach (var b in profile.CustomBuildings)
+                        {
+                            if (b == null) continue;
+                            // Skeleton gate - same as HasCustomBuildingsConfiguration.
+                            if (string.IsNullOrWhiteSpace(b.Id)) continue;
+                            if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
+                            if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
+                            if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
+                            if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+
+                            var template = ResolveBuildingTemplate(b.TemplateId);
+                            if (template == null)
+                            {
+                                LogLine("  warn: unknown templateId='" + b.TemplateId
+                                        + "' for building id='" + b.Id + "' - skipping");
+                                continue;
+                            }
+
+                            var inputs = BuildBuildingInputs(b, template);
+                            LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
+                            var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
+                            buildingResults.Add(result);
+                            foreach (var w in result.Warnings) LogLine("  warn: " + w);
+                        }
+                        LogLine("Patched buildings: " + buildingResults.Count + " written");
+                    },
+                });
+            }
+
             LogLine("Building IoStore composite triplet -> staging ("
                     + sources.Count + " source" + (sources.Count == 1 ? "" : "s") + ")");
 
@@ -1124,6 +1210,7 @@ namespace Windrose.Quartermaster.Core
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
                 Icons = iconResults,
+                Buildings = buildingResults,
             };
         }
 
@@ -1138,6 +1225,27 @@ namespace Windrose.Quartermaster.Core
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;
             public List<IconBakerPatcher.BakeResult> Icons;
+            public List<BuildingPatchResult> Buildings;
+        }
+
+        // Counts the building entries that pass the skeleton gate so we
+        // can log a meaningful "Buildings source: N building(s)" line
+        // before the patcher runs in the AfterExtract callback.
+        static int CountBuildableBuildings(Profile profile)
+        {
+            if (profile.CustomBuildings == null) return 0;
+            int n = 0;
+            foreach (var b in profile.CustomBuildings)
+            {
+                if (b == null) continue;
+                if (string.IsNullOrWhiteSpace(b.Id)) continue;
+                if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
+                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
+                if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
+                if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+                n++;
+            }
+            return n;
         }
 
         // Walks profile.CustomItems and produces one IconBakerPatcher.BakeJob
@@ -1933,84 +2041,51 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Per-building patch loop. Resolves the external tools once (retoc,
-        // usmap, vanilla paks dir, AES key, temp work area) and calls into
-        // BuildingPatcher for each fully-configured building.
-        //
-        // Skeleton entries that fail HasCustomBuildingsConfiguration's
-        // per-entry checks are silently dropped here; the validity gate is
-        // intentionally generous so the user can save half-finished cards
-        // and Build will simply not include them.
-        //
-        // Throws if a building entry IS valid but the per-building patch
-        // fails (missing vanilla template, retoc error, etc.) - those
-        // errors bubble up to the SSE stream the same way the other
-        // patchers' errors do.
-        List<BuildingPatchResult> PatchCustomBuildings(Profile profile, string tmpDir)
+        // Diagnostic counterpart to HasCustomBuildingsConfiguration. Returns
+        // a human-readable multi-line list of buildings that were dropped by
+        // the skeleton gate AND why (which required field was empty). Used
+        // by the "nothing to pack" error path so the user knows which card
+        // to fix instead of seeing a generic "no changes" message. Returns
+        // null when no buildings at all are present (then the regular
+        // "no changes" wording applies).
+        static string DescribeSkeletonBuildings(Profile profile)
         {
-            // Resolve external tools (lazy, only when this stage runs).
-            LogLine("Resolving retoc.exe + usmap for building patcher...");
-            _retocResolver.Log = Log;
-            var retocExe = _retocResolver.Resolve();
-            var usmapPath = UsmapLocator.Find(_paths.ModRoot);
-            if (GamePaksDirProvider == null)
+            var buildings = profile.CustomBuildings;
+            if (buildings == null || buildings.Count == 0) return null;
+            var sb = new System.Text.StringBuilder();
+            int skeletonCount = 0;
+            for (int i = 0; i < buildings.Count; i++)
             {
-                throw new InvalidOperationException(
-                    "Custom-building patch needs a Paks dir provider; "
-                    + "wire pipeline.GamePaksDirProvider before calling Build().");
-            }
-            var gamePaksDir = GamePaksDirProvider();
-            if (string.IsNullOrEmpty(gamePaksDir) || !Directory.Exists(gamePaksDir))
-            {
-                throw new InvalidOperationException(
-                    "Custom-building patch could not locate the live game's Paks dir: "
-                    + (gamePaksDir ?? "<null>"));
-            }
-
-            // BuildingPatcher writes assets into staging under the standard
-            // /Game/Quartermaster/Items/ in-pak path. The temp dir sits
-            // alongside (NOT inside) the main tmpDir so repak's recursive
-            // sweep over tmpDir doesn't pick up retoc-to-legacy artefacts.
-            var stagingItemsDir = Path.Combine(tmpDir,
-                "R5", "Content", "Quartermaster", "Items");
-            var buildingTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__buildings");
-            if (Directory.Exists(buildingTmp)) Directory.Delete(buildingTmp, true);
-            Directory.CreateDirectory(buildingTmp);
-
-            _buildingPatcher.Log = Log;
-            _buildingPatcher.RetocExe = retocExe;
-            _buildingPatcher.UsmapPath = usmapPath;
-            _buildingPatcher.VanillaPaksDir = gamePaksDir;
-            _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
-            _buildingPatcher.TempDir = buildingTmp;
-
-            var results = new List<BuildingPatchResult>();
-            foreach (var b in profile.CustomBuildings)
-            {
+                var b = buildings[i];
                 if (b == null) continue;
-                // Same skeleton gate as HasCustomBuildingsConfiguration so
-                // half-finished cards in the profile silently get skipped.
-                if (string.IsNullOrWhiteSpace(b.Id)) continue;
-                if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
-                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
-                if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
-                if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
-
-                var template = ResolveBuildingTemplate(b.TemplateId);
-                if (template == null)
-                {
-                    LogLine("  warn: unknown templateId='" + b.TemplateId
-                            + "' for building id='" + b.Id + "' - skipping");
-                    continue;
-                }
-
-                var inputs = BuildBuildingInputs(b, template);
-                LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
-                var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
-                results.Add(result);
+                var missing = new List<string>();
+                if (string.IsNullOrWhiteSpace(b.Id))               missing.Add("id");
+                if (string.IsNullOrWhiteSpace(b.TemplateId))       missing.Add("templateId");
+                if (string.IsNullOrWhiteSpace(b.AssetPrefix))      missing.Add("assetPrefix");
+                if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) missing.Add("cookedFolderPath");
+                if (string.IsNullOrWhiteSpace(b.MeshStem))         missing.Add("meshStem");
+                if (missing.Count == 0) continue; // building is fine, must be a different cause
+                skeletonCount++;
+                var label = !string.IsNullOrWhiteSpace(b.Name) ? b.Name
+                          : !string.IsNullOrWhiteSpace(b.Id)   ? b.Id
+                          : ("building#" + i);
+                sb.Append("  - \"").Append(label).Append("\" missing: ")
+                  .Append(string.Join(", ", missing)).Append('\n');
             }
-            return results;
+            return skeletonCount > 0 ? sb.ToString().TrimEnd('\n') : null;
         }
+
+        // Per-building patch loop has moved into BuildIoStoreComposite as
+        // a pre-staged source (see "Buildings source" block) so the patched
+        // bytes land in the IoStore staging tree and end up in the
+        // .ucas/.utoc triplet rather than the legacy .pak. New asset paths
+        // (vs DT overrides) are only resolvable via the IoStore global
+        // index, which is rebuilt from .utoc on mount - legacy paks mount
+        // but don't contribute new package paths to LoadPackage().
+        //
+        // BuildBuildingInputs() + ResolveBuildingTemplate() helpers remain
+        // below because the composite source's AfterExtract callback uses
+        // them; the only thing that moved is the orchestration loop itself.
 
         // Maps a template id (string in the profile) to a concrete
         // BuildingTemplate factory. Today only one template exists; adding
