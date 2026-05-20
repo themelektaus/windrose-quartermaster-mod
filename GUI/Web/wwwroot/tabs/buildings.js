@@ -25,6 +25,12 @@ const _cookedInspectionTimers = new Map(); // building.id -> setTimeout
 const _vanillaInspectCache  = new Map();   // packagePath -> MaterialInstanceDto
 const _vanillaSearchTimers  = new Map();   // building.id + '|' + slot.index -> setTimeout
 
+// Recipe (Etappe H2): per-template default cost + per-row resource search.
+const _recipeDefaultCache    = new Map();  // templateId -> BuildingRecipeInspectionDto
+const _recipeFetchInflight   = new Map();  // templateId -> Promise
+const _resourceSearchTimers  = new Map();  // building.id + '|' + rowIdx -> setTimeout
+const _resourceDisplayCache  = new Map();  // packagePath -> displayName (for re-render labels)
+
 async function loadBuildingTemplates() {
     const errBox = document.getElementById('buildings-error');
     if (errBox) {
@@ -85,6 +91,8 @@ function renderBuildingCreator() {
     //  - the lightweight scan (file classification)
     //  - the deep inspect (mesh slots + user-MI defaults) if both
     //    cookedFolderPath + meshStem are present
+    //  - the recipe default fetch (per templateId, cached) so the
+    //    cost editor shows the vanilla pre-fill on initial render
     for (let i = 0; i < customs.length; i++) {
         const c = customs[i];
         if (!c) continue;
@@ -93,6 +101,9 @@ function renderBuildingCreator() {
         }
         if (c.cookedFolderPath && c.meshStem) {
             triggerCookedInspect(i, c.id, c.cookedFolderPath, c.meshStem);
+        }
+        if (c.templateId) {
+            triggerRecipeRender(c);
         }
     }
 }
@@ -180,6 +191,9 @@ function buildCustomBuildingCardHtml(custom, index) {
         +       (custom.cookedFolderPath && custom.meshStem
                     ? '<div class="building-slots-status"><em>Reading mesh slots...</em></div>'
                     : '<div class="building-slots-status"><em>Set the cooked folder and mesh stem above to see material slots.</em></div>')
+        +     '</div>'
+        +     '<div class="building-field building-field-wide" data-building-recipe-host>'
+        +       '<div class="building-recipe-status"><em>Loading build cost...</em></div>'
         +     '</div>'
         +   '</div>'
         + '</li>';
@@ -705,6 +719,11 @@ function onBuildingListChange(e) {
             custom.templateId = t.value;
             // Template only affects gameplay-side stuff (DA parent);
             // slot layout stays the same since it comes from the mesh.
+            // Recipe defaults are template-bound though - re-fetch +
+            // re-render so the cost editor pre-fills the new vanilla
+            // values. If the user already had user-edited rows the
+            // re-render keeps them (we don't auto-clobber overrides).
+            triggerRecipeRender(custom);
         } else {
             return;
         }
@@ -724,6 +743,22 @@ function onBuildingListChange(e) {
         state.isDirty = true;
     } else if (t.dataset.paramTexture !== undefined) {
         applyTextureParam(custom, t);
+        state.isDirty = true;
+    } else if (t.dataset.recipeSearch !== undefined) {
+        const idx = parseInt(t.dataset.recipeSearch, 10);
+        if (!isFinite(idx)) return;
+        debouncedResourceSearch(custom.id, idx, t.value);
+        return;  // not dirty until they actually pick a result
+    } else if (t.dataset.recipeCount !== undefined) {
+        const idx = parseInt(t.dataset.recipeCount, 10);
+        if (!isFinite(idx)) return;
+        const rows = ensureUserRecipeRows(custom);
+        if (!rows[idx]) return;
+        const v = parseInt(t.value, 10);
+        rows[idx].count = Number.isFinite(v) && v >= 0 ? v : 0;
+        // Source badge needs refreshing when we move from vanilla -> user.
+        const defaults = _recipeDefaultCache.get(custom.templateId);
+        renderRecipeForCard(custom.id, defaults);
         state.isDirty = true;
     } else {
         return;
@@ -877,6 +912,61 @@ async function onBuildingListClick(e) {
         const sel = slotEl.querySelector('select[data-param-texture="' + cssEscape(name) + '"]');
         if (sel) sel.value = '';
         state.isDirty = true;
+        updateButtons();
+        return;
+    }
+
+    // Recipe row resource pick (from the autocomplete dropdown).
+    const recipePickBtn = t.closest('button[data-recipe-pick]');
+    if (recipePickBtn) {
+        const rowEl = recipePickBtn.closest('li.building-recipe-row');
+        const card = recipePickBtn.closest('li.building-card');
+        if (!rowEl || !card) return;
+        const idx = parseInt(rowEl.dataset.recipeRow, 10);
+        const building = currentBuildingById(card.dataset.buildingId);
+        if (!building || !isFinite(idx)) return;
+        const itemPath = recipePickBtn.dataset.recipePick;
+        const label    = recipePickBtn.dataset.recipePickLabel;
+        if (itemPath) _resourceDisplayCache.set(itemPath, label || '');
+        const rows = ensureUserRecipeRows(building);
+        if (!rows[idx]) rows[idx] = { itemPath: '', count: 1 };
+        rows[idx].itemPath = itemPath;
+        // Default count to 1 when user picks a resource into an empty row.
+        if (!Number.isFinite(rows[idx].count) || rows[idx].count <= 0) rows[idx].count = 1;
+        const defaults = _recipeDefaultCache.get(building.templateId);
+        renderRecipeForCard(building.id, defaults);
+        state.isDirty = true;
+        updateButtons();
+        return;
+    }
+
+    // Recipe-section actions (add row, remove row, reset to vanilla).
+    const recipeBtn = t.closest('button[data-recipe-action]');
+    if (recipeBtn) {
+        const card = recipeBtn.closest('li.building-card');
+        if (!card) return;
+        const building = currentBuildingById(card.dataset.buildingId);
+        if (!building) return;
+        const action = recipeBtn.dataset.recipeAction;
+        const defaults = _recipeDefaultCache.get(building.templateId);
+        if (action === 'add') {
+            const rows = ensureUserRecipeRows(building);
+            rows.push({ itemPath: '', count: 1 });
+            renderRecipeForCard(building.id, defaults);
+            state.isDirty = true;
+        } else if (action === 'remove') {
+            const idx = parseInt(recipeBtn.dataset.recipeRowIdx, 10);
+            if (!isFinite(idx)) return;
+            const rows = ensureUserRecipeRows(building);
+            if (idx >= 0 && idx < rows.length) rows.splice(idx, 1);
+            renderRecipeForCard(building.id, defaults);
+            state.isDirty = true;
+        } else if (action === 'reset') {
+            // Revert to "use vanilla defaults" by dropping the user list.
+            building.recipeCost = null;
+            renderRecipeForCard(building.id, defaults);
+            state.isDirty = true;
+        }
         updateButtons();
         return;
     }
@@ -1043,6 +1133,207 @@ function scanKindLabel(k) {
 function scanKindClass(k) {
     if (k === 'material' || k === 'matinst') return ' skip';
     return '';
+}
+
+// -----------------------------------------------------------------------
+// Recipe editor (Etappe H2). Renders the per-building build-cost rows
+// using a per-row resource search box + count input.
+//
+// Profile state contract:
+//   custom.recipeCost === undefined / null  -> use template's Vanilla defaults
+//   custom.recipeCost === []                 -> explicit "free build"
+//   custom.recipeCost === [{itemPath,count}] -> user-edited list
+// As soon as the user mutates the editor, we materialize the Vanilla
+// defaults into custom.recipeCost so subsequent edits + save round-trip
+// cleanly. The "Reset to Vanilla" button clears it back to null.
+// -----------------------------------------------------------------------
+async function triggerRecipeRender(custom) {
+    if (!custom || !custom.id) return;
+    // Fetch + cache the template's vanilla defaults once per process.
+    const defaults = await fetchRecipeDefaults(custom.templateId);
+    renderRecipeForCard(custom.id, defaults);
+}
+
+async function fetchRecipeDefaults(templateId) {
+    if (!templateId) return null;
+    if (_recipeDefaultCache.has(templateId)) {
+        return _recipeDefaultCache.get(templateId);
+    }
+    const inflight = _recipeFetchInflight.get(templateId);
+    if (inflight) return inflight;
+    const p = api('GET', '/api/buildings/inspect-recipe?templateId=' + encodeURIComponent(templateId))
+        .then(dto => {
+            _recipeDefaultCache.set(templateId, dto);
+            _recipeFetchInflight.delete(templateId);
+            // Capture each itemPath -> ?  the displayName cache stays
+            // sparse until the user opens a search; rendering pre-fill
+            // rows we use a humanized fallback derived from the path.
+            return dto;
+        })
+        .catch(ex => {
+            _recipeFetchInflight.delete(templateId);
+            return { ok: false, error: (ex && ex.message) ? ex.message : String(ex), defaultRecipeCost: [] };
+        });
+    _recipeFetchInflight.set(templateId, p);
+    return p;
+}
+
+function renderRecipeForCard(buildingId, defaults) {
+    const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
+    if (!card) return;
+    const host = card.querySelector('[data-building-recipe-host]');
+    if (!host) return;
+    const custom = currentBuildingById(buildingId);
+    if (!custom) return;
+
+    const usingVanilla = (custom.recipeCost == null);
+    const rows = usingVanilla
+        ? ((defaults && Array.isArray(defaults.defaultRecipeCost)) ? defaults.defaultRecipeCost : [])
+        : custom.recipeCost;
+
+    const vanillaTag = (defaults && defaults.vanillaRecipeTag) || '';
+    const defaultsErr = (defaults && defaults.ok === false) ? defaults.error : '';
+
+    host.innerHTML = buildRecipeSectionHtml(rows, usingVanilla, vanillaTag, defaultsErr);
+}
+
+function buildRecipeSectionHtml(rows, usingVanilla, vanillaTag, errMsg) {
+    const rowsHtml = rows.map((r, idx) => buildRecipeRowHtml(r, idx)).join('');
+    const tagLine = vanillaTag
+        ? '<div class="building-recipe-meta">Vanilla tag: <code>' + escapeHtml(vanillaTag) + '</code></div>'
+        : '';
+    const sourceBadge = usingVanilla
+        ? '<span class="building-recipe-source vanilla">Vanilla defaults</span>'
+        : '<span class="building-recipe-source user">Custom (overrides vanilla)</span>';
+    const errHtml = errMsg
+        ? '<div class="building-recipe-error">' + escapeHtml(errMsg) + '</div>'
+        : '';
+    const emptyHint = (rows.length === 0)
+        ? '<div class="building-recipe-empty"><em>No build cost - building is free.</em></div>'
+        : '';
+    return ''
+        + '<div class="building-recipe">'
+        +   '<div class="building-recipe-header">'
+        +     '<strong>Build cost</strong>'
+        +     sourceBadge
+        +     '<div class="building-recipe-actions">'
+        +       '<button type="button" class="btn-link" data-recipe-action="add">+ Add resource</button>'
+        +       (!usingVanilla ? '<button type="button" class="btn-link" data-recipe-action="reset" title="Discard overrides; use template default">Reset to Vanilla</button>' : '')
+        +     '</div>'
+        +   '</div>'
+        +   errHtml
+        +   tagLine
+        +   '<ol class="building-recipe-rows">' + rowsHtml + '</ol>'
+        +   emptyHint
+        + '</div>';
+}
+
+function buildRecipeRowHtml(row, idx) {
+    const itemPath = (row && row.itemPath) || '';
+    const count    = (row && Number.isFinite(row.count)) ? row.count : 0;
+    const display  = itemPath
+        ? (_resourceDisplayCache.get(itemPath) || prettifyResourcePath(itemPath))
+        : '';
+    const safeDisplay = escapeHtml(display);
+    const safePath    = escapeHtml(itemPath);
+
+    return ''
+        + '<li class="building-recipe-row" data-recipe-row="' + idx + '">'
+        +   '<div class="building-recipe-search">'
+        +     '<input type="text" data-recipe-search="' + idx + '" value="' + safeDisplay
+        +       '" placeholder="Search resource (e.g. wood, iron, leather)" autocomplete="off">'
+        +     '<div class="building-recipe-results" data-recipe-results="' + idx + '" hidden></div>'
+        +     (itemPath
+                ? '<div class="building-recipe-current"><code>' + safePath + '</code></div>'
+                : '<div class="building-recipe-current"><em>Pick a resource</em></div>')
+        +   '</div>'
+        +   '<label class="building-recipe-count">'
+        +     '<span>Count</span>'
+        +     '<input type="number" min="1" max="999" step="1" data-recipe-count="' + idx + '" value="' + count + '">'
+        +   '</label>'
+        +   '<button type="button" class="btn-link danger" data-recipe-action="remove" data-recipe-row-idx="' + idx + '" title="Remove this row">Remove</button>'
+        + '</li>';
+}
+
+function prettifyResourcePath(path) {
+    if (!path) return '';
+    const lastSlash = path.lastIndexOf('/');
+    const tail = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    const dot = tail.indexOf('.');
+    const stem = dot >= 0 ? tail.substring(0, dot) : tail;
+    let s = stem;
+    if (s.startsWith('DA_DID_Resource_')) s = s.substring('DA_DID_Resource_'.length);
+    else if (s.startsWith('DA_DID_')) s = s.substring('DA_DID_'.length);
+    return s.replace(/_/g, ' ');
+}
+
+// Materialize the vanilla defaults onto custom.recipeCost if the user
+// is still in "use vanilla" mode and starts editing. Returns the now-
+// materialized array (always safe to mutate).
+function ensureUserRecipeRows(custom) {
+    if (custom.recipeCost == null) {
+        const defaults = _recipeDefaultCache.get(custom.templateId);
+        const seed = (defaults && Array.isArray(defaults.defaultRecipeCost))
+            ? defaults.defaultRecipeCost
+            : [];
+        // Clone to avoid sharing the cache instance with future buildings.
+        custom.recipeCost = seed.map(r => ({ itemPath: r.itemPath || '', count: r.count || 0 }));
+    }
+    return custom.recipeCost;
+}
+
+function debouncedResourceSearch(buildingId, rowIdx, query) {
+    const key = buildingId + '|' + rowIdx;
+    const existing = _resourceSearchTimers.get(key);
+    if (existing) clearTimeout(existing);
+    const handle = setTimeout(() => {
+        _resourceSearchTimers.delete(key);
+        runResourceSearch(buildingId, rowIdx, query);
+    }, 250);
+    _resourceSearchTimers.set(key, handle);
+}
+
+async function runResourceSearch(buildingId, rowIdx, query) {
+    const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
+    if (!card) return;
+    const rowEl = card.querySelector('li.building-recipe-row[data-recipe-row="' + rowIdx + '"]');
+    if (!rowEl) return;
+    const resultsEl = rowEl.querySelector('[data-recipe-results]');
+    if (!resultsEl) return;
+
+    const q = (query || '').trim();
+    if (!q) {
+        resultsEl.hidden = true;
+        resultsEl.innerHTML = '';
+        return;
+    }
+    let hits;
+    try {
+        hits = await api('GET', '/api/vanilla-resources?search=' + encodeURIComponent(q) + '&limit=25');
+    } catch (ex) {
+        resultsEl.hidden = false;
+        resultsEl.innerHTML = '<div class="building-recipe-search-error">'
+            + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
+        return;
+    }
+    if (!Array.isArray(hits) || hits.length === 0) {
+        resultsEl.hidden = false;
+        resultsEl.innerHTML = '<div class="building-recipe-search-empty"><em>No resources match.</em></div>';
+        return;
+    }
+    // Stash display names so re-renders / pickups keep the human label.
+    for (const h of hits) {
+        if (h && h.packagePath) _resourceDisplayCache.set(h.packagePath, h.displayName || h.stem || '');
+    }
+    resultsEl.innerHTML = hits.map(h => ''
+        + '<button type="button" class="building-recipe-result"'
+        +   ' data-recipe-pick="' + escapeHtml(h.packagePath) + '"'
+        +   ' data-recipe-pick-label="' + escapeHtml(h.displayName || h.stem || '') + '">'
+        +   '<span class="result-name">' + escapeHtml(h.displayName || h.stem || '') + '</span>'
+        +   '<span class="result-stem">' + escapeHtml(h.stem || '') + '</span>'
+        + '</button>'
+    ).join('');
+    resultsEl.hidden = false;
 }
 
 function bindBuildingsHandlers() {

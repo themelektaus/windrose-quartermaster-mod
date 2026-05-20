@@ -334,7 +334,22 @@ Geschaetzt 18-22h (voller Tag plus Polish).
 
 ---
 
-## Etappe H2 (Baukosten editierbar - geplant, nicht angefangen)
+## Etappe H2 (Baukosten editierbar - DEPLOYED, awaiting in-game test)
+
+**Status 2026-05-20**: alle Phasen code-fertig + Backend live-validiert, kann in-Game getestet werden. Commits `3b1c3f3` (Backend) und der folgende H2.d-Commit (Frontend + CSS). VanillaResourceCatalog scannt 159 Resources in 132ms, `inspect-recipe`-Endpoint liefert Painting-Defaults (Hardwood x1 + LinenFabric x5) und Bucket-Defaults (Wood x3) zur Pre-Fill. RecipePatcher klont JSON pro Building, BuildingPatcher rewritet die NameMap-Eintraege. Frontend zeigt per-Building Recipe-Editor mit Add/Remove/Reset.
+
+### Erwartetes In-Game-Verhalten
+
+| Schritt | Was |
+|---|---|
+| 1 | App neu starten (Web.dll laden) -> Buildings-Tab |
+| 2 | Bestehendes Building oeffnen -> "Build cost"-Section unter den Slots, Vanilla-Defaults sichtbar mit gruener "Vanilla defaults"-Pille |
+| 3 | Resource-Suchfeld editieren -> Autocomplete listet matching DA_DID_Resource_* |
+| 4 | Resource-Pick -> Source wechselt auf gelbe "Custom (overrides vanilla)"-Pille, "Reset to Vanilla"-Button erscheint |
+| 5 | Count-Wert aendern + Save + Build druecken -> SSE-Log zeigt "Wrote recipe: DA_RD_QmBldg_xxx.json", "RecipeCost: N user row(s)", "RecipeTag: RecipeData.QM.Bldg_xxx" |
+| 6 | Game starten -> Build-Menue: Painting-Eintrag braucht die neuen Resources statt Hardwood+LinenFabric |
+
+### Original-Plan (jetzt referenz)
 
 **Ziel:** User kann pro Building eine Liste von Resource-Cost-Eintraegen (Item + Count) editieren. Vanilla-Defaults (vom Template-Recipe geerbt) sind als Pre-Fill da. Es gibt Add / Remove / Edit pro Row.
 

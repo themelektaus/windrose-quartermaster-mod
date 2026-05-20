@@ -443,3 +443,172 @@
   flex-shrink: 0;
   font-size: var(--font-size-small);
 }
+
+/* -- Build cost editor (Etappe H2) ---------------------------------- */
+
+.building-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  padding: .75em;
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 60%);
+  border-radius: var(--border-radius);
+}
+
+.building-recipe-header {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+  flex-wrap: wrap;
+}
+
+.building-recipe-header > strong {
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-source {
+  font-size: var(--font-size-small);
+  padding: .15em .5em;
+  border-radius: 999px;
+}
+
+.building-recipe-source.vanilla {
+  background-color: color-mix(in srgb, var(--ok, #5e9c5e), black 50%);
+  color: var(--ok, #b2d8b2);
+}
+
+.building-recipe-source.user {
+  background-color: color-mix(in srgb, var(--warn, #e9b85c), black 50%);
+  color: var(--warn, #e9b85c);
+}
+
+.building-recipe-actions {
+  margin-left: auto;
+  display: flex;
+  gap: .5em;
+}
+
+.building-recipe-meta {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-recipe-meta code {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-recipe-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.building-recipe-row {
+  display: grid;
+  grid-template-columns: 1fr 6em auto;
+  gap: .5em;
+  align-items: flex-start;
+  padding: .5em;
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 75%);
+  border-radius: var(--border-radius);
+}
+
+.building-recipe-search {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+}
+
+.building-recipe-search input {
+  width: 100%;
+}
+
+.building-recipe-current {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-recipe-current code {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  word-break: break-all;
+}
+
+.building-recipe-results {
+  position: absolute;
+  top: calc(100% + .15em);
+  left: 0;
+  right: 0;
+  max-height: 14em;
+  overflow-y: auto;
+  background-color: var(--bg-elev-2, #1d1d1d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: var(--border-radius);
+  z-index: 20;
+}
+
+.building-recipe-results[hidden] { display: none; }
+
+.building-recipe-result {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: .4em .6em;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-color, #333);
+  color: var(--text, #eee);
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-result:hover,
+.building-recipe-result:focus {
+  background-color: color-mix(in srgb, var(--accent), black 60%);
+}
+
+.building-recipe-result .result-stem {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text-dim);
+}
+
+.building-recipe-search-empty,
+.building-recipe-search-error {
+  padding: .5em;
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-search-error { color: var(--err); }
+
+.building-recipe-count {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-count input {
+  width: 100%;
+}
+
+.building-recipe-empty {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-error {
+  color: var(--err);
+  font-size: var(--font-size-small);
+}
+
+.building-recipe-status {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
