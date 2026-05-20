@@ -1116,11 +1116,31 @@ async function onBuild() {
                         + ' merged with buyer/seller trade edits' });
                 }
             }
+            if (data.customBuildings && data.customBuildings.count > 0) {
+                const cb = data.customBuildings;
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ' + cb.count + ' custom building'
+                    + (cb.count === 1 ? '' : 's') + ' patched + injected via DLL' });
+                for (const b of cb.items || []) {
+                    let line = '  ' + b.buildingId + ' (template ' + b.templateId
+                        + '): ' + b.stagedFileCount + ' staged file'
+                        + (b.stagedFileCount === 1 ? '' : 's');
+                    if (b.warningCount > 0) {
+                        line += ', ' + b.warningCount + ' warning'
+                            + (b.warningCount === 1 ? '' : 's');
+                    }
+                    lines.push({ kind: b.warningCount > 0 ? 'warn' : 'ok', msg: line });
+                    for (const w of b.warnings || []) {
+                        lines.push({ kind: 'warn', msg: '    ' + w });
+                    }
+                }
+            }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic
-                && !data.cropGrowth && !data.cookingDuration) {
+                && !data.cropGrowth && !data.cookingDuration
+                && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
         } else {

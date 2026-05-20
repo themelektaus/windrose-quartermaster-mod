@@ -514,6 +514,10 @@ footer.collapsed .footer-body {
   color: var(--text);
 }
 
+#build-log .warn {
+  color: var(--warn);
+}
+
 .setup-overlay {
   position: fixed;
   inset: 0;
