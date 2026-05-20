@@ -253,3 +253,193 @@
   font-family: var(--monospace);
   font-size: var(--monospace-size);
 }
+
+/* Etappe G mesh-driven slot UI ------------------------------ */
+
+.building-slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+  grid-column: 1 / -1;
+}
+
+.building-slots-list-title {
+  font-weight: bold;
+  margin-top: .5em;
+}
+
+.building-slots-status {
+  color: var(--text-dim);
+  font-style: italic;
+  grid-column: 1 / -1;
+}
+
+.building-slot-header > small {
+  color: var(--text-dim);
+}
+
+.building-slot-parent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+}
+
+.building-slot-parent > label {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+}
+
+.building-slot-parent > label > span {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+  min-width: 9em;
+}
+
+.building-slot-parent > label > input[type="text"] {
+  flex: 1 1 auto;
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-slot-parent-current {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  margin-left: 9.5em;
+}
+
+.building-slot-parent-current code {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text);
+}
+
+.building-slot-parent-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 16em;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #444);
+  border-radius: var(--border-radius);
+  background: var(--bg-elev);
+  margin-left: 9.5em;
+}
+
+.building-vanilla-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .15em;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color, #333);
+  padding: .35em .5em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.building-vanilla-result:hover {
+  background: var(--bg-hover, #2a2a2a);
+}
+
+.building-vanilla-result:last-child {
+  border-bottom: none;
+}
+
+.building-vanilla-stem {
+  font-family: var(--monospace);
+  font-weight: bold;
+}
+
+.building-vanilla-path {
+  font-family: var(--monospace);
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-slot-parent-error,
+.building-slot-parent-empty {
+  padding: .35em .5em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-slot-params {
+  border-top: 1px dashed var(--border-color, #333);
+  padding-top: .5em;
+}
+
+.building-slot-params-status {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: var(--font-size-small);
+}
+
+.building-slot-params-header {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  margin-bottom: .35em;
+}
+
+.building-slot-params-header code {
+  font-family: var(--monospace);
+  color: var(--text);
+}
+
+.building-slot-params-group {
+  margin: .35em 0;
+}
+
+.building-slot-params-group-title {
+  font-size: var(--font-size-small);
+  font-weight: bold;
+  color: var(--text-dim);
+  margin-bottom: .15em;
+}
+
+.building-slot-param {
+  display: flex;
+  align-items: center;
+  gap: .35em;
+  padding: .15em 0;
+}
+
+.building-slot-param > label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: .5em;
+}
+
+.building-slot-param > label > span {
+  flex-shrink: 0;
+  min-width: 9em;
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  color: var(--text);
+}
+
+.building-slot-param input[type="number"] {
+  width: 8em;
+}
+
+.building-slot-param input[type="color"] {
+  height: 2em;
+  width: 3em;
+  padding: 0;
+  border: 1px solid var(--border-color, #444);
+  cursor: pointer;
+}
+
+.building-slot-param select {
+  flex: 1 1 auto;
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-slot-param .btn-link {
+  flex-shrink: 0;
+  font-size: var(--font-size-small);
+}

@@ -21,11 +21,15 @@
     <section class="card">
       <h2>How it works</h2>
       <p class="hint">
-        Cook your assets in the UE editor first (mesh + icon + Albedo
-        image), then point the building at the cooked folder. The build
-        skips user-cooked Materials/MIs (they crash shipping) and
-        replaces them with Vanilla-MI clones - your textures take over
-        via NameMap rewrites.
+        Cook your assets in the UE editor first (mesh + icon + textures
+        + MIs). Point the building at the cooked folder and pick a
+        template - the GUI reads the mesh, lists its material slots,
+        and lets you pick a Vanilla MI parent per slot. Picking a parent
+        unlocks param controls for whatever scalars/vectors/textures the
+        MI exposes; if your cooked MI uses the same parent master we
+        pre-fill its values as defaults. User-cooked MIs/Materials get
+        skipped at build time (they crash shipping) - cloned Vanilla
+        MIs take their place via NameMap rewrites.
       </p>
     </section>
   </aside>

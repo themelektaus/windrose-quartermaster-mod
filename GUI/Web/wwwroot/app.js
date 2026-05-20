@@ -134,6 +134,60 @@ function indexLootCrossReferences() {
     state.lootTypes = Array.from(types).sort();
 }
 
+// Hard-break migration for the Etappe G mesh-driven schema.
+//
+// Pre-G profiles persist CustomBuildingSlot with hardcoded texture
+// stems (customAlbedoStem / customNormalStem / customMtrmStem) and
+// slot keys named after the template's hardcoded slot names ("Frame"
+// / "Canvas"). Post-G profiles use VanillaMaterialParentPath +
+// dynamic Scalar/Vector/TextureParams dicts keyed by mesh slot
+// index.
+//
+// On load we detect the old shape (any slot still carrying
+// customAlbedoStem etc.) and drop the stale CustomBuildings entirely,
+// marking the profile dirty so the next save persists the cleaned
+// list. The user is informed via a toast/alert so they don't
+// silently lose work - the locked design decision was to NOT
+// auto-migrate (clean break, user re-creates the building in the
+// new UI in ~3 minutes).
+function migrateLegacyCustomBuildings(profile) {
+    if (!profile || !Array.isArray(profile.customBuildings)) return;
+    const list = profile.customBuildings;
+    const droppedNames = [];
+    const keep = [];
+    for (const b of list) {
+        if (!b) continue;
+        if (looksLikeLegacySlot(b.slots)) {
+            droppedNames.push(b.name || b.id || '<unnamed>');
+            continue;
+        }
+        keep.push(b);
+    }
+    if (droppedNames.length === 0) return;
+    profile.customBuildings = keep;
+    state.isDirty = true;
+    // Defer so we don't toast before the UI is mounted.
+    setTimeout(() => {
+        const msg = 'Legacy building schema detected and removed: '
+            + droppedNames.join(', ')
+            + '. Material slots now come from the mesh - re-create the building(s) using the new per-slot Vanilla MI picker.';
+        try { alert(msg); } catch (_) { console.warn(msg); }
+    }, 50);
+}
+
+function looksLikeLegacySlot(slots) {
+    if (!slots || typeof slots !== 'object') return false;
+    for (const k of Object.keys(slots)) {
+        const v = slots[k];
+        if (!v || typeof v !== 'object') continue;
+        if ('customAlbedoStem' in v || 'customAlbedoPath' in v
+         || 'customNormalStem' in v || 'customMtrmStem' in v) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function rebuildSavedCustomItemIds() {
     const ids = new Set();
     if (state.current && Array.isArray(state.current.customItems)) {
@@ -532,6 +586,7 @@ async function loadProfile(id) {
     state.current.sellerLists   = state.current.sellerLists   || {};
     state.current.customItems     = state.current.customItems     || [];
     state.current.customBuildings = state.current.customBuildings || [];
+    migrateLegacyCustomBuildings(state.current);
     rebuildSavedCustomItemIds();
     syncCustomItemsIntoCatalog();
     state.isDirty = false;
