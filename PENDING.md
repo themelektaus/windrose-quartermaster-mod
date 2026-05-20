@@ -1,6 +1,6 @@
 # Quartermaster Builder - Pending Work
 
-Stand: 2026-05-19 nach Etappe F (End-to-End-Test erfolgreich - Painting wird im Game platzierbar gebaut + deployed via GUI) + Etappe-G-Planung (mesh-driven Material-Slots mit User-gepicktem Vanilla-Parent, Hard-Break-Migration locked am Abend des 19.05.)
+Stand: 2026-05-20 nach Etappe G code-fertig (G.1 Backend-Read-Infrastructure + G.2 Mesh-driven backend + Bucket-Template + G.3 Frontend-Rewrite mit dynamic Vanilla MI picker). End-to-End-Test ueber GUI pending.
 
 Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Was schon erledigt ist (Done)
@@ -62,6 +62,36 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
   - `GUI/Web/wwwroot/index.html`: neuer Tab-Button + CSS/JS-Link.
   - `GUI/Web/wwwroot/app.js`: `buildingTemplates`-State, `TAB_NAMES` erweitert, `loadBuildingTemplates` Hook in Boot, Tab-Switch-Render, `onSave`/`onNew`/`loadProfile` Init fuer `customBuildings`, `bindBuildingsHandlers()`.
   - **Status:** Code vollstaendig. Nicht-Blockierende Auto-Scans pro Card. Warnings fuer fehlende mesh/icon/required-albedo + Hinweis auf User-cooked Materials die der Build skippt.
+
+- Etappe F (End-to-End-Test): Painting via GUI gebaut + im Game platzierbar. Validierte den End-to-End-Flow vom User-Cooked Folder zum spielbaren Building.
+
+- Etappe G.1 (Backend Read Infrastructure, Commit `fdfa559`):
+  - `Tools/QuartermasterCore/BuildingCreator/MaterialInstanceInspector.cs`: liest MaterialInstanceConstant uassets (Legacy-Format), exposed Scalar/Vector/Texture-Param-Bloecke + Parent-Master-Material-Ref. Reader-Pattern aus `.build-tmp/mi-probe`.
+  - `Tools/QuartermasterCore/BuildingCreator/VanillaMaterialCatalog.cs`: lazy Catalog ueber alle MI_*.uasset im Vanilla-Pak-Set (via CUE4Parse provider scan). Public API: `Search(query, limit)`.
+  - `Tools/QuartermasterCore/BuildingCreator/CookedFolderInspector.cs`: liest Mesh-Slot-Liste + alle user-cooked MIs im Folder.
+  - `GUI/Web/BuildingDto.cs` + `VanillaMaterialsEndpoint.cs` + `BuildingsEndpoint.cs`: 3 neue Endpoints:
+    - `GET /api/vanilla-materials?search=&limit=` -> catalog search
+    - `GET /api/vanilla-materials/inspect?path=` -> on-demand retoc + Param-Inspection
+    - `GET /api/buildings/inspect-cooked?path=&meshStem=` -> Mesh + User-MI defaults
+  - Verifiziert via curl: hunderte MIs im Catalog (Wood=35, Glass=11), MI_CraftStation_01 inspect zeigt 4 scalars + 1 vector + 3 textures + parent=M_Object, SM_QmPainting_01 zeigt 2 mesh-slots ("WorldGridMaterial" + "lambert1") mit korrekten User-MI-Refs.
+
+- Etappe G.2 (Mesh-driven Backend + Bucket-Template, Commit `d5566ce`):
+  - `Profile.cs` CustomBuildingSlot: alte Custom-Texture-Felder raus, neu: VanillaMaterialParentPath + ScalarParams + VectorParams + TextureParams (Dicts).
+  - `BuildingTemplate.cs`: Slots/MaterialSlotTemplate/VectorParamOverride raus. Templates definieren jetzt nur gameplay-side stuff. Neue Factory `Bucket()` mit `DA_BI_Bucket_01` + `SM_BucketWooden_01` + `T_BI_Bucket_01`.
+  - `BuildingPatcher.cs` Rewrite: mesh-driven slot iteration. Pro Slot clone des user-gepicktem Vanilla-MIs, dann Scalar+Vector+Texture-Param-Patching ueber 3 separate Wege (NameMap rewrite fuer Texturen, UAssetAPI in-place edit fuer Scalar+Vector). Kein Param-Add-Path noetig (Variant A).
+  - `BuildPipeline.BuildBuildingInputs`: liest CookedFolderInspector um Slot-Liste zu derivieren, merged Profile.CustomBuildingSlot per index.
+  - `BuildingTemplatesEndpoint`: ships Painting + Bucket templates.
+  - Verifiziert via /api/building-templates: beide Templates da.
+
+- Etappe G.3 (Mesh-driven Frontend, Commit `32895f4`):
+  - `app.js` `migrateLegacyCustomBuildings()`: detected alte CustomBuildingSlot Schema beim Profile-Load, wirft Buildings raus + Warning-Alert (Hard-Break wie locked).
+  - `tabs/buildings.js` (full rewrite): nach cookedFolderPath + meshStem set fires `/api/buildings/inspect-cooked` und cached pro building.id. Pro mesh-slot ein Parent-Picker (live-search ueber /api/vanilla-materials). Bei Parent-Pick fires `/api/vanilla-materials/inspect` + rendert Param-Controls dynamisch:
+    - Scalar -> number input + reset-to-Vanilla button
+    - Vector -> HTML color picker + alpha number input + reset
+    - Texture -> dropdown der T_*-Stems aus dem Cooked-Folder + reset
+  - Pre-Fill: wenn user-cooked MI fuer den Slot denselben parentPath wie das vom User gewaehlte Vanilla-MI hat, deren Werte als non-destructive defaults eingetragen.
+  - Required-Banner extended fuer per-slot VanillaMaterialParentPath.
+  - `tabs/buildings.css`: Styling fuer alle neuen UI-Komponenten.
 
 - (vorher) Smart-Reuse-Pool fuer Spawn-Widgets - Items verschwinden nach 8 Re-Opens-Bug gefixt, stabil bei Pool=2 nach 28 Re-Opens
 - (vorher) Stale-Donor-Detection - Crash-bei-Re-Open-Bug gefixt
