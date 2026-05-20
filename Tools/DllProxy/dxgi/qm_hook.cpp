@@ -468,36 +468,13 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     QmUE::TUObjectArray* arr = QmUE::GetGObjects();
     QM_LOG_INFO("[UE] init reached threshold on attempt#%d - GObjects.Num=%d", initAttempts, arr->Num());
 
-    // Resolve GMalloc so InjectIntoGroup can grow full TArrays. Done after
-    // GObjects-ready so the engine has fully initialized its allocator. Failure
-    // here is non-fatal: inject still works for groups with slack, only the
-    // grow-on-full path is disabled.
+    // Resolve GMalloc + InnerMalloc + reserve our ItemSwap buffer pool. Done
+    // after GObjects-ready so the engine has fully initialized its allocator.
+    // On failure the ItemSwap path stays disabled and items don't show - no
+    // crash-prone fallback. See GAME_UPDATE_RECOVERY.md for what to do.
     if (!QmAlloc::Resolve(QmUE::GetImageBase()))
     {
-        QM_LOG_WARN("[Alloc] GMalloc resolution failed - inject will skip full TArrays (only groups with Items.Num<Max get a slot)");
-    }
-    else
-    {
-        // Plan B: register all DLL-static ItemSwap buffers, scan FMalloc vtable
-        // for canary-check (0xE3) functions (Free/Realloc/TryRealloc), and
-        // MinHook them so calls on our buffers are intercepted before the
-        // canary check can fire appError().
-        QmInject_RegisterStaticBuffersWithAllocator();
-        QmAlloc::DetectCanaryCheckSlots();
-        int hooks = QmAlloc::InstallExternalBufferHooks();
-        if (hooks > 0)
-            QM_LOG_INFO("[Alloc] external-buffer hook strategy ENABLED (%d slots hooked) - DLL-static ItemSwap buffers are now safe to hand to UE TArrays",
-                hooks);
-        else
-            QM_LOG_WARN("[Alloc] external-buffer hook NOT installed - DLL-static ItemSwap buffers will trip FMallocBinned2 canary on Free/Realloc (game-crash risk)");
-
-        // Plan A diagnostic: detection found 0 canary hits across 16 slots and
-        // 0 0xE3 bytes anywhere in 1500+ scanned bytes. The canary check lives
-        // either >1 level deep or in an encoding we don't recognize. Dump raw
-        // code bytes for every vtable slot plus every unique call/jmp rel32
-        // target so we can disassemble offline (ndisasm/Ghidra) and identify
-        // the actual Realloc/Free pattern + TLS preconditions.
-        QmAlloc::DumpVtableSlotsHexForOfflineAnalysis(/*maxSlots=*/16, /*bytesPerSlot=*/512);
+        QM_LOG_WARN("[Alloc] GMalloc resolution failed - ItemSwap disabled, items will not appear in build menu");
     }
 
     // Phase 2: probe loop. Try every 2s until we find the function or time out.

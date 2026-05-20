@@ -580,37 +580,22 @@ static QmUE::UObject* SpawnOrReuseItemWithOverride(QmUE::UObject* donor, int ite
 
 // Per-buffer capacity = max combined items per group (vanilla + custom).
 // Buffer slot count = how many in-flight groups can coexist before recycling.
+// MUST match QmAlloc::Resolve()'s ReserveBuffers call (count=8, bytes=128).
 constexpr int kCustomGroupItemMax     = 16;
 constexpr int kCustomGroupBufferSlots = 8;
 
-// Static buffers live in DLL .data segment. Their addresses are stable for
-// the lifetime of the DLL - safe to hand to UE.
-// NOTE: handing these to UE is the CANARY-CRASH path. FMallocBinned2's Realloc/Free
-// verify a 0xE3 canary byte before each block - our DLL-data addresses don't have
-// one, so the engine appError()s when it tries to grow/free our buffer. We keep
-// the static buffers ONLY as a last-resort fallback if lazy GMalloc reserve fails.
-alignas(16) static void* g_customGroupItemsBuffers[kCustomGroupBufferSlots][kCustomGroupItemMax] = {};
+// Rotation cursor for picking which reserved buffer slot to use on the next
+// ItemSwap. Buffers themselves live in QmAlloc - allocated by InnerMalloc
+// (bypassing FMallocProxy) so FMallocBinned2's canary check accepts them on
+// later Free/Realloc from the engine.
 static volatile LONG     g_customGroupBufferNextSlot      = 0;
-
-// LAZY-reserved GMalloc-backed buffers. Populated on first ItemSwap that lands
-// on each slot (slot 0 fills on the 1st swap, slot 1 on the 2nd, ..., slot 7 on
-// the 8th). After the 8th swap all slots are full and we just rotate.
-//
-// The reserve mechanism is "hot-realloc on the current vanilla pointer":
-//   void* fresh = FMalloc::Realloc(vanillaData, 128, 16);
-// This runs in the warm GMalloc context of the inject hook (where Realloc on an
-// existing pointer works reliably, unlike Realloc(nullptr,...) which AVs cold).
-// The returned buffer is owned by FMallocBinned2 - it has the right canary byte,
-// so engine-side Realloc/Free on it works without crashing.
-static void*             g_lazyReservedBuffers[kCustomGroupBufferSlots] = {};
-static volatile LONG     g_lazyReserveSuccesses           = 0;
-static volatile LONG     g_lazyReserveFailures            = 0;
 
 // Diagnostic counters.
 static volatile LONG     g_itemSwapApplies                = 0;
 static volatile LONG     g_itemSwapAlreadySwapped         = 0;
 static volatile LONG     g_itemSwapSkipsNoOuter           = 0;
 static volatile LONG     g_itemSwapSkipsNoItems           = 0;
+static volatile LONG     g_itemSwapSkipsNoBuffer          = 0;
 static volatile LONG     g_itemSwapSkipsVanillaOverflow   = 0;
 static volatile LONG     g_itemSwapGcRestores             = 0;
 static volatile LONG     g_itemSwapGcRestoreNotOurs       = 0;
@@ -619,23 +604,11 @@ static volatile LONG     g_itemSwapStandaloneSet          = 0;
 static volatile LONG     g_itemSwapStandaloneFault        = 0;
 
 // EObjectFlags::RF_Standalone keeps an UObject alive past GC. We set it on
-// each group whose Items.Data we swapped to our static buffer, so the group
-// widget survives garbage collection until we explicitly restore it.
+// each group whose Items.Data we swapped, so the group widget survives garbage
+// collection until we explicitly restore it.
 constexpr uint32_t kRF_Standalone = 0x00000002u;
 
-// Helper: is `ptr` one of our static (DLL-data) buffer slots?
-static bool IsOurStaticBuffer(void* ptr)
-{
-    if (!ptr) return false;
-    uintptr_t p    = reinterpret_cast<uintptr_t>(ptr);
-    uintptr_t base = reinterpret_cast<uintptr_t>(&g_customGroupItemsBuffers[0][0]);
-    uintptr_t end  = base + sizeof(g_customGroupItemsBuffers);
-    return p >= base && p < end;
-}
-
-// Helper: is `ptr` one of our QmAlloc-reserved (probe-time GMalloc-reserved) buffers?
-// Note: probe-time reserve currently fails (Realloc(nullptr,...) cold-AVs), so this
-// usually returns false in practice. Kept for forward compatibility.
+// Helper: is `ptr` one of our QmAlloc-reserved buffers?
 static bool IsOurReservedBuffer(void* ptr)
 {
     if (!ptr) return false;
@@ -643,21 +616,6 @@ static bool IsOurReservedBuffer(void* ptr)
     for (int i = 0; i < n; ++i)
         if (QmAlloc::GetReservedBuffer(i) == ptr) return true;
     return false;
-}
-
-// Helper: is `ptr` one of our lazy-reserved (hot-realloc'd at inject time) buffers?
-static bool IsOurLazyReservedBuffer(void* ptr)
-{
-    if (!ptr) return false;
-    for (int i = 0; i < kCustomGroupBufferSlots; ++i)
-        if (g_lazyReservedBuffers[i] == ptr) return true;
-    return false;
-}
-
-// Helper: is `ptr` ANY buffer we own (reserved or static)?
-static bool IsOurBuffer(void* ptr)
-{
-    return IsOurLazyReservedBuffer(ptr) || IsOurReservedBuffer(ptr) || IsOurStaticBuffer(ptr);
 }
 
 // ----- Per-slot bookkeeping for GC-safe cleanup --------------------------
@@ -775,7 +733,7 @@ static int TryItemSwapInVanillaGroup(void* Result, ForeignFanoutReport* fanout)
     __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 
     // ----- Already swapped this hit? Idempotency check -------------------
-    if (IsOurBuffer(vanillaData))
+    if (IsOurReservedBuffer(vanillaData))
     {
         long n = InterlockedIncrement(&g_itemSwapAlreadySwapped);
         if (n <= 3 || (n % 50) == 0)
@@ -794,69 +752,39 @@ static int TryItemSwapInVanillaGroup(void* Result, ForeignFanoutReport* fanout)
         return 0;
     }
 
-    // ----- Pick next slot (rotation) -------------------------------------
+    // ----- Buffer availability gate --------------------------------------
+    // If QmAlloc didn't pre-reserve any buffers (InnerMalloc shim not found,
+    // or ReserveBuffers came up empty) we have NO fallback. Bail silently
+    // here so the game keeps running without our items.
+    const int reservedCount = QmAlloc::GetReservedBufferCount();
+    if (reservedCount <= 0 ||
+        QmAlloc::GetReservedBufferSize() < kCustomGroupItemMax * sizeof(void*))
+    {
+        long n = InterlockedIncrement(&g_itemSwapSkipsNoBuffer);
+        if (n == 1 || (n % 100) == 0)
+            QM_LOG_WARN("[ItemSwap] no reserved buffers (count=%d, size=%zu) - ItemSwap disabled (skip#%ld). See GAME_UPDATE_RECOVERY.md.",
+                reservedCount, QmAlloc::GetReservedBufferSize(), n);
+        return 0;
+    }
+
+    // ----- Pick next slot (rotation, bounded by what was actually reserved) --
+    const int activeSlots = (reservedCount < kCustomGroupBufferSlots)
+                          ?  reservedCount : kCustomGroupBufferSlots;
     LONG slotRaw = InterlockedIncrement(&g_customGroupBufferNextSlot) - 1;
-    int  slotIdx = static_cast<int>(slotRaw % kCustomGroupBufferSlots);
+    int  slotIdx = static_cast<int>(slotRaw % activeSlots);
     if (slotIdx < 0) slotIdx = 0;
 
     // ----- GC safety: cleanup previous tenant of this slot ---------------
     // If a prior swap parked on this slot, restore its Items header (null it)
-    // and clear RF_Standalone so GC can reclaim that group safely. Note this
-    // only clears `g_prevSwaps[slot]` (group-side bookkeeping). It does NOT
-    // touch `g_lazyReservedBuffers[slot]` - that buffer stays ours forever.
+    // and clear RF_Standalone so GC can reclaim that group safely.
     RestorePrevSwapAtSlot(slotIdx);
 
-    // ----- Buffer selection ----------------------------------------------
-    // Priority:
-    //   1. Slot already lazy-cached (set on a previous swap) -> reuse.
-    //   2. QmAlloc reserved buffer for this slot (allocated at probe time via
-    //      InnerMalloc, bypassing the FMallocProxy). These carry the 0xE3
-    //      canary so the game's Free/Realloc is safe.
-    //   3. DLL-static fallback - tolerated only because the canary AV happens
-    //      on engine-side Realloc/Free, which is rare for these short-lived
-    //      group buffers; documented risk if no reserved buffers were available.
-    void** itemsBuffer    = nullptr;
-    bool   bufferReserved = false;
-    const char* srcTag    = "?";
-
-    if (g_lazyReservedBuffers[slotIdx])
-    {
-        // Slot already has a buffer from an earlier swap - reuse it.
-        itemsBuffer    = static_cast<void**>(g_lazyReservedBuffers[slotIdx]);
-        bufferReserved = true;
-        srcTag         = "gmalloc-reserved-reuse";
-    }
-    else
-    {
-        // Try the probe-time reserved buffer for this slot.
-        void* reserved = QmAlloc::GetReservedBuffer(slotIdx);
-        if (reserved && QmAlloc::GetReservedBufferSize() >= kCustomGroupItemMax * sizeof(void*))
-        {
-            g_lazyReservedBuffers[slotIdx] = reserved;
-            itemsBuffer    = static_cast<void**>(reserved);
-            bufferReserved = true;
-            srcTag         = "gmalloc-reserved-fresh";
-            long n = InterlockedIncrement(&g_lazyReserveSuccesses);
-            if (n <= 8)
-                QM_LOG_INFO("[ItemSwap] reserved-buffer claim slot=%d -> 0x%p (claim#%ld, size=%zu)",
-                    slotIdx, reserved, n, QmAlloc::GetReservedBufferSize());
-        }
-        else
-        {
-            // No reserved buffer - fall back to DLL-static (canary AV risk).
-            itemsBuffer    = g_customGroupItemsBuffers[slotIdx];
-            bufferReserved = false;
-            srcTag         = "dll-static-fallback";
-            long n = InterlockedIncrement(&g_lazyReserveFailures);
-            if (n <= 5 || (n % 25) == 0)
-                QM_LOG_WARN("[ItemSwap] no QmAlloc reserved buffer for slot=%d (reserved=%p, reserved.size=%zu) - falling back to DLL-static; carries FMallocBinned2 canary AV risk (failure#%ld)",
-                    slotIdx, reserved, QmAlloc::GetReservedBufferSize(), n);
-        }
-    }
-
+    // ----- Claim the reserved buffer for this slot -----------------------
+    void** itemsBuffer = static_cast<void**>(QmAlloc::GetReservedBuffer(slotIdx));
     if (!itemsBuffer)
     {
-        QM_LOG_WARN("[ItemSwap] no buffer available for slot=%d - aborting", slotIdx);
+        QM_LOG_WARN("[ItemSwap] reserved buffer for slot=%d is null - aborting (reservedCount=%d)",
+            slotIdx, reservedCount);
         return 0;
     }
 
@@ -972,11 +900,10 @@ static int TryItemSwapInVanillaGroup(void* Result, ForeignFanoutReport* fanout)
     ReleaseSRWLockExclusive(&g_prevSwapsLock);
 
     long applyNum = InterlockedIncrement(&g_itemSwapApplies);
-    QM_LOG_INFO("[ItemSwap] *** SUCCESS *** apply#%ld group0=0x%p Items.Data %p->%p (vanilla=%d copied + custom=%d injected = %d total; vanillaOldMax=%d newMax=%d; slot=%d; src=%s; RF_Standalone=%s)",
+    QM_LOG_INFO("[ItemSwap] *** SUCCESS *** apply#%ld group0=0x%p Items.Data %p->%p (vanilla=%d copied + custom=%d injected = %d total; vanillaOldMax=%d newMax=%d; slot=%d; RF_Standalone=%s)",
         applyNum, group0, oldData, itemsBuffer,
         vanillaCopied, customInjected, totalNum,
         vanillaMax, kCustomGroupItemMax, slotIdx,
-        srcTag,
         standaloneSet ? "set" : "FAULT");
 
     return customInjected;
@@ -1300,14 +1227,16 @@ static int InjectIntoGroup(void* group, int itemIdx, ForeignInjectReport* out)
     // GMalloc doesn't recognize the foreign pointer). UE then iterates the new
     // buffer's garbage entries -> AV.
     //
-    // We use QmAlloc::Malloc() (probe-detected direct Malloc slot) rather than
-    // Realloc(nullptr,...) because the Realloc-as-Malloc cold path was observed
-    // to AV on every call after the first. Hypothesis: Realloc's nullptr branch
-    // hits an allocator path that's only safe after some other allocator
-    // activity warmed it up in this thread. Direct Malloc takes the hot path
-    // unconditionally.
+    // We use QmAlloc::Realloc(oldData, ...) (= hot-realloc) first, then fall
+    // back to Realloc(nullptr,...) (= cold-realloc-as-malloc). The cold path
+    // AVs on this build's FMallocProxy with non-zero alignment - both calls
+    // pass `0` (= natural alignment) to skip the proxy's wstring-deref bug.
     //
-    // Doing Malloc + memcpy + never-free-original is safe in both cases:
+    // This legacy path is NOT the primary inject route (BuildingBrushes uses
+    // ItemSwap with reserved buffers instead) but is kept for completeness
+    // in case a future item targets a category that needs a real TArray grow.
+    //
+    // Realloc + memcpy + never-free-original is safe in both cases:
     //   - Original was inline: TInlineAllocator destructor checks Data !=
     //     &InlineBuffer and only calls SecondaryAllocator.Free on heap ptrs;
     //     since we set Data to a fresh GMalloc ptr, that Free path is valid.
@@ -1661,26 +1590,4 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
     }
 
     return capturedThisCall ? 0 : (fanout && fanout->injected > 0 ? 0 : -1);
-}
-
-// ============================================================================
-// QmInject_RegisterStaticBuffersWithAllocator
-//
-// Tells QmAlloc the address+size of every DLL-static ItemSwap buffer so the
-// Free/Realloc MinHook (installed in qm_alloc.cpp) can intercept calls
-// targeting our pointers. Must be called once after QmAlloc::Resolve() and
-// before InstallExternalBufferHooks().
-// ============================================================================
-int QmInject_RegisterStaticBuffersWithAllocator()
-{
-    int registered = 0;
-    const size_t bytesPerBuffer = kCustomGroupItemMax * sizeof(void*);
-    for (int i = 0; i < kCustomGroupBufferSlots; ++i)
-    {
-        void* p = static_cast<void*>(g_customGroupItemsBuffers[i]);
-        if (QmAlloc::RegisterExternalBuffer(p, bytesPerBuffer)) ++registered;
-    }
-    QM_LOG_INFO("[Inject] registered %d/%d DLL-static ItemSwap buffers with QmAlloc (size=%zu bytes each) for Free/Realloc hook protection",
-        registered, kCustomGroupBufferSlots, bytesPerBuffer);
-    return registered;
 }

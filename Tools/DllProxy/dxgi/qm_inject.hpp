@@ -112,9 +112,3 @@ QmInjectSnapshot QmGetInjectSnapshot();
 // Bump hook-hit counter. Returns the post-increment value. The counter lives
 // in qm_inject so the crash snapshot can read it without coupling to qm_hook.
 long QmBumpHookHits();
-
-// Register all DLL-static ItemSwap buffers with QmAlloc's external-buffer
-// table so the Free/Realloc hook can intercept calls on them. Call this
-// AFTER QmAlloc::Resolve() and BEFORE QmAlloc::InstallExternalBufferHooks().
-// Returns count of buffers registered.
-int QmInject_RegisterStaticBuffersWithAllocator();
