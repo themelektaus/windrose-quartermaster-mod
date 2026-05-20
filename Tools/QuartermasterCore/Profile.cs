@@ -811,6 +811,30 @@ namespace Windrose.Quartermaster.Core
         // slot has no user-config yet (Build will fail until the user
         // picks a Vanilla-MI parent for it).
         public Dictionary<string, CustomBuildingSlot> Slots;
+
+        // Etappe H2: user-edited build cost. List of resource entries
+        // each carrying a Vanilla DA_DID_Resource_* path + count.
+        // Empty / null = use the template's Vanilla-recipe defaults
+        // (i.e. clone-through without modifying RecipeCost). When the
+        // user explicitly empties the list the patcher writes an empty
+        // RecipeCost array so the building can be built for free.
+        public List<RecipeCostEntry> RecipeCost;
+    }
+
+    // One row in CustomBuilding.RecipeCost. Mirrors the wire-format
+    // RecipeCostEntryDto used by the inspect-recipe endpoint and the
+    // recipe editor in the GUI.
+    public sealed class RecipeCostEntry
+    {
+        // Full UE virtual path with .Stem suffix, e.g.
+        //   /R5BusinessRules/InventoryItems/DefaultItems/Resource/
+        //     DA_DID_Resource_Hardwood_T02.DA_DID_Resource_Hardwood_T02
+        // The catalog hands these out; the patcher writes them through
+        // verbatim into RecipeCost[i].Item.
+        public string ItemPath;
+
+        // Quantity required per craft.
+        public int Count;
     }
 
     // Per-slot user input (Etappe G mesh-driven schema).

@@ -339,9 +339,10 @@ Geschaetzt 18-22h (voller Tag plus Polish).
 **Ziel:** User kann pro Building eine Liste von Resource-Cost-Eintraegen (Item + Count) editieren. Vanilla-Defaults (vom Template-Recipe geerbt) sind als Pre-Fill da. Es gibt Add / Remove / Edit pro Row.
 
 **Recon-Befunde (verifiziert 2026-05-20):**
-- Bucket-DA's `.uasset` enthaelt in der NameMap **sowohl** den vollen Recipe-Pfad `/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood` **als auch** den Stem `DA_RD_BuildObject_Deco_Dishes_T01_Wood`. Beide sind ueber Standard-NameMap-Rewrite umbiegbar (gleiches Pattern wie Mesh/Icon in der existierenden Pipeline).
-- `VanillaRecipes` ist bereits in `WindrosePaths` + `VanillaSourceManifest` registriert - Setup extrahiert die Recipes automatisch als JSON-Dump (`Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/Recipes/...`). **JSON-Parse reicht fuer den Read-Pfad** (Pre-Fill der Vanilla-Defaults). Fuer den Write-Pfad muessen wir die Recipe-DA als uasset behandeln - via retoc-to-legacy + In-place-Edit oder als CUE4Parse-Read + UAssetAPI-Write.
-- Resource-DAs (`DA_DID_*.uasset`) liegen unter `InventoryItems/DefaultItems/Resource/` - dutzende Wood/Iron/Bark/Bean/Bezoar/Anvil/.... Identisches Scan-Pattern wie `VanillaMaterialCatalog`.
+- Bucket-DA + Painting-DA `.uasset` enthalten in der NameMap **sowohl** den vollen Recipe-Pfad `/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_*` **als auch** den Stem `DA_RD_BuildObject_Deco_*`. Beide sind ueber Standard-NameMap-Rewrite umbiegbar (gleiches Pattern wie Mesh/Icon).
+- **DURCHBRUCH: Recipe-DAs sind PLAIN JSON im Legacy `pakchunk0-Windows.pak`** (437 DA_RD_BuildObject-JSONs gezaehlt) - **keine uasset/uexp Pakete!** Die uasset-basierte UAssetAPI-Loesung entfaellt komplett. Read + Write = `System.Text.Json`. Output-Format: dieselbe Struktur in den Build-Tmp `R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_Qm<BuildingId>.json` schreiben. Wird vom Legacy-Pak-Build mitgepackt (analog zur bereits existierenden `BuildingItems.csv`).
+- Resource-DAs (`DA_DID_*`) sind auch JSON im Legacy-Pak: `R5/Plugins/R5BusinessRules/Content/InventoryItems/DefaultItems/Resource/DA_DID_Resource_*.json`. `Sources/Vanilla` enthaelt sie bereits entpackt (~200+). Catalog-Scan = JSON-glob + parse. Resource-DA Struktur: `InventoryItemUIData.ItemName.Key` (FText-Key), `ItemTexture` (Icon-Pfad), `ItemTag.TagName` (eindeutiger Identifier).
+- ItemName resolved sich aus `InventoryItems.csv` (analog zum BuildingItems-Pattern), die ist auch in der Vanilla-Source-Extract. Catalog kann den Resolve einmal beim Boot machen.
 
 **Hintergrund aus Recon:**
 - Baukosten liegen **nicht** in der Building-DA. Die Bucket-DA referenziert via NameMap eine externe Recipe-DA: `/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood`.
@@ -362,18 +363,18 @@ Geschaetzt 18-22h (voller Tag plus Polish).
 
 | # | Datei | Aenderung | Aufwand |
 |---|---|---|---|
-| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaResourceCatalog.cs` (neu) | Lazy-Catalog ueber `DA_DID_*.uasset` aus Vanilla-Pak-Set via CUE4Parse provider scan. Pro Eintrag: PackagePath, DisplayName (aus DA-NameMap oder DA-Stem), IconPath. Public API: `Search(query, limit)`. | ~2h |
+| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaResourceCatalog.cs` (neu) | Boot-time JSON-glob ueber `Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/InventoryItems/DefaultItems/Resource/DA_DID_Resource_*.json` + InventoryItems.csv-Lookup. Pro Eintrag: PackagePath (`/R5BusinessRules/InventoryItems/DefaultItems/Resource/DA_DID_X.DA_DID_X`), Stem, DisplayName (resolved), IconPath, Tag. Public API: `Search(query, limit)`. Schnell - keine CUE4Parse-Kosten weil JSON schon entpackt. | ~1.5h |
 | 2 | `GUI/Web/BuildingDto.cs` | + `VanillaResourceDto` (PackagePath, DisplayName, IconPath). + `RecipeCostEntryDto` (ItemPath, Count) fuer Profile-Roundtrip. | ~20min |
 | 3 | `GUI/Web/Endpoints/VanillaResourcesEndpoint.cs` (neu) | `GET /api/vanilla-resources?search=&limit=` -> Catalog-Search. | ~30min |
 | 4 | `Tools/QuartermasterCore/Profile.cs` | `CustomBuilding`: + `RecipeCost: List<RecipeCostEntry>` (ItemPath, Count). + Klasse `RecipeCostEntry`. Migration: bei load wenn Feld fehlt -> leere Liste (= Template-Default beim Build verwenden). | ~30min |
-| 5 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | + `VanillaRecipeDaPath` Feld pro Template (gesetzt fuer Painting + Bucket aus Vanilla-Recipe-Pfaden, vom Decoration-Recipe-Set abgeleitet). Wird Default-Source falls User keine `RecipeCost`-Eintraege gesetzt hat. | ~30min |
-| 6 | `Tools/QuartermasterCore/BuildingCreator/RecipePatcher.cs` (neu) | Pro Building: clone Vanilla-Recipe-DA, schreibt `RecipeCost`-Array um (NameMap-Replace fuer DA_DID-Refs, In-place Edit fuer Count-Werte), vergibt eigenen RecipeTag (`RecipeData.QM.<BuildingId>`), Output nach `Quartermaster/Recipes/DA_RD_Qm<BuildingId>.uasset`. Variant: wenn die Tag-Liste eine NameMap-Erweiterung braucht, analog zu CSV-Synthese-Pattern. | ~3h |
-| 7 | `Tools/QuartermasterCore/BuildingCreator/BuildingPatcher.cs` | + Step 8 nach FTextKeyRewriter: ruft RecipePatcher mit `template.VanillaRecipeDaPath` + `building.RecipeCost`, danach NameMap-Replace der DA-Recipe-Reference (`DA_RD_BuildObject_Deco_Dishes_T01_Wood` -> `DA_RD_Qm<BuildingId>`). | ~1h |
-| 8 | `GUI/Web/Endpoints/BuildingsEndpoint.cs` | + `GET /api/buildings/inspect-recipe?templateId=` returns das Default-Recipe-Dict (RecipeCost-Liste) fuer Pre-Fill im Frontend. | ~30min |
+| 5 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | + `VanillaRecipeJsonPath` (Pfad zum Vanilla-Recipe-JSON in Sources) + `VanillaRecipeStem` + `VanillaRecipePackagePath` Felder pro Template (gesetzt fuer Painting + Bucket). | ~30min |
+| 6 | `Tools/QuartermasterCore/BuildingCreator/RecipePatcher.cs` (neu) | Pro Building: liest Vanilla-Recipe-JSON, parsed mit System.Text.Json (JsonDocument), modifiziert RecipeCost-Array und RecipeTag, schreibt nach `tmpDir/R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_Qm<BuildingId>.json`. **Keine UAssetAPI Aufrufe** - reine JSON-Transformation. | ~1.5h |
+| 7 | `Tools/QuartermasterCore/BuildingCreator/BuildingPatcher.cs` | + Step im NameMap-Replacement-Dict: zwei Eintraege fuer Recipe-Pfad-Rewrite (Stem + voller Pfad). Output-Recipe-Info im BuildingPatchResult. | ~30min |
+| 8 | `GUI/Web/Endpoints/BuildingsEndpoint.cs` | + `GET /api/buildings/inspect-recipe?templateId=` returns das Default-Recipe-Dict (RecipeCost-Liste mit Resource-Resolves) fuer Pre-Fill im Frontend. | ~30min |
 | 9 | `GUI/Web/wwwroot/tabs/buildings.{html,css,js}` | + Recipe-Tab im Building-Card-Body. Rows mit Resource-Search-Dropdown + Count-Input. Add/Remove-Buttons. Beim Template-Pick: auto-Load Vanilla-Defaults via inspect-recipe. | ~3h |
-| 10 | `Tools/QuartermasterCore/BuildPipeline.cs` | + Pre-Build-Step: Resource-Pfad-Validierung (jeder ItemPath muss als DA_DID-Vanilla-Asset existieren), zum Frontend zurueckmelden falls fehlend. | ~30min |
+| 10 | `Tools/QuartermasterCore/BuildPipeline.cs` | + Pre-Build: Resource-Pfad-Validierung (jeder ItemPath muss als DA_DID-Vanilla-Asset im Catalog existieren). + RecipePatcher-Hook in der Buildings-AfterExtract-Callback nach BuildingPatcher (zusammen mit BuildingItemsCsvPatcher in der Legacy-Pak-Pipeline). | ~45min |
 
-**Geschaetzt 11-13h** (knapp ein voller Tag).
+**Geschaetzt 8-10h** (statt 11-13h - JSON-Path spart die uasset-Patcher-Komplexitaet).
 
 **Risiken:**
 - Tag-Conflict: wenn unsere `RecipeData.QM.<BuildingId>` Tag mit irgendetwas im Game collidiert. Sehr unwahrscheinlich aber checken.

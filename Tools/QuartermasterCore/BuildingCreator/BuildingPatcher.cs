@@ -626,6 +626,14 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var outIconStem = inputs.IconStem;
             var outIconPath = "/Game/Quartermaster/Items/" + outIconStem;
 
+            // Etappe H2: per-building recipe clone target. The vanilla
+            // building DA's NameMap references the recipe DA both by full
+            // package path AND by bare stem - both entries must move to
+            // point at our cloned recipe under the same vanilla folder
+            // structure (UE resolves them relative to that path).
+            var outRecipeStem = "DA_RD_Qm" + inputs.BuildingId;
+            var outRecipePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/" + outRecipeStem;
+
             // NameMap-rewrite covers asset path / stem refs only - the
             // vanilla FText *keys* (template.VanillaNameKey /
             // VanillaDescriptionKey) live inline in the DA's RawExport
@@ -643,6 +651,17 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 [template.VanillaDaPath] = outDaPath,
             };
 
+            // Add recipe rewrites only when the template carries the
+            // linkage. Defensive: keeps the patch behaviour identical
+            // for any future template that has no recipe (free-build
+            // brushes, decoratives without RecipeCost, ...).
+            if (!string.IsNullOrEmpty(template.VanillaRecipeStem)
+                && !string.IsNullOrEmpty(template.VanillaRecipePackagePath))
+            {
+                daReplacements[template.VanillaRecipeStem]        = outRecipeStem;
+                daReplacements[template.VanillaRecipePackagePath] = outRecipePath;
+            }
+
             var patcher = new DataAssetPatcher { Log = LogLine };
             var pr = patcher.Patch(
                 inputAssetPath:  legacyDaPath,
@@ -659,6 +678,14 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             result.StagedFiles.Add(outDaStem + ".uexp");
             result.OutputDaStem = outDaStem;
             result.OutputDaPath = outDaPath;
+
+            // Surface the recipe-clone identity so the orchestrator's
+            // RecipePatcher step (Etappe H2) knows what stem to emit
+            // and matches the NameMap rewrites we just committed.
+            if (!string.IsNullOrEmpty(template.VanillaRecipeStem))
+            {
+                result.OutputRecipeStem = outRecipeStem;
+            }
 
             if (pr.MissedReplacements != null && pr.MissedReplacements.Count > 0)
             {
@@ -912,6 +939,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // through CookedFolderInspector + merging the Profile's
         // CustomBuildingSlot overrides on top.
         public List<MeshSlotInput> MeshSlots;
+
+        // Etappe H2: user-edited build cost. null = use the template's
+        // vanilla recipe defaults (pass-through). Empty list = explicit
+        // "free build" override (engine accepts a recipe with empty
+        // RecipeCost). Items beyond the catalog are non-fatal warnings.
+        public List<(string ItemPath, int Count)> RecipeCost;
     }
 
     // Per-slot user input (Etappe G mesh-driven).
@@ -981,5 +1014,14 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // params, etc.). Surfaced into the SSE stream so the user knows
         // their template + cook may have drifted.
         public List<string> Warnings;
+
+        // Etappe H2: recipe artefacts. Empty / null when the building's
+        // template doesn't carry a vanilla recipe linkage (defensive -
+        // every shipped template has one today).
+        public string OutputRecipeStem;        // "DA_RD_Qm<BuildingId>"
+        public string OutputRecipeJsonPath;    // absolute on-disk path written
+        public string NewRecipeTag;            // "RecipeData.QM.<BuildingId>"
+        public int    RecipeCostRows;          // rows actually written (vanilla or user)
+        public bool   RecipeCostOverridden;    // user-list applied vs vanilla pass-through
     }
 }

@@ -48,6 +48,84 @@ public static class BuildingsEndpoint
             var dto = InspectCookedFolder(path, meshStem, repoRoot);
             return Results.Json(dto);
         });
+
+        // Etappe H2: surface the template's vanilla RecipeCost list so
+        // the GUI can pre-fill the per-building recipe editor when the
+        // user picks a template (or first opens a building card that
+        // has no user override yet).
+        app.MapGet("/api/buildings/inspect-recipe", (string templateId) =>
+        {
+            var dto = InspectRecipe(templateId, repoRoot);
+            return Results.Json(dto);
+        });
+    }
+
+    static BuildingRecipeInspectionDto InspectRecipe(string templateId, string repoRoot)
+    {
+        var dto = new BuildingRecipeInspectionDto
+        {
+            templateId = templateId ?? "",
+            ok = false,
+            defaultRecipeCost = new List<RecipeCostEntryDto>(),
+        };
+        if (string.IsNullOrWhiteSpace(templateId))
+        {
+            dto.error = "templateId query parameter is required";
+            return dto;
+        }
+
+        var template = ResolveTemplate(templateId);
+        if (template == null)
+        {
+            dto.error = "Unknown templateId: " + templateId;
+            return dto;
+        }
+        if (string.IsNullOrEmpty(template.VanillaRecipeJsonPath))
+        {
+            // Template has no recipe linkage - editor defaults to "free".
+            dto.ok = true;
+            return dto;
+        }
+
+        try
+        {
+            var paths = WindrosePaths.FromModRoot(repoRoot);
+            var abs = Path.Combine(paths.Vanilla, template.VanillaRecipeJsonPath);
+            if (!File.Exists(abs))
+            {
+                dto.error = "Vanilla recipe JSON not extracted yet (run Setup): " + template.VanillaRecipeJsonPath;
+                return dto;
+            }
+            var rows = RecipePatcher.ReadDefaultRecipeCost(abs);
+            foreach (var (itemPath, count) in rows)
+            {
+                dto.defaultRecipeCost.Add(new RecipeCostEntryDto
+                {
+                    itemPath = itemPath,
+                    count = count,
+                });
+            }
+            dto.vanillaRecipeTag = RecipePatcher.ReadVanillaRecipeTag(abs);
+            dto.ok = true;
+            return dto;
+        }
+        catch (Exception ex)
+        {
+            dto.error = "Recipe inspection failed: " + ex.Message;
+            return dto;
+        }
+    }
+
+    // Mirrors the static template factory list in BuildingTemplatesEndpoint.
+    // Keeps the two endpoints decoupled (each only knows about the
+    // templates that matter for its own response shape).
+    static BuildingTemplate ResolveTemplate(string id)
+    {
+        if (string.Equals(id, "Painting", StringComparison.OrdinalIgnoreCase))
+            return BuildingTemplate.Painting();
+        if (string.Equals(id, "Bucket", StringComparison.OrdinalIgnoreCase))
+            return BuildingTemplate.Bucket();
+        return null;
     }
 
     static CookedFolderScanDto ScanCookedFolder(string raw)

@@ -80,6 +80,7 @@ namespace Windrose.Quartermaster.Core
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
         readonly BuildingItemsCsvPatcher _buildingItemsCsvPatcher;
+        readonly RecipePatcher _recipePatcher;
 
         public Action<string> Log;
 
@@ -141,6 +142,7 @@ namespace Windrose.Quartermaster.Core
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
             _buildingItemsCsvPatcher = new BuildingItemsCsvPatcher();
+            _recipePatcher = new RecipePatcher();
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -1110,6 +1112,53 @@ namespace Windrose.Quartermaster.Core
                             var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
                             buildingResults.Add(result);
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
+
+                            // Etappe H2: emit the cloned recipe JSON
+                            // (RecipeCost + per-building RecipeTag). The
+                            // file lands under the same plugin-relative
+                            // path the building DA references after the
+                            // NameMap rewrite committed by Step 6 above,
+                            // so it gets picked up automatically by the
+                            // legacy-pak step (same as BuildingItems.csv).
+                            // Recipe linkage is optional (defensive against
+                            // future template variants without a recipe).
+                            if (!string.IsNullOrEmpty(template.VanillaRecipeJsonPath))
+                            {
+                                try
+                                {
+                                    var vanillaRecipeAbs = Path.Combine(_paths.Vanilla, template.VanillaRecipeJsonPath);
+                                    var legacyStagingDir = Path.Combine(_paths.BuildTmp, profile.Id);
+                                    var recipesOutDir = Path.Combine(legacyStagingDir,
+                                        "R5", "Plugins", "R5BusinessRules", "Content",
+                                        "Recipes", "Building", "Items", "Decorations");
+                                    _recipePatcher.Log = Log;
+                                    var costList = ToTupleList(b.RecipeCost);
+                                    var rp = _recipePatcher.Patch(
+                                        vanillaRecipeAbs,
+                                        recipesOutDir,
+                                        b.Id,
+                                        costList);
+                                    result.OutputRecipeJsonPath = rp.OutputJsonPath;
+                                    result.OutputRecipeStem     = rp.OutputStem;
+                                    result.NewRecipeTag         = rp.NewRecipeTag;
+                                    result.RecipeCostRows       = rp.RecipeCostRows;
+                                    result.RecipeCostOverridden = rp.CostOverridden;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Non-fatal: building still ships, but
+                                    // the DA will reference a recipe stem
+                                    // that doesn't exist in the pak. UE
+                                    // logs a soft warning at load time
+                                    // ("LoadPackage: SkipPackage: ...
+                                    // DA_RD_Qm<BuildingId>") and the
+                                    // building becomes uncraftable. Surface
+                                    // loud so the user notices.
+                                    result.Warnings.Add(
+                                        "Recipe patch failed for '" + b.Id + "': " + ex.Message);
+                                    LogLine("  warn: " + result.Warnings[^1]);
+                                }
+                            }
                         }
                         LogLine("Patched buildings: " + buildingResults.Count + " written");
 
@@ -2168,6 +2217,25 @@ namespace Windrose.Quartermaster.Core
         // overrides. Slot dict keys may be either the slot index as a
         // string ("0", "1") or the slot name ("WorldGridMaterial") -
         // the GUI defaults to index, but either works.
+        // Etappe H2: convert the profile's RecipeCost list (or null
+        // for "use vanilla defaults") into the patcher's tuple-list
+        // shape. Returns null for null/empty-or-skeleton input so the
+        // RecipePatcher's "null = pass-through" semantics kick in;
+        // returns an empty list iff the user explicitly cleared the
+        // cost editor and saved the empty state (engine accepts that).
+        static List<(string ItemPath, int Count)> ToTupleList(List<RecipeCostEntry> rows)
+        {
+            if (rows == null) return null;
+            var list = new List<(string, int)>(rows.Count);
+            foreach (var r in rows)
+            {
+                if (r == null) continue;
+                if (string.IsNullOrWhiteSpace(r.ItemPath)) continue;
+                list.Add((r.ItemPath, r.Count));
+            }
+            return list;
+        }
+
         static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template, string usmapPath, Action<string> log)
         {
             var inspector = new CookedFolderInspector

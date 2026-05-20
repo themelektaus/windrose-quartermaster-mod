@@ -173,3 +173,71 @@ sealed class MeshMaterialSlotDto
     public string userMaterialStem;
     public string userMaterialPath;
 }
+
+// -----------------------------------------------------------------------
+// Etappe H2: Vanilla resource catalog + per-building build-cost editor.
+//
+// /api/vanilla-resources?search=&limit=          -> VanillaResourceDto[]
+// /api/buildings/inspect-recipe?templateId=      -> BuildingRecipeInspectionDto
+//
+// The catalog scans Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/
+// InventoryItems/DefaultItems/Resource/DA_DID_Resource_*.json - cheap,
+// no CUE4Parse, no extraction. Inspect-recipe parses the template's
+// VanillaRecipeJsonPath and surfaces the default RecipeCost list so the
+// GUI can pre-fill the cost editor when the user picks a template.
+// -----------------------------------------------------------------------
+
+sealed class VanillaResourceDto
+{
+    // File stem, e.g. "DA_DID_Resource_Hardwood_T02". Unique within the
+    // catalog and what the recipe JSON references in RecipeCost[i].Item
+    // (after the .Stem suffix is added).
+    public string stem;
+
+    // Full UE virtual path the recipe JSON uses verbatim, e.g.
+    //   "/R5BusinessRules/InventoryItems/DefaultItems/Resource/
+    //    DA_DID_Resource_Hardwood_T02.DA_DID_Resource_Hardwood_T02"
+    // Stored on the profile as CustomBuilding.RecipeCost[i].ItemPath.
+    public string packagePath;
+
+    // Prettified stem ("Hardwood T02") shown in the resource dropdown.
+    public string displayName;
+
+    // Icon UE path (may be empty for resources without thumbnail).
+    public string iconPath;
+
+    // Gameplay-tag identifier, e.g. "ItemData.Resource.Hardwood.T02".
+    // Surfaced for power-user filtering but not required by the editor.
+    public string itemTag;
+}
+
+sealed class RecipeCostEntryDto
+{
+    // Full packagePath form (matches VanillaResourceDto.packagePath).
+    public string itemPath;
+
+    // Quantity required per craft (>= 1, max 999 enforced UI-side).
+    public int count;
+}
+
+// Returned by /api/buildings/inspect-recipe?templateId=<id>.
+// Surfaces the default RecipeCost list the template's Vanilla recipe
+// JSON carries, so the GUI can show those values as pre-fill in the
+// per-building cost editor. The frontend renders the per-row Resource
+// picker against VanillaResourceDto (already enriched with displayName
+// + iconPath) once the user starts editing.
+sealed class BuildingRecipeInspectionDto
+{
+    public string templateId;
+    public bool   ok;
+    public string error;
+
+    // The vanilla RecipeCost entries (item-path + count). Empty if the
+    // template has no recipe linkage (would-be future templates with
+    // no build cost) - the editor then defaults to "free".
+    public List<RecipeCostEntryDto> defaultRecipeCost;
+
+    // The resolved RecipeTag string the vanilla recipe uses, surfaced
+    // for diagnostics (read-only in the UI).
+    public string vanillaRecipeTag;
+}

@@ -87,6 +87,37 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // accept per-item tags (PENDING risk in G.2 plan).
         public string CategoryTag;
 
+        // --- Vanilla recipe (build-cost source, Etappe H2) ---------------
+        //
+        // Each building references an external recipe DA which carries the
+        // RecipeCost array (resource items + counts), RecipeTag, and
+        // CraftRequirement. Discovered via the Vanilla DA's NameMap: e.g.
+        // DA_BI_Paintings_HighLands_02 has both the full package path
+        // "/R5BusinessRules/Recipes/Building/Items/Decorations/
+        //  DA_RD_BuildObject_Deco_Paintings_T02" and the bare stem
+        // "DA_RD_BuildObject_Deco_Paintings_T02" in its NameMap. Both
+        // entries get rewritten via DataAssetPatcher to point at our
+        // cloned recipe under
+        // /R5BusinessRules/Recipes/Building/Items/Decorations/
+        //   DA_RD_Qm<BuildingId>.
+        //
+        // Unlike all other vanilla assets here, recipes ship as PLAIN JSON
+        // in the legacy pakchunk0-Windows.pak (not as uasset/uexp) - so the
+        // RecipePatcher just parses + transforms + writes JSON, no UAssetAPI
+        // involvement. VanillaRecipeJsonPath is the absolute on-disk path
+        // to the extracted source JSON under Sources/Vanilla.
+        public string VanillaRecipeJsonPath;
+
+        // Bare file stem ("DA_RD_BuildObject_Deco_Paintings_T02"). Goes
+        // into the DataAssetPatcher's NameMap-replacement table.
+        public string VanillaRecipeStem;
+
+        // Full UE virtual path matching the second NameMap entry for the
+        // recipe in the building's DA ("/R5BusinessRules/Recipes/.../
+        // DA_RD_BuildObject_Deco_Paintings_T02", WITHOUT the .Stem suffix
+        // - that style of path is unique to RecipeCost item refs).
+        public string VanillaRecipePackagePath;
+
         // -----------------------------------------------------------------
         // Convenience factories.
         // -----------------------------------------------------------------
@@ -110,6 +141,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_Paintings_HighLands_02",
 
                 CategoryTag = "BuildingDecoration",
+
+                // Recipe wiring (Etappe H2). Note the Painting DA's
+                // NameMap references the recipe by both full path and
+                // bare stem - DataAssetPatcher will rewrite both.
+                VanillaRecipeJsonPath    = "R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Paintings_T02.json",
+                VanillaRecipeStem        = "DA_RD_BuildObject_Deco_Paintings_T02",
+                VanillaRecipePackagePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Paintings_T02",
             };
         }
 
@@ -136,6 +174,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_BI_Bucket_01",
 
                 CategoryTag = "BuildingDecoration",
+
+                // Recipe wiring (Etappe H2).
+                VanillaRecipeJsonPath    = "R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood.json",
+                VanillaRecipeStem        = "DA_RD_BuildObject_Deco_Dishes_T01_Wood",
+                VanillaRecipePackagePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood",
             };
         }
     }
