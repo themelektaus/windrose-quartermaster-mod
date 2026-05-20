@@ -11,6 +11,7 @@
 #include "qm_log.hpp"
 #include "qm_config.hpp"
 #include "qm_inject.hpp"
+#include "qm_alloc.hpp"
 
 // ============================================================================
 // Module-level config.
@@ -44,10 +45,39 @@ struct PoolEntry
 };
 static PoolEntry        g_spawnedPool[16] = {};
 static int              g_spawnedPoolCount    = 0;
+static int              g_spawnedPoolNextSlot = 0;   // circular write cursor (used in force-fresh mode)
 static QmUE::UClass*    g_itemWidgetClass     = nullptr;
 static volatile LONG    g_spawnAttempts       = 0;
 static volatile LONG    g_spawnSuccesses      = 0;
 static volatile LONG    g_spawnReuses         = 0;
+
+// ============================================================================
+// FORCE-FRESH-SPAWN toggle (Iteration 2 - 2026-05-20).
+// ============================================================================
+// Observation: 2nd+ Build-menu visits cause item[0] (Painting) to take the
+// pool-REUSE path (no SpawnObject UFunction call). Combined with the heavy
+// FMalloc-TLS dependency of FMallocBinned3, that means the 64-byte bin pool
+// never gets a real warm allocation in the detour-callback context - and our
+// subsequent TArray-grow (GMalloc::Realloc) AVs at faultAddr=0x10 on all
+// three fallback paths (hot/cold-align16/cold-align0).
+//
+// In Hit#2 (1st visit) item[0] was *freshly* spawned (pool empty), and the
+// 64-byte pool came up warm enough that Realloc(nullptr,0) succeeded - the
+// single observed difference between "works" and "fails" was that one extra
+// real SpawnObject call before Realloc.
+//
+// Iteration 2 forces every inject to use the SpawnObject path - even when a
+// pool widget for the same itemIdx is technically reusable. The pool becomes
+// circular: when full, oldest entries are overwritten and their widgets are
+// silently orphaned (UE GC reclaims them within seconds since no live UObject
+// holds a reference). Memory cost: ~K spawned widgets per Build-menu visit
+// until GC, bounded by frequency of Build-menu reopenings.
+//
+// If 6 sequential fresh SpawnObject calls per visit (1 real item[0] + 1 real
+// item[1] + 5 sacrificial) still don't reach the 64-byte pool warm-up
+// threshold, the TLS-warmup hypothesis is incorrect and we need a structural
+// change (Option B: Replace-statt-Grow, or Option C: own Group).
+static constexpr bool kForceFreshSpawn = true;
 
 // ---- Override targets (one per InjectableItem) ----------------------------
 // Index parallels g_injectableItems[]. Resolved lazily on first use, cached.
@@ -239,6 +269,104 @@ static bool IsDonorClassValid(QmUE::UObject* candidate, char* clsNameOut, size_t
 }
 
 // ============================================================================
+// Warm up FMalloc by triggering MULTIPLE SpawnObject calls. UE's allocator
+// appears to require N successive UE-level allocation events (via reflection
+// VM / SpawnObject path) on this thread before FMalloc::Realloc takes the hot
+// path. At hit#2 (which worked) two SpawnObjects ran before Realloc (item[0]
+// real-spawn + sacrificial). At hit#4+ (broken) only ONE ran (sacrificial
+// only, item[0] came from pool-REUSE).
+//
+// Iteration 1 attempt: brute-force 5 sacrificial spawns per Realloc to push
+// the SpawnObject count well above the threshold. Each spawned widget is
+// INTENTIONALLY ORPHANED (not put into the pool). UE GC reclaims them.
+// Cost per Realloc: ~5 UObjects (few KB each) until GC sweep.
+//
+// Returns count of successful spawns.
+// ============================================================================
+static volatile LONG g_warmupSpawns = 0;
+static int WarmUpAllocatorViaSpawn(QmUE::UClass* cls, QmUE::UObject* outer, const char* contextTag, int count)
+{
+    if (!cls || !outer) return 0;
+    if (count <= 0) count = 1;
+    int ok = 0;
+    QmUE::UObject* lastSpawn = nullptr;
+    for (int i = 0; i < count; ++i)
+    {
+        QmUE::UObject* throwaway = nullptr;
+        __try { throwaway = QmUE::SpawnObjectViaUFunction(cls, outer); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { throwaway = nullptr; }
+        if (throwaway) { lastSpawn = throwaway; ok++; }
+    }
+    if (ok == 0)
+    {
+        QM_LOG_WARN("[Warmup] SpawnObjectViaUFunction returned null (ctx=%s cls=0x%p outer=0x%p req=%d)",
+            contextTag ? contextTag : "?", cls, outer, count);
+        return 0;
+    }
+    InterlockedExchangeAdd(&g_warmupSpawns, ok);
+    QM_LOG_INFO("[Warmup] sacrificial spawn series ok=%d/%d lastWidget=0x%p (ctx=%s cls=0x%p outer=0x%p totalEver=%ld) - warming FMalloc TLS before TArray-grow",
+        ok, count, lastSpawn, contextTag ? contextTag : "?", cls, outer, g_warmupSpawns);
+    return ok;
+}
+
+// ============================================================================
+// Warm up FMalloc by spamming AppendString (FName -> FString) lookups.
+//
+// EMPIRICAL DISCOVERY: at hit#2 (the only hit where Realloc Path 3 worked) the
+// ClassDump diagnostic ran ~200 ResolveFNameNarrow calls between AllocWarmup
+// and Realloc. At hit#4 the ClassDump was already done (atomic-once), so no
+// AppendString activity preceded Realloc - and ALL 3 Realloc paths failed.
+//
+// Hypothesis: FMallocBinned3's per-thread per-pool TLS caches are populated
+// lazily by real UE allocator activity. AppendString internally invokes
+// TArray<TCHAR>::Reserve which goes through GMalloc->Realloc on the appropriate
+// pool. Spamming long-name lookups warms the 64-byte (and adjacent) bin caches
+// on this thread, so our subsequent Realloc(64,16) call hits hot TLS.
+//
+// We pull the source FName from the donor item (its Name is always a long
+// WBP_Building_Item_C_<unique-id> string, well over the inline-string limit),
+// which guarantees AppendString takes the heap-allocation path.
+//
+// Buffer is on the stack; if AppendString reallocs Data (when its initial size
+// is exceeded), we leak the resulting heap buffer per call. That's fine - we
+// WANT the heap allocation here, that's literally the warmup mechanism.
+// ============================================================================
+static volatile LONG g_warmupFNameRuns  = 0;
+static volatile LONG g_warmupFNameCalls = 0;
+
+static int WarmUpFMallocViaFNameLookups(QmUE::UObject* sourceObject, int iterations, const char* contextTag)
+{
+    if (!sourceObject) return 0;
+
+    QmUE::FName fname = {0, 0};
+    __try { fname = sourceObject->Name; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { fname = {0, 0}; }
+    if (fname.ComparisonIndex == 0) return 0;
+
+    int successCount = 0;
+    char nameBuf[512];
+
+    for (int i = 0; i < iterations; ++i)
+    {
+        nameBuf[0] = '\0';
+        bool ok = false;
+        __try
+        {
+            ok = QmUE::ResolveFNameNarrow(fname, nameBuf, sizeof(nameBuf));
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+        if (ok) successCount++;
+        InterlockedIncrement(&g_warmupFNameCalls);
+    }
+
+    long runs = InterlockedIncrement(&g_warmupFNameRuns);
+    QM_LOG_INFO("[Warmup] FName-lookup spam ok: %d/%d resolved (ctx=%s sourceObj=0x%p name='%s' run#%ld totalCalls=%ld) - warming FMalloc 64-byte pool TLS",
+        successCount, iterations, contextTag ? contextTag : "?", sourceObject,
+        nameBuf[0] ? nameBuf : "<?>", runs, g_warmupFNameCalls);
+    return successCount;
+}
+
+// ============================================================================
 // Pool reuse: find an existing widget for the same itemIdx whose lastGroup
 // differs from currentGroup. That widget is owned by a previous (no-longer
 // rendered) group - reusing it both avoids spawning N widgets per session and
@@ -276,29 +404,41 @@ static QmUE::UObject* SpawnOrReuseItemWithOverride(QmUE::UObject* donor, int ite
     const InjectableItem& item = g_injectableItems[itemIdx];
 
     // ----- Reuse path -----------------------------------------------------
-    int reuseIdx = FindReusablePoolEntry(itemIdx, currentGroup);
-    if (reuseIdx >= 0)
+    // Iteration 2: pool-REUSE is DISABLED when kForceFreshSpawn is true. The
+    // SpawnObject UFunction call is the only path that appears to warm the
+    // FMalloc 64-byte TLS pool enough that the subsequent TArray-grow Realloc
+    // succeeds. Reuse skips that call (just hands back a stored pointer), so
+    // 2nd+ visits fail at Realloc. See kForceFreshSpawn comment above.
+    if (!kForceFreshSpawn)
     {
-        PoolEntry& e = g_spawnedPool[reuseIdx];
-        QmUE::UObject* reused = e.widget;
-        void* oldGroup = e.lastGroup;
-        e.lastGroup = currentGroup;
-        e.reuseCount++;
-        InterlockedIncrement(&g_spawnReuses);
+        int reuseIdx = FindReusablePoolEntry(itemIdx, currentGroup);
+        if (reuseIdx >= 0)
+        {
+            PoolEntry& e = g_spawnedPool[reuseIdx];
+            QmUE::UObject* reused = e.widget;
+            void* oldGroup = e.lastGroup;
+            e.lastGroup = currentGroup;
+            e.reuseCount++;
+            InterlockedIncrement(&g_spawnReuses);
 
-        // Re-apply override (idempotent) in case anything mutated the
-        // Pkg/Asset slots while the widget sat in the previous group.
-        if (ResolveOverrideTarget(itemIdx))
-            ApplyOverrideToSpawned(reused, itemIdx);
+            // Re-apply override (idempotent) in case anything mutated the
+            // Pkg/Asset slots while the widget sat in the previous group.
+            if (ResolveOverrideTarget(itemIdx))
+                ApplyOverrideToSpawned(reused, itemIdx);
 
-        QM_LOG_INFO("[Spawn] *** REUSE *** widget=0x%p ctx=%s item[%d]='%s' poolIdx=%d reuseCount=%ld oldGroup=0x%p newGroup=0x%p",
-            reused, contextTag ? contextTag : "?", itemIdx, item.name,
-            reuseIdx, e.reuseCount, oldGroup, currentGroup);
-        return reused;
+            QM_LOG_INFO("[Spawn] *** REUSE *** widget=0x%p ctx=%s item[%d]='%s' poolIdx=%d reuseCount=%ld oldGroup=0x%p newGroup=0x%p",
+                reused, contextTag ? contextTag : "?", itemIdx, item.name,
+                reuseIdx, e.reuseCount, oldGroup, currentGroup);
+            return reused;
+        }
     }
 
     // ----- Pool full guard (only matters for fresh spawns) ----------------
-    if (g_spawnedPoolCount >= kSpawnedPoolMax)
+    // In force-fresh mode the pool acts as a circular buffer: when full, we
+    // overwrite the oldest slot. The orphaned widget loses its only ref and
+    // UE GC reclaims it within a few sweeps. In normal (reuse) mode we keep
+    // the existing hard-fail.
+    if (g_spawnedPoolCount >= kSpawnedPoolMax && !kForceFreshSpawn)
     {
         QM_LOG_WARN("[Spawn] pool full (%d) - refusing to spawn more (ctx=%s item='%s')",
             g_spawnedPoolCount, contextTag ? contextTag : "?", item.name);
@@ -359,7 +499,25 @@ static QmUE::UObject* SpawnOrReuseItemWithOverride(QmUE::UObject* donor, int ite
     if (ResolveOverrideTarget(itemIdx))
         ApplyOverrideToSpawned(spawned, itemIdx);
 
-    if (g_spawnedPoolCount < kSpawnedPoolMax)
+    // Pool insertion: in normal mode append to next free slot. In force-fresh
+    // mode use circular write (overwrite oldest entry) so we never hit the
+    // full-pool ceiling - the orphaned widget loses its only reference and
+    // gets reclaimed by UE GC within a few sweeps.
+    void* orphanedWidget = nullptr;
+    if (kForceFreshSpawn)
+    {
+        int slot = g_spawnedPoolNextSlot;
+        if (slot < 0 || slot >= kSpawnedPoolMax) slot = 0;
+        orphanedWidget = g_spawnedPool[slot].widget;  // may be null on first wrap
+        PoolEntry& e = g_spawnedPool[slot];
+        e.widget     = spawned;
+        e.itemIdx    = itemIdx;
+        e.lastGroup  = currentGroup;
+        e.reuseCount = 0;
+        g_spawnedPoolNextSlot = (slot + 1) % kSpawnedPoolMax;
+        if (g_spawnedPoolCount < kSpawnedPoolMax) g_spawnedPoolCount++;
+    }
+    else if (g_spawnedPoolCount < kSpawnedPoolMax)
     {
         PoolEntry& e = g_spawnedPool[g_spawnedPoolCount++];
         e.widget     = spawned;
@@ -368,11 +526,460 @@ static QmUE::UObject* SpawnOrReuseItemWithOverride(QmUE::UObject* donor, int ite
         e.reuseCount = 0;
     }
     InterlockedIncrement(&g_spawnSuccesses);
-    QM_LOG_INFO("[Spawn] *** SUCCESS *** %s spawned @ 0x%p (outer=0x%p) ItemData=%s ctx=%s item[%d]='%s' pool=%d group=0x%p",
+    QM_LOG_INFO("[Spawn] *** SUCCESS *** %s spawned @ 0x%p (outer=0x%p) ItemData=%s ctx=%s item[%d]='%s' pool=%d group=0x%p%s",
         itemClsName, spawned, outer, copyOK ? "cloned-from-donor" : "FAULT",
-        contextTag ? contextTag : "?", itemIdx, item.name, g_spawnedPoolCount, currentGroup);
+        contextTag ? contextTag : "?", itemIdx, item.name, g_spawnedPoolCount, currentGroup,
+        orphanedWidget ? " [forced-fresh, orphaned prior pool entry]" : "");
 
     return spawned;
+}
+
+// ============================================================================
+// VARIANTE B: Custom group widget with DLL-static Items buffer.
+// ============================================================================
+// Strategy: instead of growing the existing group's Items TArray (which AVs
+// inside FMallocBinned3 on 2nd+ tab visits due to per-thread TLS state), or
+// spawning a parallel custom group (which renders double because UMG sub-
+// slots are shared), we DIRECTLY OVERWRITE the vanilla group's Items.Data
+// pointer with a DLL-static buffer that contains BOTH the existing vanilla
+// items AND our custom items. No FMalloc::Realloc on our side, single group
+// in the UI with all items mixed in.
+//
+// Step-by-step:
+//   1. Read group0 = outer.Data[0] (the vanilla group we're hijacking)
+//   2. Read its existing Items.Data array (N vanilla item pointers)
+//   3. Pick next static buffer slot, copy N vanilla pointers into slots [0..N-1]
+//   4. SpawnObjectViaUFunction for each of our custom items, write into [N..N+K-1]
+//   5. Overwrite group0.Items.Data = static buffer, Num = N+K, Max = 16
+//   6. Outer Result array unchanged - one group, with all items
+//
+// Trade-offs:
+//   - The OLD vanilla Items.Data buffer is orphaned (FMalloc-allocated). Per-
+//     visit memory leak of ~32-64 bytes. UE may eventually GC the original
+//     reference path and free it, but we can't guarantee. Acceptable.
+//   - On GC of the vanilla group, TArray::~TArray calls FMalloc::Free on our
+//     static buffer. FMallocBinned3 should detect "address not in any bin" and
+//     either silently ignore (release) or assert (debug). Same risk profile as
+//     the previous custom-group approach which was observed stable under
+//     stress-testing.
+//   - If UE tries to grow Items[] at runtime (Realloc on our static buffer),
+//     would be catastrophic. But BuildingBrushes tab is read-only display -
+//     items aren't modified after CreateTabsData returns.
+//
+// To minimize double-free risk on rotation: rotate static buffer slots. With
+// N slots and human-speed visits, GC reclaims the previous group before we
+// wrap around. Each visit gets a fresh group instance from UE (different
+// outer.Data[0] pointer each hit per logs).
+//
+// Backs off (returns 0, falls through to per-group inject) when:
+//   - Outer Result array empty or unreadable
+//   - Vanilla group0 unreadable
+//   - Already swapped (Items.Data points into our static buffer pool) - prevents
+//     duplicate injection on repeated calls within the same hit
+// ============================================================================
+
+// Per-buffer capacity = max combined items per group (vanilla + custom).
+// Buffer slot count = how many in-flight groups can coexist before recycling.
+constexpr int kCustomGroupItemMax     = 16;
+constexpr int kCustomGroupBufferSlots = 8;
+
+// Static buffers live in DLL .data segment. Their addresses are stable for
+// the lifetime of the DLL - safe to hand to UE.
+// NOTE: handing these to UE is the CANARY-CRASH path. FMallocBinned2's Realloc/Free
+// verify a 0xE3 canary byte before each block - our DLL-data addresses don't have
+// one, so the engine appError()s when it tries to grow/free our buffer. We keep
+// the static buffers ONLY as a last-resort fallback if lazy GMalloc reserve fails.
+alignas(16) static void* g_customGroupItemsBuffers[kCustomGroupBufferSlots][kCustomGroupItemMax] = {};
+static volatile LONG     g_customGroupBufferNextSlot      = 0;
+
+// LAZY-reserved GMalloc-backed buffers. Populated on first ItemSwap that lands
+// on each slot (slot 0 fills on the 1st swap, slot 1 on the 2nd, ..., slot 7 on
+// the 8th). After the 8th swap all slots are full and we just rotate.
+//
+// The reserve mechanism is "hot-realloc on the current vanilla pointer":
+//   void* fresh = FMalloc::Realloc(vanillaData, 128, 16);
+// This runs in the warm GMalloc context of the inject hook (where Realloc on an
+// existing pointer works reliably, unlike Realloc(nullptr,...) which AVs cold).
+// The returned buffer is owned by FMallocBinned2 - it has the right canary byte,
+// so engine-side Realloc/Free on it works without crashing.
+static void*             g_lazyReservedBuffers[kCustomGroupBufferSlots] = {};
+static volatile LONG     g_lazyReserveSuccesses           = 0;
+static volatile LONG     g_lazyReserveFailures            = 0;
+
+// Diagnostic counters.
+static volatile LONG     g_itemSwapApplies                = 0;
+static volatile LONG     g_itemSwapAlreadySwapped         = 0;
+static volatile LONG     g_itemSwapSkipsNoOuter           = 0;
+static volatile LONG     g_itemSwapSkipsNoItems           = 0;
+static volatile LONG     g_itemSwapSkipsVanillaOverflow   = 0;
+static volatile LONG     g_itemSwapGcRestores             = 0;
+static volatile LONG     g_itemSwapGcRestoreNotOurs       = 0;
+static volatile LONG     g_itemSwapGcRestoreFaults        = 0;
+static volatile LONG     g_itemSwapStandaloneSet          = 0;
+static volatile LONG     g_itemSwapStandaloneFault        = 0;
+
+// EObjectFlags::RF_Standalone keeps an UObject alive past GC. We set it on
+// each group whose Items.Data we swapped to our static buffer, so the group
+// widget survives garbage collection until we explicitly restore it.
+constexpr uint32_t kRF_Standalone = 0x00000002u;
+
+// Helper: is `ptr` one of our static (DLL-data) buffer slots?
+static bool IsOurStaticBuffer(void* ptr)
+{
+    if (!ptr) return false;
+    uintptr_t p    = reinterpret_cast<uintptr_t>(ptr);
+    uintptr_t base = reinterpret_cast<uintptr_t>(&g_customGroupItemsBuffers[0][0]);
+    uintptr_t end  = base + sizeof(g_customGroupItemsBuffers);
+    return p >= base && p < end;
+}
+
+// Helper: is `ptr` one of our QmAlloc-reserved (probe-time GMalloc-reserved) buffers?
+// Note: probe-time reserve currently fails (Realloc(nullptr,...) cold-AVs), so this
+// usually returns false in practice. Kept for forward compatibility.
+static bool IsOurReservedBuffer(void* ptr)
+{
+    if (!ptr) return false;
+    int n = QmAlloc::GetReservedBufferCount();
+    for (int i = 0; i < n; ++i)
+        if (QmAlloc::GetReservedBuffer(i) == ptr) return true;
+    return false;
+}
+
+// Helper: is `ptr` one of our lazy-reserved (hot-realloc'd at inject time) buffers?
+static bool IsOurLazyReservedBuffer(void* ptr)
+{
+    if (!ptr) return false;
+    for (int i = 0; i < kCustomGroupBufferSlots; ++i)
+        if (g_lazyReservedBuffers[i] == ptr) return true;
+    return false;
+}
+
+// Helper: is `ptr` ANY buffer we own (reserved or static)?
+static bool IsOurBuffer(void* ptr)
+{
+    return IsOurLazyReservedBuffer(ptr) || IsOurReservedBuffer(ptr) || IsOurStaticBuffer(ptr);
+}
+
+// ----- Per-slot bookkeeping for GC-safe cleanup --------------------------
+// Each swap records (groupWidget, buffer) at the slot we used. Before reusing
+// the slot (8 hits later, when the ring buffer wraps), we restore the previous
+// tenant: null its Items header so its TArray dtor calls Free(null) instead of
+// Free(staticBuffer), and clear RF_Standalone so GC can eventually reclaim it.
+struct PrevSwapEntry
+{
+    void* groupWidget;
+    void* ourBuffer;
+    bool  inUse;
+};
+static PrevSwapEntry g_prevSwaps[kCustomGroupBufferSlots] = {};
+static SRWLOCK       g_prevSwapsLock = SRWLOCK_INIT;
+
+// Restore the previously-installed swap at this slot. Safe to call even if the
+// group widget has been freed (SEH-guarded read+write). Idempotent.
+static void RestorePrevSwapAtSlot(int slotIdx)
+{
+    if (slotIdx < 0 || slotIdx >= kCustomGroupBufferSlots) return;
+
+    PrevSwapEntry entry = {};
+    AcquireSRWLockExclusive(&g_prevSwapsLock);
+    entry = g_prevSwaps[slotIdx];
+    g_prevSwaps[slotIdx] = {};
+    ReleaseSRWLockExclusive(&g_prevSwapsLock);
+
+    if (!entry.inUse || !entry.groupWidget) return;
+
+    void* gw          = entry.groupWidget;
+    void* expectedBuf = entry.ourBuffer;
+    bool  restoredItems    = false;
+    bool  bufferStillOurs  = false;
+
+    __try
+    {
+        QmUE::FTArrayHeader* items = reinterpret_cast<QmUE::FTArrayHeader*>(
+            reinterpret_cast<uint8_t*>(gw) + kBuildingItemsOffset);
+        if (items->Data == expectedBuf)
+        {
+            bufferStillOurs = true;
+            items->Data = nullptr;
+            items->Num  = 0;
+            items->Max  = 0;
+            QmUE::UObject* obj = reinterpret_cast<QmUE::UObject*>(gw);
+            obj->Flags &= ~kRF_Standalone;
+            restoredItems = true;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        InterlockedIncrement(&g_itemSwapGcRestoreFaults);
+        return;
+    }
+
+    if (restoredItems)
+    {
+        long n = InterlockedIncrement(&g_itemSwapGcRestores);
+        if (n <= 5 || (n % 25) == 0)
+            QM_LOG_INFO("[ItemSwap] cleanup slot=%d group=0x%p Items.Data %p->null, cleared RF_Standalone (restore#%ld)",
+                slotIdx, gw, expectedBuf, n);
+    }
+    else if (!bufferStillOurs)
+    {
+        long n = InterlockedIncrement(&g_itemSwapGcRestoreNotOurs);
+        if (n <= 5)
+            QM_LOG_INFO("[ItemSwap] cleanup slot=%d group=0x%p Items.Data no longer ours (already moved/freed) - skipped",
+                slotIdx, gw);
+    }
+}
+
+// ============================================================================
+// TryItemSwapInVanillaGroup
+//
+// Overwrites the vanilla group[0]'s Items.Data with a static buffer that
+// contains [N vanilla items] + [K our custom items]. Single group in the UI,
+// all items in one row.
+// ============================================================================
+static int TryItemSwapInVanillaGroup(void* Result, ForeignFanoutReport* fanout)
+{
+    if (!Result) return 0;
+    if (!g_donorItem) return 0;
+
+    // ----- Read outer Result, locate vanilla group[0] ---------------------
+    QmUE::FTArrayHeader outerHdr = {};
+    if (SafeReadTArrayHeader(Result, &outerHdr) != 0) return 0;
+    if (!outerHdr.Data || outerHdr.Num < 1)
+    {
+        long n = InterlockedIncrement(&g_itemSwapSkipsNoOuter);
+        if (n <= 3)
+            QM_LOG_WARN("[ItemSwap] outer Result empty/unreadable (Num=%d Max=%d) - cannot swap (skip#%ld)",
+                outerHdr.Num, outerHdr.Max, n);
+        return 0;
+    }
+
+    void* group0 = nullptr;
+    __try { group0 = reinterpret_cast<void**>(outerHdr.Data)[0]; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    if (!group0) return 0;
+
+    // ----- Read vanilla Items TArray header ------------------------------
+    QmUE::FTArrayHeader* vanillaItems = reinterpret_cast<QmUE::FTArrayHeader*>(
+        reinterpret_cast<uint8_t*>(group0) + kBuildingItemsOffset);
+
+    void* vanillaData = nullptr;
+    int32_t vanillaNum = 0;
+    int32_t vanillaMax = 0;
+    __try
+    {
+        vanillaData = vanillaItems->Data;
+        vanillaNum  = vanillaItems->Num;
+        vanillaMax  = vanillaItems->Max;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+
+    // ----- Already swapped this hit? Idempotency check -------------------
+    if (IsOurBuffer(vanillaData))
+    {
+        long n = InterlockedIncrement(&g_itemSwapAlreadySwapped);
+        if (n <= 3 || (n % 50) == 0)
+            QM_LOG_INFO("[ItemSwap] vanilla group0=0x%p already swapped (Items.Data=0x%p in our pool, Num=%d) - skip#%ld",
+                group0, vanillaData, vanillaNum, n);
+        return 0;
+    }
+
+    // ----- Sanity check: vanilla item count fits in our buffer -----------
+    if (vanillaNum < 0 || vanillaNum > kCustomGroupItemMax - g_injectableItemCount)
+    {
+        long n = InterlockedIncrement(&g_itemSwapSkipsVanillaOverflow);
+        if (n <= 3)
+            QM_LOG_WARN("[ItemSwap] vanilla group0=0x%p has Num=%d, can't fit + %d custom into buffer cap=%d (skip#%ld)",
+                group0, vanillaNum, g_injectableItemCount, kCustomGroupItemMax, n);
+        return 0;
+    }
+
+    // ----- Pick next slot (rotation) -------------------------------------
+    LONG slotRaw = InterlockedIncrement(&g_customGroupBufferNextSlot) - 1;
+    int  slotIdx = static_cast<int>(slotRaw % kCustomGroupBufferSlots);
+    if (slotIdx < 0) slotIdx = 0;
+
+    // ----- GC safety: cleanup previous tenant of this slot ---------------
+    // If a prior swap parked on this slot, restore its Items header (null it)
+    // and clear RF_Standalone so GC can reclaim that group safely. Note this
+    // only clears `g_prevSwaps[slot]` (group-side bookkeeping). It does NOT
+    // touch `g_lazyReservedBuffers[slot]` - that buffer stays ours forever.
+    RestorePrevSwapAtSlot(slotIdx);
+
+    // ----- Buffer selection ----------------------------------------------
+    // Priority:
+    //   1. Slot already lazy-cached (set on a previous swap) -> reuse.
+    //   2. QmAlloc reserved buffer for this slot (allocated at probe time via
+    //      InnerMalloc, bypassing the FMallocProxy). These carry the 0xE3
+    //      canary so the game's Free/Realloc is safe.
+    //   3. DLL-static fallback - tolerated only because the canary AV happens
+    //      on engine-side Realloc/Free, which is rare for these short-lived
+    //      group buffers; documented risk if no reserved buffers were available.
+    void** itemsBuffer    = nullptr;
+    bool   bufferReserved = false;
+    const char* srcTag    = "?";
+
+    if (g_lazyReservedBuffers[slotIdx])
+    {
+        // Slot already has a buffer from an earlier swap - reuse it.
+        itemsBuffer    = static_cast<void**>(g_lazyReservedBuffers[slotIdx]);
+        bufferReserved = true;
+        srcTag         = "gmalloc-reserved-reuse";
+    }
+    else
+    {
+        // Try the probe-time reserved buffer for this slot.
+        void* reserved = QmAlloc::GetReservedBuffer(slotIdx);
+        if (reserved && QmAlloc::GetReservedBufferSize() >= kCustomGroupItemMax * sizeof(void*))
+        {
+            g_lazyReservedBuffers[slotIdx] = reserved;
+            itemsBuffer    = static_cast<void**>(reserved);
+            bufferReserved = true;
+            srcTag         = "gmalloc-reserved-fresh";
+            long n = InterlockedIncrement(&g_lazyReserveSuccesses);
+            if (n <= 8)
+                QM_LOG_INFO("[ItemSwap] reserved-buffer claim slot=%d -> 0x%p (claim#%ld, size=%zu)",
+                    slotIdx, reserved, n, QmAlloc::GetReservedBufferSize());
+        }
+        else
+        {
+            // No reserved buffer - fall back to DLL-static (canary AV risk).
+            itemsBuffer    = g_customGroupItemsBuffers[slotIdx];
+            bufferReserved = false;
+            srcTag         = "dll-static-fallback";
+            long n = InterlockedIncrement(&g_lazyReserveFailures);
+            if (n <= 5 || (n % 25) == 0)
+                QM_LOG_WARN("[ItemSwap] no QmAlloc reserved buffer for slot=%d (reserved=%p, reserved.size=%zu) - falling back to DLL-static; carries FMallocBinned2 canary AV risk (failure#%ld)",
+                    slotIdx, reserved, QmAlloc::GetReservedBufferSize(), n);
+        }
+    }
+
+    if (!itemsBuffer)
+    {
+        QM_LOG_WARN("[ItemSwap] no buffer available for slot=%d - aborting", slotIdx);
+        return 0;
+    }
+
+    // ----- Copy vanilla item pointers + spawn customs into buffer --------
+    // Buffer is either a fresh GMalloc-reserved block, a reused one from a
+    // prior swap, or a DLL-static. None of them carry vanilla content - so
+    // always memcpy the vanilla pointers from the (still-valid) vanillaData.
+    bool fillOk = true;
+    int  vanillaCopied = 0;
+    __try
+    {
+        memset(itemsBuffer, 0, kCustomGroupItemMax * sizeof(void*));
+        for (int i = 0; i < vanillaNum; ++i)
+        {
+            itemsBuffer[i] = reinterpret_cast<void**>(vanillaData)[i];
+            vanillaCopied++;
+        }
+        fillOk = true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { fillOk = false; }
+    if (!fillOk)
+    {
+        QM_LOG_WARN("[ItemSwap] FAULT copying vanilla pointers from group0=0x%p Items.Data=0x%p Num=%d (copied=%d) - aborting",
+            group0, vanillaData, vanillaNum, vanillaCopied);
+        return 0;
+    }
+
+    // ----- Spawn our custom items, append after vanilla ------------------
+    int customInjected = 0;
+    for (int itemIdx = 0; itemIdx < g_injectableItemCount; ++itemIdx)
+    {
+        int writeSlot = vanillaCopied + customInjected;
+        if (writeSlot >= kCustomGroupItemMax) break;
+
+        QmUE::UObject* widget = SpawnOrReuseItemWithOverride(
+            reinterpret_cast<QmUE::UObject*>(g_donorItem), itemIdx, reinterpret_cast<QmUE::UObject*>(group0), "item-swap");
+        if (!widget)
+        {
+            if (fanout) { fanout->total++; fanout->skipped++; }
+            continue;
+        }
+        bool writeOk = false;
+        __try
+        {
+            itemsBuffer[writeSlot] = widget;
+            writeOk = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { writeOk = false; }
+        if (!writeOk)
+        {
+            if (fanout) { fanout->total++; fanout->faulted++; }
+            continue;
+        }
+        customInjected++;
+        if (fanout) { fanout->total++; fanout->injected++; }
+        InterlockedIncrement(&g_foreignInjectsDone);
+    }
+
+    if (customInjected == 0)
+    {
+        long n = InterlockedIncrement(&g_itemSwapSkipsNoItems);
+        QM_LOG_WARN("[ItemSwap] no custom items spawned for group0=0x%p - leaving vanilla untouched (skip#%ld)",
+            group0, n);
+        return 0;
+    }
+
+    int totalNum = vanillaCopied + customInjected;
+
+    // ----- Atomically swap vanilla Items.Data -> our static buffer -------
+    void* oldData = vanillaData;
+    bool  swapOk  = false;
+    __try
+    {
+        vanillaItems->Data = itemsBuffer;
+        vanillaItems->Num  = totalNum;
+        vanillaItems->Max  = kCustomGroupItemMax;
+        swapOk = true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { swapOk = false; }
+    if (!swapOk)
+    {
+        QM_LOG_ERROR("[ItemSwap] FAULT writing new Items TArray header at group0=0x%p (slot=%d buffer=0x%p) - vanilla state may be inconsistent",
+            group0, slotIdx, itemsBuffer);
+        return 0;
+    }
+
+    // ----- Pin group widget against GC -----------------------------------
+    // Set RF_Standalone so UE's garbage collector won't reclaim this group
+    // widget while its Items.Data points to our static buffer. Without this,
+    // ~TArray<UWidget*> at GC time would call FMalloc::Free(staticBuffer) and
+    // FMallocBinned3 crashes on the unrecognized .data segment pointer. The
+    // pin gets released when this slot's buffer is reused (RestorePrevSwapAtSlot
+    // clears the flag after nulling Items).
+    bool standaloneSet = false;
+    __try
+    {
+        QmUE::UObject* obj = reinterpret_cast<QmUE::UObject*>(group0);
+        obj->Flags |= kRF_Standalone;
+        standaloneSet = true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { standaloneSet = false; }
+    if (standaloneSet)
+        InterlockedIncrement(&g_itemSwapStandaloneSet);
+    else
+        InterlockedIncrement(&g_itemSwapStandaloneFault);
+
+    // Record entry so RestorePrevSwapAtSlot can clean it up when the slot is
+    // reused on the (kCustomGroupBufferSlots)-th future swap.
+    AcquireSRWLockExclusive(&g_prevSwapsLock);
+    g_prevSwaps[slotIdx].groupWidget = group0;
+    g_prevSwaps[slotIdx].ourBuffer   = itemsBuffer;
+    g_prevSwaps[slotIdx].inUse       = true;
+    ReleaseSRWLockExclusive(&g_prevSwapsLock);
+
+    long applyNum = InterlockedIncrement(&g_itemSwapApplies);
+    QM_LOG_INFO("[ItemSwap] *** SUCCESS *** apply#%ld group0=0x%p Items.Data %p->%p (vanilla=%d copied + custom=%d injected = %d total; vanillaOldMax=%d newMax=%d; slot=%d; src=%s; RF_Standalone=%s)",
+        applyNum, group0, oldData, itemsBuffer,
+        vanillaCopied, customInjected, totalNum,
+        vanillaMax, kCustomGroupItemMax, slotIdx,
+        srcTag,
+        standaloneSet ? "set" : "FAULT");
+
+    return customInjected;
 }
 
 // ============================================================================
@@ -534,6 +1141,103 @@ int ClassifyTabPurity(void* Result)
 }
 
 // ============================================================================
+// One-shot diagnostic: dump the group widget's UClass hierarchy and ALL its
+// UFunctions. We need this to find a Blueprint-level "AddItem" / "BindItems"
+// function we can call via ProcessEvent - that's UE's own TArray-grow path
+// which works reliably (avoids our FMalloc::Realloc cold-path problem).
+//
+// Fires once per game session, gated by an atomic CAS. Walks group->Class +
+// all SuperStruct ancestors. Logs every UFunction with name, ExecFn, Flags,
+// and parameter count (from StructSize / ParamsSize for native funcs).
+// ============================================================================
+static volatile LONG g_groupClassDumpDone = 0;
+
+static void DumpClassUFunctions(QmUE::UStruct* cls, const char* contextTag)
+{
+    if (!cls) return;
+    char clsName[128] = "<?>";
+    __try { QmUE::ResolveFNameNarrow(reinterpret_cast<QmUE::UObject*>(cls)->Name, clsName, sizeof(clsName)); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { strncpy_s(clsName, sizeof(clsName), "<fault>", _TRUNCATE); }
+
+    QM_LOG_INFO("[ClassDump] >>> [%s] class '%s' @0x%p - enumerating UFunctions (super-chain follows)",
+        contextTag, clsName, cls);
+
+    QmUE::UStruct* curr = cls;
+    int depth = 0;
+    int totalFuncs = 0;
+    while (curr && depth < 20)
+    {
+        char currName[128] = "<?>";
+        __try { QmUE::ResolveFNameNarrow(reinterpret_cast<QmUE::UObject*>(curr)->Name, currName, sizeof(currName)); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { strncpy_s(currName, sizeof(currName), "<fault>", _TRUNCATE); break; }
+
+        QmUE::UField* field = nullptr;
+        __try { field = curr->Children; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { field = nullptr; }
+
+        int funcIdx = 0;
+        int sanityWalk = 0;
+        while (field && sanityWalk < 1024)
+        {
+            QmUE::UField* nextField = nullptr;
+            QmUE::UClass* fieldCls = nullptr;
+            QmUE::FName fname = {0,0};
+            __try { fieldCls = field->Class; nextField = field->Next; fname = field->Name; }
+            __except (EXCEPTION_EXECUTE_HANDLER) { break; }
+
+            if (fieldCls)
+            {
+                uint64_t castFlags = 0;
+                __try { castFlags = fieldCls->CastFlags; }
+                __except (EXCEPTION_EXECUTE_HANDLER) { castFlags = 0; }
+
+                if ((castFlags & QmUE::CASTFLAG_Function) != 0)
+                {
+                    char fnName[128] = "<?>";
+                    QmUE::ResolveFNameNarrow(fname, fnName, sizeof(fnName));
+                    QmUE::UFunction* fn = reinterpret_cast<QmUE::UFunction*>(field);
+                    int32_t paramsSize = 0;
+                    __try { paramsSize = fn->StructSize; } __except (EXCEPTION_EXECUTE_HANDLER) {}
+                    QM_LOG_INFO("[ClassDump]   [%s] fn[%d] '%s' ExecFn=0x%p Flags=0x%08X ParamsSize=%d",
+                        currName, funcIdx++, fnName, (void*)fn->ExecFunction, fn->FunctionFlags, paramsSize);
+                    totalFuncs++;
+                }
+            }
+            field = nextField;
+            sanityWalk++;
+        }
+
+        QmUE::UStruct* super = nullptr;
+        __try { super = curr->SuperStruct; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { super = nullptr; }
+        if (super == curr) break;  // safety: cycle detection
+        curr = super;
+        depth++;
+    }
+    QM_LOG_INFO("[ClassDump] <<< [%s] '%s' total UFunctions in chain: %d (depth=%d)",
+        contextTag, clsName, totalFuncs, depth);
+}
+
+static void DumpGroupAndItemClassesOnce(void* group)
+{
+    if (!group) return;
+    if (InterlockedCompareExchange(&g_groupClassDumpDone, 1, 0) != 0) return;
+
+    QmUE::UClass* groupCls = nullptr;
+    __try { groupCls = reinterpret_cast<QmUE::UObject*>(group)->Class; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { groupCls = nullptr; }
+    if (groupCls) DumpClassUFunctions(groupCls, "GroupWidget");
+
+    // Also dump item widget class - we may need an item-level function too
+    // (e.g. "Init", "SetData") for further work.
+    if (g_itemWidgetClass) DumpClassUFunctions(g_itemWidgetClass, "ItemWidget");
+
+    // And the panel class - useful to check for an "AddItemToGroup" hook
+    QmUE::UClass* panelCls = QmUE::FindClassByName("R5HFSM_BuildingPanel");
+    if (panelCls) DumpClassUFunctions(panelCls, "Panel");
+}
+
+// ============================================================================
 // Inject one item into a single group. Spawns a fresh widget, applies the
 // per-item override, appends into the items array.
 // ============================================================================
@@ -553,6 +1257,12 @@ static int InjectIntoGroup(void* group, int itemIdx, ForeignInjectReport* out)
     // pointer compare is safe: at worst it's a false match against a freed
     // address, never a deref.
     if (group == g_donorSourceGroup) { if (out) out->status = "skipped-same-group"; return -1; }
+
+    // One-shot diagnostic: dump group/item/panel class UFunctions so we can
+    // find a Blueprint-level "AddItem" / "BindItems" we can call via
+    // ProcessEvent (UE's own TArray-grow path - bypasses our FMalloc cold
+    // path that AVs on 2nd+ tab-visit).
+    DumpGroupAndItemClassesOnce(group);
 
     const InjectableItem& item = g_injectableItems[itemIdx];
 
@@ -575,7 +1285,174 @@ static int InjectIntoGroup(void* group, int itemIdx, ForeignInjectReport* out)
     if (out) { out->oldNum = itemsHdr.Num; out->max = itemsHdr.Max; }
 
     if (!itemsHdr.Data)              { if (out) out->status = "skipped-empty";    return -1; }
-    if (itemsHdr.Num >= itemsHdr.Max){ if (out) out->status = "skipped-no-slack"; return -1; }
+
+    // ----- Slack gate / TArray grow path -----------------------------------
+    // If the group's Items TArray has no slack (Num == Max), grow it via UE's
+    // own FMemory allocator so the destructor's GMalloc->Free remains valid.
+    // Multi-item profiles need this because the vanilla buffer is usually
+    // sized just-fits (e.g. Brush_Pier_01 group spawns with Num=3 Max=4).
+    //
+    // IMPORTANT: We use Malloc + manual memcpy instead of Realloc because UE5
+    // TArrays often use TInlineAllocator<N> for small fixed-size buckets - the
+    // initial Data ptr is then an inline buffer INSIDE the group object itself,
+    // NOT a GMalloc allocation. Calling GMalloc->Realloc(InlineBufferPtr, ...)
+    // returns a fresh buffer but does NOT copy the original contents (since
+    // GMalloc doesn't recognize the foreign pointer). UE then iterates the new
+    // buffer's garbage entries -> AV.
+    //
+    // We use QmAlloc::Malloc() (probe-detected direct Malloc slot) rather than
+    // Realloc(nullptr,...) because the Realloc-as-Malloc cold path was observed
+    // to AV on every call after the first. Hypothesis: Realloc's nullptr branch
+    // hits an allocator path that's only safe after some other allocator
+    // activity warmed it up in this thread. Direct Malloc takes the hot path
+    // unconditionally.
+    //
+    // Doing Malloc + memcpy + never-free-original is safe in both cases:
+    //   - Original was inline: TInlineAllocator destructor checks Data !=
+    //     &InlineBuffer and only calls SecondaryAllocator.Free on heap ptrs;
+    //     since we set Data to a fresh GMalloc ptr, that Free path is valid.
+    //     Inline buffer stays in the object - no leak, no crash.
+    //   - Original was heap: we leak <= 32 bytes per group grow. Acceptable.
+    //
+    // Failure path is silent: if QmAlloc isn't resolved, or Malloc returned
+    // null, we fall back to the original skipped-no-slack behaviour. Better
+    // than crashing.
+    if (itemsHdr.Num >= itemsHdr.Max)
+    {
+        if (!QmAlloc::IsResolved())
+        {
+            if (out) out->status = "skipped-no-slack";
+            return -1;
+        }
+        const int32_t oldMax = itemsHdr.Max;
+        // Grow by a small amount per call. Most build-menu groups stay small
+        // (<= 8 items), so a +4 bump is enough headroom for all currently
+        // injectable items even with multiple custom builds per profile.
+        const int32_t newMax = oldMax + 4;
+        const size_t  newBytes = static_cast<size_t>(newMax) * sizeof(void*);
+        void* const oldData = itemsHdr.Data;
+        const int32_t oldNum = itemsHdr.Num;
+
+        // ----- Stack-temp backup of existing item pointers ------------------
+        // Copy the existing entries onto our stack before any allocator call.
+        // After Realloc we restore from this temp - that way the new buffer
+        // always has correct contents regardless of whether the allocator
+        // preserved them. Cheap (16 ptrs = 128 bytes stack) and gives us
+        // defense-in-depth: even if the allocator's "preserve content" path
+        // is broken in this UE build, our stack temp wins.
+        constexpr int kMaxBackupSlots = 16;
+        void* tempBuf[kMaxBackupSlots] = {};
+        const int copyCount = (oldNum > kMaxBackupSlots) ? kMaxBackupSlots : oldNum;
+        bool backupOk = false;
+        __try
+        {
+            memcpy(tempBuf, oldData, static_cast<size_t>(copyCount) * sizeof(void*));
+            backupOk = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { backupOk = false; }
+        if (!backupOk)
+        {
+            QM_LOG_ERROR("[Realloc] group=0x%p item[%d]: FAULT reading oldData=0x%p num=%d - skipping",
+                group, itemIdx, oldData, oldNum);
+            if (out) out->status = "skipped-bad-old-data";
+            return -1;
+        }
+
+        // ----- FMalloc warm-up BEFORE allocation call -----------------------
+        // Observed bug: on 2nd+ tab-open, item[0] takes the pool-REUSE path
+        // (no SpawnObject), then item[1] needs grow. Without a recent UE-VM
+        // allocation event the allocator's TLS / inner-pointer cache can be
+        // cold and Realloc faults via call-to-null. Trigger one sacrificial
+        // SpawnObject to warm it. Orphaned widget - UE GC reclaims it.
+        QmUE::UClass*  warmupCls   = g_itemWidgetClass;
+        QmUE::UObject* warmupOuter = nullptr;
+        if (g_donorItem)
+        {
+            __try { warmupOuter = reinterpret_cast<QmUE::UObject*>(g_donorItem)->Outer; }
+            __except (EXCEPTION_EXECUTE_HANDLER) { warmupOuter = nullptr; }
+        }
+        if (warmupCls && warmupOuter)
+        {
+            // Iteration 1: 5 sacrificial spawns. Hit#2 had 2 SpawnObjects
+            // (real + sacrificial) and worked, Hit#4+ had only 1 (sacrificial
+            // alone via pool-REUSE) and failed - threshold is somewhere between
+            // 1 and 2. Use 5 as safety margin against numerical-saturation TLS
+            // init in FMallocBinned3.
+            WarmUpAllocatorViaSpawn(warmupCls, warmupOuter, "tarray-grow", 5);
+        }
+
+        // ----- FMalloc 64-byte pool warm-up via AppendString spam -----------
+        // EMPIRICAL: at hit#2 the ClassDump diagnostic accidentally ran ~200
+        // FName->FString resolutions between AllocWarmup and Realloc, which
+        // got us a working Path 3. At hit#4 (no ClassDump) all 3 paths failed.
+        // Hypothesis: FMallocBinned3's per-thread per-pool TLS caches need
+        // recent real allocator activity for the specific pool we hit.
+        // Long-FName lookups force AppendString to invoke TArray<TCHAR>::
+        // Reserve which goes through GMalloc->Realloc - the exact code path
+        // we need to warm. 50 iterations matches the ClassDump's ballpark.
+        if (g_donorItem)
+        {
+            WarmUpFMallocViaFNameLookups(reinterpret_cast<QmUE::UObject*>(g_donorItem), 50, "tarray-grow");
+        }
+
+        // ----- Allocation: hot-path first, cold fallback --------------------
+        // Path 1 (hot, UE's own TArray::Add path): Realloc(oldData, newBytes,
+        //   0). UE knows oldData's bin from the FMalloc-internal header so
+        //   it allocates + copies + frees in one go.
+        // Path 2 (cold): Realloc(nullptr, newBytes, 0).
+        //
+        // CRITICAL: Alignment MUST be 0 (= natural). Offline analysis of the
+        // GMalloc vtable[4] proxy showed that a non-zero alignment gets routed
+        // into a wide-string init function and dereferenced as wchar*, causing
+        // an AV with faultAddr matching the alignment value. With Alignment=0,
+        // the wrapper takes a fast-path skip and the inner FMallocBinned2 uses
+        // its default alignment (16) anyway.
+        void* newData = nullptr;
+        const char* pathTaken = "?";
+
+        newData = QmAlloc::Realloc(oldData, newBytes, 0);
+        if (newData) pathTaken = "hot-realloc(oldData,0)";
+
+        if (!newData)
+        {
+            newData = QmAlloc::Realloc(nullptr, newBytes, 0);
+            if (newData) pathTaken = "cold-realloc(nullptr,0)";
+        }
+        if (!newData)
+        {
+            QM_LOG_WARN("[Realloc] group=0x%p item[%d]: all 3 FMemory paths returned null - skipping (newBytes=%zu oldData=0x%p)",
+                group, itemIdx, newBytes, oldData);
+            if (out) out->status = "skipped-malloc-failed";
+            return -1;
+        }
+
+        // ----- Restore content from stack-temp ------------------------------
+        // Hot-path Realloc already preserved content, but we overwrite from
+        // tempBuf anyway as defense - if the allocator path was actually
+        // cold (paths 2 or 3) the new buffer is uninitialised. Either way
+        // tempBuf has the correct pointer values from before the call.
+        __try
+        {
+            memcpy(newData, tempBuf, static_cast<size_t>(copyCount) * sizeof(void*));
+            // Zero trailing slots (defense - UE shouldn't read past Num but
+            // some bounds-relaxed paths walk to Max during tear-down).
+            memset(reinterpret_cast<uint8_t*>(newData) + static_cast<size_t>(copyCount) * sizeof(void*),
+                   0, static_cast<size_t>(newMax - copyCount) * sizeof(void*));
+            itemsArr->Data = newData;
+            itemsArr->Max  = newMax;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_ERROR("[Realloc] *** EXCEPTION restoring content newData=0x%p num=%d newMax=%d",
+                newData, copyCount, newMax);
+            return -2;
+        }
+        itemsHdr.Data = newData;
+        itemsHdr.Max  = newMax;
+        if (out) out->max = newMax;
+        QM_LOG_INFO("[Realloc] grew group items: Num=%d Max=%d -> %d (group=0x%p item[%d] oldData=0x%p newData=0x%p, restored=%d ptr(s), path=%s)",
+            itemsHdr.Num, oldMax, newMax, group, itemIdx, oldData, newData, copyCount, pathTaken);
+    }
 
     // Spawn-or-reuse AFTER the slack/empty gates so we don't allocate widgets
     // that won't be used. The pool prefers reusing a previously-spawned widget
@@ -709,6 +1586,42 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
     }
     // purity == -1 (no groups / fault) and purity == 1 (pure) both fall through.
 
+    // ----- VARIANTE C: item-swap-in-vanilla-group (primary path) ----------
+    // When a tab-purity filter is configured and this tab matches (purity==1
+    // or indeterminate), overwrite the vanilla group[0]'s Items.Data pointer
+    // with a DLL-static buffer that contains [N vanilla items] + [K custom
+    // items]. Single group in the UI with all items mixed in.
+    //
+    // This avoids:
+    //   - The FMallocBinned3 Realloc cold-path AV (we never grow the existing
+    //     TArray, we replace its Data buffer wholesale)
+    //   - The double-group UMG render bug (we don't spawn a parallel group,
+    //     so no shared UMG sub-slots between two groups)
+    //
+    // If swap succeeds (customInjected > 0), skip the legacy per-group loop
+    // entirely. On any failure (empty outer, vanilla overflow, no items
+    // produced), fall through to the legacy per-group loop.
+    if (kTabPurityFilterSubstring && fanout)
+    {
+        int swapInjected = TryItemSwapInVanillaGroup(Result, fanout);
+        if (swapInjected > 0)
+        {
+            if (out && (out->status == nullptr || strcmp(out->status, "captured") != 0))
+            {
+                out->status      = "item-swapped";
+                out->itemIdx     = -1;
+                out->newNum      = swapInjected;
+                out->oldNum      = 0;
+                out->max         = kCustomGroupItemMax;
+                out->targetGroup = nullptr;  // overwrote vanilla in-place
+                out->donorItem   = nullptr;
+            }
+            return 0;
+        }
+        // swapInjected == 0: skip happened (logged inside) - fall through
+        // to legacy path so injects into other slack-bearing groups still work.
+    }
+
     // ----- Inject phase: per item, walk groups, inject into the FIRST
     // matching one. Each item produces at most one slot per hit.
     if (fanout)
@@ -748,4 +1661,26 @@ int CaptureOrInjectForeignItem(void* Result, ForeignInjectReport* out,
     }
 
     return capturedThisCall ? 0 : (fanout && fanout->injected > 0 ? 0 : -1);
+}
+
+// ============================================================================
+// QmInject_RegisterStaticBuffersWithAllocator
+//
+// Tells QmAlloc the address+size of every DLL-static ItemSwap buffer so the
+// Free/Realloc MinHook (installed in qm_alloc.cpp) can intercept calls
+// targeting our pointers. Must be called once after QmAlloc::Resolve() and
+// before InstallExternalBufferHooks().
+// ============================================================================
+int QmInject_RegisterStaticBuffersWithAllocator()
+{
+    int registered = 0;
+    const size_t bytesPerBuffer = kCustomGroupItemMax * sizeof(void*);
+    for (int i = 0; i < kCustomGroupBufferSlots; ++i)
+    {
+        void* p = static_cast<void*>(g_customGroupItemsBuffers[i]);
+        if (QmAlloc::RegisterExternalBuffer(p, bytesPerBuffer)) ++registered;
+    }
+    QM_LOG_INFO("[Inject] registered %d/%d DLL-static ItemSwap buffers with QmAlloc (size=%zu bytes each) for Free/Realloc hook protection",
+        registered, kCustomGroupBufferSlots, bytesPerBuffer);
+    return registered;
 }

@@ -1,19 +1,19 @@
 {
-  "tabPurityFilter": "BuildingDecoration",
+  "tabPurityFilter": "BuildingBrushes",
   "items": [
     {
-      "name":                    "QmBedrl_01",
+      "name":                    "QmBldg_5b32d7f7",
       "className":               "R5BuildingItem",
-      "assetName":               "DA_BI_QmBedrl_01",
-      "packagePath":             "/Game/Gameplay/Building/BuildingDecoration/DA_BI_QmBedrl_01",
-      "targetCategorySubstring": "BuildingDecoration"
+      "assetName":               "DA_BI_QmBldg_5b32d7f7",
+      "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmBldg_5b32d7f7",
+      "targetCategorySubstring": "BuildingBrushes"
     },
     {
-      "name":                    "QmPainting_01",
+      "name":                    "QmBldg_b6c64b67",
       "className":               "R5BuildingItem",
-      "assetName":               "DA_BI_QmPainting_01",
-      "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmPainting_01",
-      "targetCategorySubstring": "BuildingDecoration"
+      "assetName":               "DA_BI_QmBldg_b6c64b67",
+      "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmBldg_b6c64b67",
+      "targetCategorySubstring": "BuildingBrushes"
     }
   ]
 }

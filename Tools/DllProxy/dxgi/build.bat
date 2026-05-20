@@ -47,7 +47,7 @@ set COMMON_FLAGS=/nologo /c /O2 /MT /W3 /DWIN32_LEAN_AND_MEAN /I"%MH_DIR%\includ
 
 echo [build] config: %CONFIG_LABEL%
 echo [build] cl /c Quartermaster C++ sources ...
-cl %COMMON_FLAGS% /EHa main.cpp qm_log.cpp qm_ue.cpp qm_scan.cpp qm_crash.cpp qm_config.cpp qm_inject.cpp qm_diag.cpp qm_hook.cpp
+cl %COMMON_FLAGS% /EHa main.cpp qm_log.cpp qm_ue.cpp qm_scan.cpp qm_alloc.cpp qm_crash.cpp qm_config.cpp qm_inject.cpp qm_diag.cpp qm_hook.cpp
 if errorlevel 1 ( echo [build] cl C++ sources failed. & popd & exit /b 1 )
 
 echo [build] cl /c MinHook sources ...
@@ -56,7 +56,7 @@ if errorlevel 1 ( echo [build] cl minhook failed. & popd & exit /b 1 )
 
 echo [build] link /DLL ...
 link /nologo /DLL /MACHINE:X64 /OUT:dxgi.dll ^
-    main.obj qm_log.obj qm_ue.obj qm_scan.obj qm_crash.obj qm_config.obj qm_inject.obj qm_diag.obj qm_hook.obj ^
+    main.obj qm_log.obj qm_ue.obj qm_scan.obj qm_alloc.obj qm_crash.obj qm_config.obj qm_inject.obj qm_diag.obj qm_hook.obj ^
     buffer.obj hook.obj trampoline.obj hde64.obj ^
     kernel32.lib user32.lib shell32.lib advapi32.lib
 if errorlevel 1 ( echo [build] link failed. & popd & exit /b 1 )

@@ -13,11 +13,50 @@
 #include "qm_config.hpp"
 #include "qm_inject.hpp"
 #include "qm_diag.hpp"
+#include "qm_alloc.hpp"
 
 // ============================================================================
 // Detour.
 // ============================================================================
 static QmUE::FNativeFuncPtr g_origGetBuildingGroups = nullptr;
+
+// CreateTabsData diagnostic - want to know:
+//   * Does it run on the SAME thread as GetBuildingGroupsByCategoryTag?
+//   * Does it run BEFORE GetBuildingGroupsByCategoryTag (within ms)?
+//   * Does CreateTabsData itself call FMallocBinned3 allocator (warming TLS)?
+// If yes to all 3: we have a clean place to insert allocator-warmup before the
+// fragile Realloc in InjectIntoGroup. Hook is read-only - forwards original
+// unchanged.
+static QmUE::FNativeFuncPtr g_origCreateTabsData = nullptr;
+static volatile LONG g_createTabsDataHits = 0;
+static volatile LONG g_lastCreateTabsDataTick = 0;   // GetTickCount() of last call
+static volatile LONG g_lastCreateTabsDataTID  = 0;
+
+static void __fastcall Hook_CreateTabsData(void* Context, void* Stack, void* Result)
+{
+    long n = InterlockedIncrement(&g_createTabsDataHits);
+    DWORD tid = GetCurrentThreadId();
+    DWORD tick = GetTickCount();
+    InterlockedExchange(&g_lastCreateTabsDataTick, static_cast<LONG>(tick));
+    InterlockedExchange(&g_lastCreateTabsDataTID,  static_cast<LONG>(tid));
+
+    if (n <= 10 || (n % 50) == 0)
+        QM_LOG_DEBUG("[CreateTabs] hit#%ld pre  TID=%lu Ctx=0x%p Stack=0x%p Result=0x%p tick=%lu",
+            n, tid, Context, Stack, Result, tick);
+
+    if (g_origCreateTabsData)
+    {
+        __try { g_origCreateTabsData(Context, Stack, Result); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_ERROR("[CreateTabs] hit#%ld *** EXCEPTION inside original CreateTabsData ***", n);
+        }
+    }
+
+    if (n <= 10 || (n % 50) == 0)
+        QM_LOG_DEBUG("[CreateTabs] hit#%ld post TID=%lu (post-tick=%lu, dt=%lums)",
+            n, tid, GetTickCount(), GetTickCount() - tick);
+}
 
 static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* Stack, void* Result)
 {
@@ -39,6 +78,26 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
         QM_LOG_DEBUG("[Hook] GetBuildingGroupsByCategoryTag hit #%ld TID=%lu Ctx=0x%p Cls='%s' Stack=0x%p Result=0x%p",
             n, GetCurrentThreadId(), Context, ctxCls[0] ? ctxCls : "<?>", Stack, Result);
         DiagInspectInputs(Result, Stack);
+    }
+
+    // ---- Allocator-warmup diagnostic ----------------------------------------
+    // Log how long ago CreateTabsData last fired (on which thread). The hypothesis:
+    // CreateTabsData allocates via FMalloc (it builds TArrays), warming the
+    // FMallocBinned3 TLS state. If GetBuildingGroupsByCategoryTag runs within the
+    // same thread + a few ms of CreateTabsData, the TLS should still be warm and
+    // Realloc should succeed. If they're far apart (or different threads), the
+    // TLS is cold and Realloc faults.
+    {
+        DWORD nowTick = GetTickCount();
+        DWORD myTid   = GetCurrentThreadId();
+        LONG  ctTick  = InterlockedCompareExchange(&g_lastCreateTabsDataTick, 0, 0);
+        LONG  ctTid   = InterlockedCompareExchange(&g_lastCreateTabsDataTID,  0, 0);
+        LONG  ctHits  = InterlockedCompareExchange(&g_createTabsDataHits,     0, 0);
+        if (n <= 20 || (n % 50) == 0)
+            QM_LOG_DEBUG("[AllocWarmup] hit#%ld GetBuildingGroups TID=%lu  CreateTabs lastTID=%ld lastTick=%lu (hits=%ld, dt=%ldms %s)",
+                n, myTid, ctTid, static_cast<unsigned long>(ctTick), ctHits,
+                static_cast<long>(nowTick) - ctTick,
+                (ctTid == static_cast<LONG>(myTid)) ? "same-thread" : "DIFF-THREAD");
     }
 
     // Plan A diagnostic - log the resolved CategoryTag per hit (cheap helper,
@@ -119,6 +178,15 @@ static void __fastcall Hook_GetBuildingGroupsByCategoryTag(void* Context, void* 
         if (ff.total > 0)
             QM_LOG_INFO("[Foreign] hit#%ld FANOUT injected=%d skipped=%d faulted=%d - donor visible from first menu open",
                 n, ff.injected, ff.skipped, ff.faulted);
+    }
+    else if (fi.status && strcmp(fi.status, "item-swapped") == 0)
+    {
+        if (logHeader || (snap.injectsDone <= 30) || (snap.injectsDone % 25 == 0))
+        {
+            QM_LOG_INFO("[Foreign] hit#%ld ITEM-SWAP injected=%d custom item(s) into vanilla group via static buffer [total injects=%ld, fanout: t=%d i=%d s=%d f=%d]",
+                n, fi.newNum, snap.injectsDone,
+                ff.total, ff.injected, ff.skipped, ff.faulted);
+        }
     }
     else if (fi.status && strcmp(fi.status, "injected") == 0)
     {
@@ -228,6 +296,43 @@ static bool InstallGetBuildingGroupsHook(QmUE::UFunction* target)
 }
 
 // ============================================================================
+// CreateTabsData diagnostic hook (read-only). Logs hit + TID + tick so we can
+// see whether GetBuildingGroupsByCategoryTag runs same-thread soon-after - the
+// premise behind allocator-warmup via CreateTabsData.
+// ============================================================================
+static bool g_createTabsHookInstalled = false;
+static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
+{
+    if (g_createTabsHookInstalled) return true;
+    if (!target || !target->ExecFunction)
+    {
+        QM_LOG_ERROR("[CreateTabs] cannot install - target or ExecFunction is null");
+        return false;
+    }
+    LPVOID execAddr = reinterpret_cast<LPVOID>(target->ExecFunction);
+    MH_STATUS st = MH_CreateHook(execAddr,
+        reinterpret_cast<LPVOID>(&Hook_CreateTabsData),
+        reinterpret_cast<LPVOID*>(&g_origCreateTabsData));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[CreateTabs] MH_CreateHook(CreateTabsData @ 0x%p) FAILED: %s",
+            execAddr, MH_StatusToString(st));
+        return false;
+    }
+    st = MH_EnableHook(execAddr);
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[CreateTabs] MH_EnableHook(CreateTabsData @ 0x%p) FAILED: %s",
+            execAddr, MH_StatusToString(st));
+        return false;
+    }
+    g_createTabsHookInstalled = true;
+    QM_LOG_INFO("[CreateTabs] *** INSTALLED *** CreateTabsData ExecFn=0x%p detour=0x%p trampoline=0x%p (diag-only, forwards original)",
+        execAddr, (void*)&Hook_CreateTabsData, (void*)g_origCreateTabsData);
+    return true;
+}
+
+// ============================================================================
 // UE probe pass - find R5HFSM_BuildingPanel + GetBuildingGroupsByCategoryTag.
 // ============================================================================
 static bool UE_ProbePass(int passNumber)
@@ -286,6 +391,20 @@ static bool UE_ProbePass(int passNumber)
 #endif
 
     InstallGetBuildingGroupsHook(target);
+
+    // Diagnostic hook on CreateTabsData (read-only, forwards original). Used
+    // to verify the allocator-warmup-via-CreateTabsData hypothesis.
+    UFunction* ctd = FindFunctionOnClass(panelClass, "CreateTabsData");
+    if (ctd)
+    {
+        QM_LOG_INFO("[CreateTabs] target found: 0x%p ExecFn=0x%p Flags=0x%08X",
+            ctd, (void*)ctd->ExecFunction, ctd->FunctionFlags);
+        InstallCreateTabsDataHook(ctd);
+    }
+    else
+    {
+        QM_LOG_WARN("[CreateTabs] target NOT FOUND on R5HFSM_BuildingPanel - diagnostic skipped");
+    }
 
     // Verify GameplayStatics/SpawnObject chain. Item-class lookup is lazy
     // (resolved from donor->Class at hit#1) because WBP_Building_Item_C only
@@ -348,6 +467,38 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
 
     QmUE::TUObjectArray* arr = QmUE::GetGObjects();
     QM_LOG_INFO("[UE] init reached threshold on attempt#%d - GObjects.Num=%d", initAttempts, arr->Num());
+
+    // Resolve GMalloc so InjectIntoGroup can grow full TArrays. Done after
+    // GObjects-ready so the engine has fully initialized its allocator. Failure
+    // here is non-fatal: inject still works for groups with slack, only the
+    // grow-on-full path is disabled.
+    if (!QmAlloc::Resolve(QmUE::GetImageBase()))
+    {
+        QM_LOG_WARN("[Alloc] GMalloc resolution failed - inject will skip full TArrays (only groups with Items.Num<Max get a slot)");
+    }
+    else
+    {
+        // Plan B: register all DLL-static ItemSwap buffers, scan FMalloc vtable
+        // for canary-check (0xE3) functions (Free/Realloc/TryRealloc), and
+        // MinHook them so calls on our buffers are intercepted before the
+        // canary check can fire appError().
+        QmInject_RegisterStaticBuffersWithAllocator();
+        QmAlloc::DetectCanaryCheckSlots();
+        int hooks = QmAlloc::InstallExternalBufferHooks();
+        if (hooks > 0)
+            QM_LOG_INFO("[Alloc] external-buffer hook strategy ENABLED (%d slots hooked) - DLL-static ItemSwap buffers are now safe to hand to UE TArrays",
+                hooks);
+        else
+            QM_LOG_WARN("[Alloc] external-buffer hook NOT installed - DLL-static ItemSwap buffers will trip FMallocBinned2 canary on Free/Realloc (game-crash risk)");
+
+        // Plan A diagnostic: detection found 0 canary hits across 16 slots and
+        // 0 0xE3 bytes anywhere in 1500+ scanned bytes. The canary check lives
+        // either >1 level deep or in an encoding we don't recognize. Dump raw
+        // code bytes for every vtable slot plus every unique call/jmp rel32
+        // target so we can disassemble offline (ndisasm/Ghidra) and identify
+        // the actual Realloc/Free pattern + TLS preconditions.
+        QmAlloc::DumpVtableSlotsHexForOfflineAnalysis(/*maxSlots=*/16, /*bytesPerSlot=*/512);
+    }
 
     // Phase 2: probe loop. Try every 2s until we find the function or time out.
     const int kProbeMaxAttempts = 150;    // 150 * 2s = 5 min

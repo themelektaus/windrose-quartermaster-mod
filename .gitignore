@@ -40,6 +40,8 @@ GUI/*/Properties/launchSettings.json
 /Tools/DllProxy/dxgi/*.dll
 /Tools/DllProxy/dxgi/*.exp
 /Tools/DllProxy/dxgi/*.lib
+/Tools/DllProxy/dxgi/build.log
+/Tools/DllProxy/dxgi/build_out.txt
 
 # Python caches
 __pycache__/
