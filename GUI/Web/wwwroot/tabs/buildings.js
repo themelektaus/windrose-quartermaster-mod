@@ -23,13 +23,63 @@ const _buildingScanCache    = new Map();   // index -> last scanned path
 const _cookedInspectionCache = new Map();  // building.id -> inspection
 const _cookedInspectionTimers = new Map(); // building.id -> setTimeout
 const _vanillaInspectCache  = new Map();   // packagePath -> MaterialInstanceDto
-const _vanillaSearchTimers  = new Map();   // building.id + '|' + slot.index -> setTimeout
 
-// Recipe (Etappe H2): per-template default cost + per-row resource search.
+// Recipe (Etappe H2): per-template default cost.
 const _recipeDefaultCache    = new Map();  // templateId -> BuildingRecipeInspectionDto
 const _recipeFetchInflight   = new Map();  // templateId -> Promise
-const _resourceSearchTimers  = new Map();  // building.id + '|' + rowIdx -> setTimeout
-const _resourceDisplayCache  = new Map();  // packagePath -> displayName (for re-render labels)
+
+// Lookup cache for human labels when re-rendering rows whose itemPath
+// the user picked in a previous session (state.vanillaResources is the
+// authoritative source; this is a hot-path map for prettifyResourcePath).
+const _resourceDisplayCache  = new Map();  // packagePath -> displayName
+
+// Lazy loaders for the centralized picker dropdowns. Same UX as
+// loot-tables: full catalog loaded once, filtered client-side. Loaded
+// on the first focusin of the relevant input.
+const _vanillaMaterialsLoad = { promise: null };
+const _vanillaResourcesLoad = { promise: null };
+
+function ensureVanillaMaterialsLoaded() {
+    if (state.vanillaMaterials) return Promise.resolve(state.vanillaMaterials);
+    if (_vanillaMaterialsLoad.promise) return _vanillaMaterialsLoad.promise;
+    _vanillaMaterialsLoad.promise = api('GET', '/api/vanilla-materials?search=&limit=2000')
+        .then(list => {
+            state.vanillaMaterials = list || [];
+            _vanillaMaterialsLoad.promise = null;
+            return state.vanillaMaterials;
+        })
+        .catch(ex => {
+            _vanillaMaterialsLoad.promise = null;
+            state.vanillaMaterials = [];
+            console.error('Failed to load vanilla materials catalog:', ex);
+            return state.vanillaMaterials;
+        });
+    return _vanillaMaterialsLoad.promise;
+}
+
+function ensureVanillaResourcesLoaded() {
+    if (state.vanillaResources) return Promise.resolve(state.vanillaResources);
+    if (_vanillaResourcesLoad.promise) return _vanillaResourcesLoad.promise;
+    _vanillaResourcesLoad.promise = api('GET', '/api/vanilla-resources?search=&limit=500')
+        .then(list => {
+            state.vanillaResources = list || [];
+            // Seed the display cache for re-renders.
+            for (const r of state.vanillaResources) {
+                if (r && r.packagePath) {
+                    _resourceDisplayCache.set(r.packagePath, r.displayName || r.stem || '');
+                }
+            }
+            _vanillaResourcesLoad.promise = null;
+            return state.vanillaResources;
+        })
+        .catch(ex => {
+            _vanillaResourcesLoad.promise = null;
+            state.vanillaResources = [];
+            console.error('Failed to load vanilla resources catalog:', ex);
+            return state.vanillaResources;
+        });
+    return _vanillaResourcesLoad.promise;
+}
 
 async function loadBuildingTemplates() {
     const errBox = document.getElementById('buildings-error');
@@ -364,9 +414,8 @@ function renderSlotCardHtml(building, meshSlot, inspection) {
         +   '<div class="building-slot-parent">'
         +     '<label><span>Vanilla MI parent<span class="required-marker">*</span></span>'
         +       '<input type="text" data-slot-parent-search value="' + escapeHtml(parentStem) + '"'
-        +         ' placeholder="Search Vanilla MI (e.g. Painting, Wood, Glass...)" autocomplete="off">'
+        +         ' placeholder="Click to browse all Vanilla MIs, type to filter..." autocomplete="off" spellcheck="false">'
         +     '</label>'
-        +     '<div class="building-slot-parent-results" data-slot-parent-results hidden></div>'
         +     (safeParent
                 ? '<div class="building-slot-parent-current">Current: <code>' + safeParent + '</code></div>'
                 : '<div class="building-slot-parent-current"><em>Pick a parent above.</em></div>')
@@ -386,55 +435,65 @@ function extractStem(packagePath) {
 }
 
 // -----------------------------------------------------------------------
-// Vanilla MI catalog search (debounced).
+// Vanilla MI picker - reuses the centralized #picker-dropdown (loot tab
+// pattern). The picker:
+//   - opens on focus (shows all 1134 entries until the user types)
+//   - filters client-side as the user types
+//   - commits on mousedown of an option so blur/change cannot race the
+//     pick (this was the cause of the "dropdown re-opens after pick" bug)
+//   - dismisses on outside-click via app.js's global onDocClickClosePicker
 // -----------------------------------------------------------------------
-function debouncedVanillaSearch(buildingId, slotIndex, query) {
-    const tkey = buildingId + '|' + slotIndex;
-    const existing = _vanillaSearchTimers.get(tkey);
-    if (existing) clearTimeout(existing);
-    const handle = setTimeout(async () => {
-        _vanillaSearchTimers.delete(tkey);
-        await runVanillaSearch(buildingId, slotIndex, query);
-    }, 200);
-    _vanillaSearchTimers.set(tkey, handle);
+async function openVanillaMiPicker(input, buildingId, slotIndex) {
+    closePicker();
+    state.picker = { input, source: 'vanillaMi', buildingId, slotIndex };
+    // Show all immediately - if the catalog isn't cached yet a brief
+    // "Loading..." placeholder appears until ensureVanillaMaterialsLoaded
+    // settles. populatePicker is called again after the load resolves.
+    const dd = document.getElementById('picker-dropdown');
+    if (dd) {
+        if (state.vanillaMaterials) {
+            populatePicker(input.value);
+        } else {
+            dd.innerHTML = '<li class="picker-empty">Loading vanilla materials catalog...</li>';
+        }
+        dd.hidden = false;
+    }
+    positionPicker(input);
+    if (input.value) {
+        try { input.select(); } catch (_) { /* ignore */ }
+    }
+    await ensureVanillaMaterialsLoaded();
+    // If the user already moved focus away, the picker may have closed.
+    if (state.picker && state.picker.input === input) {
+        populatePicker(input.value);
+        positionPicker(input);
+    }
 }
 
-async function runVanillaSearch(buildingId, slotIndex, query) {
+// Called by app.js onPickerClick when the user picks a vanilla MI option.
+// Mirrors the inline-button click path that used to live in
+// onBuildingListClick, but without the racing input-change handler.
+async function setVanillaMiParentForSlot(buildingId, slotIndex, packagePath) {
     const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
     if (!card) return;
     const slotEl = card.querySelector('.building-slot[data-slot-index="' + slotIndex + '"]');
     if (!slotEl) return;
-    const results = slotEl.querySelector('[data-slot-parent-results]');
-    if (!results) return;
-    const q = (query || '').trim();
-    if (!q) {
-        results.hidden = true;
-        results.innerHTML = '';
-        return;
-    }
-    let list;
-    try {
-        list = await api('GET', '/api/vanilla-materials?search=' + encodeURIComponent(q) + '&limit=30');
-    } catch (ex) {
-        results.hidden = false;
-        results.innerHTML = '<div class="building-slot-parent-error">Search failed: '
-            + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
-        return;
-    }
-    if (!Array.isArray(list) || list.length === 0) {
-        results.hidden = false;
-        results.innerHTML = '<div class="building-slot-parent-empty"><em>No matches.</em></div>';
-        return;
-    }
-    const parts = list.map(e =>
-        '<button type="button" class="building-vanilla-result"'
-        + ' data-slot-pick-parent="' + escapeHtml(e.packagePath) + '">'
-        + '<span class="building-vanilla-stem">' + escapeHtml(e.displayName) + '</span>'
-        + '<span class="building-vanilla-path">' + escapeHtml(e.packagePath) + '</span>'
-        + '</button>'
-    );
-    results.hidden = false;
-    results.innerHTML = parts.join('');
+    const building = currentBuildingById(buildingId);
+    if (!building) return;
+    building.slots = building.slots || {};
+    const slotKey = String(slotIndex);
+    building.slots[slotKey] = building.slots[slotKey] || {};
+    building.slots[slotKey].vanillaMaterialParentPath = packagePath;
+
+    const searchBox = slotEl.querySelector('[data-slot-parent-search]');
+    if (searchBox) searchBox.value = extractStem(packagePath);
+    const currentEl = slotEl.querySelector('.building-slot-parent-current');
+    if (currentEl) currentEl.innerHTML = 'Current: <code>' + escapeHtml(packagePath) + '</code>';
+
+    await renderSlotParams(buildingId, slotIndex, packagePath);
+    state.isDirty = true;
+    updateButtons();
+    refreshMissingFieldsBanner(card, building);
 }
 
 // -----------------------------------------------------------------------
@@ -574,8 +633,10 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
     }
 
     host.innerHTML = parts.join('');
-    state.isDirty = true;
-    updateButtons();
+    // Dirty + button refresh is the caller's responsibility - this
+    // function gets called both from user-initiated picks (which DO
+    // mutate the profile) and from background re-renders on tab open
+    // (which must NOT enable Save by themselves).
     refreshMissingFieldsBanner(card, building);
 }
 
@@ -729,11 +790,13 @@ function onBuildingListChange(e) {
         }
         state.isDirty = true;
     } else if (t.dataset.slotParentSearch !== undefined) {
-        const slotEl = t.closest('.building-slot');
-        if (!slotEl) return;
-        const slotIndex = parseInt(slotEl.dataset.slotIndex, 10);
-        if (!isFinite(slotIndex)) return;
-        debouncedVanillaSearch(custom.id, slotIndex, t.value);
+        // Re-filter the central picker while the user types. The picker
+        // was opened via the focusin handler; the input event just
+        // updates the visible matches.
+        if (state.picker && state.picker.input === t) {
+            populatePicker(t.value);
+            positionPicker(t);
+        }
         return;  // not dirty until they actually pick a result
     } else if (t.dataset.paramScalar !== undefined) {
         applyScalarParam(custom, t, 'paramScalar');
@@ -745,9 +808,12 @@ function onBuildingListChange(e) {
         applyTextureParam(custom, t);
         state.isDirty = true;
     } else if (t.dataset.recipeSearch !== undefined) {
-        const idx = parseInt(t.dataset.recipeSearch, 10);
-        if (!isFinite(idx)) return;
-        debouncedResourceSearch(custom.id, idx, t.value);
+        // Mirror of slotParentSearch: re-filter the central picker as
+        // the user types. Pick is committed via the central onPickerClick.
+        if (state.picker && state.picker.input === t) {
+            populatePicker(t.value);
+            positionPicker(t);
+        }
         return;  // not dirty until they actually pick a result
     } else if (t.dataset.recipeCount !== undefined) {
         const idx = parseInt(t.dataset.recipeCount, 10);
@@ -822,36 +888,9 @@ async function onBuildingListClick(e) {
     const t = e.target;
     if (!t) return;
 
-    // Vanilla parent pick from search results.
-    const pickBtn = t.closest('button[data-slot-pick-parent]');
-    if (pickBtn) {
-        const path = pickBtn.dataset.slotPickParent;
-        const slotEl = pickBtn.closest('.building-slot');
-        const card = pickBtn.closest('li.building-card');
-        if (!slotEl || !card) return;
-        const buildingId = card.dataset.buildingId;
-        const slotIndex = parseInt(slotEl.dataset.slotIndex, 10);
-        if (!isFinite(slotIndex)) return;
-        const building = currentBuildingById(buildingId);
-        if (!building) return;
-        building.slots = building.slots || {};
-        const slotKey = String(slotIndex);
-        building.slots[slotKey] = building.slots[slotKey] || {};
-        building.slots[slotKey].vanillaMaterialParentPath = path;
-
-        // Update the search box + close the results list.
-        const searchBox = slotEl.querySelector('[data-slot-parent-search]');
-        if (searchBox) searchBox.value = extractStem(path);
-        const resultsEl = slotEl.querySelector('[data-slot-parent-results]');
-        if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ''; }
-        const currentEl = slotEl.querySelector('.building-slot-parent-current');
-        if (currentEl) currentEl.innerHTML = 'Current: <code>' + escapeHtml(path) + '</code>';
-
-        await renderSlotParams(buildingId, slotIndex, path);
-        state.isDirty = true;
-        updateButtons();
-        return;
-    }
+    // (Vanilla parent + recipe-resource picks now use the centralized
+    //  #picker-dropdown; commit happens via app.js's onPickerClick which
+    //  calls setVanillaMiParentForSlot / setRecipeResourceForRow.)
 
     // Reset buttons (scalar / vector / texture).
     if (t.dataset && t.dataset.paramResetScalar !== undefined) {
@@ -911,30 +950,6 @@ async function onBuildingListClick(e) {
         }
         const sel = slotEl.querySelector('select[data-param-texture="' + cssEscape(name) + '"]');
         if (sel) sel.value = '';
-        state.isDirty = true;
-        updateButtons();
-        return;
-    }
-
-    // Recipe row resource pick (from the autocomplete dropdown).
-    const recipePickBtn = t.closest('button[data-recipe-pick]');
-    if (recipePickBtn) {
-        const rowEl = recipePickBtn.closest('li.building-recipe-row');
-        const card = recipePickBtn.closest('li.building-card');
-        if (!rowEl || !card) return;
-        const idx = parseInt(rowEl.dataset.recipeRow, 10);
-        const building = currentBuildingById(card.dataset.buildingId);
-        if (!building || !isFinite(idx)) return;
-        const itemPath = recipePickBtn.dataset.recipePick;
-        const label    = recipePickBtn.dataset.recipePickLabel;
-        if (itemPath) _resourceDisplayCache.set(itemPath, label || '');
-        const rows = ensureUserRecipeRows(building);
-        if (!rows[idx]) rows[idx] = { itemPath: '', count: 1 };
-        rows[idx].itemPath = itemPath;
-        // Default count to 1 when user picks a resource into an empty row.
-        if (!Number.isFinite(rows[idx].count) || rows[idx].count <= 0) rows[idx].count = 1;
-        const defaults = _recipeDefaultCache.get(building.templateId);
-        renderRecipeForCard(building.id, defaults);
         state.isDirty = true;
         updateButtons();
         return;
@@ -1241,8 +1256,7 @@ function buildRecipeRowHtml(row, idx) {
         + '<li class="building-recipe-row" data-recipe-row="' + idx + '">'
         +   '<div class="building-recipe-search">'
         +     '<input type="text" data-recipe-search="' + idx + '" value="' + safeDisplay
-        +       '" placeholder="Search resource (e.g. wood, iron, leather)" autocomplete="off">'
-        +     '<div class="building-recipe-results" data-recipe-results="' + idx + '" hidden></div>'
+        +       '" placeholder="Click to browse resources, type to filter..." autocomplete="off" spellcheck="false">'
         +     (itemPath
                 ? '<div class="building-recipe-current"><code>' + safePath + '</code></div>'
                 : '<div class="building-recipe-current"><em>Pick a resource</em></div>')
@@ -1282,58 +1296,74 @@ function ensureUserRecipeRows(custom) {
     return custom.recipeCost;
 }
 
-function debouncedResourceSearch(buildingId, rowIdx, query) {
-    const key = buildingId + '|' + rowIdx;
-    const existing = _resourceSearchTimers.get(key);
-    if (existing) clearTimeout(existing);
-    const handle = setTimeout(() => {
-        _resourceSearchTimers.delete(key);
-        runResourceSearch(buildingId, rowIdx, query);
-    }, 250);
-    _resourceSearchTimers.set(key, handle);
+// Recipe-resource picker - reuses the centralized #picker-dropdown, same
+// UX pattern as the loot-table item picker. Includes icon + name +
+// subtitle for each resource.
+async function openResourcePicker(input, buildingId, rowIdx) {
+    closePicker();
+    state.picker = { input, source: 'recipeResource', buildingId, rowIdx };
+    const dd = document.getElementById('picker-dropdown');
+    if (dd) {
+        if (state.vanillaResources) {
+            populatePicker(input.value);
+        } else {
+            dd.innerHTML = '<li class="picker-empty">Loading resources catalog...</li>';
+        }
+        dd.hidden = false;
+    }
+    positionPicker(input);
+    if (input.value) {
+        try { input.select(); } catch (_) { /* ignore */ }
+    }
+    await ensureVanillaResourcesLoaded();
+    if (state.picker && state.picker.input === input) {
+        populatePicker(input.value);
+        positionPicker(input);
+    }
 }
 
-async function runResourceSearch(buildingId, rowIdx, query) {
-    const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
-    if (!card) return;
-    const rowEl = card.querySelector('li.building-recipe-row[data-recipe-row="' + rowIdx + '"]');
-    if (!rowEl) return;
-    const resultsEl = rowEl.querySelector('[data-recipe-results]');
-    if (!resultsEl) return;
+// Called by app.js onPickerClick when the user picks a resource. Mirrors
+// the now-removed recipePickBtn branch.
+function setRecipeResourceForRow(buildingId, rowIdx, packagePath) {
+    const building = currentBuildingById(buildingId);
+    if (!building || !isFinite(rowIdx)) return;
+    const rows = ensureUserRecipeRows(building);
+    if (!rows[rowIdx]) rows[rowIdx] = { itemPath: '', count: 1 };
+    rows[rowIdx].itemPath = packagePath;
+    if (!Number.isFinite(rows[rowIdx].count) || rows[rowIdx].count <= 0) rows[rowIdx].count = 1;
+    const defaults = _recipeDefaultCache.get(building.templateId);
+    renderRecipeForCard(building.id, defaults);
+    state.isDirty = true;
+    updateButtons();
+}
 
-    const q = (query || '').trim();
-    if (!q) {
-        resultsEl.hidden = true;
-        resultsEl.innerHTML = '';
+function onBuildingListFocusIn(e) {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+
+    // Vanilla MI parent search box -> open the centralized picker.
+    if (t.dataset.slotParentSearch !== undefined) {
+        const card = t.closest('li.building-card');
+        const slotEl = t.closest('.building-slot');
+        if (!card || !slotEl) return;
+        const buildingId = card.dataset.buildingId;
+        const slotIndex = parseInt(slotEl.dataset.slotIndex, 10);
+        if (!isFinite(slotIndex)) return;
+        openVanillaMiPicker(t, buildingId, slotIndex);
         return;
     }
-    let hits;
-    try {
-        hits = await api('GET', '/api/vanilla-resources?search=' + encodeURIComponent(q) + '&limit=25');
-    } catch (ex) {
-        resultsEl.hidden = false;
-        resultsEl.innerHTML = '<div class="building-recipe-search-error">'
-            + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
+
+    // Recipe-row resource search box -> open the centralized picker.
+    if (t.dataset.recipeSearch !== undefined) {
+        const card = t.closest('li.building-card');
+        const rowEl = t.closest('li.building-recipe-row');
+        if (!card || !rowEl) return;
+        const buildingId = card.dataset.buildingId;
+        const rowIdx = parseInt(rowEl.dataset.recipeRow, 10);
+        if (!isFinite(rowIdx)) return;
+        openResourcePicker(t, buildingId, rowIdx);
         return;
     }
-    if (!Array.isArray(hits) || hits.length === 0) {
-        resultsEl.hidden = false;
-        resultsEl.innerHTML = '<div class="building-recipe-search-empty"><em>No resources match.</em></div>';
-        return;
-    }
-    // Stash display names so re-renders / pickups keep the human label.
-    for (const h of hits) {
-        if (h && h.packagePath) _resourceDisplayCache.set(h.packagePath, h.displayName || h.stem || '');
-    }
-    resultsEl.innerHTML = hits.map(h => ''
-        + '<button type="button" class="building-recipe-result"'
-        +   ' data-recipe-pick="' + escapeHtml(h.packagePath) + '"'
-        +   ' data-recipe-pick-label="' + escapeHtml(h.displayName || h.stem || '') + '">'
-        +   '<span class="result-name">' + escapeHtml(h.displayName || h.stem || '') + '</span>'
-        +   '<span class="result-stem">' + escapeHtml(h.stem || '') + '</span>'
-        + '</button>'
-    ).join('');
-    resultsEl.hidden = false;
 }
 
 function bindBuildingsHandlers() {
@@ -1342,8 +1372,14 @@ function bindBuildingsHandlers() {
 
     const list = document.getElementById('buildings-list');
     if (list) {
-        list.addEventListener('input',  onBuildingListChange);
-        list.addEventListener('change', onBuildingListChange);
-        list.addEventListener('click',  onBuildingListClick);
+        list.addEventListener('input',   onBuildingListChange);
+        list.addEventListener('change',  onBuildingListChange);
+        list.addEventListener('click',   onBuildingListClick);
+        list.addEventListener('focusin', onBuildingListFocusIn);
+        // Re-position the floating picker when the list scrolls so the
+        // dropdown stays glued to the input. Mirrors the loot tab.
+        list.addEventListener('scroll', () => {
+            if (state.picker) positionPicker(state.picker.input);
+        }, { passive: true });
     }
 }

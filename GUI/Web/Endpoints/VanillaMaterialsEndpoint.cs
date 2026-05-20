@@ -55,7 +55,10 @@ public static class VanillaMaterialsEndpoint
                 var cat = GetCatalog();
                 int lim = limit.GetValueOrDefault(50);
                 if (lim < 1) lim = 1;
-                if (lim > 200) lim = 200;
+                // Cap raised to 2000 so the frontend can load the full
+                // catalog (~1134 MIs) once and filter client-side using
+                // the same UX pattern as the loot-table picker.
+                if (lim > 2000) lim = 2000;
                 var hits = cat.Search(search ?? "", lim);
                 var dtos = new List<VanillaMaterialDto>(hits.Count);
                 foreach (var e in hits)

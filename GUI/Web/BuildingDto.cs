@@ -206,6 +206,13 @@ sealed class VanillaResourceDto
     // Icon UE path (may be empty for resources without thumbnail).
     public string iconPath;
 
+    // Web URL where the local icon PNG is served, e.g.
+    // "/Icons/DA_DID_Resource_Hardwood_T02.png". Set only when the file
+    // actually exists in the Icons/ folder (Setup extracts these via
+    // IconExtractor). Empty otherwise. Lets the recipe picker render
+    // icon + name the same way the loot-table picker does for items.
+    public string iconUrl;
+
     // Gameplay-tag identifier, e.g. "ItemData.Resource.Hardwood.T02".
     // Surfaced for power-user filtering but not required by the editor.
     public string itemTag;

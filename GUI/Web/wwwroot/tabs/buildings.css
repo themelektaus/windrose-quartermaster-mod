@@ -316,55 +316,8 @@
   color: var(--text);
 }
 
-.building-slot-parent-results {
-  display: flex;
-  flex-direction: column;
-  max-height: 16em;
-  overflow-y: auto;
-  border: 1px solid var(--border-color, #444);
-  border-radius: var(--border-radius);
-  background: var(--bg-elev);
-  margin-left: 9.5em;
-}
-
-.building-vanilla-result {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: .15em;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--border-color, #333);
-  padding: .35em .5em;
-  text-align: left;
-  cursor: pointer;
-}
-
-.building-vanilla-result:hover {
-  background: var(--bg-hover, #2a2a2a);
-}
-
-.building-vanilla-result:last-child {
-  border-bottom: none;
-}
-
-.building-vanilla-stem {
-  font-family: var(--monospace);
-  font-weight: bold;
-}
-
-.building-vanilla-path {
-  font-family: var(--monospace);
-  font-size: var(--font-size-small);
-  color: var(--text-dim);
-}
-
-.building-slot-parent-error,
-.building-slot-parent-empty {
-  padding: .35em .5em;
-  font-size: var(--font-size-small);
-  color: var(--text-dim);
-}
+/* Old inline vanilla-MI dropdown removed - the picker now reuses the
+ * centralized #picker-dropdown from the loot tab. See app.css. */
 
 .building-slot-params {
   border-top: 1px dashed var(--border-color, #333);
@@ -539,53 +492,8 @@
   word-break: break-all;
 }
 
-.building-recipe-results {
-  position: absolute;
-  top: calc(100% + .15em);
-  left: 0;
-  right: 0;
-  max-height: 14em;
-  overflow-y: auto;
-  background-color: var(--bg-elev-2, #1d1d1d);
-  border: 1px solid var(--border-color, #444);
-  border-radius: var(--border-radius);
-  z-index: 20;
-}
-
-.building-recipe-results[hidden] { display: none; }
-
-.building-recipe-result {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding: .4em .6em;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--border-color, #333);
-  color: var(--text, #eee);
-  text-align: left;
-  cursor: pointer;
-  font-size: var(--font-size-small);
-}
-
-.building-recipe-result:hover,
-.building-recipe-result:focus {
-  background-color: color-mix(in srgb, var(--accent), black 60%);
-}
-
-.building-recipe-result .result-stem {
-  font-family: var(--monospace);
-  font-size: var(--monospace-size);
-  color: var(--text-dim);
-}
-
-.building-recipe-search-empty,
-.building-recipe-search-error {
-  padding: .5em;
-  font-size: var(--font-size-small);
-}
-
-.building-recipe-search-error { color: var(--err); }
+/* Old inline recipe-resource dropdown removed - now uses the centralized
+ * #picker-dropdown (same as the loot tab item picker). */
 
 .building-recipe-count {
   display: flex;

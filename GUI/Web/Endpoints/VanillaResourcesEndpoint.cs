@@ -20,6 +20,8 @@ public static class VanillaResourcesEndpoint
 {
     static readonly object _gate = new object();
     static VanillaResourceCatalog _catalog;
+    static HashSet<string> _availableIcons;
+    static string _iconsDir;
 
     public static void Map(WebApplication app, string repoRoot)
     {
@@ -32,17 +34,25 @@ public static class VanillaResourcesEndpoint
                 var cat = GetCatalog();
                 int lim = limit.GetValueOrDefault(50);
                 if (lim < 1) lim = 1;
-                if (lim > 200) lim = 200;
+                // Cap raised to 500 so the frontend can load the full
+                // catalog (~159 resources) at once and filter client-side
+                // using the loot-picker UX pattern.
+                if (lim > 500) lim = 500;
                 var hits = cat.Search(search ?? "", lim);
                 var dtos = new List<VanillaResourceDto>(hits.Count);
+                var icons = GetAvailableIcons();
                 foreach (var e in hits)
                 {
+                    var iconUrl = (icons != null && icons.Contains(e.Stem))
+                        ? "/Icons/" + e.Stem + ".png"
+                        : "";
                     dtos.Add(new VanillaResourceDto
                     {
                         stem = e.Stem,
                         packagePath = e.PackagePath,
                         displayName = e.DisplayName,
                         iconPath = e.IconPath,
+                        iconUrl = iconUrl,
                         itemTag = e.ItemTag,
                     });
                 }
@@ -53,6 +63,29 @@ public static class VanillaResourcesEndpoint
                 return Results.Json(new { error = ex.Message }, statusCode: 503);
             }
         });
+    }
+
+    // Index PNGs under Icons/ once; resources whose stem matches a file
+    // get an iconUrl in the DTO. Cheap directory scan, rebuilt only when
+    // bootstrap fires (process lifetime).
+    static HashSet<string> GetAvailableIcons()
+    {
+        var icons = _availableIcons;
+        if (icons != null) return icons;
+        lock (_gate)
+        {
+            if (_availableIcons != null) return _availableIcons;
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(_iconsDir) && Directory.Exists(_iconsDir))
+            {
+                foreach (var path in Directory.EnumerateFiles(_iconsDir, "*.png", SearchOption.TopDirectoryOnly))
+                {
+                    set.Add(Path.GetFileNameWithoutExtension(path));
+                }
+            }
+            _availableIcons = set;
+            return set;
+        }
     }
 
     // Expose the catalog so other endpoints (BuildingsEndpoint's
@@ -73,6 +106,10 @@ public static class VanillaResourcesEndpoint
             // InventoryItems tree, in a sibling Resource/ subfolder.
             var resourceDir = Path.Combine(paths.VanillaInventoryItems,
                 "DefaultItems", "Resource");
+            // Icons folder lives at the repo root - same place
+            // ItemsEndpoint reads them from. Used to attach iconUrl to
+            // the resource DTOs so the recipe picker shows thumbnails.
+            _iconsDir = Path.Combine(repoRoot, "Icons");
             _catalog = new VanillaResourceCatalog
             {
                 VanillaResourceDir = resourceDir,

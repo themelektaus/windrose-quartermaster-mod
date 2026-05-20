@@ -49,6 +49,12 @@ const state = {
         error: null,
     },
 
+    // Lazy-loaded full catalogs the Building Creator's picker dropdowns
+    // filter client-side (same pattern as state.items for loot tables).
+    // null until the user first opens a relevant picker.
+    vanillaMaterials: null,   // [{displayName, packagePath}] (~1134 entries)
+    vanillaResources: null,   // [{stem, packagePath, displayName, iconUrl, itemTag}]
+
     picker: null,
 };
 
@@ -779,7 +785,42 @@ function populatePicker(query) {
     const q = (query || '').toLowerCase().trim();
     const rows = [];
 
-    if (state.picker.type === 'table') {
+    if (state.picker.source === 'vanillaMi') {
+        for (const m of state.vanillaMaterials || []) {
+            const name = m.displayName || '';
+            const path = m.packagePath || '';
+            if (q && !name.toLowerCase().includes(q) && !path.toLowerCase().includes(q)) continue;
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
+                    '<div class="placeholder-icon">M</div>' +
+                    '<div class="info">' +
+                        '<b>' + esc(name) + '</b>' +
+                        '<small>' + esc(path) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
+    } else if (state.picker.source === 'recipeResource') {
+        for (const r of state.vanillaResources || []) {
+            const name = r.displayName || r.stem || '';
+            const stem = r.stem || '';
+            const path = r.packagePath || '';
+            if (q
+                && !name.toLowerCase().includes(q)
+                && !stem.toLowerCase().includes(q)
+                && !path.toLowerCase().includes(q)) continue;
+            const iconHtml = r.iconUrl
+                ? '<img src="' + esc(r.iconUrl) + '" loading="lazy" alt="">'
+                : '<div class="placeholder-icon">?</div>';
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
+                    iconHtml +
+                    '<div class="info">' +
+                        '<b>' + esc(name) + '</b>' +
+                        '<small>' + esc(stem) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
+    } else if (state.picker.type === 'table') {
         for (const lt of state.lootTables) {
             if (q && !lt.id.toLowerCase().includes(q)) continue;
             const subtitle =
@@ -1326,6 +1367,14 @@ function onPickerClick(e) {
     if (picker.source === 'seller') {
         setSellerEntryField(picker.sellerId, picker.recipeId, picker.sellerField, li.dataset.pickId);
         refreshSellerCard(picker.sellerId);
+        return;
+    }
+    if (picker.source === 'vanillaMi') {
+        setVanillaMiParentForSlot(picker.buildingId, picker.slotIndex, li.dataset.pickId);
+        return;
+    }
+    if (picker.source === 'recipeResource') {
+        setRecipeResourceForRow(picker.buildingId, picker.rowIdx, li.dataset.pickId);
         return;
     }
     confirmAddedEntry(picker.ltId, picker.addedIndex, picker.type, li.dataset.pickId);
