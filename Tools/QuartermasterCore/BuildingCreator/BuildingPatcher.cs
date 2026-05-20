@@ -200,13 +200,44 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             string newDescKey = null;
             if (!string.IsNullOrWhiteSpace(template.VanillaNameKey))
             {
-                newNameKey = BuildingFTextKey.Build(template.VanillaNameKey, inputs.BuildingId, "_Name");
-                replacements[template.VanillaNameKey] = newNameKey;
+                // TryBuild: returns null when even the prefix-stripped 8-hex
+                // form doesn't fit the vanilla key budget. Degrade gracefully:
+                // skip the rewrite + warn, building keeps vanilla display text.
+                newNameKey = BuildingFTextKey.TryBuild(template.VanillaNameKey, inputs.BuildingId, "_Name");
+                if (newNameKey != null)
+                {
+                    replacements[template.VanillaNameKey] = newNameKey;
+                }
+                else
+                {
+                    result.Warnings.Add(
+                        "FText Name key: vanilla key '" + template.VanillaNameKey + "' ("
+                        + template.VanillaNameKey.Length + " chars) is too short to hold "
+                        + "the building id + '_Name' suffix. Skipping rewrite - this "
+                        + "building will show the vanilla display text in-game.");
+                }
             }
             if (!string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
             {
-                newDescKey = BuildingFTextKey.Build(template.VanillaDescriptionKey, inputs.BuildingId, "_Description");
-                replacements[template.VanillaDescriptionKey] = newDescKey;
+                newDescKey = BuildingFTextKey.TryBuild(template.VanillaDescriptionKey, inputs.BuildingId, "_Description");
+                if (newDescKey != null)
+                {
+                    replacements[template.VanillaDescriptionKey] = newDescKey;
+                }
+                else
+                {
+                    result.Warnings.Add(
+                        "FText Description key: vanilla key '" + template.VanillaDescriptionKey + "' ("
+                        + template.VanillaDescriptionKey.Length + " chars) is too short to hold "
+                        + "the building id + '_Description' suffix. Skipping rewrite - this "
+                        + "building will show the vanilla description in-game.");
+                }
+            }
+
+            if (replacements.Count == 0)
+            {
+                LogLine("  (no FText keys fit the same-length budget - skipping rewrite)");
+                return;
             }
 
             var rewriter = new FTextKeyRewriter { Log = LogLine };

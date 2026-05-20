@@ -137,8 +137,16 @@ function ensureVanillaBuildingInspection(templateId) {
 // Open the central picker over the building card's template input.
 // Loads the catalog on first open (~849 entries) and uses the optional
 // category facet to narrow the list.
+//
+// Note: we deliberately do NOT call openPicker() - that helper hard-codes
+// `source: 'loot'` and would clobber our `vanillaBuilding` source,
+// dropping populatePicker into the default items branch (which is what
+// caused DA_DID_Item_Recipe_* entries to show up instead of DA_BI_*
+// building templates). Mirror openVanillaMiPicker / openResourcePicker
+// which manage the dropdown directly.
 async function openVanillaBuildingPicker(inputEl, buildingIndex) {
     if (!inputEl) return;
+    closePicker();
     const card = inputEl.closest && inputEl.closest('.building-card');
     const cat  = card ? card.querySelector('[data-building-template-category]') : null;
     state.picker = {
@@ -147,10 +155,23 @@ async function openVanillaBuildingPicker(inputEl, buildingIndex) {
         buildingIndex: buildingIndex,
         category: cat ? cat.value || '' : '',
     };
-    openPicker(inputEl, null, null, null);
+    const dd = document.getElementById('picker-dropdown');
+    if (dd) {
+        if (state.vanillaBuildingTemplates) {
+            populatePicker(inputEl.value);
+        } else {
+            dd.innerHTML = '<li class="picker-empty">Loading vanilla building templates...</li>';
+        }
+        dd.hidden = false;
+    }
+    positionPicker(inputEl);
+    if (inputEl.value) {
+        try { inputEl.select(); } catch (_) { /* ignore */ }
+    }
     await ensureVanillaBuildingTemplatesLoaded();
     if (state.picker && state.picker.input === inputEl) {
         populatePicker(inputEl.value);
+        positionPicker(inputEl);
     }
 }
 

@@ -52,14 +52,9 @@
   white-space: nowrap;
 }
 
-/* Template picker input (Etappe I). Readonly input that opens the
-   central #picker-dropdown on click. Styled to match the recipe-row
-   resource input next door. */
 .building-title-template > input[data-building-template-input] {
   flex: 1 1 auto;
   min-width: 16em;
-  cursor: pointer;
-  background: var(--input-bg, #fff);
 }
 
 .building-title-template > select[data-building-template-category] {

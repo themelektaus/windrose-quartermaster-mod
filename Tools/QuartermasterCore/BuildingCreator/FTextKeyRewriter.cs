@@ -288,14 +288,57 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     // The padding lives BETWEEN the core and the suffix so the key
     // still has a recognisable shape ("<id>_______Name") for anyone
     // debugging a raw CSV row or asset hex dump.
+    //
+    // Adaptive shortening: some vanilla building DAs use very short
+    // FText keys (e.g. Building_POI_Floor at 18 chars) that cannot hold
+    // the full QmBldg_<8hex>_<suffix> form (20 chars for "_Name"). When
+    // that happens, Build() strips the "QmBldg_" prefix and tries again
+    // with just the 8-hex part. Both BuildingPatcher and CSV synthesis
+    // call through this same helper, so the shortened form is mirrored
+    // on both sides without drift. TryBuild() returns null when even the
+    // short form does not fit - callers can degrade gracefully (warn,
+    // skip the rewrite, keep the vanilla text).
     public static class BuildingFTextKey
     {
+        // Prefix the GUI generates for every BuildingId. When the full
+        // form doesn't fit the vanilla key budget, we strip this prefix
+        // and try again with just the 8-hex suffix.
+        const string BuildingIdPrefix = "QmBldg_";
+
         // Produces a per-building key of EXACTLY vanillaKey.Length bytes.
-        // Throws if buildingId + suffix is longer than the vanilla key
-        // allows (no truncation - prefer surfacing the configuration
-        // problem to silently producing a wrong key the engine then
-        // can't resolve).
+        // Throws if neither the full BuildingId nor the prefix-stripped
+        // 8-hex form fits the vanilla key budget. Use TryBuild() if you
+        // want a non-throwing variant.
         public static string Build(string vanillaKey, string buildingId, string suffix)
+        {
+            var key = TryBuild(vanillaKey, buildingId, suffix);
+            if (key == null)
+            {
+                int needed = buildingId.Length + suffix.Length;
+                int needShort = buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal)
+                    ? buildingId.Length - BuildingIdPrefix.Length + suffix.Length
+                    : needed;
+                throw new InvalidOperationException(
+                    "Building '" + buildingId + "' cannot fit a same-length FText key: "
+                    + "vanilla key '" + vanillaKey + "' (" + vanillaKey.Length
+                    + " chars) is shorter than even the prefix-stripped form '"
+                    + (buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal)
+                        ? buildingId.Substring(BuildingIdPrefix.Length)
+                        : buildingId)
+                    + suffix + "' (" + needShort + " chars). "
+                    + "This template has unusually short FText keys; the building "
+                    + "will need to keep the vanilla display text.");
+            }
+            return key;
+        }
+
+        // Non-throwing variant. Returns:
+        //   - "<buildingId><padding><suffix>" if the full form fits, OR
+        //   - "<8hex><padding><suffix>" if only the prefix-stripped form
+        //     fits (when buildingId starts with QmBldg_), OR
+        //   - null if neither fits (caller should skip the rewrite and
+        //     surface a warning).
+        public static string TryBuild(string vanillaKey, string buildingId, string suffix)
         {
             if (string.IsNullOrEmpty(vanillaKey))
                 throw new ArgumentException("vanillaKey is required");
@@ -303,18 +346,26 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 throw new ArgumentException("buildingId is required");
             if (string.IsNullOrEmpty(suffix))
                 throw new ArgumentException("suffix is required");
+
+            // Attempt 1: full BuildingId (e.g. "QmBldg_5b32d7f7_Name" = 20 chars).
             int padLen = vanillaKey.Length - buildingId.Length - suffix.Length;
-            if (padLen < 0)
+            if (padLen >= 0)
+                return buildingId + new string('_', padLen) + suffix;
+
+            // Attempt 2: drop the "QmBldg_" prefix and use just the 8-hex
+            // tail (e.g. "5b32d7f7_Name" = 13 chars). Still unique per
+            // building (the hex is GUI-generated and never collides
+            // within one profile), and the cloned DA file is itself per-
+            // building so cross-DA collisions don't matter.
+            if (buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException(
-                    "Building '" + buildingId + "' cannot fit a same-length FText key: "
-                    + "vanilla key '" + vanillaKey + "' (" + vanillaKey.Length
-                    + " chars) is shorter than required buildingId+suffix '"
-                    + buildingId + suffix + "' ("
-                    + (buildingId.Length + suffix.Length) + " chars). "
-                    + "Use a shorter BuildingId.");
+                var shortId = buildingId.Substring(BuildingIdPrefix.Length);
+                int shortPadLen = vanillaKey.Length - shortId.Length - suffix.Length;
+                if (shortPadLen >= 0)
+                    return shortId + new string('_', shortPadLen) + suffix;
             }
-            return buildingId + new string('_', padLen) + suffix;
+
+            return null;
         }
     }
 }
