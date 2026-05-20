@@ -181,5 +181,49 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 VanillaRecipePackagePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood",
             };
         }
+
+        // Etappe I.2: build a BuildingTemplate dynamically from a
+        // VanillaBuildingTemplateInspection. Used by the BuildPipeline
+        // when the profile's TemplateId references a Vanilla DA path
+        // (rather than one of the legacy "Painting"/"Bucket" sentinels).
+        //
+        // The factory deliberately accepts partial inspections - missing
+        // recipe refs are fine (some Vanilla DAs ship without a recipe;
+        // the patcher's recipe step is a no-op when VanillaRecipeStem is
+        // null). Missing Mesh/Icon refs would be fatal at build time, so
+        // the inspector surfaces those as warnings the GUI can show.
+        public static BuildingTemplate FromInspection(VanillaBuildingTemplateInspection ins)
+        {
+            if (ins == null) throw new System.ArgumentNullException("ins");
+
+            return new BuildingTemplate
+            {
+                Id          = ins.Id,
+                DisplayName = ins.DisplayName,
+                Description = "Cloned from Vanilla " + ins.DisplayName + " (" + (ins.Category ?? "?") + ").",
+
+                VanillaDaStem          = ins.DisplayName,
+                VanillaDaPath          = ins.PackagePath,
+                VanillaNameKey         = ins.NameKey,
+                VanillaDescriptionKey  = ins.DescriptionKey,
+
+                VanillaMeshStem = ins.MeshStem,
+                VanillaMeshPath = ins.MeshPath,
+
+                VanillaIconStem = ins.IconStem,
+                VanillaIconPath = ins.IconPath,
+
+                // Tab routing is pinned to "Vorgefertigte Strukturen"
+                // (Etappe H1) regardless of the DA's source folder. The
+                // CategoryTag field is still surfaced here for diagnostics
+                // - GameDeployer reads `tabPurityFilter` from its own
+                // constant, not from this string.
+                CategoryTag = ins.Category ?? "BuildingDecoration",
+
+                VanillaRecipeJsonPath    = ins.RecipeJsonPath,
+                VanillaRecipeStem        = ins.RecipeStem,
+                VanillaRecipePackagePath = ins.RecipePath,
+            };
+        }
     }
 }

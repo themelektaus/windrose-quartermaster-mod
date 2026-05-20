@@ -116,16 +116,37 @@ public static class BuildingsEndpoint
         }
     }
 
-    // Mirrors the static template factory list in BuildingTemplatesEndpoint.
-    // Keeps the two endpoints decoupled (each only knows about the
-    // templates that matter for its own response shape).
+    // Mirrors BuildPipeline.ResolveBuildingTemplate but lives here so
+    // the inspect-recipe endpoint stays decoupled from the build path.
+    // Supports two id forms:
+    //   - "Painting"/"Bucket" sentinels (legacy hardcoded factories)
+    //   - Vanilla DA virtual path ("/Game/Gameplay/Building/.../DA_BI_*")
+    //     resolved via the shared catalog + inspector (Etappe I.2)
     static BuildingTemplate ResolveTemplate(string id)
     {
-        if (string.Equals(id, "Painting", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var trimmed = id.Trim();
+        if (string.Equals(trimmed, "Painting", StringComparison.OrdinalIgnoreCase))
             return BuildingTemplate.Painting();
-        if (string.Equals(id, "Bucket", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(trimmed, "Bucket", StringComparison.OrdinalIgnoreCase))
             return BuildingTemplate.Bucket();
-        return null;
+
+        try
+        {
+            var catalog = BuildingTemplatesEndpoint.GetSharedCatalog();
+            var inspector = new VanillaBuildingTemplateInspector
+            {
+                Catalog = catalog,
+                Log     = msg => Console.WriteLine("[building-inspect] " + msg),
+            };
+            var ins = inspector.Inspect(trimmed);
+            if (!string.IsNullOrEmpty(ins.Error)) return null;
+            return BuildingTemplate.FromInspection(ins);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     static CookedFolderScanDto ScanCookedFolder(string raw)

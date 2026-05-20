@@ -99,6 +99,13 @@ namespace Windrose.Quartermaster.Core
         // leave it null since CLI builds never enable IoStore features.
         public Func<string> GamePaksDirProvider;
 
+        // Etappe I: when set, the pipeline resolves building templateIds
+        // that are NOT "Painting"/"Bucket" through this catalog. The Web
+        // layer wires its shared VanillaBuildingTemplateCatalog instance
+        // in before calling Build(); CLI smoke tests leave it null and
+        // get the legacy hardcoded-factory behavior.
+        public VanillaBuildingTemplateCatalog BuildingTemplateCatalog;
+
         // Filename of the game container that ships the DA_BI* DataAssets
         // (the ones BuildingStabilityPatcher operates on). retoc unpack-raw
         // takes a specific .utoc file rather than a Paks directory, so we
@@ -2193,18 +2200,69 @@ namespace Windrose.Quartermaster.Core
         // them; the only thing that moved is the orchestration loop itself.
 
         // Maps a template id (string in the profile) to a concrete
-        // BuildingTemplate factory. Templates only define gameplay-side
-        // properties (DA parent, mesh/icon donors, category tag) -
-        // material slots come from the user's cooked mesh, not the
-        // template, since Etappe G.
-        static BuildingTemplate ResolveBuildingTemplate(string templateId)
+        // BuildingTemplate. Templates only define gameplay-side properties
+        // (DA parent, mesh/icon donors, category tag) - material slots
+        // come from the user's cooked mesh, not the template, since
+        // Etappe G.
+        //
+        // Two id forms supported:
+        //   1) Legacy sentinel "Painting" / "Bucket" - routed to the
+        //      hardcoded factory. Kept for backwards compat with profiles
+        //      saved before Etappe I.
+        //   2) Vanilla DA virtual path "/Game/Gameplay/Building/.../DA_BI_*"
+        //      - resolved through the BuildingTemplateCatalog +
+        //      VanillaBuildingTemplateInspector (Etappe I.2). Catalog
+        //      must be set (Web layer does this); CLI smoke tests that
+        //      don't set it can still build Painting/Bucket buildings.
+        BuildingTemplate ResolveBuildingTemplate(string templateId)
         {
             if (string.IsNullOrWhiteSpace(templateId)) return null;
-            switch (templateId.Trim())
+            var trimmed = templateId.Trim();
+
+            // Legacy aliases first - they never go through the catalog
+            // since the factories ship hardcoded constants.
+            if (string.Equals(trimmed, "Painting", StringComparison.OrdinalIgnoreCase))
+                return BuildingTemplate.Painting();
+            if (string.Equals(trimmed, "Bucket", StringComparison.OrdinalIgnoreCase))
+                return BuildingTemplate.Bucket();
+
+            // Vanilla DA path form - look it up in the catalog.
+            if (BuildingTemplateCatalog == null)
             {
-                case "Painting": return BuildingTemplate.Painting();
-                case "Bucket":   return BuildingTemplate.Bucket();
-                default:         return null;
+                LogLine("  warn: templateId='" + trimmed + "' looks like a Vanilla DA path"
+                    + " but BuildingTemplateCatalog is not configured - skipping");
+                return null;
+            }
+
+            var inspector = new VanillaBuildingTemplateInspector
+            {
+                Catalog = BuildingTemplateCatalog,
+                Log     = msg => LogLine("  " + msg),
+            };
+            try
+            {
+                var inspection = inspector.Inspect(trimmed);
+                if (!string.IsNullOrEmpty(inspection.Error))
+                {
+                    LogLine("  warn: template inspection failed for '" + trimmed
+                        + "': " + inspection.Error + " - skipping");
+                    return null;
+                }
+                foreach (var w in inspection.Warnings ?? new List<string>())
+                    LogLine("  warn: " + w);
+                if (string.IsNullOrEmpty(inspection.MeshStem) || string.IsNullOrEmpty(inspection.MeshPath))
+                {
+                    LogLine("  warn: template '" + trimmed + "' has no Mesh ref"
+                        + " - cannot clone, skipping");
+                    return null;
+                }
+                return BuildingTemplate.FromInspection(inspection);
+            }
+            catch (Exception ex)
+            {
+                LogLine("  warn: template resolution exception for '" + trimmed
+                    + "': " + ex.Message + " - skipping");
+                return null;
             }
         }
 

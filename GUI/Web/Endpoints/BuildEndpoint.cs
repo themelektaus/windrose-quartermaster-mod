@@ -61,6 +61,26 @@ public static class BuildEndpoint
             // failure path uniform.
             pipeline.GamePaksDirProvider = SteamLocator.FindVanillaPaksDir;
 
+            // Etappe I.2: share the Web-layer Vanilla-Building catalog
+            // with the pipeline so it can resolve Vanilla-DA-path
+            // templateIds dynamically (instead of only the legacy
+            // "Painting"/"Bucket" sentinels). The catalog bootstraps
+            // lazily on first BuildingTemplatesEndpoint hit; pre-fetching
+            // it here ensures the first Build call doesn't pay the mount
+            // cost mid-pipeline.
+            try
+            {
+                pipeline.BuildingTemplateCatalog = BuildingTemplatesEndpoint.GetSharedCatalog();
+            }
+            catch
+            {
+                // Pre-Etappe-I profiles only use Painting/Bucket and
+                // don't need the catalog. Swallow the bootstrap failure
+                // so legacy builds keep working - the pipeline's
+                // template resolver will surface a clear warning if a
+                // building actually needs the catalog.
+            }
+
             // Redirect the pak straight into Windrose's ~mods/ folder so
             // the engine picks it up without a manual copy step. SteamLocator
             // throws a descriptive error if the install can't be found.

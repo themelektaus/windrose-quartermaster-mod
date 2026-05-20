@@ -29,6 +29,76 @@ sealed class BuildingTemplateDto
     public string categoryTag;
 }
 
+// Wire-format for /api/building-templates/vanilla (Etappe I.1).
+// One entry per Vanilla DA_BI_*.uasset that lives under
+// /Game/Gameplay/Building/ and is NOT in a BuildingBrushes/Houses
+// folder (those carry R5BuildingBrush class which the inject-side
+// can't currently clone as Item).
+//
+// The GUI uses the indexed list to render a searchable + category-
+// filterable picker. The picked entry's `id` (= UE /Game/... path)
+// is what the profile stores on the building. At build-time the
+// patcher resolves the id back to the Vanilla DA via the catalog and
+// reads its Mesh/Icon/Recipe refs + FText keys (Etappe I.2 inspector).
+sealed class VanillaBuildingTemplateDto
+{
+    // Stable identifier; = packagePath (kept duplicated so the GUI
+    // doesn't have to guess which field to put on the profile).
+    public string id;
+
+    // File stem ("DA_BI_Bucket_01") - the picker's user-facing label.
+    public string displayName;
+
+    // Parent-folder name ("BuildingDecoration" / "BuildingPoi" / ...).
+    // Used by the GUI's category facet filter.
+    public string category;
+
+    // UE virtual path, e.g.
+    // "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01".
+    public string packagePath;
+}
+
+// Wire-format for /api/building-templates/vanilla/inspect?id=<path>.
+// Returns the metadata the BuildingPatcher needs to clone the picked
+// Vanilla DA (Mesh + Icon + Recipe asset refs, Name+Description FText
+// keys, class name). The frontend uses this to:
+//   - Confirm the user-picked DA is actually a R5BuildingItem (sanity
+//     gate before starting a long build) - the class field is surfaced
+//     in the picker preview pane
+//   - Pre-fill the recipe editor with the picked DA's default cost
+//     (instead of the previous static templateId="Painting"/"Bucket"
+//     lookup)
+//   - Show the Mesh / Icon stems so the user knows which files their
+//     cook folder needs to overwrite
+sealed class VanillaBuildingTemplateInspectDto
+{
+    public string id;
+    public string displayName;
+    public string category;
+    public string packagePath;
+    public string pakRelativePath;
+
+    // "R5BuildingItem" expected. Anything else surfaces as a frontend
+    // warning - the BuildPipeline will refuse to clone the DA.
+    public string assetClass;
+
+    public string meshStem;
+    public string meshPath;
+
+    public string iconStem;
+    public string iconPath;
+
+    public string recipeStem;
+    public string recipePath;       // /R5BusinessRules/...
+    public string recipeJsonPath;   // R5/Plugins/...json (relative)
+
+    public string nameKey;          // FText key for Name
+    public string descriptionKey;   // FText key for Description
+
+    public string error;
+    public List<string> warnings;
+}
+
 // Wire-format for /api/buildings/scan-cooked?path=<absolute>. Listed
 // per file in the user's CookedFolderPath, classified by stem prefix
 // + extension so the GUI can preview what's there before the user
