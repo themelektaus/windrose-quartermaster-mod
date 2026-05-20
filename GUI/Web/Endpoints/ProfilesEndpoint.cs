@@ -860,13 +860,23 @@ public static class ProfilesEndpoint
             if (v == null) { result[kvp.Key] = null; continue; }
             result[kvp.Key] = new CustomBuildingSlot
             {
-                CustomAlbedoStem = v.CustomAlbedoStem,
-                CustomAlbedoPath = v.CustomAlbedoPath,
-                CustomNormalStem = v.CustomNormalStem,
-                CustomNormalPath = v.CustomNormalPath,
-                CustomMtrmStem   = v.CustomMtrmStem,
-                CustomMtrmPath   = v.CustomMtrmPath,
+                VanillaMaterialParentPath = v.VanillaMaterialParentPath,
+                ScalarParams  = v.ScalarParams  == null ? null : new Dictionary<string, float>(v.ScalarParams, StringComparer.Ordinal),
+                VectorParams  = v.VectorParams  == null ? null : CloneVectorParams(v.VectorParams),
+                TextureParams = v.TextureParams == null ? null : new Dictionary<string, string>(v.TextureParams, StringComparer.Ordinal),
             };
+        }
+        return result;
+    }
+
+    // Deep-clone the float[] values (otherwise the duplicate shares the
+    // same array references with the source profile).
+    static Dictionary<string, float[]> CloneVectorParams(Dictionary<string, float[]> src)
+    {
+        var result = new Dictionary<string, float[]>(src.Count, StringComparer.Ordinal);
+        foreach (var kvp in src)
+        {
+            result[kvp.Key] = kvp.Value == null ? null : (float[])kvp.Value.Clone();
         }
         return result;
     }

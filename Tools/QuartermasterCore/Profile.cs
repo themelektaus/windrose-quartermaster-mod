@@ -804,38 +804,58 @@ namespace Windrose.Quartermaster.Core
         // Same path/extension expectation as MeshStem.
         public string IconStem;
 
-        // Per-slot user inputs, keyed by MaterialSlotTemplate.SlotName
-        // (e.g. "Frame", "Canvas" for the Painting template). null for a
-        // given key = use the shared default-VTs for all three texture
-        // channels. The Painting Canvas slot has UserAlbedoRequired=true,
-        // so the patcher refuses to build until Slots["Canvas"]
-        // .CustomAlbedoStem is set.
+        // Per-slot user inputs, keyed by stable mesh-slot identifier.
+        // Etappe G: keys are mesh-derived (e.g. "0" / "1" by index, or
+        // "WorldGridMaterial" / "lambert1" by name) - the GUI picks
+        // whichever the user mesh exposes. null for a given key = the
+        // slot has no user-config yet (Build will fail until the user
+        // picks a Vanilla-MI parent for it).
         public Dictionary<string, CustomBuildingSlot> Slots;
     }
 
-    // Per-slot user input. Each field is optional; null/empty falls back
-    // to the shared default-VT (T_QmPainting_White / NormalFlat /
-    // MTRMDefault, shipped once per pak by the orchestrator). The slot
-    // name comes from the template (e.g. "Canvas" for Painting) - the
-    // dict key in CustomBuilding.Slots binds the inputs to a specific
-    // material-slot definition in the BuildingTemplate.
+    // Per-slot user input (Etappe G mesh-driven schema).
+    //
+    // Replaces the old template-driven schema (CustomAlbedoStem etc.)
+    // which assumed the template hardcoded the param set. Each slot
+    // now carries:
+    //
+    //   - VanillaMaterialParentPath: the Vanilla MI the user picked
+    //     as the parent for this slot's clone. The patcher extracts
+    //     this MI via retoc to-legacy and clones it under
+    //     /Game/Quartermaster/Items/MI_<AssetPrefix>_<SlotKey>.
+    //
+    //   - ScalarParams / VectorParams / TextureParams: user overrides
+    //     for parameters that exist in the picked Vanilla MI. The GUI
+    //     only ever offers params that the MI's ScalarParameterValues /
+    //     VectorParameterValues / TextureParameterValues blocks contain
+    //     (no param-add path - we just edit existing entries).
+    //
+    // All four collections are optional; an empty dict means "no
+    // overrides, use Vanilla values as-is".
     public sealed class CustomBuildingSlot
     {
-        // Texture2D stem the user cooked for this slot's albedo channel
-        // (e.g. "T_QmPainting_Image"). null/empty = use shared default
-        // (which is white -> Canvas slot would render blank; the
-        // patcher enforces this for slots flagged UserAlbedoRequired).
-        public string CustomAlbedoStem;
-        public string CustomAlbedoPath;
+        // Vanilla MI the user picked as the shader / parent for this
+        // slot. Required for a slot to participate in the build.
+        // Format: "/Game/.../MI_<Name>" (UE virtual path, no extension).
+        public string VanillaMaterialParentPath;
 
-        // Texture2D stems for the Normal and MTRM channels. Almost
-        // nobody overrides these (the shared NormalFlat / MTRMDefault VTs
-        // already give a sensible matte-look default), but we expose
-        // them for power-users who want a bumped or metallic finish.
-        public string CustomNormalStem;
-        public string CustomNormalPath;
-        public string CustomMtrmStem;
-        public string CustomMtrmPath;
+        // Per-parameter overrides. Keys are param names as they appear
+        // in the Vanilla MI (e.g. "Roughness", "Edge Color", "Albedo").
+        // Casing matches the MI - the patcher compares case-sensitively.
+        //
+        // Scalars: float -> overrides ScalarParameterValues entries.
+        public Dictionary<string, float> ScalarParams;
+
+        // Vectors: float[4] = RGBA -> overrides VectorParameterValues
+        // entries (LinearColor.R/G/B/A). The frontend stores these as
+        // a 4-element JSON array; the patcher reads via index.
+        public Dictionary<string, float[]> VectorParams;
+
+        // Textures: param-name -> texture stem (e.g. "T_QmPainting_Image").
+        // The patcher rewrites the cloned MI's NameMap so the matching
+        // texture ref points at the user-cooked texture (which must be
+        // present in the cooked folder under that stem).
+        public Dictionary<string, string> TextureParams;
     }
 
     // Edit-spec for a single R5BLRecipeList JSON on the Sellers side

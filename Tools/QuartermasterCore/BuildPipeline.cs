@@ -1084,7 +1084,16 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
-                            var inputs = BuildBuildingInputs(b, template);
+                            BuildingInputs inputs;
+                            try
+                            {
+                                inputs = BuildBuildingInputs(b, template, usmapPath, Log);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogLine("  warn: failed to build inputs for '" + b.Id + "': " + ex.Message + " - skipping");
+                                continue;
+                            }
                             LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
                             var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
                             buildingResults.Add(result);
@@ -2088,25 +2097,42 @@ namespace Windrose.Quartermaster.Core
         // them; the only thing that moved is the orchestration loop itself.
 
         // Maps a template id (string in the profile) to a concrete
-        // BuildingTemplate factory. Today only one template exists; adding
-        // a new one is a single case here plus the GUI catalog endpoint.
+        // BuildingTemplate factory. Templates only define gameplay-side
+        // properties (DA parent, mesh/icon donors, category tag) -
+        // material slots come from the user's cooked mesh, not the
+        // template, since Etappe G.
         static BuildingTemplate ResolveBuildingTemplate(string templateId)
         {
             if (string.IsNullOrWhiteSpace(templateId)) return null;
             switch (templateId.Trim())
             {
                 case "Painting": return BuildingTemplate.Painting();
+                case "Bucket":   return BuildingTemplate.Bucket();
                 default:         return null;
             }
         }
 
         // Translates the persisted CustomBuilding profile entry into the
-        // BuildingPatcher's input bundle. Per-slot user textures are pulled
-        // from CustomBuilding.Slots (dict keyed by slot name); slots not
-        // listed in the dict (or with blank fields) fall back to the
-        // template-shipped defaults.
-        static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template)
+        // BuildingPatcher's input bundle (Etappe G mesh-driven).
+        //
+        // Reads the user-cooked mesh via CookedFolderInspector to learn
+        // the slot list + per-slot user-MI refs, then merges the
+        // Profile's CustomBuildingSlot dict on top for the per-param
+        // overrides. Slot dict keys may be either the slot index as a
+        // string ("0", "1") or the slot name ("WorldGridMaterial") -
+        // the GUI defaults to index, but either works.
+        static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template, string usmapPath, Action<string> log)
         {
+            var inspector = new CookedFolderInspector
+            {
+                UsmapPath = usmapPath,
+                Log = log,
+            };
+            var inspection = inspector.Inspect(b.CookedFolderPath, b.MeshStem);
+            if (inspection.MeshSlots == null || inspection.MeshSlots.Count == 0)
+                throw new InvalidOperationException(
+                    "Mesh '" + b.MeshStem + "' has no material slots (or could not be read) - check the cooked folder");
+
             var inputs = new BuildingInputs
             {
                 BuildingId        = b.Id,
@@ -2116,46 +2142,35 @@ namespace Windrose.Quartermaster.Core
                 IconStem          = b.IconStem,
                 DisplayName       = b.Name,
                 Description       = b.Description,
-                SkipUserCookedMaterialStems = new List<string>(),
-                SlotInputs        = new Dictionary<string, BuildingSlotInputs>(StringComparer.Ordinal),
-                // The shared default-VT texture stems / package paths follow
-                // a fixed naming convention - the user is expected to have
-                // cooked these once (or copied them in) and shipped them
-                // alongside the per-building user assets. The patcher only
-                // emits NameMap refs pointing at them; the staging step
-                // picks the actual .uasset/.uexp/.ubulk up from the cooked
-                // folder via the prefix filter.
-                DefaultAlbedoStem = "T_QmPainting_White",
-                DefaultAlbedoPath = "/Game/Quartermaster/Items/T_QmPainting_White",
-                DefaultNormalStem = "T_QmPainting_NormalFlat",
-                DefaultNormalPath = "/Game/Quartermaster/Items/T_QmPainting_NormalFlat",
-                DefaultMtrmStem   = "T_QmPainting_MTRMDefault",
-                DefaultMtrmPath   = "/Game/Quartermaster/Items/T_QmPainting_MTRMDefault",
+                MeshSlots         = new List<MeshSlotInput>(),
             };
-            // The user-cooked material stems for THIS building's slots are
-            // the names the staging step skips (user-cooked materials crash
-            // shipping). Derived from template + asset prefix.
-            foreach (var slot in template.Slots)
-            {
-                inputs.SkipUserCookedMaterialStems.Add(
-                    "M_" + b.AssetPrefix + "_" + slot.SlotName);
-            }
 
-            if (b.Slots != null)
+            foreach (var s in inspection.MeshSlots)
             {
-                foreach (var kv in b.Slots)
+                CustomBuildingSlot ov = null;
+                if (b.Slots != null)
                 {
-                    if (string.IsNullOrWhiteSpace(kv.Key) || kv.Value == null) continue;
-                    inputs.SlotInputs[kv.Key] = new BuildingSlotInputs
+                    // GUI persists by index string ("0", "1"). Fall back
+                    // to the slot name for robustness against future GUI
+                    // changes.
+                    if (!b.Slots.TryGetValue(s.Index.ToString(System.Globalization.CultureInfo.InvariantCulture), out ov)
+                        && !b.Slots.TryGetValue(s.SlotName ?? "", out ov))
                     {
-                        CustomAlbedoStem = kv.Value.CustomAlbedoStem,
-                        CustomAlbedoPath = kv.Value.CustomAlbedoPath,
-                        CustomNormalStem = kv.Value.CustomNormalStem,
-                        CustomNormalPath = kv.Value.CustomNormalPath,
-                        CustomMtrmStem   = kv.Value.CustomMtrmStem,
-                        CustomMtrmPath   = kv.Value.CustomMtrmPath,
-                    };
+                        ov = null;
+                    }
                 }
+
+                inputs.MeshSlots.Add(new MeshSlotInput
+                {
+                    Index                    = s.Index,
+                    SlotName                 = s.SlotName,
+                    UserMaterialStem         = s.UserMaterialStem,
+                    UserMaterialPath         = s.UserMaterialPath,
+                    VanillaMaterialParentPath = ov?.VanillaMaterialParentPath,
+                    ScalarParams             = ov?.ScalarParams,
+                    VectorParams             = ov?.VectorParams,
+                    TextureParams            = ov?.TextureParams,
+                });
             }
 
             return inputs;

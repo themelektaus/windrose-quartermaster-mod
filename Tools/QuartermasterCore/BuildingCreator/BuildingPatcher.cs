@@ -99,28 +99,37 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             StageCookedAssets(inputs, stagingItemsDir, result);
 
             // ---- Step 2: rewrite mesh material slots -------------------
+            // Each mesh slot's user-MI ref (e.g. "MI_QmPainting_Canvas")
+            // gets swapped for the slot's clone stem (e.g.
+            // "MI_QmPainting_slot1"). The clones are produced in Step 4.
             LogLine("=== [" + inputs.BuildingId + "] Step 2: rewrite mesh material slots ===");
-            PatchMeshMaterialSlots(template, inputs, stagingItemsDir, result);
+            PatchMeshMaterialSlots(inputs, stagingItemsDir, result);
 
-            // ---- Step 3: extract Vanilla MI ----------------------------
-            // Templates can in theory have multiple distinct Vanilla MIs
-            // (one per slot), but in practice Painting reuses
-            // MI_Paintings_01 across both slots. We cache by stem so we
-            // only retoc-extract each distinct MI once per Patch() call.
+            // ---- Step 3: extract Vanilla MIs ---------------------------
+            // Each slot may pick a different Vanilla MI as parent. We
+            // cache by VanillaMaterialParentPath so distinct picks each
+            // run retoc once; slots that share a pick reuse the extract.
             LogLine("=== [" + inputs.BuildingId + "] Step 3: extract Vanilla MIs ===");
             var vanillaMiCache = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var slot in template.Slots)
+            foreach (var slot in inputs.MeshSlots)
             {
-                if (vanillaMiCache.ContainsKey(slot.VanillaMaterialStem)) continue;
-                var legacyMiPath = ExtractVanillaAsset(slot.VanillaMaterialStem, perBuildingTemp, "mi-" + slot.SlotName);
-                vanillaMiCache[slot.VanillaMaterialStem] = legacyMiPath;
+                if (string.IsNullOrWhiteSpace(slot.VanillaMaterialParentPath)) continue;
+                if (vanillaMiCache.ContainsKey(slot.VanillaMaterialParentPath)) continue;
+                var vanillaStem = StemFromPath(slot.VanillaMaterialParentPath);
+                var legacyMiPath = ExtractVanillaAsset(vanillaStem, perBuildingTemp, "mi-slot" + slot.Index);
+                vanillaMiCache[slot.VanillaMaterialParentPath] = legacyMiPath;
             }
 
-            // ---- Step 4: clone + patch + tint per-slot MIs -------------
-            LogLine("=== [" + inputs.BuildingId + "] Step 4: clone + patch + tint per-slot MIs ===");
-            foreach (var slot in template.Slots)
+            // ---- Step 4: clone + patch per-slot MIs --------------------
+            LogLine("=== [" + inputs.BuildingId + "] Step 4: clone + patch per-slot MIs ===");
+            foreach (var slot in inputs.MeshSlots)
             {
-                ClonePatchAndTintSlot(template, inputs, slot, vanillaMiCache[slot.VanillaMaterialStem], stagingItemsDir, result);
+                if (string.IsNullOrWhiteSpace(slot.VanillaMaterialParentPath))
+                {
+                    result.Warnings.Add("Slot " + slot.Index + " ('" + slot.SlotName + "') has no Vanilla parent picked - skipping clone");
+                    continue;
+                }
+                ClonePatchSlot(inputs, slot, vanillaMiCache[slot.VanillaMaterialParentPath], stagingItemsDir, result);
             }
 
             // ---- Step 5: extract Vanilla DA ----------------------------
@@ -150,20 +159,18 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     "Cooked folder not found: " + inputs.CookedFolderPath
                     + " - cook /Game/Quartermaster/Items/ in the UE editor first.");
 
-            // The cooked-folder is the project-relative path the user
-            // picked. We greedy-match by asset-prefix (Punkt 7 of the
-            // planning doc: "User gibt Asset-Stamm-Praefix").
-            //
-            // Skip-set is computed from the per-slot user material stems:
-            // those are the only user-cooked files we know upfront will
-            // crash the game. Everything else (mesh, icon, textures) goes
-            // through.
+            // Greedy-match by asset-prefix (Punkt 7 of the planning doc).
+            // Skip-set: every user-cooked MI the mesh references (each
+            // slot's UserMaterialStem). Those crash shipping per the
+            // spike bisect, the patcher replaces them with Vanilla-MI
+            // clones in Step 4.
             var skipStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (inputs.SkipUserCookedMaterialStems != null)
+            if (inputs.MeshSlots != null)
             {
-                foreach (var s in inputs.SkipUserCookedMaterialStems)
+                foreach (var s in inputs.MeshSlots)
                 {
-                    if (!string.IsNullOrWhiteSpace(s)) skipStems.Add(s);
+                    if (!string.IsNullOrWhiteSpace(s.UserMaterialStem))
+                        skipStems.Add(s.UserMaterialStem);
                 }
             }
 
@@ -262,10 +269,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         // -----------------------------------------------------------------
         // Step 2: in-place patch the user-cooked mesh's NameMap to swap its
-        // per-slot material refs (M_<prefix>_<SlotName>) for the cloned MI
-        // stems (MI_<prefix>_<SlotName>) that Step 4 will generate.
+        // per-slot user-MI refs for the cloned MI stems that Step 4 will
+        // generate. Slot-by-slot lookup comes from inputs.MeshSlots
+        // (which originates from CookedFolderInspector reading the mesh's
+        // StaticMaterials array).
         // -----------------------------------------------------------------
-        void PatchMeshMaterialSlots(BuildingTemplate template, BuildingInputs inputs,
+        void PatchMeshMaterialSlots(BuildingInputs inputs,
                                     string stagingItemsDir, BuildingPatchResult result)
         {
             var meshFileName = inputs.MeshStem + ".uasset";
@@ -275,19 +284,19 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     "Mesh not found in staging: " + meshInStaging
                     + " - expected the user-cooked SM_<prefix>.uasset at MeshStem='" + inputs.MeshStem + "'.");
 
-            // Build replacements per slot: every user-cooked slot material
-            // ref (M_<prefix>_<SlotName>) -> MI_<prefix>_<SlotName>, both as
-            // bare stem and full path.
+            // Build replacements per slot: every user-cooked slot's
+            // UserMaterialStem -> CloneStem. Slots without a UserMaterialStem
+            // (rare: mesh has empty slot) are skipped silently here; they
+            // still get a clone but the mesh won't reference it.
             var meshReplacements = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var slot in template.Slots)
+            foreach (var slot in inputs.MeshSlots)
             {
-                var userStem = BuildSlotUserMaterialStem(inputs, slot);
-                var userPath = BuildSlotUserMaterialPath(inputs, slot);
+                if (string.IsNullOrWhiteSpace(slot.UserMaterialStem)) continue;
                 var cloneStem = BuildSlotCloneStem(inputs, slot);
                 var clonePath = BuildSlotClonePath(inputs, slot);
-
-                meshReplacements[userStem] = cloneStem;
-                meshReplacements[userPath] = clonePath;
+                meshReplacements[slot.UserMaterialStem] = cloneStem;
+                if (!string.IsNullOrWhiteSpace(slot.UserMaterialPath))
+                    meshReplacements[slot.UserMaterialPath] = clonePath;
             }
 
             var meshPatcher = new DataAssetPatcher { Log = LogLine };
@@ -345,57 +354,72 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         }
 
         // -----------------------------------------------------------------
-        // Step 4: clone the extracted Vanilla MI under the slot's clone
-        // path, swap its texture refs (Albedo/Normal/MTRM) to either the
-        // user-custom texture or the shared default-VT names, then patch
-        // template-declared VectorParameterValues in-place via UAssetAPI.
+        // Step 4 (Etappe G mesh-driven): clone the user-picked Vanilla MI
+        // under the slot's clone path. Rewrite NameMap so:
+        //   - self-name+path point at the clone
+        //   - each texture param the user overrode points at the user's
+        //     texture stem (under /Game/Quartermaster/Items/)
+        // Then patch Scalar/Vector parameter values via UAssetAPI for
+        // any params the user overrode. Texture stems get rewritten via
+        // the NameMap path (DataAssetPatcher); scalars/vectors via direct
+        // UAssetAPI struct edits.
         // -----------------------------------------------------------------
-        void ClonePatchAndTintSlot(BuildingTemplate template, BuildingInputs inputs,
-                                   MaterialSlotTemplate slot, string legacyMiPath,
-                                   string stagingItemsDir, BuildingPatchResult result)
+        void ClonePatchSlot(BuildingInputs inputs, MeshSlotInput slot,
+                            string legacyMiPath,
+                            string stagingItemsDir, BuildingPatchResult result)
         {
-            var cloneStem  = BuildSlotCloneStem(inputs, slot);
-            var clonePath  = BuildSlotClonePath(inputs, slot);
-            var cloneFile  = Path.Combine(stagingItemsDir, cloneStem + ".uasset");
+            var cloneStem = BuildSlotCloneStem(inputs, slot);
+            var clonePath = BuildSlotClonePath(inputs, slot);
+            var cloneFile = Path.Combine(stagingItemsDir, cloneStem + ".uasset");
+            var vanillaStem = StemFromPath(slot.VanillaMaterialParentPath);
 
-            inputs.SlotInputs.TryGetValue(slot.SlotName, out var slotInputs);
+            // We first inspect the Vanilla MI to learn its texture-param
+            // mappings (param-name -> existing texture-stem). The
+            // DataAssetPatcher rewrites textures via NameMap entries, so
+            // we need to know the OLD stem (from the Vanilla MI) to swap
+            // for the NEW stem (user's override). Without this peek the
+            // patcher wouldn't know which strings to replace.
+            var inspector = new MaterialInstanceInspector { UsmapPath = UsmapPath };
+            var miData = inspector.Inspect(legacyMiPath)
+                ?? throw new InvalidOperationException(
+                    "Vanilla MI '" + vanillaStem + "' didn't parse as MaterialInstanceConstant");
 
-            // Per-slot replacements: self-name+path, plus the three texture
-            // refs swapped to user-custom OR shared defaults.
+            // Self-name + path: needed so the clone packs under the new
+            // /Game/Quartermaster/Items/ location.
             var matReplacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                [slot.VanillaMaterialStem] = cloneStem,
-                [slot.VanillaMaterialPath] = clonePath,
+                [vanillaStem] = cloneStem,
+                [slot.VanillaMaterialParentPath] = clonePath,
             };
 
-            // Albedo
-            var albedoStem = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomAlbedoStem))
-                ? slotInputs.CustomAlbedoStem : inputs.DefaultAlbedoStem;
-            var albedoPath = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomAlbedoPath))
-                ? slotInputs.CustomAlbedoPath : inputs.DefaultAlbedoPath;
-            matReplacements[slot.VanillaAlbedoStem] = albedoStem;
-            matReplacements[slot.VanillaAlbedoPath] = albedoPath;
+            // Per-texture-param user overrides: look up the Vanilla
+            // texture-ref this param currently carries and rewrite to
+            // the user's texture stem. The user's texture must exist
+            // under /Game/Quartermaster/Items/<stem> in staging (the
+            // cooked-folder step already copied it there).
+            if (slot.TextureParams != null)
+            {
+                foreach (var kv in slot.TextureParams)
+                {
+                    if (string.IsNullOrWhiteSpace(kv.Value)) continue;
+                    var existing = FindTextureParam(miData, kv.Key);
+                    if (existing == null)
+                    {
+                        result.Warnings.Add(
+                            "Slot " + slot.Index + " ('" + slot.SlotName + "'): texture param '"
+                            + kv.Key + "' not found in Vanilla MI '" + vanillaStem + "' - skipping override");
+                        continue;
+                    }
+                    var newStem = kv.Value;
+                    var newPath = "/Game/Quartermaster/Items/" + newStem;
+                    if (!string.IsNullOrEmpty(existing.TextureStem))
+                        matReplacements[existing.TextureStem] = newStem;
+                    if (!string.IsNullOrEmpty(existing.TexturePath))
+                        matReplacements[existing.TexturePath] = newPath;
+                }
+            }
 
-            // Normal
-            var normalStem = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomNormalStem))
-                ? slotInputs.CustomNormalStem : inputs.DefaultNormalStem;
-            var normalPath = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomNormalPath))
-                ? slotInputs.CustomNormalPath : inputs.DefaultNormalPath;
-            matReplacements[slot.VanillaNormalStem] = normalStem;
-            matReplacements[slot.VanillaNormalPath] = normalPath;
-
-            // MTRM
-            var mtrmStem = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomMtrmStem))
-                ? slotInputs.CustomMtrmStem : inputs.DefaultMtrmStem;
-            var mtrmPath = (slotInputs != null && !string.IsNullOrWhiteSpace(slotInputs.CustomMtrmPath))
-                ? slotInputs.CustomMtrmPath : inputs.DefaultMtrmPath;
-            matReplacements[slot.VanillaMtrmStem] = mtrmStem;
-            matReplacements[slot.VanillaMtrmPath] = mtrmPath;
-
-            LogLine("  [slot " + slot.SlotName + "] cloning " + slot.VanillaMaterialStem + " -> " + cloneStem);
-            LogLine("    Albedo -> " + albedoStem);
-            LogLine("    Normal -> " + normalStem);
-            LogLine("    MTRM   -> " + mtrmStem);
+            LogLine("  [slot " + slot.Index + " '" + slot.SlotName + "'] cloning " + vanillaStem + " -> " + cloneStem);
 
             var patcher = new DataAssetPatcher { Log = LogLine };
             var pr = patcher.Patch(
@@ -406,8 +430,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 newFolderName:   clonePath,
                 requireAllHits:  false);
 
-            LogLine("  [OK] Slot '" + slot.SlotName + "' patched: " + pr.NameMapEntriesRenamed
-                + " NameMap renames, " + pr.ExportsRetargeted + " export retargets");
+            LogLine("  [OK] Slot " + slot.Index + " NameMap patched: " + pr.NameMapEntriesRenamed
+                + " renames, " + pr.ExportsRetargeted + " export retargets");
 
             result.StagedFiles.Add(cloneStem + ".uasset");
             result.StagedFiles.Add(cloneStem + ".uexp");
@@ -416,33 +440,72 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             {
                 result.Warnings.Add(
                     "MI clone " + cloneStem + ": " + pr.MissedReplacements.Count
-                    + " replacement key(s) didn't match - "
+                    + " NameMap replacement(s) didn't match - "
                     + string.Join(", ", pr.MissedReplacements));
             }
 
-            // Vector-parameter overrides (Edge Color / AO Color / ...)
-            if (slot.VectorOverrides != null && slot.VectorOverrides.Count > 0)
+            // Scalar + Vector overrides via UAssetAPI struct edits.
+            int scalarOverrides = slot.ScalarParams?.Count ?? 0;
+            int vectorOverrides = slot.VectorParams?.Count ?? 0;
+            if (scalarOverrides == 0 && vectorOverrides == 0) return;
+
+            var mapping = new Usmap(UsmapPath);
+            var miAsset = new UAsset(cloneFile, EngineVersion.VER_UE5_6, mapping);
+            int scalarHits = 0, vectorHits = 0;
+
+            if (slot.ScalarParams != null)
             {
-                var mapping = new Usmap(UsmapPath);
-                var miAsset = new UAsset(cloneFile, EngineVersion.VER_UE5_6, mapping);
-                int hits = 0;
-                foreach (var vo in slot.VectorOverrides)
+                foreach (var kv in slot.ScalarParams)
                 {
-                    hits += PatchMiVectorParameter(miAsset, vo.Name, vo.R, vo.G, vo.B, vo.A);
-                }
-                if (hits > 0)
-                {
-                    miAsset.Write(cloneFile);
-                    LogLine("  [OK] Slot '" + slot.SlotName + "' vector params patched (" + hits + " override(s))");
-                }
-                else
-                {
-                    LogLine("  [!] Slot '" + slot.SlotName + "' - no vector params matched (template intent vs MI shape drift?)");
-                    result.Warnings.Add(
-                        "MI clone " + cloneStem + ": "
-                        + slot.VectorOverrides.Count + " vector override(s) declared in template, none matched in MI.");
+                    int h = PatchMiScalarParameter(miAsset, kv.Key, kv.Value);
+                    if (h == 0)
+                        result.Warnings.Add(
+                            "MI clone " + cloneStem + ": scalar param '" + kv.Key
+                            + "' not found in MI - override skipped");
+                    scalarHits += h;
                 }
             }
+            if (slot.VectorParams != null)
+            {
+                foreach (var kv in slot.VectorParams)
+                {
+                    var rgba = kv.Value;
+                    if (rgba == null || rgba.Length < 4) continue;
+                    int h = PatchMiVectorParameter(miAsset, kv.Key, rgba[0], rgba[1], rgba[2], rgba[3]);
+                    if (h == 0)
+                        result.Warnings.Add(
+                            "MI clone " + cloneStem + ": vector param '" + kv.Key
+                            + "' not found in MI - override skipped");
+                    vectorHits += h;
+                }
+            }
+
+            if (scalarHits > 0 || vectorHits > 0)
+            {
+                miAsset.Write(cloneFile);
+                LogLine("  [OK] Slot " + slot.Index + " param overrides applied: "
+                    + scalarHits + " scalar, " + vectorHits + " vector");
+            }
+        }
+
+        // Find a texture-param entry by name in the inspected MI.
+        // Returns null if not present (param was inherited from parent
+        // master material rather than overridden in the MI itself).
+        static MITextureParam FindTextureParam(MaterialInstanceData mi, string name)
+        {
+            if (mi?.Textures == null) return null;
+            foreach (var t in mi.Textures)
+                if (string.Equals(t.Name, name, System.StringComparison.Ordinal))
+                    return t;
+            return null;
+        }
+
+        // Strip "/Game/.../" -> just the trailing stem.
+        static string StemFromPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return path;
+            int last = path.LastIndexOfAny(new[] { '/', '\\' });
+            return last < 0 ? path : path.Substring(last + 1);
         }
 
         // -----------------------------------------------------------------
@@ -509,27 +572,76 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         }
 
         // -----------------------------------------------------------------
-        // Slot stem/path naming helpers. Centralised so the mesh-patch and
-        // MI-clone code agree on the spelling.
+        // Slot clone stem/path naming helper (Etappe G mesh-driven).
         //
-        // User-cooked mesh's slot ref: "M_<AssetPrefix>_<SlotName>"
-        //   e.g. AssetPrefix="QmPainting", SlotName="Canvas"
-        //   -> "M_QmPainting_Canvas"
+        // Old (template-driven): "MI_<AssetPrefix>_<SlotName>" with the
+        // template's hardcoded SlotName ("Canvas"/"Frame"). The mesh
+        // had to carry "M_<AssetPrefix>_<SlotName>" so the rewrite
+        // could find it.
         //
-        // MI clone we generate:        "MI_<AssetPrefix>_<SlotName>"
-        //   -> "MI_QmPainting_Canvas"
+        // New (mesh-driven): "MI_<AssetPrefix>_slot<Index>". Slot
+        // indices are stable across cook iterations even if the user
+        // renames slots in the editor, so the clone stem stays
+        // deterministic. The mesh's existing user-MI ref is looked up
+        // by stem from CookedFolderInspector - no naming convention
+        // assumed.
         // -----------------------------------------------------------------
-        static string BuildSlotUserMaterialStem(BuildingInputs inputs, MaterialSlotTemplate slot)
-            => "M_" + inputs.AssetPrefix + "_" + slot.SlotName;
+        static string BuildSlotCloneStem(BuildingInputs inputs, MeshSlotInput slot)
+            => "MI_" + inputs.AssetPrefix + "_slot" + slot.Index;
 
-        static string BuildSlotUserMaterialPath(BuildingInputs inputs, MaterialSlotTemplate slot)
-            => "/Game/Quartermaster/Items/" + BuildSlotUserMaterialStem(inputs, slot);
-
-        static string BuildSlotCloneStem(BuildingInputs inputs, MaterialSlotTemplate slot)
-            => "MI_" + inputs.AssetPrefix + "_" + slot.SlotName;
-
-        static string BuildSlotClonePath(BuildingInputs inputs, MaterialSlotTemplate slot)
+        static string BuildSlotClonePath(BuildingInputs inputs, MeshSlotInput slot)
             => "/Game/Quartermaster/Items/" + BuildSlotCloneStem(inputs, slot);
+
+        // -----------------------------------------------------------------
+        // UAssetAPI helper: locate a ScalarParameterValues entry by
+        // ParameterInfo.Name and overwrite its embedded float value.
+        // Mirrors PatchMiVectorParameter (same walk, simpler value).
+        // -----------------------------------------------------------------
+        static int PatchMiScalarParameter(UAsset asset, string paramName, float value)
+        {
+            int hits = 0;
+            foreach (var ex in asset.Exports)
+            {
+                if (!(ex is NormalExport ne)) continue;
+                foreach (var prop in ne.Data)
+                {
+                    if (!(prop is ArrayPropertyData arr)) continue;
+                    if (arr.Name?.Value?.Value != "ScalarParameterValues") continue;
+                    if (arr.Value == null) continue;
+
+                    foreach (var item in arr.Value)
+                    {
+                        if (!(item is StructPropertyData entry)) continue;
+                        if (entry.Value == null) continue;
+
+                        string foundName = null;
+                        FloatPropertyData paramValueFloat = null;
+                        foreach (var sub in entry.Value)
+                        {
+                            if (sub is StructPropertyData sps && sub.Name?.Value?.Value == "ParameterInfo")
+                            {
+                                foreach (var pis in sps.Value ?? new List<PropertyData>())
+                                {
+                                    if (pis is NamePropertyData np && pis.Name?.Value?.Value == "Name")
+                                    {
+                                        foundName = np.Value?.Value?.Value;
+                                    }
+                                }
+                            }
+                            else if (sub is FloatPropertyData fp && sub.Name?.Value?.Value == "ParameterValue")
+                            {
+                                paramValueFloat = fp;
+                            }
+                        }
+                        if (foundName != paramName || paramValueFloat == null) continue;
+
+                        paramValueFloat.Value = value;
+                        hits++;
+                    }
+                }
+            }
+            return hits;
+        }
 
         // -----------------------------------------------------------------
         // UAssetAPI helper: locate a VectorParameterValues entry by
@@ -609,38 +721,27 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (string.IsNullOrWhiteSpace(inputs.BuildingId))
                 throw new ArgumentException("BuildingInputs.BuildingId is required");
             if (string.IsNullOrWhiteSpace(inputs.AssetPrefix))
-                throw new ArgumentException("BuildingInputs.AssetPrefix is required (used to derive M_<prefix>_<slot> / MI_<prefix>_<slot>)");
+                throw new ArgumentException("BuildingInputs.AssetPrefix is required");
             if (string.IsNullOrWhiteSpace(inputs.CookedFolderPath))
                 throw new ArgumentException("BuildingInputs.CookedFolderPath is required");
             if (string.IsNullOrWhiteSpace(inputs.MeshStem))
                 throw new ArgumentException("BuildingInputs.MeshStem is required (expected user-cooked SM_<prefix> filename in CookedFolderPath)");
             if (string.IsNullOrWhiteSpace(inputs.IconStem))
                 throw new ArgumentException("BuildingInputs.IconStem is required");
+            if (inputs.MeshSlots == null || inputs.MeshSlots.Count == 0)
+                throw new ArgumentException("BuildingInputs.MeshSlots is required (mesh has no material slots, or orchestrator forgot to feed inspector output)");
 
-            // Defaults must always be set - shared VT default-texture
-            // names are shipped by the GUI regardless of any user-custom
-            // overrides. The orchestrator will set these once per Build()
-            // call before invoking Patch() per-Building.
-            if (string.IsNullOrWhiteSpace(inputs.DefaultAlbedoStem) || string.IsNullOrWhiteSpace(inputs.DefaultAlbedoPath))
-                throw new ArgumentException("BuildingInputs.DefaultAlbedoStem/Path required (shared default VT)");
-            if (string.IsNullOrWhiteSpace(inputs.DefaultNormalStem) || string.IsNullOrWhiteSpace(inputs.DefaultNormalPath))
-                throw new ArgumentException("BuildingInputs.DefaultNormalStem/Path required (shared default VT)");
-            if (string.IsNullOrWhiteSpace(inputs.DefaultMtrmStem) || string.IsNullOrWhiteSpace(inputs.DefaultMtrmPath))
-                throw new ArgumentException("BuildingInputs.DefaultMtrmStem/Path required (shared default VT)");
-
-            // Per template: if a slot demands a user albedo, verify it's
-            // there.
-            foreach (var slot in template.Slots ?? new List<MaterialSlotTemplate>())
+            // Each slot needs a Vanilla parent picked. The GUI gates
+            // Save on this too but we re-validate so a hand-edited
+            // profile JSON can't crash the patcher mid-flight.
+            for (int i = 0; i < inputs.MeshSlots.Count; i++)
             {
-                if (!slot.UserAlbedoRequired) continue;
-                if (inputs.SlotInputs == null ||
-                    !inputs.SlotInputs.TryGetValue(slot.SlotName, out var si) ||
-                    si == null ||
-                    string.IsNullOrWhiteSpace(si.CustomAlbedoStem))
+                var s = inputs.MeshSlots[i];
+                if (string.IsNullOrWhiteSpace(s.VanillaMaterialParentPath))
                 {
                     throw new ArgumentException(
-                        "Template '" + template.Id + "' slot '" + slot.SlotName
-                        + "' requires a user-supplied albedo texture (BuildingInputs.SlotInputs['" + slot.SlotName + "'].CustomAlbedoStem)");
+                        "Building '" + inputs.BuildingId + "' slot " + s.Index + " ('" + s.SlotName
+                        + "') has no VanillaMaterialParentPath set - pick a Vanilla MI parent in the GUI");
                 }
             }
         }
@@ -675,9 +776,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     }
 
     // -------------------------------------------------------------------
-    // Per-building input bundle. The orchestrator fills this in from the
-    // Profile's BuildingDto plus the shared default-texture names (the
-    // ones the GUI ships once per Build()).
+    // Per-building input bundle (Etappe G mesh-driven).
+    //
+    // The orchestrator fills this from the Profile's CustomBuilding plus
+    // the mesh inspection (which yields the slot list with user-MI refs).
+    // The patcher no longer needs default-VT texture names - any param
+    // the user doesn't override stays at its Vanilla value.
     // -------------------------------------------------------------------
     public sealed class BuildingInputs
     {
@@ -685,23 +789,18 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // (DA_BI_<BuildingId>) and the localization key (Decoration_<BuildingId>_Name).
         public string BuildingId;
 
-        // Asset-prefix the user picked. Drives the per-slot user material
-        // stem (M_<AssetPrefix>_<SlotName>) and the MI clone stem
-        // (MI_<AssetPrefix>_<SlotName>). Also used to filter the cooked
-        // folder (only files with this prefix get staged).
+        // Asset-prefix the user picked. Used to filter the cooked folder
+        // (only files matching as a name component get staged) and to
+        // drive the clone stem (MI_<AssetPrefix>_slot<Index>).
         public string AssetPrefix;
 
-        // Absolute path to the user's cooked-output folder for this
-        // building's assets (typically the per-project
-        // Saved/Cooked/Windows/<Project>/Content/Quartermaster/Items/).
+        // Absolute path to the user's cooked-output folder.
         public string CookedFolderPath;
 
-        // User-cooked mesh stem (e.g. "SM_QmPainting_01"). The file must
-        // exist as <CookedFolderPath>/<MeshStem>.uasset.
+        // User-cooked mesh stem (e.g. "SM_QmPainting_01").
         public string MeshStem;
 
-        // User-cooked icon stem (e.g. "T_QmPainting_Icon"). Same path
-        // requirement as the mesh.
+        // User-cooked icon stem (e.g. "T_QmPainting_Icon").
         public string IconStem;
 
         // Human-facing strings - used by the orchestrator to synthesize
@@ -709,39 +808,43 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string DisplayName;
         public string Description;
 
-        // User-cooked custom material stems that the staging step must
-        // SKIP because they crash the shipping game. Typically computed
-        // from the template's slots as M_<AssetPrefix>_<SlotName>.
-        public List<string> SkipUserCookedMaterialStems;
-
-        // Per-slot user inputs, keyed by MaterialSlotTemplate.SlotName.
-        // Slots not present here use the shared defaults for all three
-        // texture channels.
-        public Dictionary<string, BuildingSlotInputs> SlotInputs;
-
-        // Shared default-VT texture names the GUI ships once per build
-        // (T_QmPainting_White / NormalFlat / MTRMDefault). The patcher
-        // doesn't ship these files - it only emits NameMap refs that
-        // point at them. The orchestrator is responsible for putting the
-        // actual .uasset+.uexp+.ubulk into staging.
-        public string DefaultAlbedoStem;
-        public string DefaultAlbedoPath;
-        public string DefaultNormalStem;
-        public string DefaultNormalPath;
-        public string DefaultMtrmStem;
-        public string DefaultMtrmPath;
+        // Mesh-derived slot list with per-slot user-config. Length
+        // matches the user-cooked mesh's StaticMaterials array. The
+        // orchestrator builds this by feeding the cooked folder
+        // through CookedFolderInspector + merging the Profile's
+        // CustomBuildingSlot overrides on top.
+        public List<MeshSlotInput> MeshSlots;
     }
 
-    // Per-slot user input. Each field is optional; nulls/blanks fall back
-    // to the shared defaults from BuildingInputs.
-    public sealed class BuildingSlotInputs
+    // Per-slot user input (Etappe G mesh-driven).
+    //
+    // Each entry maps one mesh material slot to:
+    //   - the Vanilla MI the user picked as parent (required)
+    //   - the user-MI stem the mesh originally referenced (so the
+    //     mesh NameMap rewrite knows what string to swap)
+    //   - per-param overrides for the picked Vanilla MI
+    public sealed class MeshSlotInput
     {
-        public string CustomAlbedoStem;
-        public string CustomAlbedoPath;
-        public string CustomNormalStem;
-        public string CustomNormalPath;
-        public string CustomMtrmStem;
-        public string CustomMtrmPath;
+        public int    Index;       // mesh slot index (0..N-1)
+        public string SlotName;    // mesh slot name (e.g. "lambert1")
+
+        // User-MI stem the cooked mesh references in this slot
+        // (e.g. "MI_QmPainting_Canvas"). May be null if the cooked mesh
+        // has no MI bound to this slot - in that case the patcher logs
+        // a warning, the slot still gets a clone but the mesh's
+        // material ref won't be rewritten.
+        public string UserMaterialStem;
+        public string UserMaterialPath;
+
+        // User-picked Vanilla MI to clone for this slot
+        // (e.g. "/Game/Environment/.../MI_Paintings_01"). REQUIRED.
+        public string VanillaMaterialParentPath;
+
+        // Param overrides. Keys are MI param names; missing entries
+        // leave the cloned MI's value unchanged from Vanilla.
+        public Dictionary<string, float>    ScalarParams;
+        public Dictionary<string, float[]>  VectorParams;
+        public Dictionary<string, string>   TextureParams;
     }
 
     // Per-building result, returned to the orchestrator so it can fold

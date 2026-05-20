@@ -24,41 +24,28 @@ public static class BuildingTemplatesEndpoint
             var catalog = new List<BuildingTemplateDto>
             {
                 ToDto(BuildingTemplate.Painting()),
+                ToDto(BuildingTemplate.Bucket()),
             };
             return Results.Json(catalog);
         });
     }
 
     // Project the (Core-side) BuildingTemplate onto the (Web-side) DTO.
-    // We strip the heavy Vanilla-asset paths (Mesh / Icon / DA / MI /
-    // textures) the GUI doesn't need - those are an internal patcher
-    // concern, and surfacing them would let a curious user "fix" them
-    // into something the patcher pipeline doesn't expect.
+    // Etappe G: templates no longer carry material slot definitions
+    // (slots come from the user's cooked mesh) - the DTO only exposes
+    // gameplay-side metadata.
     static BuildingTemplateDto ToDto(BuildingTemplate t)
     {
-        var slots = new List<BuildingTemplateSlotDto>();
-        if (t.Slots != null)
-        {
-            foreach (var s in t.Slots)
-            {
-                slots.Add(new BuildingTemplateSlotDto
-                {
-                    slotName           = s.SlotName,
-                    userAlbedoRequired = s.UserAlbedoRequired,
-                });
-            }
-        }
         return new BuildingTemplateDto
         {
             id          = t.Id,
             label       = t.DisplayName,
             description = t.Description,
-            // Until we ship more than one template, every entry is a
-            // Decoration. Encode it as a coarse kind so the GUI can
-            // group by it later.
+            // All current templates target the Decoration tab; encode as
+            // a coarse kind so a future GUI grouping has something to
+            // hang on.
             kind        = "Decoration",
             categoryTag = t.CategoryTag,
-            slots       = slots,
         };
     }
 }

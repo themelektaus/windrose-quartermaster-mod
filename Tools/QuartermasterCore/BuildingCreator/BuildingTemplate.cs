@@ -1,37 +1,27 @@
-using System;
-using System.Collections.Generic;
-
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Declarative description of a "buildable thing" we know how to ship as
-    // a mod-pak'd custom item. The template names the Vanilla donor assets
-    // (DA, Mesh, Icon, MI for each material slot) plus the Vanilla texture
-    // refs each slot's MI carries, plus the in-game category tag we need
-    // for tab-purity filtering at inject-time.
+    // Declarative description of a "buildable thing" (Etappe G mesh-driven).
     //
-    // The patcher pipeline (BuildingPatcher) treats Vanilla as the
-    // structural ground-truth: every actual asset that ends up in the mod
-    // pak is either user-cooked (the mesh + icon + user textures) or a
-    // post-cook clone of a Vanilla asset (the DA + per-slot MI). We never
-    // ship a user-cooked Material - that's the empirical Crash-Pattern we
-    // bisected to in the painting spike.
+    // What a template defines (gameplay-only):
+    //   - Vanilla DA donor (snap sockets, collision, category, placement)
+    //   - Vanilla Mesh + Icon donor (so the patcher knows which NameMap
+    //     strings in the DA to rewrite onto the user-cooked Mesh + Icon)
+    //   - In-game CategoryTag (for the DLL's tab-purity filter)
     //
-    // Per-template constraints we encoded after the bisect:
-    //   * The Vanilla MI named in MaterialSlotTemplate.VanillaMaterialStem
-    //     must compile against ShaderLibrary chunks already present in the
-    //     Vanilla pakchunk0_s* set - otherwise our clone references shader
-    //     hashes that the shipping ShaderLibrary doesn't have and the
-    //     material renders black or crashes the loader.
-    //   * The Vanilla textures named in VanillaAlbedoStem / VanillaNormalStem
-    //     / VanillaMtrmStem must be Virtual-Textures (VT) - the parent
-    //     material M_Object expects VT samplers and a non-VT texture sample
-    //     yields black at runtime ("Material expects texture to be Virtual"
-    //     warning).
+    // What a template does NOT define anymore (this is the G-wandel):
+    //   - Material slot list - that comes from the user-cooked Mesh
+    //   - Vanilla MI to clone - the user picks per slot from the
+    //     VanillaMaterialCatalog dropdown
+    //   - Texture / Scalar / Vector defaults - read from the user's
+    //     MIs in the cooked folder, then user-editable in the GUI
+    //
+    // Adding a new template = pick a Vanilla DA you want to inherit the
+    // gameplay properties from (snap rules, hit-box, build menu tab),
+    // record its stem+path here, and the patcher pipeline does the rest.
     public sealed class BuildingTemplate
     {
-        // Stable identifier referenced from BuildingDto.TemplateId. Currently
-        // we only ship "Painting" - additional templates should pick unique
-        // values (e.g. "Furniture", "Light", ...).
+        // Stable identifier referenced from BuildingDto.TemplateId.
+        // Keep unique across all factory methods.
         public string Id;
 
         // Display label shown in the GUI's Template picker.
@@ -42,65 +32,62 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         // --- Vanilla DataAsset (BuildingItem definition) -----------------
         //
-        // Vanilla DA stem (no slashes, no extension), e.g.:
-        //   "DA_BI_Paintings_HighLands_02"
+        // The patcher clones this DA, rewrites its NameMap so the
+        // mesh/icon/self refs point at our mod paths, and ships the
+        // result as DA_BI_<Building.Id> under /Game/Quartermaster/Items/.
         public string VanillaDaStem;
-
-        // Full Vanilla DA package path (with leading slash, no extension):
-        //   "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02"
         public string VanillaDaPath;
 
-        // Localization key the Vanilla DA's CSV-Synthese-Pattern uses for
-        // the user-facing item name, e.g. "Decorations_Paintings_HighLands_02_Name".
-        // We rename this in the cloned DA's NameMap to point at a per-Building
-        // synthesized CSV key (e.g. "Decoration_<BuildingId>_Name").
+        // Localization key the Vanilla DA carries for the user-facing
+        // item name. We rename this to a per-Building synthesized key
+        // ("Decoration_<BuildingId>_Name") so each clone gets its own
+        // CSV-Synthese-Pattern entry.
+        //
+        // Note: some Vanilla DAs (e.g. DA_BI_Bucket_01) store the name
+        // key indirectly via an export body that's a RawExport - the
+        // NameMap-rename then misses, the patcher warns but proceeds,
+        // and the in-game display falls back to the default text. Polish
+        // task for a future iteration.
         public string VanillaNameKey;
 
-        // --- Vanilla Mesh (referenced by the DA) -------------------------
+        // --- Vanilla Mesh donor (referenced by the DA) -------------------
         //
-        // Vanilla StaticMesh stem and full path. The patcher rewrites the
-        // DA's NameMap so the mesh-ref points at the user-cooked mesh
-        // instead. We don't actually pull the Vanilla mesh out via retoc -
-        // we just need its stem+path to know which NameMap strings to swap.
+        // The user-cooked Mesh replaces this in the clone's NameMap.
+        // We don't ship the Vanilla mesh; we just need its strings to
+        // know what to swap.
         public string VanillaMeshStem;
         public string VanillaMeshPath;
 
-        // --- Vanilla Icon ------------------------------------------------
+        // --- Vanilla Icon donor ------------------------------------------
         //
-        // Same idea as the mesh - we only need the names to drive the DA's
-        // NameMap rename. The actual icon comes from the user's cook.
+        // Same idea as the mesh: only the strings, the actual icon
+        // texture comes from the user's cook.
         public string VanillaIconStem;
         public string VanillaIconPath;
 
         // --- Game category for the inject-side tab-purity filter ---------
         //
-        // The DLL's qm_config.cpp uses this string to recognise which build
-        // tab the injected widget belongs to. For "Painting" this matches
-        // "BuildingDecoration" (same tab as the Vanilla paintings sit in).
+        // The DLL's qm_config.cpp uses this to recognise which build tab
+        // the injected widget belongs to. Values seen so far:
+        //   "BuildingDecoration" - paintings, buckets, lamps, etc.
+        // Future templates may need extending the DLL's filter to
+        // accept per-item tags (PENDING risk in G.2 plan).
         public string CategoryTag;
 
-        // --- Per-material-slot definitions -------------------------------
-        //
-        // Order matters: SlotIndex 0 maps to the first material slot on the
-        // Vanilla mesh, SlotIndex 1 to the second, etc. For Painting we
-        // have two slots: Frame (wooden frame) and Canvas (image area).
-        public List<MaterialSlotTemplate> Slots;
-
-        // Convenience factory for the only template we ship today.
-        // Mirrors the validated spike pipeline 1:1 (every Vanilla path here
-        // was extracted from the actual painting spike and proved to work
-        // in-game after the VT/Default-Texture fix).
+        // -----------------------------------------------------------------
+        // Convenience factories.
+        // -----------------------------------------------------------------
         public static BuildingTemplate Painting()
         {
             return new BuildingTemplate
             {
                 Id          = "Painting",
                 DisplayName = "Painting",
-                Description = "Custom wall painting cloned from Vanilla HighLands painting (frame + canvas with your image).",
+                Description = "Wall painting cloned from Vanilla HighLands painting (image on wall).",
 
-                VanillaDaStem  = "DA_BI_Paintings_HighLands_02",
-                VanillaDaPath  = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02",
-                VanillaNameKey = "Decorations_Paintings_HighLands_02_Name",
+                VanillaDaStem   = "DA_BI_Paintings_HighLands_02",
+                VanillaDaPath   = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02",
+                VanillaNameKey  = "Decorations_Paintings_HighLands_02_Name",
 
                 VanillaMeshStem = "SM_Paintings_HighLands_02",
                 VanillaMeshPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/SM_Paintings_HighLands_02",
@@ -109,109 +96,35 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_Paintings_HighLands_02",
 
                 CategoryTag = "BuildingDecoration",
-
-                Slots = new List<MaterialSlotTemplate>
-                {
-                    // Slot 0: Frame (Holzrahmen). Albedo on shared default
-                    // white VT so the Vanilla EdgeColor tint (sandbraun)
-                    // shines through unmodified.
-                    new MaterialSlotTemplate
-                    {
-                        SlotName              = "Frame",
-                        VanillaMaterialStem   = "MI_Paintings_01",
-                        VanillaMaterialPath   = "/Game/Environment/Gameplay/Building/BuildingDecoration/Materials/MI_Paintings_01",
-
-                        VanillaAlbedoStem = "T_Paintings_01_A",
-                        VanillaAlbedoPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_A",
-                        VanillaNormalStem = "T_Paintings_01_N",
-                        VanillaNormalPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_N",
-                        VanillaMtrmStem   = "T_Paintings_01_MTRM",
-                        VanillaMtrmPath   = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_MTRM",
-
-                        // No vector overrides - Vanilla EdgeColor/AOColor
-                        // defaults (sandy/brown) give the warm-frame look.
-                        VectorOverrides = new List<VectorParamOverride>(),
-                    },
-
-                    // Slot 1: Canvas (Bildflaeche). Albedo gets the user's
-                    // texture, Normal+MTRM on shared defaults. EdgeColor +
-                    // AOColor forced white so the image renders untinted.
-                    new MaterialSlotTemplate
-                    {
-                        SlotName              = "Canvas",
-                        VanillaMaterialStem   = "MI_Paintings_01",
-                        VanillaMaterialPath   = "/Game/Environment/Gameplay/Building/BuildingDecoration/Materials/MI_Paintings_01",
-
-                        VanillaAlbedoStem = "T_Paintings_01_A",
-                        VanillaAlbedoPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_A",
-                        VanillaNormalStem = "T_Paintings_01_N",
-                        VanillaNormalPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_N",
-                        VanillaMtrmStem   = "T_Paintings_01_MTRM",
-                        VanillaMtrmPath   = "/Game/Environment/Gameplay/Building/BuildingDecoration/Textures/T_Paintings_01_MTRM",
-
-                        // Canvas wants its image to show through without
-                        // any Vanilla tint - force both vector params white.
-                        VectorOverrides = new List<VectorParamOverride>
-                        {
-                            new VectorParamOverride { Name = "Edge Color", R = 1f, G = 1f, B = 1f, A = 1f },
-                            new VectorParamOverride { Name = "AO Color",   R = 1f, G = 1f, B = 1f, A = 1f },
-                        },
-
-                        // Canvas takes a user-supplied image. The patcher
-                        // uses this flag to know whether to fail/warn if
-                        // BuildingInputs doesn't carry a custom albedo.
-                        UserAlbedoRequired = true,
-                    },
-                },
             };
         }
-    }
 
-    // Description of a single material slot on the Vanilla mesh. The
-    // patcher generates one MI clone per slot, then rewrites the user-cooked
-    // mesh's NameMap so its slot-N material-ref points at the clone.
-    public sealed class MaterialSlotTemplate
-    {
-        // Human-readable slot label (used in clone stem and in logs).
-        // Examples: "Canvas", "Frame".
-        public string SlotName;
+        public static BuildingTemplate Bucket()
+        {
+            return new BuildingTemplate
+            {
+                Id          = "Bucket",
+                DisplayName = "Bucket",
+                Description = "Free-standing bucket cloned from Vanilla wooden bucket (floor placement).",
 
-        // Vanilla MaterialInstance to clone for this slot. The .uexp of
-        // this MI carries the compiled ShaderMap that the shipping
-        // ShaderLibrary knows about - that's why we clone instead of
-        // shipping a user-cooked material.
-        public string VanillaMaterialStem;
-        public string VanillaMaterialPath;
+                VanillaDaStem   = "DA_BI_Bucket_01",
+                VanillaDaPath   = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01",
+                // DA_BI_Bucket_01 stores its name string in a RawExport
+                // body the legacy patcher can't rewrite via NameMap. The
+                // value below is the convention we'd expect if it WAS
+                // in the NameMap; the patcher logs a warning when it
+                // can't find the string and the in-game name falls back
+                // to the default. Acceptable for the G-test.
+                VanillaNameKey  = "BuildingItems_Bucket_01_Name",
 
-        // Vanilla texture refs the cloned MI starts out pointing at. The
-        // patcher rewrites these to either the user-supplied custom texture
-        // (BuildingSlotInputs.CustomAlbedoStem etc.) or the shared default
-        // VT textures shipped by the GUI (T_QmPainting_White / NormalFlat /
-        // MTRMDefault). Per Punkt 9 from the planning session.
-        public string VanillaAlbedoStem;
-        public string VanillaAlbedoPath;
-        public string VanillaNormalStem;
-        public string VanillaNormalPath;
-        public string VanillaMtrmStem;
-        public string VanillaMtrmPath;
+                VanillaMeshStem = "SM_BucketWooden_01",
+                VanillaMeshPath = "/Game/Environment/Props/Camp/SM_BucketWooden_01",
 
-        // Vector-parameter overrides applied to the MI clone via UAssetAPI
-        // after the NameMap rewrite. The Vanilla MI ships with sandy/brown
-        // defaults for EdgeColor + AOColor; templates that want a neutral
-        // (untinted) look list those params here with (1,1,1,1).
-        public List<VectorParamOverride> VectorOverrides;
+                VanillaIconStem = "T_BI_Bucket_01",
+                VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_BI_Bucket_01",
 
-        // If true, the patcher fails if BuildingInputs doesn't supply a
-        // CustomAlbedoStem for this slot (the slot is "image-bearing" and
-        // makes no sense without user content).
-        public bool UserAlbedoRequired;
-    }
-
-    // A single vector-parameter override applied to the cloned MI's
-    // VectorParameterValues array.
-    public sealed class VectorParamOverride
-    {
-        public string Name;
-        public float R, G, B, A;
+                CategoryTag = "BuildingDecoration",
+            };
+        }
     }
 }
