@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Windrose.Quartermaster.Core;
+using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
@@ -35,6 +37,15 @@ public static class BuildingsEndpoint
         app.MapGet("/api/buildings/scan-cooked", (string path) =>
         {
             var dto = ScanCookedFolder(path);
+            return Results.Json(dto);
+        });
+
+        // Deep inspect: read the mesh's material slot list + each
+        // user-cooked MI in the folder. The GUI uses this to drive its
+        // dynamic per-slot UI (Etappe G).
+        app.MapGet("/api/buildings/inspect-cooked", (string path, string meshStem) =>
+        {
+            var dto = InspectCookedFolder(path, meshStem, repoRoot);
             return Results.Json(dto);
         });
     }
@@ -162,5 +173,129 @@ public static class BuildingsEndpoint
     static bool StemStartsWith(string stem, string prefix)
     {
         return stem.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // -----------------------------------------------------------------
+    // Etappe G: deep inspect of the cooked folder. Reads the mesh's
+    // material slot list (via UAssetAPI through CookedFolderInspector)
+    // + every user-cooked MI in the folder. The GUI feeds this into
+    // its dynamic slot UI:
+    //   - per mesh slot we know the slot name + index + user-MI ref
+    //   - per user-MI we know its parent-master + param defaults
+    //   - frontend matches mesh-slot.userMaterialStem against the
+    //     user-MI dict to determine the pre-fill source
+    // -----------------------------------------------------------------
+    static CookedFolderInspectionDto InspectCookedFolder(
+        string rawPath, string meshStem, string repoRoot)
+    {
+        var dto = new CookedFolderInspectionDto
+        {
+            path                  = rawPath ?? "",
+            meshStem              = meshStem ?? "",
+            ok                    = false,
+            meshSlots             = new List<MeshMaterialSlotDto>(),
+            userMaterialInstances = new Dictionary<string, MaterialInstanceDto>(),
+            warnings              = new List<string>(),
+        };
+        if (string.IsNullOrWhiteSpace(rawPath))
+        {
+            dto.error = "path query parameter is required";
+            return dto;
+        }
+
+        string normalized;
+        try
+        {
+            normalized = Path.GetFullPath(rawPath);
+        }
+        catch (Exception ex)
+        {
+            dto.error = "Invalid path: " + ex.Message;
+            return dto;
+        }
+        dto.path = normalized;
+
+        if (!Directory.Exists(normalized))
+        {
+            dto.error = "Folder does not exist: " + normalized;
+            return dto;
+        }
+
+        string usmapPath;
+        try
+        {
+            usmapPath = UsmapLocator.Find(repoRoot);
+            if (!File.Exists(usmapPath))
+                throw new FileNotFoundException("Usmap not found: " + usmapPath);
+        }
+        catch (Exception ex)
+        {
+            dto.error = "Usmap lookup failed: " + ex.Message;
+            return dto;
+        }
+
+        try
+        {
+            var inspector = new CookedFolderInspector
+            {
+                UsmapPath = usmapPath,
+                Log       = msg => Console.WriteLine("[cooked-inspect] " + msg),
+            };
+            var inspection = inspector.Inspect(normalized, meshStem);
+
+            dto.warnings = inspection.Warnings ?? new List<string>();
+
+            if (inspection.MeshSlots != null)
+            {
+                foreach (var s in inspection.MeshSlots)
+                {
+                    dto.meshSlots.Add(new MeshMaterialSlotDto
+                    {
+                        index            = s.Index,
+                        slotName         = s.SlotName,
+                        userMaterialStem = s.UserMaterialStem,
+                        userMaterialPath = s.UserMaterialPath,
+                    });
+                }
+            }
+
+            if (inspection.UserMaterialInstances != null)
+            {
+                foreach (var kv in inspection.UserMaterialInstances)
+                {
+                    dto.userMaterialInstances[kv.Key] = ToMaterialInstanceDto(kv.Value);
+                }
+            }
+
+            dto.ok = true;
+            return dto;
+        }
+        catch (Exception ex)
+        {
+            dto.error = ex.GetType().Name + ": " + ex.Message;
+            return dto;
+        }
+    }
+
+    // Reused projection - keep this aligned with the one in
+    // VanillaMaterialsEndpoint (same MaterialInstanceDto shape).
+    static MaterialInstanceDto ToMaterialInstanceDto(MaterialInstanceData mi)
+    {
+        var dto = new MaterialInstanceDto
+        {
+            stem       = mi.AssetStem,
+            parentStem = mi.ParentMaterialStem,
+            parentPath = mi.ParentMaterialPath,
+            scalars    = new List<MIScalarParamDto>(mi.Scalars?.Count ?? 0),
+            vectors    = new List<MIVectorParamDto>(mi.Vectors?.Count ?? 0),
+            textures   = new List<MITextureParamDto>(mi.Textures?.Count ?? 0),
+        };
+        foreach (var s in mi.Scalars ?? new List<MIScalarParam>())
+            dto.scalars.Add(new MIScalarParamDto { name = s.Name, value = s.Value });
+        foreach (var v in mi.Vectors ?? new List<MIVectorParam>())
+            dto.vectors.Add(new MIVectorParamDto { name = v.Name, r = v.R, g = v.G, b = v.B, a = v.A });
+        foreach (var t in mi.Textures ?? new List<MITextureParam>())
+            dto.textures.Add(new MITextureParamDto { name = t.Name, textureStem = t.TextureStem, texturePath = t.TexturePath });
+        return dto;
     }
 }

@@ -181,6 +181,7 @@ public static class Program
         ItemTemplatesEndpoint.Map(app, resolvedRoot);
         BuildingTemplatesEndpoint.Map(app, resolvedRoot);
         BuildingsEndpoint.Map(app, resolvedRoot);
+        VanillaMaterialsEndpoint.Map(app, resolvedRoot);
         LootTablesEndpoint.Map(app, resolvedRoot);
         BuyersEndpoint.Map(app, resolvedRoot);
         SellersEndpoint.Map(app, resolvedRoot);

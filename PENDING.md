@@ -1,6 +1,6 @@
 # Quartermaster Builder - Pending Work
 
-Stand: 2026-05-19 nach Etappen C+D (Backend-API + Frontend-Tab, ungetestet)
+Stand: 2026-05-19 nach Etappe F (End-to-End-Test erfolgreich - Painting wird im Game platzierbar gebaut + deployed via GUI) + Etappe-G-Planung (mesh-driven Material-Slots mit User-gepicktem Vanilla-Parent, Hard-Break-Migration locked am Abend des 19.05.)
 
 Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Was schon erledigt ist (Done)
@@ -93,6 +93,80 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 8. Windrose starten, Logs checken: `[Config] loaded 1 item(s)`, Build-Menue -> Decoration -> "Mein Bild" platzieren
 9. Smart-Reuse-Test: 30+ Build-Mode Re-Opens, Painting bleibt in Liste, Pool=1
 10. Idle-Mode-Test: Building in der GUI loeschen + Save + Build druecken. Verifizieren: JSON wird leer geschrieben, neuer Game-Start landet im Idle-Mode-Log
+
+### Etappe G (in Bearbeitung, gestartet 2026-05-20)
+
+**Architektur-Wandel:** Heute sind Material-Slots **template-driven** (Painting hardcoded mit Frame+Canvas + festem Vanilla-Parent + festen Param-Defaults). Ab Etappe G werden Material-Slots **mesh-driven**: das Mesh selber definiert die Slot-Liste, und der User configed pro Slot komplett frei (Vanilla-Parent, Texturen, Vector/Scalar-Params).
+
+**Recon vom 20.05. morgens (kritisch fuer Design):**
+- `DA_BI_Bucket_01` existiert in Vanilla-Decoration -> perfekter Template-Parent fuer Bucket-Test
+- `Sources/Vanilla` ist Zen-Format, nicht direkt mit UAssetAPI lesbar - braucht `retoc to-legacy --filter <stem>` als Extract-Step (so wie BuildingPatcher das bereits macht). Alternativ CUE4Parse mit ZenPackage-Provider, das die BuildPipeline schon nutzt
+- User-cooked MIs sind direkt mit UAssetAPI lesbar (Legacy-Format, vom UE-Editor produziert)
+- **`mi-probe` Spike in `.build-tmp/mi-probe/`** ist bereits voll funktionsfaehig und liest NameMap+ImportMap+Param-Bloecke - kann 1:1 als Reader-Vorlage fuer den `MaterialInstanceInspector` dienen
+- **MI_Paintings_01 enthaelt NICHT die erwarteten Standard-PBR-Properties** (Metallic/Roughness/Specular/NormalStrength kommen vom Parent-Master-Material `M_Object`). Was wirklich drin ist:
+  - 3 Scalars: `AO Position`, `AO Contrast`, `RefractionDepthBias` (Painting-spezifische artistische Tuning-Params)
+  - 2 Vectors: `Edge Color`, `AO Color`
+  - 3 Textures: `Albedo`, `MTRM`, `Normal`
+- User-cooked `MI_QmPainting_Canvas` hat **exakt die gleichen Param-Names + ExpressionGUIDs** wie das Vanilla-MI, nur andere Werte/Texturen (weil sie vom gleichen Parent `M_Object` vererbt sind)
+
+**Design-Entscheidungen (alle locked):**
+- **Vanilla-MI-Parent-Wahl** (locked 19.05.): Variante A - User picked explizit pro Slot aus einem Dropdown
+- **Dropdown-Quelle** (locked 19.05.): Full-Scan ueber Vanilla-Paks beim Backend-Start, GUI zeigt Liste mit Such-Filter. **Detail aus Recon**: Sources/Vanilla ist nur partial-Extract - der echte Scan muss aus dem AES-encrypted Vanilla-Pak direkt kommen (via CUE4Parse ZenPackage-Provider, der schon in BuildPipeline laeuft), nicht aus Sources/Vanilla
+- **Template-Konzept** (locked 19.05.): bleibt erhalten, aber **nur** fuer Gameplay-Setup (DA-Parent = Snap-Sockets, Collision-Box, Placement-Rules, Size, Category). Materialien gehoeren nicht mehr zum Template
+- **Migration bestehender Painting-Buildings** (locked 19.05.): Variante A - Hard break, User legt die "My Painting"-Card im neuen System neu an
+- **Param-Set in der GUI** (locked 20.05. nach Recon): Variante A - **dynamisch**. Die GUI rendert genau die Params die in der vom User gewaehlten Vanilla-MI vorhanden sind (statt hardcoded PBR-Set). Heisst: kein Param-Add-Path noetig, kein NameMap-Append, keine Risiko-Klasse fuer "Param erbt vom Parent-M_". Konsequenz: Begriffe wie "Metallic"/"Roughness" tauchen nur auf wenn die jeweilige Vanilla-MI sie hat
+- **Pre-Fill aus User-cooked MIs** (locked 20.05.): Variante 1 - **auto pre-fill**. Wenn der User eine MI im Cooked-Folder hat die denselben Parent-Master hat wie das gewaehlte Vanilla-MI, uebernimmt die GUI deren Werte+Texture-Refs als Initial-Defaults. User sieht seine UE-Editor-Arbeit als Startpunkt
+
+**Mesh-driven Material-Slot-Workflow im Detail:**
+
+| Schritt | Was passiert | Wo |
+|---|---|---|
+| 1 | User cooked seine Assets in UE-Editor (Mesh + Textures + User-MIs auf irgendeinem M_) | UE-Editor (extern) |
+| 2 | GUI scannt Cooked-Folder + liest das Mesh (`SM_*.uasset`) und extrahiert **Material-Slot-Namen + Slot-Count** | `CookedFolderInspector` (neu, Backend) |
+| 3 | GUI liest jede User-MI im Folder und extrahiert **Texturen + Vector/Scalar-Params** als Default-Werte | `CookedFolderInspector` |
+| 4 | Pro Material-Slot zeigt GUI eine Karte mit:<br>- Vanilla-Parent-Dropdown (User picked, mit Such-Filter aus dem Vanilla-MI-Catalog)<br>- Texture-Picker pro Param (pre-filled aus User-MI, Dropdown listet Files aus Cooked-Folder + Shared-Defaults)<br>- Scalar-Slider pro Param (Metallic, Roughness, Specular, NormalStrength etc., pre-filled aus User-MI)<br>- Color-Picker pro Vector-Param (Tint etc., pre-filled aus User-MI) | `buildings.{html,css,js}` (frontend) |
+| 5 | Build-Pipeline klont das vom User gewaehlte Vanilla-MI, schiebt User-Params + Texturen rein, patched Mesh-Material-Slots auf die Klone | `BuildingPatcher.cs` (Backend) |
+
+**Welche Properties editierbar sind:**
+Dynamisch pro Slot-Pick. **Was die gewaehlte Vanilla-MI in ihren `ScalarParameterValues`/`VectorParameterValues`/`TextureParameterValues`-Bloecken auflistet** -> das ist editierbar. Beispiele:
+- `MI_Paintings_01` (Painting-Template Decoration) -> Scalars: AO Position/Contrast, RefractionDepthBias; Vectors: Edge Color, AO Color; Textures: Albedo, MTRM, Normal
+- Ein hypothetisches `MI_Metal_01` (z.B. fuer Bucket) -> vermutlich Metallic, Roughness als Scalars
+- User waehlt also implizit das Param-Set ueber den Vanilla-Parent-Pick
+
+Pre-Fill bei Cooked-Folder-Match: User-MI-Werte ersetzen die Vanilla-Defaults, wenn beide vom selben Parent-Master abstammen.
+
+**Konkrete Datei-Aenderungen fuer Etappe G:**
+
+| # | Datei | Aenderung | Aufwand |
+|---|---|---|---|
+| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaMaterialCatalog.cs` **(neu)** | Beim Backend-Start CUE4Parse-Provider mit AES auf Vanilla-Paks lossen, alle `MI_*.uasset` aus dem AssetRegistry indexen. Index pro MI: PackagePath, DisplayName. Optional Lazy-Cache fuer Inspect-Resultat. Public API: `Search(query, limit) -> VanillaMaterialEntry[]`. | ~2h |
+| 2 | `Tools/QuartermasterCore/BuildingCreator/MaterialInstanceInspector.cs` **(neu)** | Liest eine MaterialInstanceConstant (legacy Format) und gibt strukturiert zurueck: ParentMasterMaterialPath, ScalarParams[], VectorParams[], TextureParams[]. Reader-Pattern aus `.build-tmp/mi-probe/Program.cs` extrahiert. Wird sowohl fuer Vanilla-MIs (nach retoc-extract) als auch User-MIs (direkt) genutzt. | ~2h |
+| 3 | `Tools/QuartermasterCore/BuildingCreator/CookedFolderInspector.cs` **(neu)** | Mesh-Reader (`SM_*.uasset`): liest StaticMaterials-Array, gibt Slot-Names + Slot-Count + per-Slot Default-MI-Ref zurueck. MI-Reader: nutzt MaterialInstanceInspector. Liefert dem Frontend einen kompakten "InspectionResult"-Struct: alles was die GUI fuer Initial-Render braucht. | ~3h |
+| 4 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | `MaterialSlotTemplate`-Klasse entfernen. Template bekommt jetzt nur noch:<br>- `Id`, `DisplayName`, `Description`<br>- `ParentBuildingDAPath` (Vanilla-DA fuer Snap/Collision/Category)<br>- `CategoryTag`<br>Factory-Methode: `BuildingTemplate.Painting()`, neu `BuildingTemplate.Bucket()` mit `DA_BI_Bucket_01` als Parent. | ~1h |
+| 5 | `Tools/QuartermasterCore/Profile.cs` | `CustomBuildingSlot` umbauen:<br>- `VanillaMaterialParentPath: string` (User-Pick aus Dropdown, required)<br>- `ScalarParams: Dictionary<string,float>` (Param-Name -> User-Override-Wert)<br>- `VectorParams: Dictionary<string,float[]>` (Param-Name -> RGBA als 4 floats)<br>- `TextureParams: Dictionary<string,string>` (Param-Name -> Texture-Stem aus Cooked-Folder oder Shared-Default)<br>Alte Felder `CustomAlbedoStem/Path` etc. **raus**. | ~1h |
+| 6 | `Tools/QuartermasterCore/BuildingCreator/BuildingPatcher.cs` | Rewrite des MI-Patch-Schritts:<br>- Pro Slot vom Mesh: User-gepicktes Vanilla-MI extrahieren (via retoc to-legacy, cached pro distinct Path)<br>- Klon erstellen, dann **alle drei Param-Bloecke** ueberschreiben:<br>  - ScalarParameterValues: Werte aus `slot.ScalarParams` reinpatchen<br>  - VectorParameterValues: Werte aus `slot.VectorParams` reinpatchen (bestehender Pattern erweitert)<br>  - TextureParameterValues: Texture-Refs aus `slot.TextureParams` via NameMap-Rewrite umbiegen<br>- Mesh-Patch: pro Material-Slot der Index aus dem Mesh -> Klon-MI-Pfad<br>- **Kein Param-Add-Path** noetig (Variant A garantiert dass User-Konfig nur Params hat die in der Vanilla-MI sind) | ~3h |
+| 7 | `GUI/Web/BuildingDto.cs` | Neu: `VanillaMaterialDto` (PackagePath, DisplayName) fuer Catalog-Listing. `MaterialInstanceDto` (ScalarParams[], VectorParams[], TextureParams[]) fuer Inspect-Resultat. `CookedFolderInspectionDto` mit Mesh-Slots + per-MI-Defaults. | ~30min |
+| 8 | `GUI/Web/Endpoints/VanillaMaterialsEndpoint.cs` **(neu)** | `GET /api/vanilla-materials?search=&limit=` -> Catalog-Search. `GET /api/vanilla-materials/inspect?path=` -> einzelne MI inspizieren (Lazy, on-demand). | ~30min |
+| 9 | `GUI/Web/Endpoints/BuildingsEndpoint.cs` | `GET /api/buildings/inspect-cooked?path=&assetPrefix=` neu - liest Mesh + User-MIs, gibt komplett-Struct fuer Frontend zurueck. Existierendes `scan-cooked` bleibt fuer den File-Klassifikations-Panel. | ~1h |
+| 10 | `GUI/Web/Endpoints/BuildingTemplatesEndpoint.cs` | Template-Catalog: Slots-Property weg. Bucket-Template als zweites Template hinzufuegen. | ~20min |
+| 11 | `GUI/Web/wwwroot/tabs/buildings.{html,css,js}` | Rewrite der Slot-UI:<br>- Wenn `cookedFolderPath` gesetzt -> auto-inspect-cooked -> rendert Slot-Liste dynamisch (Mesh-driven)<br>- Pro Slot:<br>  - Vanilla-Parent: Search-Dropdown mit `/api/vanilla-materials?search=`, on-pick -> `/api/vanilla-materials/inspect` -> Param-UI rendern<br>  - Pre-Fill: wenn User-MI im Folder mit gleichem Parent existiert, alle Werte als Defaults uebernommen (sichtbar als "User-cooked default" pre-fill-state, mit Reset auf Vanilla)<br>  - Scalar-Params: Slider+Number-Input pro Eintrag (mit Min/Max-Heuristik z.B. 0..1 oder -10..10)<br>  - Vector-Params: HTML Color-Input + Alpha-Slider<br>  - Texture-Params: Dropdown aus Cooked-Folder-Files (mit `T_*.uasset` filter) + Default-VTs<br>- Required: VanillaMaterialParentPath pro Slot | ~5h |
+| 12 | `GUI/Web/wwwroot/app.js` | Hard-Break-Migration: beim Profile-Load wenn `customBuildings[i].slots[k]` ein altes Schema-Feld (`customAlbedoStem`) hat -> Warning toasten + diese Cards rauswerfen. | ~30min |
+| 13 | `Tools/QuartermasterCore/BuildPipeline.cs` | `BuildBuildingInputs` umstellen auf Mesh-driven (`CookedFolderInspector` liefert Slot-Liste, statt vom Template). `HasCustomBuildingsConfiguration`-Gate anpassen (Required: VanillaMaterialParentPath pro Slot). | ~1h |
+| 14 | `GUI/Web/Program.cs` | VanillaMaterialCatalog beim Startup initialisieren (lange Initial-Scan, einmalig). VanillaMaterialsEndpoint registrieren. | ~15min |
+
+Geschaetzt 18-22h (voller Tag plus Polish).
+
+**Reihenfolge der Etappe G:**
+1. **G.1** - Backend-Lese-Infrastruktur: `MaterialInstanceInspector` + `VanillaMaterialCatalog` + `CookedFolderInspector` + die zwei neuen Endpoints. Independent testbar via Browser/curl bevor wir das Frontend anfassen.
+2. **G.2** - Profile-Schema-Wandel + `BuildingPatcher`-Rewrite + Bucket-Template anlegen. Backend voll-funktional ohne Frontend (Tests via direkt Profile-JSON edit).
+3. **G.3** - Frontend-Rewrite. Hard-Break-Migration. End-to-End-Test mit Bucket (das war urspruengliches User-Ziel).
+
+**Risiken (Update nach Recon):**
+- ~~Param-Add-Path im Patcher~~ - **eliminiert durch Variant A** (dynamische GUI rendert nur was die MI hat -> User kann nichts editieren was nicht im Block ist)
+- **Mesh-Material-Slot-Names**: das Mesh kennt die Slots unter Namen oder als Index 0..N-1. Reader muss beides handhaben. SM_QmPainting_01 ist ein konkretes Test-Subjekt da es bereits getestet ist.
+- **Vanilla-MI-Catalog-Bootup-Zeit**: Full-Scan via CUE4Parse beim Backend-Start. Vermutlich akzeptabel weil CUE4Parse bereits eine offene Provider-Instanz hat (BuildPipeline), aber zu messen wenn die ersten Tests laufen.
+- **Pre-Fill-Match-Robustheit**: User-MI matched gegen Vanilla-Parent via `Parent`-Import-Ref - das ist eindeutig wenn der User im UE-Editor von einem Vanilla-MI abgeleitet hat, **aber** der QmPainting-User hat sein MI gegen `M_Object` (Master-Material) direkt gebaut. In dem Fall ist der "Parent" das Master-Material, nicht ein Vanilla-MI. Match-Strategie: wenn User-MI `Parent == <gewaehltes-Vanilla-MI>` -> direkt pre-fill. Wenn User-MI `Parent == <gleicher-Master-wie-gewaehltes-Vanilla-MI>` -> auch pre-fill (gleiche Param-Struktur). Sonst nicht.
+- **Backwards-Compat-Hard-Break**: Profile-JSON-Validator muss tolerant sein (`customBuildings` mit unknown Felder darf nicht crashen, nur warnen + verwerfen).
 
 ---
 
@@ -216,14 +290,17 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 
 ---
 
-## Spaetere Themen (out-of-scope fuer Step 1)
+## Spaetere Themen (out-of-scope fuer Step 1 - nach G)
 
-- **Automatisch alle Materialien mitnehmen** - automatisch erkennen welche Materials das Mesh referenziert + automatisch passende Vanilla-MI-Parents waehlen
-- **Automatisch die richtigen Texturen zu den Materialien waehlen** - User bringt nur Bilder mit, GUI ordnet sie korrekt den Albedo/Normal/MTRM-Slots zu
-- Mehrere Templates ueber "Painting" hinaus (Furniture, Light, ...)
+- **Auto-Suggest fuer Vanilla-Parent**: Etappe G hat Variante A locked (User picked explizit). Spaeter koennte ein "Suggest"-Button neben dem Dropdown Variante B/C nachreichen (Parameter-Signatur-Matching der User-MI gegen Vanilla-MI-Pool, top-3 Vorschlaege).
+- **Templates aus Vanilla-DAs auto-generieren**: heute ist jedes Template hardcoded mit `ParentBuildingDAPath`. Spaeter: Backend scannt `Sources/Vanilla/...` nach allen `DA_BI_*`-Files und exposed sie als Templates. Damit bekommen wir alle Floor-Groessen / Wall-Typen / etc. automatisch ohne Code-Eingriff. User picked "Template" = picked Vanilla-DA.
+- **Multi-Material-Builder fuer komplexe Meshes**: falls Buildings mehr als ~8 Material-Slots haben (z.B. ein detailliertes Bett mit Frame + Bettzeug + Kissen + Decke + Holzfarbe + Metallbeschlag + ...), wird die Slot-UI eng. Polish-Task fuer Etappe H (Collapse-Group pro Slot, Bulk-Apply-Across-Slots).
 - Pak fuer mehrere Profile parallel (statt nur aktives)
 - Auto-Deploy bei Profile-Change (statt nur "Build"-Button)
 - Live-Reload im Game ohne Restart (DLL haette dafuer `QmConfigReload()` Hook)
+- Material-Param-Live-Preview (Sliders in der GUI zeigen Vorschaubild ohne Build-Roundtrip - braucht eigenen Preview-Renderer)
+- **Floor/Wall-Snap-Sockets**: beim DA-Klon nicht nur NameMap renamen sondern Snap-Sockets erhalten. Erst beim Floor/Wall-Template noetig.
+- **Glass-/Translucent-Materials** (z.B. Bottle): Vanilla-MI-Klon ueber transparente MIs validieren. Eigene Risiko-Klasse weil Shading-Model differs.
 
 ---
 
@@ -236,3 +313,10 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Test-Plan fuer Etappe F: mindestens **2** Buildings mit gleichem Template anlegen + deployen + im Game beide platzieren + 30+ Re-Opens (Smart-Reuse muss weiter funktionieren).
 - **Default-VT-Texturen (Punkt 9 aus PENDING)**: Aktuell muss der User die 3 Texturen (`T_QmPainting_White`, `T_QmPainting_NormalFlat`, `T_QmPainting_MTRMDefault`) selber im UE-Editor cooken und in den Cooked-Folder seines Buildings legen. Der Staging-Step pickt sie via Asset-Prefix `QmPainting` auf. Spaeter: Builder shipt sie automatisch (ergo: Embedded-Resources mit fertig gecooketen .uasset/.uexp/.ubulk). Workaround fuer Etappe F: User stellt sicher dass die Default-Texturen in seinem Cooked-Output liegen.
 - **CSV-Localization fuer DisplayName/Description (Punkt 10 aus PENDING)**: NICHT in Etappe E implementiert. Bei Tests wird der Game vermutlich den Localization-Key ("Decoration_<BuildingId>_Name") als Anzeigetext zeigen statt "Mein Bild". Polish-Task fuer Etappe F+ (Pattern wie ItemCreatorPatcher.CsvWritten).
+
+### Recon-Aufgaben **vor** Etappe G
+
+- **Vanilla-DA-Liste fuer Templates**: Pruefen welche Vanilla-`DA_BI_*` als Eltern-Templates Sinn machen. Konkret fuer den geplanten Bucket-Test: gibt's ein `DA_BI_Bucket_01` (oder vergleichbar) in den Vanilla-Paks? Falls nicht: welches Decoration-DA hat passende Snap+Collision (free placement, kein Wall-Lock)? `MI_Paintings_01`-DA ist wall-mounted, nicht ideal fuer einen Eimer auf dem Boden.
+- **Vanilla-MI-Catalog-Inhalt sondieren**: Quick-Scan ueber `Sources/Vanilla/R5/Content/**/MI_*.uasset` - wie viele MIs sind das? Welche Naming-Conventions? Brauchen wir Category-Tags oder reicht ein einfacher Path/Name-Substring-Search fuer den GUI-Filter?
+- **User-MI-Reader testen**: kann CUE4Parse aus dem User-cooked `MI_QmPainting_Canvas.uasset` (im Spike-Folder) korrekt die Texture-Refs + Param-Werte rauslesen? Spike: kurz einen Test-Reader bauen und am bestehenden Cooked-Folder validieren bevor wir den Inspector in die Pipeline einbauen.
+- **Scalar-Param-Add-Path im MI**: pruefen ob `MI_Paintings_01` die Standard-Params (Metallic, Roughness, NormalStrength) direkt drin hat (Edit-Path reicht) oder ob sie vom Parent-M_ geerbt werden (Add-Path noetig). Via UAssetGUI oder direkt im Hex-View nach `ScalarParameterValues` suchen.
