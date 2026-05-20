@@ -1,6 +1,6 @@
 # Quartermaster Builder - Pending Work
 
-Stand: 2026-05-20 nach Etappe G code-fertig (G.1 Backend-Read-Infrastructure + G.2 Mesh-driven backend + Bucket-Template + G.3 Frontend-Rewrite mit dynamic Vanilla MI picker). End-to-End-Test ueber GUI pending.
+Stand: 2026-05-20 - Etappe G End-to-End verifiziert (Painting + Bucket). Etappe G.4 (CSV-Localization + FText-Key-Rewrite) committed. Etappe H1 (tabPurityFilter -> "BuildingBrushes") deployed - User-Test in-Game pending. Etappe H2 (Baukosten editierbar) + Etappe I (Vanilla-DA-Templates) geplant aber nicht angefangen.
 
 Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Was schon erledigt ist (Done)
@@ -92,6 +92,20 @@ Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
   - Pre-Fill: wenn user-cooked MI fuer den Slot denselben parentPath wie das vom User gewaehlte Vanilla-MI hat, deren Werte als non-destructive defaults eingetragen.
   - Required-Banner extended fuer per-slot VanillaMaterialParentPath.
   - `tabs/buildings.css`: Styling fuer alle neuen UI-Komponenten.
+
+- Etappe G.4 (CSV-Localization + FText-Key-Rewrite, Commit `da0b05e`):
+  - `BuildingTemplate.cs`: + `VanillaDescriptionKey` Feld, gesetzt fuer Painting (`Decoration_Paintings_T02_Description`) und Bucket (`Decorations_DecorDishes_01_Descriptions`).
+  - `FTextKeyRewriter.cs` (neu): Binary-In-Place-Rewriter. Oeffnet Legacy-uasset, scannt `RawExport.Data` nach FString-encoded Vanilla-Keys (4-byte length prefix + UTF-8 bytes + null), splice same-byte-length neuen Key rein (gepadded mit `_`). Same-length-Approach erspart SerialSize-Recompute.
+  - `BuildingItemsCsvPatcher.cs` (neu): Spiegelt ItemCreatorPatcher's CSV-Synthese fuer `BuildingItems.csv`. Liest Vanilla-CSV, appended pro Building eine Name + Description Row mit den rewriteten Keys, schreibt extended CSV nach Staging.
+  - `BuildingPatcher.cs`: + Step 7 nach DA-Patch (FTextKeyRewriter). NameMap-VanillaNameKey-Mapping entfernt (das war nie in der NameMap, generierte nur "missed replacement"-Warning).
+  - `BuildPipeline.cs`: + CSV-Synthese-Hook nach Buildings-AfterExtract. `totalWritten` zaehlt jetzt `CountBuildableBuildings(profile)` damit Main-Pak auch bei "Buildings-only"-Builds gebaut wird.
+  - `WindroseGameSecrets.cs` + `WindrosePaths.cs` + `VanillaSourceManifest.cs`: + `BuildingItems.csv` Konstante/Pfad/Manifest-Eintrag (Setup extrahiert sie jetzt automatisch).
+  - **Status:** im Game verifiziert - Painting im Build-Menue zeigt User-Wunschtext + Tooltip. Committed (Commit `da0b05e`).
+
+- Etappe H1 (Tab-Routing auf "Vorgefertigte Strukturen", deployed 2026-05-20):
+  - `Tools/QuartermasterCore/Deploy/GameDeployer.cs`: `tabPurityFilter`-Default von `"BuildingDecoration"` auf `"BuildingBrushes"` umgestellt. `targetCategorySubstring` pro Item folgt automatisch (default = tabPurityFilter).
+  - **Hintergrund:** Inject-Log Hit#2 hat gezeigt dass "Vorgefertigte Strukturen" `R5BuildingBrush`-Items aus `/BuildingBrushes/*` + `/Houses/*` enthaelt. Substring `"BuildingBrushes"` matched genau eine der zwei Sub-Strukturen, und der purity-test ueber `probe.pkgName` matched gegen den Package-Pfad des ersten Items in der Gruppe. Hit#2 hatte `pkg='.../BuildingBrushes/Brush_Pier_01'` -> matched. Polymorphie-Hypothese: `R5BuildingItem` erbt von `R5BuildingBrush` (siehe Hit#1 wo `SelectedBrush.Cls='R5BuildingBrush' Name='DA_BI_Utilities_BuildingCenterT01'` obwohl die DA-Klasse R5BuildingItem ist).
+  - **Status:** Core + Web baut clean, deployed. **User-Test in-Game pending**: Build druecken + ins Game + B-Mode + letzte Tab "Vorgefertigte Strukturen" -> Painting/Bucket sollte als Slot neben Brush_Pier_01 erscheinen. Wenn sichtbar+klickbar+platzierbar: committen + weiter mit H2. Wenn Crash/Type-Mismatch: Filter zurueckdrehen, anderer Hook-Pfad noetig (vermutlich auf R5BuildingBrush-spawn statt Item-spawn).
 
 - (vorher) Smart-Reuse-Pool fuer Spawn-Widgets - Items verschwinden nach 8 Re-Opens-Bug gefixt, stabil bei Pool=2 nach 28 Re-Opens
 - (vorher) Stale-Donor-Detection - Crash-bei-Re-Open-Bug gefixt
@@ -320,17 +334,97 @@ Geschaetzt 18-22h (voller Tag plus Polish).
 
 ---
 
-## Spaetere Themen (out-of-scope fuer Step 1 - nach G)
+## Etappe H2 (Baukosten editierbar - geplant, nicht angefangen)
 
-- **Auto-Suggest fuer Vanilla-Parent**: Etappe G hat Variante A locked (User picked explizit). Spaeter koennte ein "Suggest"-Button neben dem Dropdown Variante B/C nachreichen (Parameter-Signatur-Matching der User-MI gegen Vanilla-MI-Pool, top-3 Vorschlaege).
-- **Templates aus Vanilla-DAs auto-generieren**: heute ist jedes Template hardcoded mit `ParentBuildingDAPath`. Spaeter: Backend scannt `Sources/Vanilla/...` nach allen `DA_BI_*`-Files und exposed sie als Templates. Damit bekommen wir alle Floor-Groessen / Wall-Typen / etc. automatisch ohne Code-Eingriff. User picked "Template" = picked Vanilla-DA.
-- **Multi-Material-Builder fuer komplexe Meshes**: falls Buildings mehr als ~8 Material-Slots haben (z.B. ein detailliertes Bett mit Frame + Bettzeug + Kissen + Decke + Holzfarbe + Metallbeschlag + ...), wird die Slot-UI eng. Polish-Task fuer Etappe H (Collapse-Group pro Slot, Bulk-Apply-Across-Slots).
-- Pak fuer mehrere Profile parallel (statt nur aktives)
-- Auto-Deploy bei Profile-Change (statt nur "Build"-Button)
-- Live-Reload im Game ohne Restart (DLL haette dafuer `QmConfigReload()` Hook)
-- Material-Param-Live-Preview (Sliders in der GUI zeigen Vorschaubild ohne Build-Roundtrip - braucht eigenen Preview-Renderer)
-- **Floor/Wall-Snap-Sockets**: beim DA-Klon nicht nur NameMap renamen sondern Snap-Sockets erhalten. Erst beim Floor/Wall-Template noetig.
-- **Glass-/Translucent-Materials** (z.B. Bottle): Vanilla-MI-Klon ueber transparente MIs validieren. Eigene Risiko-Klasse weil Shading-Model differs.
+**Ziel:** User kann pro Building eine Liste von Resource-Cost-Eintraegen (Item + Count) editieren. Vanilla-Defaults (vom Template-Recipe geerbt) sind als Pre-Fill da. Es gibt Add / Remove / Edit pro Row.
+
+**Recon-Befunde (verifiziert 2026-05-20):**
+- Bucket-DA's `.uasset` enthaelt in der NameMap **sowohl** den vollen Recipe-Pfad `/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood` **als auch** den Stem `DA_RD_BuildObject_Deco_Dishes_T01_Wood`. Beide sind ueber Standard-NameMap-Rewrite umbiegbar (gleiches Pattern wie Mesh/Icon in der existierenden Pipeline).
+- `VanillaRecipes` ist bereits in `WindrosePaths` + `VanillaSourceManifest` registriert - Setup extrahiert die Recipes automatisch als JSON-Dump (`Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/Recipes/...`). **JSON-Parse reicht fuer den Read-Pfad** (Pre-Fill der Vanilla-Defaults). Fuer den Write-Pfad muessen wir die Recipe-DA als uasset behandeln - via retoc-to-legacy + In-place-Edit oder als CUE4Parse-Read + UAssetAPI-Write.
+- Resource-DAs (`DA_DID_*.uasset`) liegen unter `InventoryItems/DefaultItems/Resource/` - dutzende Wood/Iron/Bark/Bean/Bezoar/Anvil/.... Identisches Scan-Pattern wie `VanillaMaterialCatalog`.
+
+**Hintergrund aus Recon:**
+- Baukosten liegen **nicht** in der Building-DA. Die Bucket-DA referenziert via NameMap eine externe Recipe-DA: `/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood`.
+- Recipe-DA-Struktur (siehe `Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood.json`):
+  ```json
+  {
+    "$type": "R5BLRecipeData",
+    "RecipeCost": [ { "Item": "/R5BusinessRules/.../DA_DID_Resource_Wood_T01.DA_DID_Resource_Wood_T01", "Count": 3 } ],
+    "CraftRequirement": "None",
+    "ComfortRequirements": [],
+    "RecipeTag": { "TagName": "RecipeData.Deco.Dishes.T01.Wood" },
+    "UIData": { "Name": {...}, "Image": "...", "RecipeType": "Building" }
+  }
+  ```
+- Resource-DAs liegen unter `R5/Plugins/R5BusinessRules/Content/InventoryItems/DefaultItems/Resource/DA_DID_*.uasset` - dutzende Wood/Iron/Bark/Bean/Bezoar/Anvil/... etc. Brauchen einen Catalog-Scan analog zu `VanillaMaterialCatalog`.
+
+**Datei-Aenderungen:**
+
+| # | Datei | Aenderung | Aufwand |
+|---|---|---|---|
+| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaResourceCatalog.cs` (neu) | Lazy-Catalog ueber `DA_DID_*.uasset` aus Vanilla-Pak-Set via CUE4Parse provider scan. Pro Eintrag: PackagePath, DisplayName (aus DA-NameMap oder DA-Stem), IconPath. Public API: `Search(query, limit)`. | ~2h |
+| 2 | `GUI/Web/BuildingDto.cs` | + `VanillaResourceDto` (PackagePath, DisplayName, IconPath). + `RecipeCostEntryDto` (ItemPath, Count) fuer Profile-Roundtrip. | ~20min |
+| 3 | `GUI/Web/Endpoints/VanillaResourcesEndpoint.cs` (neu) | `GET /api/vanilla-resources?search=&limit=` -> Catalog-Search. | ~30min |
+| 4 | `Tools/QuartermasterCore/Profile.cs` | `CustomBuilding`: + `RecipeCost: List<RecipeCostEntry>` (ItemPath, Count). + Klasse `RecipeCostEntry`. Migration: bei load wenn Feld fehlt -> leere Liste (= Template-Default beim Build verwenden). | ~30min |
+| 5 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | + `VanillaRecipeDaPath` Feld pro Template (gesetzt fuer Painting + Bucket aus Vanilla-Recipe-Pfaden, vom Decoration-Recipe-Set abgeleitet). Wird Default-Source falls User keine `RecipeCost`-Eintraege gesetzt hat. | ~30min |
+| 6 | `Tools/QuartermasterCore/BuildingCreator/RecipePatcher.cs` (neu) | Pro Building: clone Vanilla-Recipe-DA, schreibt `RecipeCost`-Array um (NameMap-Replace fuer DA_DID-Refs, In-place Edit fuer Count-Werte), vergibt eigenen RecipeTag (`RecipeData.QM.<BuildingId>`), Output nach `Quartermaster/Recipes/DA_RD_Qm<BuildingId>.uasset`. Variant: wenn die Tag-Liste eine NameMap-Erweiterung braucht, analog zu CSV-Synthese-Pattern. | ~3h |
+| 7 | `Tools/QuartermasterCore/BuildingCreator/BuildingPatcher.cs` | + Step 8 nach FTextKeyRewriter: ruft RecipePatcher mit `template.VanillaRecipeDaPath` + `building.RecipeCost`, danach NameMap-Replace der DA-Recipe-Reference (`DA_RD_BuildObject_Deco_Dishes_T01_Wood` -> `DA_RD_Qm<BuildingId>`). | ~1h |
+| 8 | `GUI/Web/Endpoints/BuildingsEndpoint.cs` | + `GET /api/buildings/inspect-recipe?templateId=` returns das Default-Recipe-Dict (RecipeCost-Liste) fuer Pre-Fill im Frontend. | ~30min |
+| 9 | `GUI/Web/wwwroot/tabs/buildings.{html,css,js}` | + Recipe-Tab im Building-Card-Body. Rows mit Resource-Search-Dropdown + Count-Input. Add/Remove-Buttons. Beim Template-Pick: auto-Load Vanilla-Defaults via inspect-recipe. | ~3h |
+| 10 | `Tools/QuartermasterCore/BuildPipeline.cs` | + Pre-Build-Step: Resource-Pfad-Validierung (jeder ItemPath muss als DA_DID-Vanilla-Asset existieren), zum Frontend zurueckmelden falls fehlend. | ~30min |
+
+**Geschaetzt 11-13h** (knapp ein voller Tag).
+
+**Risiken:**
+- Tag-Conflict: wenn unsere `RecipeData.QM.<BuildingId>` Tag mit irgendetwas im Game collidiert. Sehr unwahrscheinlich aber checken.
+- CraftRequirement: einige Recipes haben `CraftRequirement != "None"` (Tool-Anforderung). Vorerst auf None default lassen, Editor-UI dafuer in Etappe H3 (out-of-scope hier).
+- ComfortRequirements: bisher in den Decoration-Recipes leer, falls ein Painting-Parent das anders hat -> ignore (clone leeres Array).
+- Performance: Resource-Catalog hat einige hundert DA_DIDs - vermutlich akzeptabel, aber zu messen wenn das Backend bootet.
+
+---
+
+## Etappe I (Vanilla-DA-Templates auto-generieren - geplant, nicht angefangen)
+
+**Ziel:** statt hardcoded `BuildingTemplate.Painting()`/`Bucket()`-Factories scant das Backend einmal alle Vanilla-`DA_BI_*.uasset` (oder eine kuratierte Untermenge) und exposed sie als pickbare Templates. **Jedes Custom-Building wird automatisch in die Tab "Vorgefertigte Strukturen" geroutet** (per User-Klarstellung 2026-05-20). H1 hat den `tabPurityFilter` schon dauerhaft auf `"BuildingBrushes"` gesetzt - das gilt unveraendert fuer alle Templates aus Etappe I.
+
+**Voraussetzungen:**
+- H1 muss in-Game funktionieren (R5BuildingItem in BuildingBrushes-Tab clickbar/platzierbar). Sonst muessen wir vorher den Hook-Pfad umbauen (eigener Hook auf R5BuildingBrush-Spawn).
+
+**Datei-Aenderungen:**
+
+| # | Datei | Aenderung | Aufwand |
+|---|---|---|---|
+| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaBuildingTemplateCatalog.cs` (neu) | Scant `Sources/Vanilla/R5/Content/Gameplay/Building/**/*.uasset` (oder direkt aus Vanilla-Pak via CUE4Parse), filtert auf R5BuildingItem-DAs (Klassen-Check ueber NameMap), extrahiert pro DA:<br>- `daPackagePath` (Vanilla-DA-Pfad)<br>- `categoryFolder` (BuildingDecoration / BuildingPoi / BuildingFarming etc. - nur fuer GUI-Search-Filter)<br>- `nameKey` + `descriptionKey` (FText-Keys aus dem Body, fuer FTextKeyRewriter)<br>- `meshPackagePath` + `iconPackagePath` (aus NameMap)<br>- `recipePackagePath` (aus NameMap, falls vorhanden)<br>- `displayName` (resolved aus BuildingItems.csv Vanilla-Baseline via nameKey).<br>Public API: `Search(query, category, limit)`. Persistenter Cache (Build-time JSON in `Tools/QuartermasterCore/data/vanilla-building-templates.json`) damit Bootup nicht jedes Mal scannt. | ~5h |
+| 2 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | Hardcoded Factories `Painting()` + `Bucket()` raus. Template wird zu reinem POCO das dynamisch aus dem Catalog gefuellt wird. `Id` wird der Vanilla-DA-Pfad (URL-safe encoded). | ~1h |
+| 3 | `GUI/Web/Endpoints/BuildingTemplatesEndpoint.cs` | Statt static List liefert es jetzt `VanillaBuildingTemplateCatalog.Search(query, category, limit)` durch. + `GET /api/building-templates/categories` -> Liste der categoryFolder fuer GUI-Filter. | ~1h |
+| 4 | `GUI/Web/wwwroot/tabs/buildings.js` | Template-Pick-UI: aus Dropdown wird Search-Box + Category-Filter (analog zum Vanilla-MI-Picker aus Etappe G). | ~2h |
+| 5 | `Tools/QuartermasterCore/BuildingCreator/BuildingPatcher.cs` | FTextKeyRewriter braucht jetzt **NameKey + DescriptionKey aus dem dynamisch geladenen Template** (statt hardcoded VanillaNameKey/VanillaDescriptionKey). Code-Pfad existiert schon - nur Wiring auf Catalog-Data-Source. | ~1h |
+| 6 | `Tools/QuartermasterCore/Profile.cs` | Migration: bestehende Buildings mit `TemplateId="Painting"` -> `templateId="/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02"`. Bestehende mit `TemplateId="Bucket"` -> `".../DA_BI_Bucket_01"`. Migrations-Step beim Profile-Load. | ~30min |
+| 7 | `Tools/QuartermasterCore/Deploy/GameDeployer.cs` | `tabPurityFilter` bleibt fix `"BuildingBrushes"` (siehe H1). Dokumentiere im Code dass es kein per-Template-Override mehr gibt. | ~10min |
+| 8 | **Recon-Vorab** | Pruefen welche Vanilla-DAs ueberhaupt R5BuildingItem-Klasse haben (vs. R5BuildingBrush wie Brush_Pier_01). Ueber UAssetGUI oder mi-probe-aehnliches Tool die DA-Klasse aus dem Pkg.Header lesen. | ~2h |
+
+**Geschaetzt 12-15h** (knapp ein voller Tag, ohne Polishing).
+
+**Was Etappe I implizit loest:**
+- ~~Punkt 3 Floor/Wall-Snap-Sockets~~ - jedes Vanilla-DA bringt seine eigenen Mesh-Sockets mit; User picked Floor-DA als Template, dessen Mesh hat die Snap-Punkte, alles automatisch.
+- ~~Punkt 4 Vorgefertigte-Kategorie~~ - bereits in H1 erledigt.
+
+**Risiken:**
+- Klassen-Mix: nicht jede DA in `Gameplay/Building/**` ist R5BuildingItem. Filter im Catalog muss robust sein.
+- Mesh-Slot-Mismatches: ein Template mit Mesh A erwartet bestimmte Material-Slot-Namen, der User-Cooked-Folder hat aber Mesh B mit anderen Slots. Gilt heute schon (Etappe G mesh-driven) - lediglich der Default fuer "welche Slots" kommt jetzt aus dem Vanilla-Mesh statt aus einer Konstante.
+- Tag-Inflation: Resource-Catalog (H2) + Building-Template-Catalog (I) + Material-Catalog (G) - drei separate Scans beim Backend-Start. Falls die Bootup-Zeit > 5s wird, muessen wir sie sequenziell triggern (z.B. Material-Catalog beim ersten /api/vanilla-materials-Request statt eager).
+
+---
+
+## Spaetere Themen (nicht im aktiven Backlog)
+
+- **Auto-Suggest fuer Vanilla-Parent**: Variante B/C aus G-Planung. Per User-Entscheidung 2026-05-20: **gestrichen** (Variant A reicht, Auto-Detect waere zu fragmentiert wegen variabler Param-Layouts).
+- **Multi-Material-Builder fuer komplexe Meshes (8+ Slots)**: per User-Entscheidung 2026-05-20: **gestrichen** (kein konkreter Use-Case).
+- **Material-Param-Live-Preview** (Sliders in der GUI zeigen Vorschaubild ohne Build-Roundtrip): per User-Entscheidung 2026-05-20: **gestrichen** (eigener Preview-Renderer waere zu aufwendig).
+- **Glass-/Translucent-Materials** (z.B. Bottle): Vanilla-MI-Klon ueber transparente MIs validieren. Per User-Entscheidung 2026-05-20: **vorerst gestrichen** (nicht-prio).
+- **Live-Reload im Game ohne Restart** (DLL haette dafuer `QmConfigReload()` Hook): per User-Entscheidung 2026-05-20: **gestrichen** (Restart < 15s, kein Pain-Point).
+- Pak fuer mehrere Profile parallel (statt nur aktives) - kein User-Pain-Point momentan.
+- Auto-Deploy bei Profile-Change (statt nur "Build"-Button) - per Entscheidung 4/5: bleibt explizit beim Build-Button.
 
 ---
 

@@ -122,12 +122,20 @@ namespace Windrose.Quartermaster.Core.Deploy
         // Empty list = writes a JSON with empty items array; DLL goes idle
         // (Etappe A.1). Always overwrites the target file - no merge.
         //
-        // tabPurityFilter defaults to "BuildingDecoration" for the current
-        // Painting template; later when we have multiple templates spanning
-        // different categories we'll derive this from the buildings list.
+        // tabPurityFilter is a substring matched against the first item's
+        // package path in each group of the resolved tab. ALL groups in the
+        // tab must match for the inject to fire (purity-gate).
+        //
+        // Default "BuildingBrushes" routes every custom building to the
+        // "Vorgefertigte Strukturen" tab (last tab in the build menu),
+        // regardless of which vanilla template was cloned. The tab contains
+        // both /BuildingBrushes/* and /Houses/* but the only observed group
+        // there has its first item in /BuildingBrushes/* - so this substring
+        // is enough to identify the tab. If we ever see Houses items in
+        // their own group we'd need a broader filter (e.g. a tag probe).
         public void WriteItemsJson(
             IList<BuildingPatchResult> buildings,
-            string tabPurityFilter = "BuildingDecoration")
+            string tabPurityFilter = "BuildingBrushes")
         {
             var path = TargetItemsJsonPath();
             var body = BuildItemsJson(buildings, tabPurityFilter);
