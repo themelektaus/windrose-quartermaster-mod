@@ -302,6 +302,36 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
+            // Allowlist: user-referenced asset stems (mesh, icon, every
+            // texture param). These get staged even if they don't match
+            // the AssetPrefix filter - e.g. shared default-VT textures
+            // like T_MTRMDefault or T_NormalFlat the user picks from the
+            // resource picker without an explicit prefix. Without this,
+            // the cloned MI's NameMap rewrites point at unstaged files
+            // and the material renders missing-texture / breaks the mesh.
+            var allowStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(inputs.MeshStem))
+                allowStems.Add(inputs.MeshStem);
+            if (!string.IsNullOrWhiteSpace(inputs.IconStem))
+                allowStems.Add(inputs.IconStem);
+            if (inputs.MeshSlots != null)
+            {
+                foreach (var s in inputs.MeshSlots)
+                {
+                    if (s.TextureParams == null) continue;
+                    foreach (var kv in s.TextureParams)
+                    {
+                        if (!string.IsNullOrWhiteSpace(kv.Value))
+                            allowStems.Add(kv.Value);
+                    }
+                }
+            }
+
+            // Files we actually staged - used by Step 1.5 to walk them
+            // again for FolderName normalization (so the staged top-level
+            // package path matches the asset's internal self-reference).
+            var stagedUserAssets = new List<string>();
+
             int copied = 0;
             int skipped = 0;
             int rejected = 0;
@@ -322,8 +352,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 //   - left of the match must be start-of-stem or '_'
                 //   - right of the match must be end-of-stem or '_' or '.'
                 // Empty prefix => take everything.
-                if (!string.IsNullOrEmpty(inputs.AssetPrefix) &&
-                    !StemContainsPrefixAsComponent(stem, inputs.AssetPrefix))
+                bool prefixOk = string.IsNullOrEmpty(inputs.AssetPrefix)
+                    || StemContainsPrefixAsComponent(stem, inputs.AssetPrefix);
+                bool allowed = prefixOk || allowStems.Contains(stem);
+                if (!allowed)
                 {
                     rejected++;
                     if (rejectedSample.Count < 5) rejectedSample.Add(name);
@@ -339,9 +371,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 var dst = Path.Combine(stagingItemsDir, name);
                 File.Copy(f, dst, overwrite: true);
-                LogLine("  [copy] " + name);
+                LogLine("  [copy] " + name + (prefixOk ? "" : "  (allowlisted: user-referenced)"));
                 result.StagedFiles.Add(name);
                 copied++;
+
+                // Track .uasset files for the FolderName-normalization
+                // pass; .uexp/.ubulk are siblings UAssetAPI reads from
+                // the same directory automatically.
+                if (string.Equals(Path.GetExtension(name), ".uasset", StringComparison.OrdinalIgnoreCase))
+                    stagedUserAssets.Add(dst);
             }
 
             if (copied == 0)
@@ -370,6 +408,97 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 + (skipped > 0 ? " (" + skipped + " user-cooked material(s) skipped)" : "")
                 + (rejected > 0 ? " (" + rejected + " file(s) didn't match prefix"
                     + (rejectedSample.Count > 0 ? ", e.g. " + string.Join(", ", rejectedSample) : "") + ")" : ""));
+
+            // ---- Step 1.5: normalize FolderName + self-NameMap --------
+            // The user's UE editor typically cooks assets under a project
+            // subfolder (e.g. /Game/Quartermaster/Items/QmPainting/SM_*).
+            // We stage every asset at top-level /Game/Quartermaster/Items/<stem>,
+            // so the asset's internal FolderName + NameMap self-path entries
+            // disagree with the chunk path the iostore lookup uses. UE5's
+            // iostore loader silently fails to resolve the package on
+            // mismatch -> mesh + icon are invisible in-game. Fix: rewrite
+            // each staged user-cooked asset's self-references to the
+            // top-level path before retoc-to-zen sees the file.
+            int normalized = 0;
+            foreach (var uassetPath in stagedUserAssets)
+            {
+                if (NormalizeStagedUserAssetSelfPath(uassetPath, result)) normalized++;
+            }
+            if (normalized > 0)
+                LogLine("[OK] " + normalized + " staged file(s) self-path normalized to /Game/Quartermaster/Items/<stem>");
+        }
+
+        // Rewrites the asset's FolderName + every NameMap entry that holds
+        // the old FolderName string, so the asset's internal self-reference
+        // matches the top-level staging path /Game/Quartermaster/Items/<stem>.
+        // Returns true if a rewrite happened, false if the asset was already
+        // correct (no-op).
+        //
+        // Why this matters: when the user's UE project cooks an asset under
+        // /Game/Quartermaster/Items/<subfolder>/<stem>, the cooked .uasset
+        // carries FolderName = "/Game/Quartermaster/Items/<subfolder>/<stem>"
+        // and a matching NameMap entry. retoc-to-zen builds the iostore
+        // chunk path from the file location on disk - which here is
+        // R5/Content/Quartermaster/Items/<stem>.uasset i.e. top-level. The
+        // loader uses the chunk path to find the package, but the package
+        // header's FolderName drives the engine's name-resolution checks.
+        // Mismatch silently fails the load. We normalize both to the same
+        // top-level virtual path.
+        bool NormalizeStagedUserAssetSelfPath(string stagedUassetPath, BuildingPatchResult result)
+        {
+            var stem = Path.GetFileNameWithoutExtension(stagedUassetPath);
+            var targetFolderName = "/Game/Quartermaster/Items/" + stem;
+
+            try
+            {
+                var mapping = new Usmap(UsmapPath);
+                var asset = new UAsset(stagedUassetPath, EngineVersion.VER_UE5_6, mapping);
+
+                var currentFolderName = asset.FolderName?.Value;
+                if (string.IsNullOrEmpty(currentFolderName)
+                    || string.Equals(currentFolderName, targetFolderName, StringComparison.Ordinal))
+                {
+                    return false; // already correct, no rewrite needed
+                }
+
+                // Rename the NameMap entry holding the old FolderName so any
+                // soft-object lookup of this asset's self-path resolves to the
+                // staged top-level path.
+                var names = asset.GetNameMapIndexList();
+                int renamedSelfEntries = 0;
+                for (int i = 0; i < names.Count; i++)
+                {
+                    var entry = names[i];
+                    if (entry == null || entry.Value == null) continue;
+                    if (string.Equals(entry.Value, currentFolderName, StringComparison.Ordinal))
+                    {
+                        asset.SetNameReference(i, new FString(targetFolderName, entry.Encoding));
+                        renamedSelfEntries++;
+                    }
+                }
+
+                asset.FolderName = FString.FromString(targetFolderName);
+                asset.Write(stagedUassetPath);
+
+                LogLine("  [normalize] " + Path.GetFileName(stagedUassetPath)
+                    + ": FolderName " + currentFolderName + " -> " + targetFolderName
+                    + " (" + renamedSelfEntries + " NameMap self-entry rewrite(s))");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // Not every staged file is a parseable Zen package - retoc
+                // sometimes emits sidecar files (e.g. .uptnl) that look like
+                // .uasset but aren't. Log + carry on so a single weird file
+                // doesn't fail the whole build.
+                result.Warnings.Add(
+                    "FolderName normalize failed for " + Path.GetFileName(stagedUassetPath)
+                    + ": " + ex.GetType().Name + " - " + ex.Message
+                    + " (asset will be staged with original self-path; in-game load may fail).");
+                LogLine("  [normalize] WARN " + Path.GetFileName(stagedUassetPath) + ": "
+                    + ex.GetType().Name + ": " + ex.Message);
+                return false;
+            }
         }
 
         // Returns true if `prefix` appears as a name component in `stem`:
@@ -525,6 +654,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // the user's texture stem. The user's texture must exist
             // under /Game/Quartermaster/Items/<stem> in staging (the
             // cooked-folder step already copied it there).
+            // Vanilla-matching overrides are skipped (no-op writes plus
+            // a harmful path redirect to /Game/Quartermaster/Items/<vanilla>
+            // that doesn't exist on disk).
+            int textureSkippedVanilla = 0;
             if (slot.TextureParams != null)
             {
                 foreach (var kv in slot.TextureParams)
@@ -538,6 +671,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                             + kv.Key + "' not found in Vanilla MI '" + vanillaStem + "' - skipping override");
                         continue;
                     }
+                    if (string.Equals(existing.TextureStem, kv.Value, StringComparison.Ordinal))
+                    {
+                        // User's value equals Vanilla's stem - no-op.
+                        textureSkippedVanilla++;
+                        continue;
+                    }
                     var newStem = kv.Value;
                     var newPath = "/Game/Quartermaster/Items/" + newStem;
                     if (!string.IsNullOrEmpty(existing.TextureStem))
@@ -546,6 +685,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                         matReplacements[existing.TexturePath] = newPath;
                 }
             }
+            if (textureSkippedVanilla > 0)
+                LogLine("  [slot " + slot.Index + "] skipped " + textureSkippedVanilla
+                    + " texture override(s) matching vanilla defaults");
 
             LogLine("  [slot " + slot.Index + " '" + slot.SlotName + "'] cloning " + vanillaStem + " -> " + cloneStem);
 
@@ -573,9 +715,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
 
             // Scalar + Vector overrides via UAssetAPI struct edits.
+            // Vanilla-matching overrides are skipped (functional no-op +
+            // clutter in the patch). The vanilla defaults are read from
+            // the inspected miData above.
             int scalarOverrides = slot.ScalarParams?.Count ?? 0;
             int vectorOverrides = slot.VectorParams?.Count ?? 0;
             if (scalarOverrides == 0 && vectorOverrides == 0) return;
+
+            const float EPS = 1e-4f;
+            int scalarSkippedVanilla = 0, vectorSkippedVanilla = 0;
 
             var mapping = new Usmap(UsmapPath);
             var miAsset = new UAsset(cloneFile, EngineVersion.VER_UE5_6, mapping);
@@ -585,6 +733,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             {
                 foreach (var kv in slot.ScalarParams)
                 {
+                    var def = FindScalarParam(miData, kv.Key);
+                    if (def != null && Math.Abs(def.Value - kv.Value) < EPS)
+                    {
+                        scalarSkippedVanilla++;
+                        continue;
+                    }
                     int h = PatchMiScalarParameter(miAsset, kv.Key, kv.Value);
                     if (h == 0)
                         result.Warnings.Add(
@@ -599,6 +753,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 {
                     var rgba = kv.Value;
                     if (rgba == null || rgba.Length < 4) continue;
+                    var def = FindVectorParam(miData, kv.Key);
+                    if (def != null
+                        && Math.Abs(def.R - rgba[0]) < EPS
+                        && Math.Abs(def.G - rgba[1]) < EPS
+                        && Math.Abs(def.B - rgba[2]) < EPS
+                        && Math.Abs(def.A - rgba[3]) < EPS)
+                    {
+                        vectorSkippedVanilla++;
+                        continue;
+                    }
                     int h = PatchMiVectorParameter(miAsset, kv.Key, rgba[0], rgba[1], rgba[2], rgba[3]);
                     if (h == 0)
                         result.Warnings.Add(
@@ -607,6 +771,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     vectorHits += h;
                 }
             }
+
+            if (scalarSkippedVanilla > 0 || vectorSkippedVanilla > 0)
+                LogLine("  [slot " + slot.Index + "] skipped "
+                    + scalarSkippedVanilla + " scalar + "
+                    + vectorSkippedVanilla + " vector override(s) matching vanilla defaults");
 
             if (scalarHits > 0 || vectorHits > 0)
             {
@@ -625,6 +794,28 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             foreach (var t in mi.Textures)
                 if (string.Equals(t.Name, name, System.StringComparison.Ordinal))
                     return t;
+            return null;
+        }
+
+        // Vanilla-default lookup for scalar/vector params - used to skip
+        // overrides whose value exactly matches the Vanilla parent's
+        // default (writing vanilla as override is a functional no-op
+        // plus clutter in the patch).
+        static MIScalarParam FindScalarParam(MaterialInstanceData mi, string name)
+        {
+            if (mi?.Scalars == null) return null;
+            foreach (var s in mi.Scalars)
+                if (string.Equals(s.Name, name, System.StringComparison.Ordinal))
+                    return s;
+            return null;
+        }
+
+        static MIVectorParam FindVectorParam(MaterialInstanceData mi, string name)
+        {
+            if (mi?.Vectors == null) return null;
+            foreach (var v in mi.Vectors)
+                if (string.Equals(v.Name, name, System.StringComparison.Ordinal))
+                    return v;
             return null;
         }
 
@@ -662,7 +853,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // package path AND by bare stem - both entries must move to
             // point at our cloned recipe under the same vanilla folder
             // structure (UE resolves them relative to that path).
-            var outRecipeStem = "DA_RD_Qm" + inputs.BuildingId;
+            // BuildingId already carries the "QmBldg_" prefix - don't
+            // double-prefix to "DA_RD_QmQmBldg_*".
+            var outRecipeStem = "DA_RD_" + inputs.BuildingId;
             var outRecipePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/" + outRecipeStem;
 
             // NameMap-rewrite covers asset path / stem refs only - the

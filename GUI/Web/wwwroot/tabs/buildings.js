@@ -654,6 +654,19 @@ async function setVanillaMiParentForSlot(buildingId, slotIndex, packagePath) {
     building.slots = building.slots || {};
     const slotKey = String(slotIndex);
     building.slots[slotKey] = building.slots[slotKey] || {};
+
+    // If the parent actually changed, clear any param overrides - they
+    // belonged to the previous MI's param schema and would either be
+    // dropped silently by the patcher (param name not found on the new
+    // parent) or, worse, leak old values onto same-named params of the
+    // new parent. A fresh parent gets a fresh override dict; renderSlotParams
+    // below repopulates pre-fills from the user-cooked MI if applicable.
+    const oldPath = building.slots[slotKey].vanillaMaterialParentPath || '';
+    if (oldPath && oldPath !== packagePath) {
+        building.slots[slotKey].scalarParams  = {};
+        building.slots[slotKey].vectorParams  = {};
+        building.slots[slotKey].textureParams = {};
+    }
     building.slots[slotKey].vanillaMaterialParentPath = packagePath;
 
     const searchBox = slotEl.querySelector('[data-slot-parent-search]');
@@ -712,26 +725,51 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
 
     // Initialize the slot dict + apply pre-fill for any params the
     // user hasn't overridden yet. Pre-fill is non-destructive: existing
-    // user overrides win.
+    // user overrides win. Pre-fill is also vanilla-aware: values from
+    // the user-cooked MI that exactly match the Vanilla parent's default
+    // are NOT promoted to overrides. Writing vanilla-matching values
+    // adds clutter (scalar/vector) or is actively harmful for textures
+    // (redirects the texture path to /Game/Quartermaster/Items/<vanilla>
+    // which doesn't exist).
     building.slots = building.slots || {};
     const slotKey = String(slotIndex);
-    const sl = building.slots[slotKey] || {};
+    building.slots[slotKey] = building.slots[slotKey] || {};
+    const sl = building.slots[slotKey];
     sl.vanillaMaterialParentPath = packagePath;
     sl.scalarParams  = sl.scalarParams  || {};
     sl.vectorParams  = sl.vectorParams  || {};
     sl.textureParams = sl.textureParams || {};
     if (userMi) {
+        const EPS = 1e-4;
+        const miScalars  = new Map((mi.scalars  || []).map(s => [s.name, s.value]));
+        const miVectors  = new Map((mi.vectors  || []).map(v => [v.name, [v.r, v.g, v.b, v.a]]));
+        const miTextures = new Map((mi.textures || []).map(t => [t.name, t.textureStem || '']));
+
         for (const s of userMi.scalars || []) {
-            if (!(s.name in sl.scalarParams)) sl.scalarParams[s.name] = s.value;
+            if (s.name in sl.scalarParams) continue;
+            const def = miScalars.get(s.name);
+            if (def !== undefined && Math.abs(def - s.value) < EPS) continue;
+            sl.scalarParams[s.name] = s.value;
         }
         for (const v of userMi.vectors || []) {
-            if (!(v.name in sl.vectorParams)) sl.vectorParams[v.name] = [v.r, v.g, v.b, v.a];
+            if (v.name in sl.vectorParams) continue;
+            const def = miVectors.get(v.name);
+            if (def
+                && Math.abs(def[0] - v.r) < EPS
+                && Math.abs(def[1] - v.g) < EPS
+                && Math.abs(def[2] - v.b) < EPS
+                && Math.abs(def[3] - v.a) < EPS) continue;
+            sl.vectorParams[v.name] = [v.r, v.g, v.b, v.a];
         }
         for (const t of userMi.textures || []) {
-            if (!(t.name in sl.textureParams)) sl.textureParams[t.name] = t.textureStem || '';
+            if (t.name in sl.textureParams) continue;
+            const userStem = t.textureStem || '';
+            if (!userStem) continue;
+            const def = miTextures.get(t.name);
+            if (def !== undefined && def === userStem) continue;
+            sl.textureParams[t.name] = userStem;
         }
     }
-    building.slots[slotKey] = sl;
 
     // Now render the param controls. One section per param type with
     // current value pre-populated.

@@ -53,9 +53,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var root = doc.RootElement;
 
             // Output file naming + per-building stem. Mirrors the
-            // DataAssetPatcher's pattern (DA_BI_Qm<BuildingId>) so the
+            // DataAssetPatcher's pattern (DA_BI_<BuildingId>) so the
             // file naming is predictable across both asset types.
-            var outStem = "DA_RD_Qm" + buildingId;
+            // BuildingIds already carry the "QmBldg_" prefix, so we
+            // don't double-prefix here (avoiding DA_RD_QmQmBldg_*).
+            var outStem = "DA_RD_" + buildingId;
             var outFileName = outStem + ".json";
             var outAbs = Path.Combine(outputDir, outFileName);
             Directory.CreateDirectory(outputDir);
