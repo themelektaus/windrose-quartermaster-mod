@@ -38,6 +38,14 @@ const _resourceDisplayCache  = new Map();  // packagePath -> displayName
 // on the first focusin of the relevant input.
 const _vanillaMaterialsLoad = { promise: null };
 const _vanillaResourcesLoad = { promise: null };
+const _vanillaBuildingsLoad = { promise: null };
+
+// Cache for per-template inspections (Mesh/Icon/Recipe stems + FText
+// keys). Keyed by templateId, populated on demand when the user picks a
+// template OR when an existing building's templateId is rendered. Falls
+// back to inflight-promise dedup so concurrent fetches share a single
+// network round-trip.
+const _vanillaBuildingInspectInflight = new Map();
 
 function ensureVanillaMaterialsLoaded() {
     if (state.vanillaMaterials) return Promise.resolve(state.vanillaMaterials);
@@ -79,6 +87,95 @@ function ensureVanillaResourcesLoaded() {
             return state.vanillaResources;
         });
     return _vanillaResourcesLoad.promise;
+}
+
+function ensureVanillaBuildingTemplatesLoaded() {
+    if (state.vanillaBuildingTemplates) return Promise.resolve(state.vanillaBuildingTemplates);
+    if (_vanillaBuildingsLoad.promise) return _vanillaBuildingsLoad.promise;
+    _vanillaBuildingsLoad.promise = api('GET', '/api/building-templates/vanilla?search=&limit=1000')
+        .then(list => {
+            state.vanillaBuildingTemplates = list || [];
+            _vanillaBuildingsLoad.promise = null;
+            return state.vanillaBuildingTemplates;
+        })
+        .catch(ex => {
+            _vanillaBuildingsLoad.promise = null;
+            state.vanillaBuildingTemplates = [];
+            console.error('Failed to load vanilla building templates catalog:', ex);
+            return state.vanillaBuildingTemplates;
+        });
+    return _vanillaBuildingsLoad.promise;
+}
+
+// Inspect-on-demand for the per-template metadata (Mesh/Icon/Recipe
+// stems + FText keys). Cached in state.vanillaBuildingInspections so
+// repeat renders are free. The cache is keyed by the templateId the
+// profile stores - the legacy "Painting"/"Bucket" sentinels don't
+// resolve through this endpoint, callers handle them separately.
+function ensureVanillaBuildingInspection(templateId) {
+    if (!templateId) return Promise.resolve(null);
+    if (state.vanillaBuildingInspections.has(templateId)) {
+        return Promise.resolve(state.vanillaBuildingInspections.get(templateId));
+    }
+    const inflight = _vanillaBuildingInspectInflight.get(templateId);
+    if (inflight) return inflight;
+    const p = api('GET', '/api/building-templates/vanilla/inspect?id=' + encodeURIComponent(templateId))
+        .then(dto => {
+            state.vanillaBuildingInspections.set(templateId, dto);
+            _vanillaBuildingInspectInflight.delete(templateId);
+            return dto;
+        })
+        .catch(ex => {
+            _vanillaBuildingInspectInflight.delete(templateId);
+            console.warn('Vanilla template inspect failed for', templateId, ex);
+            return null;
+        });
+    _vanillaBuildingInspectInflight.set(templateId, p);
+    return p;
+}
+
+// Open the central picker over the building card's template input.
+// Loads the catalog on first open (~849 entries) and uses the optional
+// category facet to narrow the list.
+async function openVanillaBuildingPicker(inputEl, buildingIndex) {
+    if (!inputEl) return;
+    const card = inputEl.closest && inputEl.closest('.building-card');
+    const cat  = card ? card.querySelector('[data-building-template-category]') : null;
+    state.picker = {
+        source: 'vanillaBuilding',
+        input: inputEl,
+        buildingIndex: buildingIndex,
+        category: cat ? cat.value || '' : '',
+    };
+    openPicker(inputEl, null, null, null);
+    await ensureVanillaBuildingTemplatesLoaded();
+    if (state.picker && state.picker.input === inputEl) {
+        populatePicker(inputEl.value);
+    }
+}
+
+// Commit the picked template-id to the building card. Inspects in the
+// background so the recipe-default cache + slot/template hint refresh
+// without an extra round-trip when the user opens the recipe editor.
+async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
+    if (!state.current) return;
+    const list = state.current.customBuildings || [];
+    const custom = list[buildingIndex];
+    if (!custom) return;
+    if (custom.templateId === templateId) return;
+    custom.templateId = templateId;
+    state.isDirty = true;
+    // Clear the per-template recipe-default cache for the new id so
+    // triggerRecipeRender re-fetches the new vanilla pre-fill.
+    _recipeDefaultCache.delete(templateId);
+    // Re-render the card so the template-name input + summary line
+    // refresh. The render loop itself triggers ensureVanillaBuildingInspection
+    // for the hint line.
+    renderBuildingCreator();
+    refreshSaveButton();
+    // Warm the inspection cache so triggerRecipeRender hits a populated
+    // cache on next call.
+    ensureVanillaBuildingInspection(templateId);
 }
 
 async function loadBuildingTemplates() {
@@ -154,24 +251,44 @@ function renderBuildingCreator() {
         }
         if (c.templateId) {
             triggerRecipeRender(c);
+            // Etappe I: kick off template inspection for the title hint line.
+            // Only for Vanilla DA paths - the legacy "Painting"/"Bucket"
+            // sentinels are not in the catalog and would 500. Heuristic:
+            // Vanilla paths start with "/Game/Gameplay/Building/".
+            if (c.templateId.indexOf('/Game/Gameplay/Building/') === 0
+                && !state.vanillaBuildingInspections.has(c.templateId)) {
+                ensureVanillaBuildingInspection(c.templateId).then(() => {
+                    // Re-render to surface the resolved hint line.
+                    renderBuildingCreator();
+                });
+            }
         }
+    }
+    // First-render of any card: fetch the category facet list so the
+    // picker dropdown can offer it. Cheap (~8 entries) but only worth
+    // doing when at least one card exists.
+    if (!state.vanillaBuildingCategories && customs.length > 0) {
+        api('GET', '/api/building-templates/vanilla/categories')
+            .then(cats => {
+                state.vanillaBuildingCategories = cats || [];
+                renderBuildingCreator();
+            })
+            .catch(ex => {
+                console.warn('Failed to load building categories:', ex);
+                state.vanillaBuildingCategories = [];
+            });
     }
 }
 
 function buildCustomBuildingCardHtml(custom, index) {
     if (!custom) return '';
+    // Legacy compatibility: Painting/Bucket sentinels resolve through
+    // the static catalog the backend still ships. Anything else is
+    // resolved against the on-demand vanilla-inspection cache.
     const tpl = state.buildingTemplates.byId.get(custom.templateId) || null;
-
-    const tplCatalog = state.buildingTemplates.list || [];
-    let tplOpts = tplCatalog.map(t =>
-        '<option value="' + escapeHtml(t.id) + '"'
-            + (t.id === custom.templateId ? ' selected' : '')
-            + '>' + escapeHtml(t.label) + '</option>'
-    ).join('');
-    if (custom.templateId && !state.buildingTemplates.byId.has(custom.templateId)) {
-        tplOpts = '<option value="' + escapeHtml(custom.templateId) + '" selected>'
-                + escapeHtml(custom.templateId) + ' (unknown)</option>' + tplOpts;
-    }
+    const ins = (custom.templateId && state.vanillaBuildingInspections.get)
+        ? state.vanillaBuildingInspections.get(custom.templateId) || null
+        : null;
 
     const safeName   = escapeHtml(custom.name || '');
     const safeDesc   = escapeHtml(custom.description || '');
@@ -182,9 +299,37 @@ function buildCustomBuildingCardHtml(custom, index) {
 
     const missingHtml = renderMissingRequiredBanner(custom, tpl);
 
-    const tplHint = tpl
-        ? escapeHtml(tpl.description || '') + (tpl.categoryTag ? ' (tab: ' + escapeHtml(tpl.categoryTag) + ')' : '')
-        : '';
+    // Template label: the picker shows the file stem (Vanilla DA) or
+    // the legacy label ("Painting"/"Bucket"). The inspection cache
+    // wins for Vanilla DA paths because the user picked them.
+    let tplLabel = '';
+    if (ins) tplLabel = ins.displayName || ins.id || '';
+    else if (tpl) tplLabel = tpl.label || tpl.id || '';
+    else if (custom.templateId) tplLabel = custom.templateId;
+
+    // Per-template hint line: for legacy templates use the description;
+    // for Vanilla DAs surface mesh/icon/category for context.
+    let tplHint = '';
+    if (tpl) {
+        tplHint = escapeHtml(tpl.description || '')
+            + (tpl.categoryTag ? ' (tab: ' + escapeHtml(tpl.categoryTag) + ')' : '');
+    } else if (ins) {
+        const parts = [];
+        if (ins.category) parts.push(escapeHtml(ins.category));
+        if (ins.meshStem) parts.push('mesh: ' + escapeHtml(ins.meshStem));
+        if (ins.recipeStem) parts.push('cost: ' + escapeHtml(ins.recipeStem));
+        tplHint = parts.join(' · ');
+        if (ins.warnings && ins.warnings.length > 0) {
+            tplHint += ' · ' + escapeHtml(ins.warnings[0]);
+        }
+    } else if (custom.templateId) {
+        tplHint = '<em>resolving template...</em>';
+    }
+
+    // Category facet options for the picker. ~8 entries in 5.6.
+    const categoryOpts = (state.vanillaBuildingCategories || []).map(c =>
+        '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>'
+    ).join('');
 
     return ''
         + '<li class="building-card" data-building-index="' + index + '" data-building-id="' + escapeHtml(custom.id) + '">'
@@ -192,10 +337,15 @@ function buildCustomBuildingCardHtml(custom, index) {
         +     '<div class="building-titles">'
         +       '<div class="building-title-name">' + (safeName || '<em>(unnamed)</em>') + '</div>'
         +       '<div class="building-title-id">' + escapeHtml(custom.id) + '</div>'
-        +       '<label class="building-title-template">'
+        +       '<div class="building-title-template">'
         +         '<span>Template:</span>'
-        +         '<select data-building-field="templateId">' + tplOpts + '</select>'
-        +       '</label>'
+        +         '<input type="text" data-building-template-input value="' + escapeHtml(tplLabel)
+        +           '" placeholder="Click to browse vanilla templates..." autocomplete="off">'
+        +         (categoryOpts
+                    ? '<select data-building-template-category title="Filter picker by category">'
+                        + '<option value="">All categories</option>' + categoryOpts + '</select>'
+                    : '')
+        +       '</div>'
         +       (tplHint ? '<small class="building-title-template"><span>' + tplHint + '</span></small>' : '')
         +     '</div>'
         +     '<div class="building-card-actions">'
@@ -776,15 +926,10 @@ function onBuildingListChange(e) {
         } else if (field === 'iconStem') {
             custom.iconStem = t.value || '';
             refreshMissingFieldsBanner(card, custom);
-        } else if (field === 'templateId') {
-            custom.templateId = t.value;
-            // Template only affects gameplay-side stuff (DA parent);
-            // slot layout stays the same since it comes from the mesh.
-            // Recipe defaults are template-bound though - re-fetch +
-            // re-render so the cost editor pre-fills the new vanilla
-            // values. If the user already had user-edited rows the
-            // re-render keeps them (we don't auto-clobber overrides).
-            triggerRecipeRender(custom);
+        // (Etappe I removed the legacy `<select data-building-field=
+        //  "templateId">` element; template picks now go through the
+        //  central picker via data-building-template-input, handled
+        //  below in setVanillaBuildingTemplateForCard.)
         } else {
             return;
         }
@@ -798,6 +943,29 @@ function onBuildingListChange(e) {
             positionPicker(t);
         }
         return;  // not dirty until they actually pick a result
+    } else if (t.dataset.buildingTemplateInput !== undefined) {
+        // Etappe I: re-filter the vanilla-template picker as the user
+        // types. Same input-as-search-box pattern as slotParentSearch /
+        // recipeSearch above. Commit happens via onPickerClick.
+        if (state.picker && state.picker.input === t) {
+            populatePicker(t.value);
+            positionPicker(t);
+        }
+        return;
+    } else if (t.dataset.buildingTemplateCategory !== undefined) {
+        // Category-facet dropdown changed; if the picker is open for this
+        // card's input, push the new category into state.picker so the
+        // next populatePicker call filters accordingly.
+        const card = t.closest('li.building-card');
+        if (card && state.picker && state.picker.source === 'vanillaBuilding') {
+            const input = card.querySelector('[data-building-template-input]');
+            if (input && state.picker.input === input) {
+                state.picker.category = t.value || '';
+                populatePicker(input.value);
+                positionPicker(input);
+            }
+        }
+        return;
     } else if (t.dataset.paramScalar !== undefined) {
         applyScalarParam(custom, t, 'paramScalar');
         state.isDirty = true;
@@ -1362,6 +1530,18 @@ function onBuildingListFocusIn(e) {
         const rowIdx = parseInt(rowEl.dataset.recipeRow, 10);
         if (!isFinite(rowIdx)) return;
         openResourcePicker(t, buildingId, rowIdx);
+        return;
+    }
+
+    // Template picker input (Etappe I) -> open the Vanilla building DA
+    // picker. Input is read-only so the user can only commit via the
+    // central dropdown.
+    if (t.dataset.buildingTemplateInput !== undefined) {
+        const card = t.closest('li.building-card');
+        if (!card) return;
+        const index = parseInt(card.dataset.buildingIndex, 10);
+        if (!isFinite(index)) return;
+        openVanillaBuildingPicker(t, index);
         return;
     }
 }

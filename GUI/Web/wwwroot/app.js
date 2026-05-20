@@ -54,6 +54,13 @@ const state = {
     // null until the user first opens a relevant picker.
     vanillaMaterials: null,   // [{displayName, packagePath}] (~1134 entries)
     vanillaResources: null,   // [{stem, packagePath, displayName, iconUrl, itemTag}]
+    // Etappe I: ~849 Vanilla R5BuildingItem DAs the user can pick as a
+    // parent template for a custom building. Loaded once on first picker
+    // open. Each inspection (per picked DA) is cached in
+    // state.vanillaBuildingInspections so the recipe pre-fill + the
+    // template summary don't re-hit the backend on every render.
+    vanillaBuildingTemplates: null,        // [{id, displayName, category, packagePath}]
+    vanillaBuildingInspections: new Map(), // id -> VanillaBuildingTemplateInspectDto
 
     picker: null,
 };
@@ -820,6 +827,31 @@ function populatePicker(query) {
                     '</div>' +
                 '</li>');
         }
+    } else if (state.picker.source === 'vanillaBuilding') {
+        // Vanilla R5BuildingItem DA picker (Etappe I). Filters by both
+        // the file stem (displayName) and the package path so users can
+        // search by either form ("Bucket" or "BuildingDecoration").
+        // Optional category facet via state.picker.category - the
+        // building card carries a small dropdown above the search input.
+        const wantCat = state.picker.category || '';
+        for (const t of state.vanillaBuildingTemplates || []) {
+            const name = t.displayName || '';
+            const path = t.packagePath || '';
+            const cat  = t.category || '';
+            if (wantCat && cat !== wantCat) continue;
+            if (q
+                && !name.toLowerCase().includes(q)
+                && !path.toLowerCase().includes(q)
+                && !cat.toLowerCase().includes(q)) continue;
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(t.id) + '">' +
+                    '<div class="placeholder-icon">B</div>' +
+                    '<div class="info">' +
+                        '<b>' + esc(name) + '</b>' +
+                        '<small>' + esc(cat) + ' · ' + esc(path) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
     } else if (state.picker.type === 'table') {
         for (const lt of state.lootTables) {
             if (q && !lt.id.toLowerCase().includes(q)) continue;
@@ -1375,6 +1407,10 @@ function onPickerClick(e) {
     }
     if (picker.source === 'recipeResource') {
         setRecipeResourceForRow(picker.buildingId, picker.rowIdx, li.dataset.pickId);
+        return;
+    }
+    if (picker.source === 'vanillaBuilding') {
+        setVanillaBuildingTemplateForCard(picker.buildingIndex, li.dataset.pickId);
         return;
     }
     confirmAddedEntry(picker.ltId, picker.addedIndex, picker.type, li.dataset.pickId);

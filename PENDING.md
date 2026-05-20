@@ -1,6 +1,6 @@
 # Quartermaster Builder - Pending Work
 
-Stand: 2026-05-20 - Etappe G End-to-End verifiziert (Painting + Bucket). Etappe G.4 (CSV-Localization + FText-Key-Rewrite) committed. Etappe H1 (tabPurityFilter -> "BuildingBrushes") deployed - User-Test in-Game pending. Etappe H2 (Baukosten editierbar) + Etappe I (Vanilla-DA-Templates) geplant aber nicht angefangen.
+Stand: 2026-05-20 - Etappe G End-to-End verifiziert (Painting + Bucket). Etappe G.4 (CSV-Localization + FText-Key-Rewrite) committed. Etappe H1 (tabPurityFilter -> "BuildingBrushes") deployed + in-Game verifiziert (commit 0ac28b7). Etappe H2 (Baukosten editierbar) committed (Backend 3b1c3f3, Frontend b12c563). Picker-Unification (f6904aa) commit. Etappe I (Vanilla-DA-Templates) Backend + Frontend fertig, awaiting in-Game-Test.
 
 Lebende Plan-Datei fuer den Building-Creator-Workstream. Inhalte:
 - Was schon erledigt ist (Done)
@@ -399,9 +399,40 @@ Geschaetzt 18-22h (voller Tag plus Polish).
 
 ---
 
-## Etappe I (Vanilla-DA-Templates auto-generieren - geplant, nicht angefangen)
+## Etappe I (Vanilla-DA-Templates auto-generieren - implementiert, awaiting in-Game-Test)
+
+**Stand 2026-05-20:** Backend + Frontend komplett. Backwards-Compat zu "Painting"/"Bucket"-Legacy-Profiles erhalten. Inspector validiert gegen Painting-DA + Bucket-DA: liefert exakt die hardcoded-Factory-Werte zurueck (Mesh/Icon/Recipe/NameKey/DescKey identisch). End-to-End-Endpoints alle 200 OK (Categories, Search, Inspect, Inspect-Recipe).
 
 **Ziel:** statt hardcoded `BuildingTemplate.Painting()`/`Bucket()`-Factories scant das Backend einmal alle Vanilla-`DA_BI_*.uasset` (oder eine kuratierte Untermenge) und exposed sie als pickbare Templates. **Jedes Custom-Building wird automatisch in die Tab "Vorgefertigte Strukturen" geroutet** (per User-Klarstellung 2026-05-20). H1 hat den `tabPurityFilter` schon dauerhaft auf `"BuildingBrushes"` gesetzt - das gilt unveraendert fuer alle Templates aus Etappe I.
+
+**Was implementiert wurde:**
+
+| # | Datei | Status |
+|---|---|---|
+| 1 | `Tools/QuartermasterCore/BuildingCreator/VanillaBuildingTemplateCatalog.cs` (neu) | Done. Scant alle `DA_BI_*.uasset` aus den Vanilla-Paks via CUE4Parse-Provider (849 Eintraege auf Windrose 5.6), exkl. BuildingBrushes/Houses/DecorationBrushes. Path-only Catalog (kein Read pro Eintrag); Provider bleibt fuer den Inspector mounted. Public API: `Search(query, category, limit)`, `GetById(id)`, `Categories`. |
+| 2 | `Tools/QuartermasterCore/BuildingCreator/VanillaBuildingTemplateInspector.cs` (neu) | Done. On-demand-Inspector liest pro DA via `provider.LoadPackage(path)` die Mesh-/Icon-/BuildingCost-SoftObjectPaths + Name-/Description-FText-Keys. Real Property-Namen aus Diag-Log: `PreviewMeshes` (Array, Element 0), `Icon`, `BuildingCost` (NICHT "Recipe"), `Name`, `Description`. Werte fuer Painting + Bucket validiert gegen hardcoded Factory - 9 von 9 Feldern identisch. |
+| 3 | `Tools/QuartermasterCore/BuildingCreator/BuildingTemplate.cs` | Done. Painting()/Bucket()-Factories bleiben fuer Backwards-Compat. NEU: `BuildingTemplate.FromInspection(VanillaBuildingTemplateInspection)` konstruiert ein Template dynamisch aus dem Inspector-Result. |
+| 4 | `GUI/Web/Endpoints/BuildingTemplatesEndpoint.cs` | Done. Legacy `/api/building-templates` bleibt (Painting + Bucket). Neu: `/api/building-templates/vanilla?search=&category=&limit=`, `/api/building-templates/vanilla/categories`, `/api/building-templates/vanilla/inspect?id=`. `GetSharedCatalog()` Singleton-Accessor. |
+| 5 | `GUI/Web/BuildingDto.cs` | Done. `VanillaBuildingTemplateDto` + `VanillaBuildingTemplateInspectDto` ergaenzt. |
+| 6 | `GUI/Web/Endpoints/BuildingsEndpoint.cs` | Done. `ResolveTemplate` faellt fuer Non-Sentinel-IDs auf Catalog+Inspector zurueck -> `inspect-recipe?templateId=/Game/.../DA_BI_*` funktioniert auch mit Vanilla-DA-Pfaden als Template-ID. |
+| 7 | `Tools/QuartermasterCore/BuildPipeline.cs` | Done. `BuildingTemplateCatalog`-Field; `ResolveBuildingTemplate` ist nicht mehr static + verwendet Catalog+Inspector fuer Non-Sentinel-IDs. Legacy Painting/Bucket bleiben unangetastet. |
+| 8 | `GUI/Web/Endpoints/BuildEndpoint.cs` | Done. Verdrahtet `pipeline.BuildingTemplateCatalog = BuildingTemplatesEndpoint.GetSharedCatalog()` vor jedem Build. |
+| 9 | `GUI/Web/wwwroot/tabs/buildings.js` | Done. `<select data-building-field="templateId">` -> `<input data-building-template-input>` (readonly, click-to-open-picker) + optional Category-Filter-Select. Lazy-Loader `ensureVanillaBuildingTemplatesLoaded` + `ensureVanillaBuildingInspection` (per-id Cache in `state.vanillaBuildingInspections`). FocusIn-Handler oeffnet zentralen Picker (Source `vanillaBuilding`). |
+| 10 | `GUI/Web/wwwroot/app.js` | Done. `state.vanillaBuildingTemplates` + `state.vanillaBuildingInspections`; `populatePicker` Source `vanillaBuilding` + `onPickerClick` Dispatch auf `setVanillaBuildingTemplateForCard`. |
+| 11 | `GUI/Web/wwwroot/tabs/buildings.css` | Done. Picker-Input + Category-Select gestylt. |
+| 12 | Profile-Migration | NICHT noetig. Backwards-Compat erreicht durch Dual-Resolver (Painting/Bucket bleiben als Sentinel-IDs, neue Buildings nutzen Vanilla-DA-Pfad). |
+
+**Was Etappe I implizit loest:**
+- ~~Punkt 3 Floor/Wall-Snap-Sockets~~ - jedes Vanilla-DA bringt seine eigenen Mesh-Sockets mit; User picked Floor-DA als Template, dessen Mesh hat die Snap-Punkte, alles automatisch.
+- ~~Punkt 4 Vorgefertigte-Kategorie~~ - bereits in H1 erledigt.
+
+**Was offen ist:**
+- In-Game-Test: User waehlt z.B. `DA_BI_Bedroll_01` als Template, gibt CookedFolder + Mesh ein, baut, im Spiel sollte ein Custom-Bedroll in der "Vorgefertigte Strukturen"-Tab erscheinen.
+- Falls Bedroll/Carpet/Chair andere FName/NameMap-Layouts haben als Painting/Bucket: FTextKeyRewriter koennte mismatch werfen. Sollte aber durchgehen, weil der Inspector den echten NameKey/DescKey aus der DA liest (statt hardcoded).
+
+**Frueheres Recon-Resultat (nicht mehr relevant - schon implementiert):**
+
+| # | Datei | Aenderung | Aufwand |
 
 **Voraussetzungen:**
 - H1 muss in-Game funktionieren (R5BuildingItem in BuildingBrushes-Tab clickbar/platzierbar). Sonst muessen wir vorher den Hook-Pfad umbauen (eigener Hook auf R5BuildingBrush-Spawn).
