@@ -79,6 +79,7 @@ namespace Windrose.Quartermaster.Core
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
+        readonly BuildingItemsCsvPatcher _buildingItemsCsvPatcher;
 
         public Action<string> Log;
 
@@ -139,6 +140,7 @@ namespace Windrose.Quartermaster.Core
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
+            _buildingItemsCsvPatcher = new BuildingItemsCsvPatcher();
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -415,7 +417,17 @@ namespace Windrose.Quartermaster.Core
                         ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
-                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0);
+                    + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
+                    // Custom buildings: every non-skeleton building gets a
+                    // BuildingItems.csv row, which lives in the legacy
+                    // main pak (NOT the IoStore composite). Bumping
+                    // totalWritten ensures the main pak builds so the
+                    // CSV is packed alongside the rewritten DA in the
+                    // composite. Without this, a "buildings only" profile
+                    // would write the CSV to tmpDir but never package it,
+                    // and the FText key rewrite would resolve to nothing
+                    // in-game.
+                    + CountBuildableBuildings(profile);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
@@ -1100,6 +1112,41 @@ namespace Windrose.Quartermaster.Core
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
                         }
                         LogLine("Patched buildings: " + buildingResults.Count + " written");
+
+                        // BuildingItems.csv synthesis: append rows for the
+                        // freshly-rewritten FText keys so the engine
+                        // resolves them to the user-supplied display text
+                        // at runtime. The CSV ships in the legacy main
+                        // pak (NOT in the IoStore composite) - vanilla's
+                        // localization manager loads CSVs as runtime data,
+                        // not as cooked assets. The legacy-pak staging
+                        // tree lives at <BuildTmp>/<profile.Id>/ (see
+                        // the outer Build() method's tmpDir; reconstructed
+                        // here instead of plumbed through BuildIoStoreComposite's
+                        // signature to keep that signature stable).
+                        try
+                        {
+                            _buildingItemsCsvPatcher.Log = Log;
+                            var legacyPakStagingDir = Path.Combine(_paths.BuildTmp, profile.Id);
+                            var csvRes = _buildingItemsCsvPatcher.PatchToDirectory(
+                                _paths.VanillaBuildingItemsCsv,
+                                legacyPakStagingDir,
+                                buildingResults);
+                            if (csvRes.CsvWritten)
+                            {
+                                LogLine("BuildingItems.csv extended: +"
+                                        + csvRes.NameRowsAppended + " name row(s), +"
+                                        + csvRes.DescriptionRowsAppended + " description row(s)");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // Non-fatal: building still ships, just with
+                            // the vanilla in-game text. Surface as warning
+                            // so the user knows to re-run Setup if the
+                            // baseline CSV is missing.
+                            LogLine("  warn: BuildingItems.csv synthesis skipped: " + ex.Message);
+                        }
                     },
                 });
             }

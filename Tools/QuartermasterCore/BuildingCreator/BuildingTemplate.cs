@@ -39,16 +39,29 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string VanillaDaPath;
 
         // Localization key the Vanilla DA carries for the user-facing
-        // item name. We rename this to a per-Building synthesized key
-        // ("Decoration_<BuildingId>_Name") so each clone gets its own
-        // CSV-Synthese-Pattern entry.
-        //
-        // Note: some Vanilla DAs (e.g. DA_BI_Bucket_01) store the name
-        // key indirectly via an export body that's a RawExport - the
-        // NameMap-rename then misses, the patcher warns but proceeds,
-        // and the in-game display falls back to the default text. Polish
-        // task for a future iteration.
+        // item name. The DA stores this as an FText StringTableEntry
+        // pointing at the BuildingItems CSV string-table; the literal
+        // key string sits inline in the DA's export body (RawExport.Data),
+        // NOT in the NameMap, so the DataAssetPatcher's NameMap rewrite
+        // can't reach it. Instead, BuildingPatcher does a binary in-place
+        // rewrite of these bytes after the NameMap-level patch, swapping
+        // the vanilla key for a per-Building synthesized key while keeping
+        // the byte length identical (padded with underscores). The
+        // BuildingItemsCsvPatcher then appends a matching row to the
+        // extended BuildingItems.csv so the engine resolves the new key
+        // at runtime to the user-supplied display name.
         public string VanillaNameKey;
+
+        // Sister field to VanillaNameKey for the tooltip / description
+        // FText slot. Optional: null = skip description rewrite (the
+        // building keeps whatever description the cloned vanilla DA
+        // came with; if the vanilla DA doesn't carry one this is fine).
+        // For Painting it is "Decoration_Paintings_T02_Description"
+        // (note the inconsistent vanilla naming: Name uses
+        // "Decorations_Paintings_HighLands_02_*" but Description uses
+        // "Decoration_Paintings_T02_*"). Cross-checked by dumping the
+        // DA's uexp bytes for the literal strings.
+        public string VanillaDescriptionKey;
 
         // --- Vanilla Mesh donor (referenced by the DA) -------------------
         //
@@ -85,9 +98,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 DisplayName = "Painting",
                 Description = "Wall painting cloned from Vanilla HighLands painting (image on wall).",
 
-                VanillaDaStem   = "DA_BI_Paintings_HighLands_02",
-                VanillaDaPath   = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02",
-                VanillaNameKey  = "Decorations_Paintings_HighLands_02_Name",
+                VanillaDaStem          = "DA_BI_Paintings_HighLands_02",
+                VanillaDaPath          = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02",
+                VanillaNameKey         = "Decorations_Paintings_HighLands_02_Name",
+                VanillaDescriptionKey  = "Decoration_Paintings_T02_Description",
 
                 VanillaMeshStem = "SM_Paintings_HighLands_02",
                 VanillaMeshPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/SM_Paintings_HighLands_02",
@@ -107,15 +121,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 DisplayName = "Bucket",
                 Description = "Free-standing bucket cloned from Vanilla wooden bucket (floor placement).",
 
-                VanillaDaStem   = "DA_BI_Bucket_01",
-                VanillaDaPath   = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01",
-                // DA_BI_Bucket_01 stores its name string in a RawExport
-                // body the legacy patcher can't rewrite via NameMap. The
-                // value below is the convention we'd expect if it WAS
-                // in the NameMap; the patcher logs a warning when it
-                // can't find the string and the in-game name falls back
-                // to the default. Acceptable for the G-test.
-                VanillaNameKey  = "BuildingItems_Bucket_01_Name",
+                VanillaDaStem          = "DA_BI_Bucket_01",
+                VanillaDaPath          = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01",
+                // Discovered by binary-dumping DA_BI_Bucket_01.uexp; both
+                // keys sit inline in the export body (BuildingPatcher's
+                // post-NameMap binary rewrite handles them).
+                VanillaNameKey         = "Decorations_Bucket_01_Name",
+                VanillaDescriptionKey  = "Decorations_DecorDishes_01_Descriptions",
 
                 VanillaMeshStem = "SM_BucketWooden_01",
                 VanillaMeshPath = "/Game/Environment/Props/Camp/SM_BucketWooden_01",

@@ -28,6 +28,14 @@ namespace Windrose.Quartermaster.Core
         // mod pak so the engine resolves the FText lookups the new
         // InventoryItem JSONs contain.
         public string VanillaInventoryItemsCsv;
+        // The vanilla R5/Content/Localization/Data/BuildingItems.csv
+        // string-table. Same role as VanillaInventoryItemsCsv but for
+        // building DAs: BuildingPatcher rewrites the FText keys in
+        // each cloned DA's export body to per-building keys, and the
+        // build pipeline appends matching rows to the extended copy of
+        // this CSV so in-game display names / tooltips render the
+        // user-supplied text instead of the vanilla fallback.
+        public string VanillaBuildingItemsCsv;
         // Farming/Crops/ holds R5BLCropParams JSONs - one per crop type
         // (Aloe, Banana, BlackBean, ...). Read by CropGrowthPatcher to
         // multiply each crop's GrowthDuration (FTimespan ticks) by the
@@ -132,6 +140,10 @@ namespace Windrose.Quartermaster.Core
             // under the R5BusinessRules plugin).
             var vanillaInvItemsCsv = Path.Combine(vanilla, "R5", "Content",
                 "Localization", "Data", "InventoryItems.csv");
+            // BuildingItems string-table CSV (same Localization/Data tree
+            // as InventoryItems.csv but for buildings).
+            var vanillaBldgItemsCsv = Path.Combine(vanilla, "R5", "Content",
+                "Localization", "Data", "BuildingItems.csv");
             // Farming/Crops/ lives under the R5BusinessRules plugin tree,
             // same level as InventoryItems / LootTables / Recipes.
             var vanillaCrops = Path.Combine(vanilla, "R5", "Plugins",
@@ -147,6 +159,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaRecipeLists = vanillaRecipeLists,
                 VanillaRecipes = vanillaRecipes,
                 VanillaInventoryItemsCsv = vanillaInvItemsCsv,
+                VanillaBuildingItemsCsv = vanillaBldgItemsCsv,
                 VanillaCrops = vanillaCrops,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),

@@ -58,6 +58,17 @@ namespace Windrose.Quartermaster.Core
         public const string InventoryItemsCsvPath =
             "R5/Content/Localization/Data/InventoryItems.csv";
 
+        // Sister CSV to InventoryItems.csv but for buildings. The vanilla
+        // BuildingDecoration DAs reference FText string-table entries with
+        // TableId=BuildingItems and a literal Key like
+        // "Decorations_Paintings_HighLands_02_Name" embedded in their
+        // export body. We extract the vanilla CSV, append rows for our
+        // custom buildings (keyed by Decoration_<BuildingId>_Name etc.),
+        // and ship the extended copy in the legacy pak so the engine
+        // resolves the rewritten FText keys at runtime.
+        public const string BuildingItemsCsvPath =
+            "R5/Content/Localization/Data/BuildingItems.csv";
+
         // Pak-internal prefix the dumper extracts (R5BLCropParams DataAssets:
         // per-crop DA_Crop_*.json files holding the GrowthDuration FTimespan
         // ticks - 9_000_000_000 ticks = 15 min, etc.). The Stations tab's

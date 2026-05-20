@@ -140,6 +140,15 @@ namespace Windrose.Quartermaster.Core
             },
             new VanillaSourceManifestEntry
             {
+                Key = "buildingItemsCsv",
+                Label = "Building localization (CSV string-table)",
+                Description = "R5/Content/Localization/Data/BuildingItems.csv - baseline string-table that the Building Creator extends so custom buildings get user-supplied display names / tooltips in-game.",
+                PakIncludePath = WindroseGameSecrets.BuildingItemsCsvPath,
+                DiskPath = p => p.VanillaBuildingItemsCsv,
+                ProbeKind = VanillaSourceProbeKind.SingleFile,
+            },
+            new VanillaSourceManifestEntry
+            {
                 Key = "crops",
                 Label = "Crop growth definitions",
                 Description = "R5BusinessRules/Content/Farming/Crops - per-crop DA_Crop_*.json DataAssets with GrowthDuration. Needed by the Stations tab's crop-growth slider.",

@@ -87,11 +87,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             var result = new BuildingPatchResult
             {
-                BuildingId   = inputs.BuildingId,
-                TemplateId   = template.Id,
-                OutputDaStem = "DA_BI_" + inputs.BuildingId,
-                StagedFiles  = new List<string>(),
-                Warnings     = new List<string>(),
+                BuildingId      = inputs.BuildingId,
+                TemplateId      = template.Id,
+                OutputDaStem    = "DA_BI_" + inputs.BuildingId,
+                StagedFiles     = new List<string>(),
+                Warnings        = new List<string>(),
+                // Propagate user-supplied display text so the orchestrator
+                // can feed it to the BuildingItems.csv synthesizer without
+                // having to re-look-up the CustomBuilding from the profile.
+                DisplayName     = inputs.DisplayName,
+                Description     = inputs.Description,
             };
 
             // ---- Step 1: stage user-cooked assets ----------------------
@@ -140,11 +145,103 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             LogLine("=== [" + inputs.BuildingId + "] Step 6: clone + patch DA ===");
             PatchDataAsset(template, inputs, legacyDaPath, stagingItemsDir, result);
 
+            // ---- Step 7: rewrite inline FText keys in the DA body ------
+            // The vanilla DA carries its in-game display name / tooltip
+            // as FText StringTableEntry records whose Key strings sit
+            // inline in the export body (NOT in the NameMap). Step 6's
+            // DataAssetPatcher only touches NameMap entries, so without
+            // this step the patched DA still resolves to the vanilla
+            // translation - the user's "My Painting" is never displayed.
+            //
+            // Patches each known FText key (template.VanillaNameKey,
+            // template.VanillaDescriptionKey if set) to a same-byte-
+            // length per-Building key. The orchestrator pairs those
+            // new keys with the user-supplied display text by appending
+            // matching rows to the BuildingItems.csv string-table.
+            LogLine("=== [" + inputs.BuildingId + "] Step 7: rewrite inline FText keys ===");
+            RewriteInlineFTextKeys(template, inputs, stagingItemsDir, result);
+
             LogLine("[OK] Building '" + inputs.BuildingId + "' patched: "
                 + result.StagedFiles.Count + " files staged"
                 + (result.Warnings.Count > 0 ? ", " + result.Warnings.Count + " warning(s)" : ""));
 
             return result;
+        }
+
+        // -----------------------------------------------------------------
+        // Step 7: same-byte-length in-place rewrite of inline FText
+        // StringTableEntry keys in the cloned DA's export body. Mirrors
+        // the ItemCreator's CSV synthesis pattern, except the per-item key
+        // for buildings lives in raw bytes (not in a JSON field) so we
+        // need FTextKeyRewriter instead of a JsonObject edit.
+        // -----------------------------------------------------------------
+        void RewriteInlineFTextKeys(BuildingTemplate template, BuildingInputs inputs,
+                                    string stagingItemsDir, BuildingPatchResult result)
+        {
+            if (string.IsNullOrWhiteSpace(template.VanillaNameKey)
+                && string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
+            {
+                LogLine("  (template has no FText keys declared - nothing to rewrite)");
+                return;
+            }
+
+            var outDaStem = "DA_BI_" + inputs.BuildingId;
+            var outDaFile = Path.Combine(stagingItemsDir, outDaStem + ".uasset");
+            if (!File.Exists(outDaFile))
+            {
+                result.Warnings.Add(
+                    "FText rewrite: cloned DA not found at " + outDaFile
+                    + " - Step 6 should have produced it");
+                return;
+            }
+
+            var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
+            string newNameKey = null;
+            string newDescKey = null;
+            if (!string.IsNullOrWhiteSpace(template.VanillaNameKey))
+            {
+                newNameKey = BuildingFTextKey.Build(template.VanillaNameKey, inputs.BuildingId, "_Name");
+                replacements[template.VanillaNameKey] = newNameKey;
+            }
+            if (!string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
+            {
+                newDescKey = BuildingFTextKey.Build(template.VanillaDescriptionKey, inputs.BuildingId, "_Description");
+                replacements[template.VanillaDescriptionKey] = newDescKey;
+            }
+
+            var rewriter = new FTextKeyRewriter { Log = LogLine };
+            var pr = rewriter.Patch(outDaFile, UsmapPath, replacements);
+
+            // Surface dead-letter keys (vanilla bytes not present in body)
+            // as warnings. Worth knowing about: it means the template's
+            // declared key doesn't actually appear in the extracted DA,
+            // so the in-game text will keep using whatever the cloned
+            // DA had (and the BuildingItems.csv row we synthesise will
+            // be orphaned).
+            if (pr.Missed != null && pr.Missed.Count > 0)
+            {
+                foreach (var m in pr.Missed)
+                {
+                    result.Warnings.Add(
+                        "FText key '" + m + "' not found in DA body (template "
+                        + template.Id + "). In-game text may keep the vanilla "
+                        + "value; check that the template declaration matches "
+                        + "what the vanilla DA actually carries.");
+                }
+            }
+
+            // Stash the keys + display text on the result so the orchestrator's
+            // CSV-synthesis step pairs them automatically.
+            if (newNameKey != null && pr.PerKeyHits != null
+                && pr.PerKeyHits.TryGetValue(template.VanillaNameKey, out var nameHits) && nameHits > 0)
+            {
+                result.OutputNameKey = newNameKey;
+            }
+            if (newDescKey != null && pr.PerKeyHits != null
+                && pr.PerKeyHits.TryGetValue(template.VanillaDescriptionKey, out var descHits) && descHits > 0)
+            {
+                result.OutputDescriptionKey = newDescKey;
+            }
         }
 
         // -----------------------------------------------------------------
@@ -528,8 +625,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var outMeshPath = "/Game/Quartermaster/Items/" + outMeshStem;
             var outIconStem = inputs.IconStem;
             var outIconPath = "/Game/Quartermaster/Items/" + outIconStem;
-            var outNameKey  = "Decoration_" + inputs.BuildingId + "_Name";
 
+            // NameMap-rewrite covers asset path / stem refs only - the
+            // vanilla FText *keys* (template.VanillaNameKey /
+            // VanillaDescriptionKey) live inline in the DA's RawExport
+            // body and are NOT in the NameMap, so they're handled by
+            // Step 7's FTextKeyRewriter instead.
             var daReplacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [template.VanillaMeshStem] = outMeshStem,
@@ -540,8 +641,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 [template.VanillaDaStem] = outDaStem,
                 [template.VanillaDaPath] = outDaPath,
-
-                [template.VanillaNameKey] = outNameKey,
             };
 
             var patcher = new DataAssetPatcher { Log = LogLine };
@@ -560,7 +659,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             result.StagedFiles.Add(outDaStem + ".uexp");
             result.OutputDaStem = outDaStem;
             result.OutputDaPath = outDaPath;
-            result.OutputNameKey = outNameKey;
 
             if (pr.MissedReplacements != null && pr.MissedReplacements.Count > 0)
             {
@@ -858,7 +956,23 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // when writing qm_items.json so the DLL knows what to inject.
         public string OutputDaStem;
         public string OutputDaPath;
+        // FText StringTableEntry keys the binary rewriter actually
+        // committed to the cloned DA's RawExport body. Null when the
+        // vanilla key wasn't found in the body (template + extracted
+        // DA mismatch) - the orchestrator skips the CSV-row synthesis
+        // for the unset slot so the engine keeps using whatever the
+        // cloned DA already carried for that field.
         public string OutputNameKey;
+        public string OutputDescriptionKey;
+
+        // User-supplied display strings echoed back from BuildingInputs
+        // so the BuildingItems.csv synthesizer can pair them with the
+        // OutputNameKey / OutputDescriptionKey without a second profile
+        // lookup. Stored verbatim - empty / null is treated as
+        // "user didn't fill the field, emit an empty CSV row" (mirrors
+        // ItemCreator behaviour for the InventoryItems table).
+        public string DisplayName;
+        public string Description;
 
         // Filenames staged into stagingItemsDir (for sanity-check + log).
         public List<string> StagedFiles;
