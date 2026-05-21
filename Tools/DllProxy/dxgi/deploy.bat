@@ -46,19 +46,15 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem Optional: copy the dev qm_items.json next to the DLL so the spike list
-rem (QmBedrl + QmPainting) keeps working without going through the GUI. When
-rem the GUI takes over deploys it will overwrite this file; if neither side
-rem provides one, the DLL loads idle (no injects, no harm).
-if exist "%SCRIPT_DIR%qm_items.json" (
-    echo [deploy] Copying config: %SCRIPT_DIR%qm_items.json -^> %TARGET%\qm_items.json
-    copy /Y "%SCRIPT_DIR%qm_items.json" "%TARGET%\qm_items.json" >nul
-    if errorlevel 1 (
-        echo [deploy] Failed to copy qm_items.json.
-        exit /b 1
-    )
+rem qm_items.json is written by the build pipeline (GameDeployer.WriteItemsJson)
+rem on every profile build. We MUST NOT copy a stale dev-spike stub from this
+rem source folder over the freshly-built file - that's a silent regression
+rem (build emits 3 items, this copy reverts to 2 items, custom buildings pop
+rem in/out unpredictably). Earlier spike-style override removed 2026-05-21.
+if exist "%TARGET%\qm_items.json" (
+    echo [deploy] qm_items.json present in target - build pipeline owns it, left alone
 ) else (
-    echo [deploy] No qm_items.json in source dir - DLL will run idle until GUI deploys one.
+    echo [deploy] No qm_items.json in target - DLL runs idle until next profile build
 )
 
 echo.

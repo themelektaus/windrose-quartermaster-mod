@@ -112,3 +112,44 @@ QmInjectSnapshot QmGetInjectSnapshot();
 // Bump hook-hit counter. Returns the post-increment value. The counter lives
 // in qm_inject so the crash snapshot can read it without coupling to qm_hook.
 long QmBumpHookHits();
+
+// ----- Savegame pre-warm (DLL init time, gated by canary poll) -------------
+// Sync-load every Building-DA package from qm_items.json via
+// UKismetSystemLibrary::LoadAsset_Blocking so the IoStore PackageStore has
+// resolved entries before any savegame can attempt to deserialize a placed
+// custom building. Without this, the actor deserializer can't resolve the
+// saved SoftObjectPath (the AssetManager-filter rejected our mod pak at
+// boot - same root cause as the Phase B5 BuildingMenu inject) and the
+// placed building renders empty until the player opens the Build menu AND
+// builds a new item, which finally triggers the lookup.
+//
+// IMPORTANT: LoadAsset_Blocking returns nullptr if called too early - even
+// for known-good vanilla DAs - because the async-loading subsystem /
+// PackageStore isn't fully initialized until after UR5GameInstance::Init
+// runs (which happens ~250ms AFTER our ProbeThread reaches the post-Alloc
+// stage). We can't synchronously wait for GameInstance::Init from the
+// ProbeThread, so instead we POLL: at fixed intervals, try LoadAsset on a
+// known vanilla DA. As soon as that returns non-null, the subsystem is
+// ready and we run the full pre-warm immediately.
+//
+// QmInject_TryCanaryLoad probes a known-good vanilla DA. Returns true if
+// the load succeeded (asset-subsystem ready), false otherwise. Safe to call
+// repeatedly - LoadAsset_Blocking is idempotent.
+//
+// QmInject_PreWarmBuildingPackages does the actual per-item LoadAsset
+// sweep. Internal static flag prevents double-execution if called from
+// multiple paths (ProbeThread, build-menu hook, etc).
+//
+// Logs a per-item OK/FAIL line plus an aggregate summary. Failures do not
+// abort the DLL - the BuildingMenu inject still runs and the next build
+// action will eventually resolve the path.
+bool QmInject_TryCanaryLoad();
+void QmInject_PreWarmBuildingPackages();
+
+// Returns true once QmInject_PreWarmBuildingPackages has run with all mod DAs
+// (and the canary) returning non-null UObjects. The flag is process-permanent
+// - the IoStore PackageStore caches the resolution for the rest of the
+// process lifetime, so re-running pre-warm on subsequent map transitions
+// is pure noise. qm_hook.cpp's Hook_LifecyclePreWarm checks this before
+// touching the latch to avoid burning CPU on every gameplay BeginPlay.
+bool QmInject_PreWarmIsComplete();

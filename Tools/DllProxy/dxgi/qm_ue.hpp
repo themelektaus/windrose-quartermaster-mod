@@ -263,4 +263,33 @@ namespace QmUE
     // of the process.
     bool FNameFromString(const wchar_t* str, FName* outName);
 
+    // Synchronously load an asset via UKismetSystemLibrary::LoadAsset_Blocking
+    // UFunction. This is the equivalent of `FSoftObjectPath(...).TryLoad()` in
+    // native UE code - on success the package containing the asset is hydrated
+    // from IoStore, added to the global PackageStore, and the resolved UObject
+    // is returned (also rooted via UFunction's TStrongObjectPtr return value).
+    //
+    // Why we need it: our injectable building DAs live in a mod pak that the
+    // native UAssetManager::ScanPathsForPrimaryAssets filter rejects (see
+    // GAME_UPDATE_RECOVERY.md / WIP_AddNewBuildModeSlot.md Phase B2/B3). When
+    // a savegame is loaded BEFORE the player has opened the Build menu, the
+    // actor deserializer reads the saved SoftPath but cannot resolve it: the
+    // PackageStore has no entry for /Game/Quartermaster/Items/DA_BI_*, and
+    // the IoStore-by-PackageName lookup that the BuildingMenu inject relies
+    // on hasn't been triggered yet. Result: placed custom buildings show up
+    // invisible until the player opens the build menu and our inject runs.
+    //
+    // The fix is to pre-warm each Building-DA package at DLL init time, well
+    // before any savegame load can happen. LoadAsset_Blocking forces a sync
+    // load and populates the PackageStore cache, so the saved actor's later
+    // TryLoad call hits the cache and resolves immediately.
+    //
+    // packagePathW: wide string, e.g. L"/Game/Quartermaster/Items/DA_BI_QmBldg_xxx"
+    // assetNameW:   wide string, e.g. L"DA_BI_QmBldg_xxx"
+    //
+    // Returns the loaded UObject* on success, nullptr on any failure
+    // (UFunction not found, ProcessEvent fault, FName intern failed, asset
+    // not in any mounted pak). Caches the UFunction/CDO lookup for re-use.
+    UObject* LoadAssetByPath(const wchar_t* packagePathW, const wchar_t* assetNameW);
+
 } // namespace QmUE

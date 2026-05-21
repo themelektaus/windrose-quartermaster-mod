@@ -128,6 +128,154 @@ long QmBumpHookHits()
 }
 
 // ============================================================================
+// Savegame pre-warm.
+//
+// Called once from the probe thread shortly after GObjects becomes live. Sync-
+// loads every Building-DA package listed in qm_items.json so the IoStore
+// PackageStore has resolved entries before any savegame attempts to
+// deserialize a placed custom building.
+//
+// Background: the native UAssetManager::ScanPathsForPrimaryAssets filter
+// rejects mod paks (see GAME_UPDATE_RECOVERY.md, WIP_AddNewBuildModeSlot.md
+// Phase B2/B3). At BuildingMenu render time, our DLL inject works around this
+// by constructing PackageName/AssetName FNames from strings and writing them
+// into a widget's SoftObjectPath - the next render reads that SoftPath and
+// the IoStore-by-PackageName fallback hydrates our pak chunk. The PackageStore
+// caches the resolution for the rest of the process lifetime.
+//
+// At savegame load, however, the actor deserializer reads a SoftPath the
+// PackageStore has never seen, and the AssetManager filter says "not a known
+// primary asset" - so the lookup returns null and the building renders
+// invisible. Only after the player opens the Build menu AND builds an item
+// does a code path fire that pokes the PackageStore for the same path, at
+// which point all in-world instances pop in simultaneously (they share the
+// now-cached resolution).
+//
+// LoadAsset_Blocking is the canonical sync-load UFunction (BlueprintCallable,
+// returns the resolved UObject*). Running it once per item at DLL init makes
+// the PackageStore happy long before the player gets to a save slot. The
+// returned UObject is rooted by UE's TStrongObjectPtr-of-return-value
+// mechanism for the duration of the ProcessEvent call; we don't AddToRoot
+// it explicitly because the loaded package becomes a normal in-memory asset
+// that subsequent saved-actor SoftRefs naturally pin via their own load.
+// ============================================================================
+// Known-good vanilla DA used for the canary load. Decoration item that ships
+// in vanilla pakchunks (verified via Docs/Howto_AuthorBuildingItem.md). If
+// this asset is renamed in a future game update the canary will refuse to
+// pass and pre-warm never runs - that's a recoverable failure mode (the
+// build-menu hook still works, only the post-savegame pop-in returns). Use
+// QmInject_PreWarmBuildingPackages's per-attempt log lines to detect it.
+static const wchar_t* kCanaryPkg   = L"/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bedroll_01";
+static const wchar_t* kCanaryAsset = L"DA_BI_Bedroll_01";
+
+// ============================================================================
+// Canary probe: ask the engine to load a known-good vanilla DA synchronously.
+// Returns true iff LoadAsset_Blocking returns a non-null UObject. The probe
+// is the cheapest reliable signal we have that the async-loading subsystem
+// is fully online (post-UR5GameInstance::Init, post-PackageStore-warmup).
+// Once this returns true once, it tends to stay true for the rest of the
+// process lifetime, but we don't rely on that - callers can re-check freely.
+// ============================================================================
+bool QmInject_TryCanaryLoad()
+{
+    QmUE::UObject* obj = QmUE::LoadAssetByPath(kCanaryPkg, kCanaryAsset);
+    return obj != nullptr;
+}
+
+// Process-permanent "pre-warm complete" latch - DEPRECATED, kept as a no-op.
+//
+// Earlier design: "once pre-warm succeeds anywhere we never need to re-run".
+// That assumed the IoStore PackageStore caches resolution forever AND that a
+// single main-map BeginPlay covers every actor that will ever be spawned in
+// that map. Both wrong for World-Partition titles like Windrose's Genlandia:
+//
+//   t+0s  R5GameMode::ReceiveBeginPlay fires for main map (GenlandiaMulty)
+//         -> our pre-warm runs, returns 3/3 OK, latch set
+//   t+16s LS_Genlandia streaming sublevel mounts (different UWorld pointer!).
+//         Saved actors with TSoftObjectPtr<UR5BuildingItem> live here. The
+//         hook fires for the sublevel world-change but s_preWarmComplete=1
+//         blocks the re-fire -> sublevel sees stale resolver -> buildings
+//         invisible until next build action.
+//
+// Fix: pre-warm runs once per UWorld activation (the per-world g_lifecycleHookFired
+// latch in qm_hook.cpp handles that). LoadAsset_Blocking on the same package
+// twice is cheap when the PackageStore is already hot - it's just a cache
+// lookup - so re-running on every sublevel mount is acceptable noise.
+//
+// Function kept but always returns false so the hook never skips us at the
+// process-permanent gate.
+bool QmInject_PreWarmIsComplete()
+{
+    return false;
+}
+
+void QmInject_PreWarmBuildingPackages()
+{
+    // Caller-driven gating lives in qm_hook.cpp's Hook_LifecyclePreWarm:
+    // it owns the "once per gameplay-world activation" latch + world-change
+    // reset, and only invokes us when we're actually in a gameplay world. We
+    // stay fully stateless so each sublevel mount in World-Partition triggers
+    // a fresh load loop (PackageStore-cache makes repeat hits cheap).
+    if (g_injectableItemCount <= 0)
+    {
+        QM_LOG_INFO("[PreWarm] no injectable items configured - skipping building DA pre-warm");
+        return;
+    }
+
+    QM_LOG_INFO("[PreWarm] sync-loading %d building DA package(s) via UKismetSystemLibrary.LoadAsset_Blocking - "
+                "fixes 'placed custom buildings invisible after savegame load' (see qm_inject.cpp header comment)",
+                g_injectableItemCount);
+
+    // Run the canary one more time and log the resolved UObject - by now
+    // it must succeed (caller gates on QmInject_TryCanaryLoad), but logging
+    // the address helps differential-diagnose any partial failures below.
+    QmUE::UObject* vanillaObj = QmUE::LoadAssetByPath(kCanaryPkg, kCanaryAsset);
+    if (vanillaObj)
+    {
+        QM_LOG_INFO("[PreWarm] canary confirmed: vanilla '%ls' -> UObject @ 0x%p "
+                    "(asset subsystem online)", kCanaryAsset, vanillaObj);
+    }
+    else
+    {
+        QM_LOG_WARN("[PreWarm] canary regressed between gate and pre-warm - asset subsystem state changed mid-run; "
+                    "proceeding anyway, mod-DA loads below may FAIL");
+    }
+
+    // ---- Mod DAs -------------------------------------------------------------
+    int loaded = 0;
+    int failed = 0;
+    for (int i = 0; i < g_injectableItemCount; ++i)
+    {
+        const InjectableItem& item = g_injectableItems[i];
+        QmUE::UObject* obj = QmUE::LoadAssetByPath(item.packagePathW, item.assetNameW);
+        if (obj)
+        {
+            ++loaded;
+            QM_LOG_INFO("[PreWarm]   OK   item[%d]='%s' asset='%s' -> UObject @ 0x%p",
+                i, item.name, item.assetName, obj);
+        }
+        else
+        {
+            ++failed;
+            QM_LOG_WARN("[PreWarm]   FAIL item[%d]='%s' asset='%s' pkg='%ls' - "
+                        "savegame may show this building invisible until next build action",
+                i, item.name, item.assetName, item.packagePathW);
+        }
+    }
+
+    QM_LOG_INFO("[PreWarm] *** %s *** %d/%d building DA package(s) sync-loaded into PackageStore "
+                "(vanilla canary: %s)",
+        failed == 0 ? "DONE" : "PARTIAL", loaded, g_injectableItemCount,
+        vanillaObj ? "OK" : "FAIL");
+
+    // No process-permanent latch anymore - World-Partition sublevels (e.g.
+    // LS_Genlandia) mount on different UWorld pointers and need their own
+    // pre-warm pass when saved actors with custom-DA SoftRefs spawn. The
+    // per-world latch in qm_hook.cpp's Hook_LifecyclePreWarm prevents
+    // re-running within the same world; world-change-reset re-arms it.
+}
+
+// ============================================================================
 // Override-target FName resolution (KismetStringLibrary::Conv_StringToName).
 // One target per item, resolved lazily.
 // ============================================================================

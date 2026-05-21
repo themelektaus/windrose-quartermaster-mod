@@ -6,6 +6,7 @@
 
 #include "qm_ue.hpp"
 #include "qm_scan.hpp"
+#include "qm_log.hpp"
 
 // External logger from main.cpp - we don't have access to its <cstdio>-free
 // LogF macros here, so we use a thin forwarder declared as extern "C".
@@ -293,6 +294,144 @@ namespace QmUE
         if (!ok) return false;
         *outName = parms.ReturnValue;
         return !outName->IsNone();
+    }
+
+    // ---- UKismetSystemLibrary::LoadAsset_Blocking UFunction wrapper ----
+    //
+    // Function:    Engine.KismetSystemLibrary.LoadAsset_Blocking
+    // Signature:   UObject* LoadAsset_Blocking(TSoftObjectPtr<UObject> Asset)
+    // Param block: { TSoftObjectPtr Asset (0x28); UObject* ReturnValue (0x08); }
+    //              total size 0x30, align 0x08 (verified via Dumper-7
+    //              Engine_parameters.hpp KismetSystemLibrary_LoadAsset_Blocking).
+    //
+    // TSoftObjectPtr<UObject> layout (0x28 bytes):
+    //   0x00 FSoftObjectPath {
+    //     0x00 FTopLevelAssetPath {
+    //       0x00 FName PackageName    (8 bytes)
+    //       0x08 FName AssetName      (8 bytes)
+    //     }
+    //     0x10 FUtf8String SubPathString (16 bytes, empty for top-level assets)
+    //   }
+    //   0x20 TWeakObjectPtr WeakObjectPointer (8 bytes, zero-init = unresolved)
+    //
+    // Cached after first lookup so the per-init pre-warm loop doesn't repeatedly
+    // walk GObjects for the same UFunction.
+    static UClass*    s_kismetSysLibClass     = nullptr;
+    static UFunction* s_loadAssetBlockingFunc = nullptr;
+    static UObject*   s_kismetSysLibCDO       = nullptr;
+
+    UObject* LoadAssetByPath(const wchar_t* packagePathW, const wchar_t* assetNameW)
+    {
+        if (!packagePathW || !packagePathW[0] || !assetNameW || !assetNameW[0])
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: empty pkg or asset name input");
+            return nullptr;
+        }
+        if (!IsReady() || !g_processEvent)
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: UE not ready or ProcessEvent unresolved (IsReady=%d g_processEvent=0x%p)",
+                IsReady() ? 1 : 0, (void*)g_processEvent);
+            return nullptr;
+        }
+
+        if (!s_kismetSysLibClass)
+            s_kismetSysLibClass = FindClassByName("KismetSystemLibrary");
+        if (!s_kismetSysLibClass)
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: FindClassByName('KismetSystemLibrary') returned null");
+            return nullptr;
+        }
+
+        if (!s_loadAssetBlockingFunc)
+        {
+            s_loadAssetBlockingFunc = FindFunctionOnClass(s_kismetSysLibClass, "LoadAsset_Blocking");
+            if (s_loadAssetBlockingFunc)
+                QM_LOG_INFO("[LoadAsset] resolved UFunction LoadAsset_Blocking @ 0x%p Flags=0x%08X ExecFn=0x%p",
+                    s_loadAssetBlockingFunc, s_loadAssetBlockingFunc->FunctionFlags,
+                    (void*)s_loadAssetBlockingFunc->ExecFunction);
+        }
+        if (!s_loadAssetBlockingFunc)
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: FindFunctionOnClass('LoadAsset_Blocking') returned null");
+            return nullptr;
+        }
+
+        if (!s_kismetSysLibCDO)
+            s_kismetSysLibCDO = GetClassDefaultObject(s_kismetSysLibClass);
+        if (!s_kismetSysLibCDO)
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: KismetSystemLibrary CDO is null");
+            return nullptr;
+        }
+
+        // Intern PackageName + AssetName in the global FName pool first.
+        FName pkgFName   = {0, 0};
+        FName assetFName = {0, 0};
+        if (!FNameFromString(packagePathW, &pkgFName))
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: FNameFromString(pkg='%ls') returned false", packagePathW);
+            return nullptr;
+        }
+        if (!FNameFromString(assetNameW, &assetFName))
+        {
+            QM_LOG_WARN("[LoadAsset] FAIL: FNameFromString(asset='%ls') returned false", assetNameW);
+            return nullptr;
+        }
+
+        QM_LOG_INFO("[LoadAsset] FNames pkg='%ls' (cmp=%d num=%u) asset='%ls' (cmp=%d num=%u)",
+            packagePathW, pkgFName.ComparisonIndex, pkgFName.Number,
+            assetNameW,   assetFName.ComparisonIndex, assetFName.Number);
+
+        // Param block (0x30 bytes total) - CORRECTED LAYOUT.
+        //
+        // TSoftObjectPtr is NOT laid out as { Path, WeakPtr } - it's a subclass
+        // of TPersistentObjectPtr<FSoftObjectPath> which puts the WeakPtr FIRST
+        // (Basic.hpp:568-583):
+        //
+        //   TPersistentObjectPtr (0x28 total):
+        //     0x00 FWeakObjectPtr WeakPtr            (8 bytes, zero = unresolved)
+        //     0x08 FSoftObjectPath ObjectID (0x20):
+        //       0x08 FTopLevelAssetPath.PackageName  (FName, 8 bytes)
+        //       0x10 FTopLevelAssetPath.AssetName    (FName, 8 bytes)
+        //       0x18 FUtf8String SubPathString       (16 bytes, zero = empty)
+        //
+        // The PREVIOUS layout had PackageName at 0x00, which is where WeakPtr
+        // lives. UE5 then read our cmp/num as (ObjectIndex, SerialNumber),
+        // failed to resolve as a weak ref, fell back to FindObject(Outer=null,
+        // Name=AssetName) and logged "Object Keine.DA_BI_xxx not found". Both
+        // vanilla AND mod DAs failed identically - the smoking gun.
+        struct Params {
+            uint64_t WeakObjectPtr;     // 0x00 - FWeakObjectPtr (zero = unresolved)
+            FName    PackageName;       // 0x08 - FTopLevelAssetPath.PackageName
+            FName    AssetName;         // 0x10 - FTopLevelAssetPath.AssetName
+            uint8_t  SubPathString[16]; // 0x18 - FUtf8String (Data,Num,Max), zero = empty
+            UObject* ReturnValue;       // 0x28
+        };
+        static_assert(sizeof(Params) == 0x30, "LoadAsset_Blocking param block size must be 0x30");
+
+        Params parms = {};
+        parms.WeakObjectPtr = 0;
+        parms.PackageName   = pkgFName;
+        parms.AssetName     = assetFName;
+        parms.ReturnValue   = nullptr;
+
+        // Mirror SpawnObject/Conv_StringToName: temporarily OR in FUNC_Native
+        // (0x400) so shipping-build dispatch doesn't try the bytecode
+        // interpreter path (which would NULL-deref the empty script frame).
+        uint32 oldFlags = s_loadAssetBlockingFunc->FunctionFlags;
+        s_loadAssetBlockingFunc->FunctionFlags = oldFlags | 0x400;
+
+        QM_LOG_DEBUG("[LoadAsset] calling ProcessEvent(KismetSysLib::LoadAsset_Blocking, pkg='%ls') ...",
+            packagePathW);
+        bool ok = CallProcessEvent(s_kismetSysLibCDO, s_loadAssetBlockingFunc, &parms);
+
+        s_loadAssetBlockingFunc->FunctionFlags = oldFlags;
+
+        QM_LOG_INFO("[LoadAsset] ProcessEvent done: ok=%d ReturnValue=0x%p pkg='%ls'",
+            ok ? 1 : 0, (void*)parms.ReturnValue, packagePathW);
+
+        if (!ok) return nullptr;
+        return parms.ReturnValue;
     }
 
     bool ResolveFName(const FName& name, wchar_t* outBuf, int32 outCap, int32& outNum)

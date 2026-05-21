@@ -333,6 +333,344 @@ static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
 }
 
 // ============================================================================
+// Savegame-load-time pre-warm hook
+// ----------------------------------------------------------------------------
+// The premise. Placed custom buildings render invisible after savegame load
+// (until the first build action retroactively hydrates all instances). Root
+// cause: the saved TSoftObjectPtr<UR5BuildingItem> references our mod-pak
+// /Game/Quartermaster/Items/DA_BI_QmBldg_* which the AssetManager filter
+// rejected at boot, so the actor deserializer's TryLoad returns null and the
+// mesh-component attach silently fails. Once ANY code path (e.g. our
+// build-menu inject's FNameFromString) pokes the PackageStore for the same
+// path, all in-world instances pop in simultaneously - they share the now-
+// cached resolution.
+//
+// What we tried first (worker-thread polling + LoadAsset_Blocking): the
+// worker-thread path crashed on map-transition because UE5 GC runs in the
+// game thread and asserts `Illegal call to StaticFindObjectFast() while
+// garbage collecting!` if any other thread calls into the asset subsystem
+// concurrently. Removed - see the long comment block in QmUeProbeThreadEntry
+// below for the full story.
+//
+// What works (this code). We hook a UFunction whose ExecFunction we detour
+// via MinHook, which means the body runs ON THE GAME THREAD (ProcessEvent
+// dispatches in-thread) and CAN'T overlap with GC (GC also runs in the game
+// thread - the two are mutually exclusive by construction). Inside the
+// handler we run QmInject_PreWarmBuildingPackages() once per gameplay-map
+// activation (see latching below), then forward to the original.
+//
+// Map-filter gating (Stufe 1 fix). An earlier iteration of this code naively
+// latched on the FIRST hit of any kind - which always landed in the Lobby
+// (R5ClientEntranceHall, ~17s after DLL load) and consumed the latch long
+// before the player loaded their actual save 60+ seconds later. The fix is
+// a two-stage gate:
+//   1. ResolveContextMapPackage walks Context->Outer chain up to the UWorld's
+//      package (e.g. "/Game/Maps/GenlandiaMulty"). If the package name is
+//      blacklisted (Lobby / Entrance / Transition / MainMenu / FrontEnd /
+//      TitleScreen), the hit is forwarded without touching the latch.
+//   2. On world-change (different UWorld* than last fire) the latch is
+//      cleared, so quit-to-menu + load-other-save runs pre-warm again for
+//      the new map.
+// Combined: per-Tick UFunctions become safe fallbacks; pre-warm fires once
+// per gameplay-map activation regardless of which UFunction we hooked.
+//
+// The target. We don't know up-front which UFunction is the most reliable
+// fire-once-after-savegame-load anchor in this specific game build, so we
+// probe a list of candidates and install on the first hit. Candidates are
+// ordered most-likely-to-fire-once-cleanly first; per-Tick UFunctions sit at
+// the bottom as a fallback (gameplay-map gate + world-change reset make
+// them well-behaved).
+// ============================================================================
+static QmUE::FNativeFuncPtr g_origLifecycleFunc      = nullptr;
+// Count of pre-warm runs already executed for the current world. We allow up
+// to QM_PREWARM_MAX_PER_WORLD fires per world (not just 1) because:
+//   * The TSoftObjectPtr resolution that we want to "kick" can happen at
+//     several points after BeginPlay (actor spawn, sublevel mount, streaming
+//     proxy-resolve). A single LoadAsset_Blocking call in the BeginPlay hit
+//     is sometimes too early - the saved actor's resolve attempt happens a
+//     few ticks later and may have missed the cache window.
+//   * Empirically: ~8 fires per gameplay-map activation made placed buildings
+//     pop in correctly at savegame load; 1 fire per world did not.
+//   * LoadAsset_Blocking on an already-resident package is a PackageStore
+//     hashtable lookup - cheap. 8 cache hits/world is well under a millisecond
+//     of overhead.
+// Counter is reset to 0 on world change so each sublevel/main-map gets its
+// own quota.
+static const LONG QM_PREWARM_MAX_PER_WORLD = 8;
+static volatile LONG        g_lifecycleFiresInWorld  = 0;
+static const char*          g_lifecycleHookTargetDesc = nullptr;
+static volatile LONG        g_lifecycleHookHits      = 0;
+// Tracks the World UObject of the most recent fire. When this changes we
+// reset the per-world fire counter so a quit-to-menu + load-other-save
+// (and World-Partition sublevel mounts) get their own quota.
+static QmUE::UObject* volatile g_lifecycleLastWorld  = nullptr;
+
+// ----- Map-name gate ---------------------------------------------------------
+// The hook target may fire in maps where we don't want pre-warm to run yet
+// (Lobby, EntranceHall, Transition, MainMenu, etc.). Pre-warm should only fire
+// when the player has actually entered a gameplay map.
+//
+// IMPORTANT: /Engine/Transient is treated as "gameplay" here on purpose.
+// World-Partition titles like Windrose route some actor BeginPlay events
+// through actors whose Outer chain doesn't quite reach the real UWorld
+// package - they resolve to /Engine/Transient. Empirically these fires are
+// the ones that actually rescue placed savegame buildings from invisibility;
+// excluding them broke the fix. The per-world fire counter caps the cost.
+//
+// The gate is a NEGATIVE blacklist (only known-bad maps are skipped). Cooked
+// gameplay maps under /Game/Maps/ and the /Engine/Transient placeholder both
+// pass.
+static bool IsNonGameplayMap(const char* mapPkg)
+{
+    // Empty / unresolved map name -> let it through. World-Partition fires
+    // and many actor-BeginPlay events arrive with an empty Outer chain
+    // (Context->Outer doesn't reach UWorld in 5 hops). These are the fires
+    // that move the needle for the savegame pop-in symptom, so they must
+    // not be skipped. The per-world fire counter ensures we don't run
+    // pre-warm hundreds of times per second even on a hot tick path.
+    if (!mapPkg || !mapPkg[0]) return false;
+    // Negative blacklist for menu/transition maps.
+    if (strstr(mapPkg, "EntranceHall")) return true;
+    if (strstr(mapPkg, "Entrance"))     return true;
+    if (strstr(mapPkg, "Lobby"))        return true;
+    if (strstr(mapPkg, "Transition"))   return true;
+    if (strstr(mapPkg, "MainMenu"))     return true;
+    if (strstr(mapPkg, "FrontEnd"))     return true;
+    if (strstr(mapPkg, "TitleScreen"))  return true;
+    return false;
+}
+
+// Best-effort extraction of "which map am I in?" from a GameMode/PlayerController/
+// Character context. The Outer chain for any actor is:
+//   Actor -> ULevel (PersistentLevel) -> UWorld -> UPackage (e.g. "/Game/Maps/GenlandiaMulty")
+// We walk up to 4 hops looking for the package whose name starts with "/Game/".
+// SEH-guarded throughout - any null/garbage in the chain falls back to a
+// zero-length result, which IsNonGameplayMap treats as "skip".
+static bool ResolveContextMapPackage(QmUE::UObject* ctx, char* outBuf, int outCap, QmUE::UObject** outWorld)
+{
+    if (outBuf && outCap > 0) outBuf[0] = '\0';
+    if (outWorld) *outWorld = nullptr;
+    if (!ctx || !outBuf || outCap <= 0) return false;
+
+    QmUE::UObject* cur = ctx;
+    QmUE::UObject* foundWorld = nullptr;
+    for (int hop = 0; hop < 5; ++hop)
+    {
+        QmUE::UObject* outer = nullptr;
+        __try { outer = cur->Outer; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        if (!outer) break;
+
+        // Check class-name to detect when we reach the UWorld in the chain.
+        char clsName[64] = {0};
+        TryResolveContextClassName(outer, clsName, sizeof(clsName));
+        if (strcmp(clsName, "World") == 0)
+            foundWorld = outer;
+
+        // Try to read the outer's own name. If it starts with "/Game/" we've
+        // hit the map package and we're done.
+        char nameBuf[256] = {0};
+        bool ok = false;
+        __try { ok = QmUE::ResolveFNameNarrow(outer->Name, nameBuf, sizeof(nameBuf)); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+        if (ok && nameBuf[0] == '/')
+        {
+            strncpy(outBuf, nameBuf, outCap - 1);
+            outBuf[outCap - 1] = '\0';
+            if (outWorld) *outWorld = foundWorld;
+            return true;
+        }
+
+        cur = outer;
+    }
+
+    if (outWorld) *outWorld = foundWorld;
+    return false;
+}
+
+static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* Result)
+{
+    LONG nHits = InterlockedIncrement(&g_lifecycleHookHits);
+
+    // Resolve the current map package + world. Used both for the gameplay-map
+    // gate and for re-arming the latch when the player switches saves.
+    char mapPkg[256] = {0};
+    QmUE::UObject* world = nullptr;
+    bool gotMap = ResolveContextMapPackage(reinterpret_cast<QmUE::UObject*>(Context),
+                                           mapPkg, sizeof(mapPkg), &world);
+
+    // World-change reset. If the World UObject pointer differs from the one
+    // we last fired in, reset the per-world fire counter so the next gameplay-
+    // map fire starts a fresh quota for the new map.
+    // World==nullptr is common (Outer chain didn't reach a UWorld in 5 hops
+    // - typical for /Engine/Transient routed BeginPlay events). We treat
+    // null as "same world as before" so the counter still bounds per-tick
+    // pre-warm spam in that case.
+    if (world)
+    {
+        QmUE::UObject* prev = reinterpret_cast<QmUE::UObject*>(
+            InterlockedExchangePointer(reinterpret_cast<void* volatile*>(&g_lifecycleLastWorld), world));
+        if (prev && prev != world)
+        {
+            LONG prevCount = InterlockedExchange(&g_lifecycleFiresInWorld, 0);
+            QM_LOG_INFO("[PreWarm] world changed (prev=0x%p new=0x%p map='%s') - reset fire counter (was=%ld, new quota=%ld)",
+                prev, world, gotMap ? mapPkg : "<unknown>", prevCount, QM_PREWARM_MAX_PER_WORLD);
+        }
+    }
+
+    const bool nonGameplay = IsNonGameplayMap(gotMap ? mapPkg : "");
+    if (nonGameplay)
+    {
+        // Lobby/Entrance/Transition/MainMenu/FrontEnd/TitleScreen: skip without
+        // touching the counter. These maps don't host saved actors with
+        // TSoftObjectPtr<UR5BuildingItem>, so pre-warm there is pointless.
+        if (nHits <= 10 || (nHits % 500) == 0)
+            QM_LOG_TRACE("[PreWarm] hit#%ld map='%s' is non-gameplay - skip pre-warm, forwarding original",
+                nHits, gotMap ? mapPkg : "<unresolved>");
+    }
+    else
+    {
+        // Gameplay map (or empty/Transient): try to acquire one of the
+        // per-world fire slots. Multiple fires per world are intentional:
+        // a single LoadAsset_Blocking at BeginPlay is sometimes too early
+        // and the actor's saved TSoftObjectPtr resolve attempt happens a
+        // few ticks later. Spreading 8 pre-warm calls across the first
+        // ~8 hook hits in a world catches every realistic resolve window.
+        // LoadAsset_Blocking on an already-resident package is a cheap
+        // PackageStore hashtable hit, so the cost is negligible.
+        LONG slot = InterlockedIncrement(&g_lifecycleFiresInWorld);
+        if (slot <= QM_PREWARM_MAX_PER_WORLD)
+        {
+            QM_LOG_INFO("[PreWarm] *** GAMEPLAY-MAP FIRE %ld/%ld *** via %s (hit#%ld TID=%lu map='%s' world=0x%p) - "
+                        "running building DA pre-warm now",
+                slot, QM_PREWARM_MAX_PER_WORLD,
+                g_lifecycleHookTargetDesc ? g_lifecycleHookTargetDesc : "<unknown>",
+                nHits, GetCurrentThreadId(),
+                gotMap ? mapPkg : "<unresolved>", world);
+
+            __try { QmInject_PreWarmBuildingPackages(); }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                QM_LOG_ERROR("[PreWarm] *** EXCEPTION inside pre-warm sweep - lifecycle hook caught fault, "
+                             "forwarding original anyway");
+            }
+        }
+        else if (nHits <= 5 || (nHits % 500) == 0)
+        {
+            QM_LOG_TRACE("[PreWarm] hit#%ld gameplay map '%s' (fire quota %ld already spent in this world, forwarding)",
+                nHits, gotMap ? mapPkg : "<unresolved>", QM_PREWARM_MAX_PER_WORLD);
+        }
+    }
+
+    if (g_origLifecycleFunc)
+    {
+        __try { g_origLifecycleFunc(Context, Stack, Result); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            if (nHits <= 5)
+                QM_LOG_ERROR("[PreWarm] *** EXCEPTION inside original lifecycle function (hit#%ld)", nHits);
+        }
+    }
+}
+
+static bool g_lifecycleHookInstalled = false;
+static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* desc)
+{
+    if (g_lifecycleHookInstalled) return true;
+    if (!target || !target->ExecFunction)
+    {
+        QM_LOG_ERROR("[PreWarm] cannot install lifecycle hook - target or ExecFunction is null");
+        return false;
+    }
+
+    LPVOID execAddr = reinterpret_cast<LPVOID>(target->ExecFunction);
+    MH_STATUS st = MH_CreateHook(execAddr,
+        reinterpret_cast<LPVOID>(&Hook_LifecyclePreWarm),
+        reinterpret_cast<LPVOID*>(&g_origLifecycleFunc));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PreWarm] MH_CreateHook(%s @ 0x%p) FAILED: %s",
+            desc, execAddr, MH_StatusToString(st));
+        return false;
+    }
+    st = MH_EnableHook(execAddr);
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PreWarm] MH_EnableHook(%s @ 0x%p) FAILED: %s",
+            desc, execAddr, MH_StatusToString(st));
+        return false;
+    }
+    g_lifecycleHookInstalled = true;
+    g_lifecycleHookTargetDesc = desc;
+    QM_LOG_INFO("[PreWarm] *** INSTALLED *** lifecycle hook %s ExecFn=0x%p detour=0x%p trampoline=0x%p "
+                "(pre-warm will run on first hit, then forward only)",
+        desc, execAddr, (void*)&Hook_LifecyclePreWarm, (void*)g_origLifecycleFunc);
+    return true;
+}
+
+// Probe-list of (className, funcName, desc). Searched top-to-bottom, first
+// match wins. Order them most-likely-fire-once first; per-Tick fallbacks last
+// because the latch makes them safe but they're noisier.
+//
+// BlueprintImplementableEvents are exposed as UFunctions on the BP-derived
+// class only if the BP overrides them. So BP_R5GameMode_C::ReceiveBeginPlay
+// exists iff the BP has a custom BeginPlay graph - which it almost always
+// does in a shipped game.
+struct LifecycleTarget
+{
+    const char* className;
+    const char* funcName;
+    const char* desc;
+};
+static const LifecycleTarget kLifecycleTargets[] =
+{
+    // BP-override BeginPlay - highest confidence, fires exactly once per map load
+    {"BP_R5GameMode_C",         "ReceiveBeginPlay", "BP_R5GameMode_C::ReceiveBeginPlay"},
+    {"BP_R5PlayerController_C", "ReceiveBeginPlay", "BP_R5PlayerController_C::ReceiveBeginPlay"},
+    {"BP_R5PlayerCharacter_C",  "ReceiveBeginPlay", "BP_R5PlayerCharacter_C::ReceiveBeginPlay"},
+    // Native BlueprintNativeEvent - if the BP doesn't override, the native UFunction may still exist
+    {"R5GameMode",              "ReceiveBeginPlay", "R5GameMode::ReceiveBeginPlay"},
+    {"R5PlayerController",      "ReceiveBeginPlay", "R5PlayerController::ReceiveBeginPlay"},
+    {"R5PlayerCharacter",       "ReceiveBeginPlay", "R5PlayerCharacter::ReceiveBeginPlay"},
+    {"R5Character",             "ReceiveBeginPlay", "R5Character::ReceiveBeginPlay"},
+    // Tick fallbacks - per-frame but latch makes per-Tick safe
+    {"BP_R5GameMode_C",         "ReceiveTick",      "BP_R5GameMode_C::ReceiveTick"},
+    {"BP_R5PlayerController_C", "ReceiveTick",      "BP_R5PlayerController_C::ReceiveTick"},
+    {"BP_R5PlayerCharacter_C",  "ReceiveTick",      "BP_R5PlayerCharacter_C::ReceiveTick"},
+};
+static constexpr int kLifecycleTargetCount = sizeof(kLifecycleTargets) / sizeof(kLifecycleTargets[0]);
+
+static bool TryProbeLifecycleHook(int passNumber)
+{
+    if (g_lifecycleHookInstalled) return true;
+
+    for (int i = 0; i < kLifecycleTargetCount; ++i)
+    {
+        const LifecycleTarget& t = kLifecycleTargets[i];
+        QmUE::UClass* cls = QmUE::FindClassByName(t.className);
+        if (!cls) continue;
+        QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cls, t.funcName);
+        if (!fn || !fn->ExecFunction)
+        {
+            if (passNumber <= 3 || (passNumber % 30) == 0)
+                QM_LOG_TRACE("[PreWarm] probe#%d candidate %d/%d: %s -> class FOUND but function missing (BP-override probably absent)",
+                    passNumber, i + 1, kLifecycleTargetCount, t.desc);
+            continue;
+        }
+        QM_LOG_INFO("[PreWarm] probe#%d candidate %d/%d HIT: %s class=0x%p fn=0x%p ExecFn=0x%p Flags=0x%08X",
+            passNumber, i + 1, kLifecycleTargetCount, t.desc, cls, fn,
+            (void*)fn->ExecFunction, fn->FunctionFlags);
+        if (InstallLifecyclePreWarmHook(fn, t.desc))
+            return true;
+    }
+    if (passNumber <= 3 || (passNumber % 30) == 0)
+        QM_LOG_DEBUG("[PreWarm] probe#%d: no lifecycle target yet (tried %d candidates) - "
+                     "will retry in 2s. Class registration happens as the map BP loads.",
+            passNumber, kLifecycleTargetCount);
+    return false;
+}
+
+// ============================================================================
 // UE probe pass - find R5HFSM_BuildingPanel + GetBuildingGroupsByCategoryTag.
 // ============================================================================
 static bool UE_ProbePass(int passNumber)
@@ -477,15 +815,99 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
         QM_LOG_WARN("[Alloc] GMalloc resolution failed - ItemSwap disabled, items will not appear in build menu");
     }
 
-    // Phase 2: probe loop. Try every 2s until we find the function or time out.
-    const int kProbeMaxAttempts = 150;    // 150 * 2s = 5 min
+    // ------------------------------------------------------------------------
+    // Savegame pre-warm: DISABLED.
+    // ------------------------------------------------------------------------
+    // Background: we tried sync-loading each Building-DA package via
+    // UKismetSystemLibrary::LoadAsset_Blocking from a worker thread so the
+    // IoStore PackageStore would have resolved entries before any savegame
+    // could attempt to deserialize a placed custom building. Two problems made
+    // this approach unworkable:
+    //
+    //   1. LoadAsset_Blocking returned nullptr unconditionally - even for a
+    //      known-good vanilla DA (DA_BI_Bedroll_01) and even after 2min of
+    //      polling. The R5.log showed the corresponding
+    //          "Object Keine.DA_BI_xxx konnte nicht gefunden werden"
+    //      warnings, which means the underlying StaticLoadObject path can't
+    //      resolve a TSoftObjectPtr built solely from PackageName+AssetName
+    //      FNames; the engine expects either a fully-resolved Outer or the
+    //      AssetManager-registered PrimaryAssetId, neither of which we have
+    //      from outside the engine.
+    //
+    //   2. *** WORSE: it crashed the game on map transition. ***
+    //      Map-load triggers UE5 garbage collection. Our worker thread called
+    //      LoadAsset_Blocking concurrently, which internally hit
+    //      StaticFindObjectFast(), and the engine fatally asserts:
+    //          "Illegal call to StaticFindObjectFast() while garbage
+    //           collecting!"
+    //          [UObjectGlobals.cpp Line 459]
+    //      Fixing this would require marshaling the call back to the game
+    //      thread (no public UE API for that from a foreign DLL) and gating
+    //      on IsGarbageCollecting() (also not safely readable from a worker
+    //      thread). Without those, ANY off-thread UFunction call into the
+    //      asset-loading subsystem is a latent crash waiting to happen
+    //      whenever GC fires.
+    //
+    // The proper fix needs a different hook: intercept the savegame
+    // deserialization itself (e.g. FSoftObjectPath::TryLoad or the
+    // SaveGame UFunction that materializes placed actors) and either patch
+    // the path or register the package via the IoStore PackageStore directly.
+    // That is significantly more work than this DLL is currently set up for;
+    // for now the "build menu inject" path remains the primary workaround
+    // and the savegame pop-in is a known cosmetic issue (one build action
+    // hydrates all custom buildings retroactively).
+    //
+    // See git log for the worker-thread implementation that lived here and
+    // the inject log timestamp 2026-05-21 12:24 / R5.log timestamp
+    // 10.24.41:396 for the crash evidence.
+
+    // Phase 2+3: probe loop. In each pass try BOTH:
+    //   - Build-menu hook (R5HFSM_BuildingPanel + GetBuildingGroupsByCategoryTag).
+    //     Once installed, the per-pass call becomes a cheap is-installed guard.
+    //   - Lifecycle hook (BP_R5GameMode_C::ReceiveBeginPlay + fallbacks).
+    //     Once installed, ditto.
+    //
+    // The two targets register at different times: build-menu can be installed
+    // as soon as the player first opens the Build UI (the panel class only
+    // exists in GObjects after it has been touched once). Lifecycle target's
+    // BP class is registered when the player transitions out of the Lobby into
+    // the actual gameplay map - typically several minutes after DLL load. So
+    // we use a generous timeout that covers main-menu idle + scenario load.
+    //
+    // The loop exits as soon as BOTH hooks are installed (the common success
+    // path) or kProbeMaxAttempts is reached (degraded - log loud warning).
+    const int kProbeMaxAttempts = 900;    // 900 * 2s = 30 min - covers main-menu idle + map transitions
 #if QM_DIAG
     bool firstPass = true;
 #endif
-    bool found = false;
+    bool buildMenuFound = false;
+    bool lifecycleFound = false;
+    int  buildMenuFoundOnPass = 0;
+    int  lifecycleFoundOnPass = 0;
+
     for (int p = 0; p < kProbeMaxAttempts; ++p)
     {
-        if (UE_ProbePass(p + 1)) { found = true; break; }
+        if (!buildMenuFound && UE_ProbePass(p + 1))
+        {
+            buildMenuFound = true;
+            buildMenuFoundOnPass = p + 1;
+        }
+        if (!lifecycleFound && TryProbeLifecycleHook(p + 1))
+        {
+            lifecycleFound = true;
+            lifecycleFoundOnPass = p + 1;
+            QM_LOG_INFO("[PreWarm] lifecycle hook installed on probe pass#%d - savegame pop-in fix is now armed; "
+                        "next BeginPlay/Tick will trigger pre-warm of %d DA package(s)",
+                p + 1, g_injectableItemCount);
+        }
+
+        if (buildMenuFound && lifecycleFound)
+        {
+            QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d - probe loop exiting",
+                buildMenuFoundOnPass, lifecycleFoundOnPass);
+            return 0;
+        }
+
 #if QM_DIAG
         if (firstPass)
         {
@@ -499,13 +921,21 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
         Sleep(2000);
     }
 
-    if (!found)
+    // Loop timed out. Report whichever hooks didn't install.
+    if (!buildMenuFound)
     {
-        QM_LOG_ERROR("[UE] *** TIMEOUT *** GetBuildingGroupsByCategoryTag never found via Children walk");
+        QM_LOG_ERROR("[UE] *** TIMEOUT *** GetBuildingGroupsByCategoryTag never found via Children walk - build-menu inject disabled");
 #if QM_DIAG
         int hits = DiagFindUFunctionsByName("GetBuildingGroupsByCategoryTag", 5);
         QM_LOG_DEBUG("[UE] final diag: %d direct-name UFunction hits in GObjects", hits);
 #endif
     }
-    return found ? 0 : 1;
+    if (!lifecycleFound)
+    {
+        QM_LOG_WARN("[PreWarm] *** TIMEOUT *** no lifecycle UFunction found in %d attempts - "
+                    "savegame pop-in fix NOT installed; build menu inject %s, but "
+                    "placed custom buildings will be invisible after savegame load until first build action",
+            kProbeMaxAttempts, buildMenuFound ? "still works" : "ALSO disabled");
+    }
+    return (buildMenuFound || lifecycleFound) ? 0 : 1;
 }
