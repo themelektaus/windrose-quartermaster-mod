@@ -1225,8 +1225,44 @@ namespace Windrose.Quartermaster.Core
                                 {
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = "/Game/Quartermaster/Items/" + userMeshStem;
+
+                                    // Etappe J v4: read the user's cooked
+                                    // mesh and look for a socket called
+                                    // "flame" (case-insensitive). If found,
+                                    // its transform overrides the cloned
+                                    // BP's NiagaraComponent/Light/Audio
+                                    // positions. If absent, the BP keeps
+                                    // the vanilla position which only
+                                    // visually works for meshes that have
+                                    // their flame tip near the Vanilla
+                                    // torch height (~158 cm).
+                                    StaticMeshSocketReader.Socket flameSocket = null;
+                                    try
+                                    {
+                                        var userMeshFile = Path.Combine(b.CookedFolderPath, b.MeshStem + ".uasset");
+                                        var reader = new StaticMeshSocketReader
+                                        {
+                                            UsmapPath = usmapPath,
+                                            Log       = Log,
+                                        };
+                                        flameSocket = reader.FindFlame(userMeshFile);
+                                        if (flameSocket == null)
+                                        {
+                                            LogLine("  [Flame] no socket named 'flame' on mesh '"
+                                                + b.MeshStem + "' - using vanilla position"
+                                                + " (add a 'flame' socket to your mesh to control"
+                                                + " flame placement)");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogLine("  warn: socket read failed for mesh '" + b.MeshStem
+                                            + "': " + ex.Message + " - using vanilla position");
+                                    }
+
                                     bldBpStage = _blueprintPatcher.Stage(
-                                        bldFlamePreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir);
+                                        bldFlamePreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
+                                        flameSocket);
                                     stagedFlameBuildings[b.Id] = bldBpStage;
                                     foreach (var w in bldBpStage.Warnings ?? new List<string>())
                                         LogLine("  warn: flame BP '" + b.Id + "': " + w);

@@ -6,6 +6,7 @@ using System.Linq;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 
@@ -90,12 +91,20 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // preset.SourceVanillaMeshPath) for these via the NameMap rewrite -
         // the BP's StaticMeshComponent then resolves to the user mesh
         // at runtime instead of the vanilla torch mesh.
+        //
+        // Etappe J v4: if flameSocket is non-null, the BP's NiagaraComponent
+        // / light-component / audio-component RelativeLocation / Rotation /
+        // Scale3D properties are overridden with the socket transform so the
+        // flame sits exactly where the user placed the "flame" socket in
+        // their mesh. If null, the BP keeps the vanilla position (~Z=158 cm
+        // for the Torch preset).
         public BlueprintStageResult Stage(
             FlamePresetCatalog.FlamePreset preset,
             string buildingId,
             string userMeshStem,
             string userMeshPath,
-            string stagingItemsDir)
+            string stagingItemsDir,
+            StaticMeshSocketReader.Socket flameSocket = null)
         {
             if (preset == null) throw new ArgumentNullException("preset");
             if (string.IsNullOrWhiteSpace(buildingId)) throw new ArgumentNullException("buildingId");
@@ -205,7 +214,186 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 + result.ExportsRetargeted + " export retargets -> " + cloneStem
                 + " (mesh rewritten to '" + userMeshStem + "')");
 
+            // Etappe J v4: socket-driven component transform override.
+            // Re-open the just-saved BP and patch RelativeLocation /
+            // RelativeRotation / RelativeScale3D on the NiagaraComponent,
+            // the Light component, and the AudioComponent. We do this in
+            // a second pass (not folded into the DataAssetPatcher run)
+            // because property mutation needs the full UAssetAPI property
+            // tree which the rename-pass doesn't touch.
+            if (flameSocket != null)
+            {
+                try
+                {
+                    var patched = PatchSocketTransform(stagedAsset, flameSocket);
+                    LogLine("  [Flame] socket 'flame' (X=" + Fmt(flameSocket.LocX)
+                        + " Y=" + Fmt(flameSocket.LocY)
+                        + " Z=" + Fmt(flameSocket.LocZ)
+                        + " | Pitch=" + Fmt(flameSocket.Pitch)
+                        + " Yaw=" + Fmt(flameSocket.Yaw)
+                        + " Roll=" + Fmt(flameSocket.Roll)
+                        + " | SX=" + Fmt(flameSocket.ScaleX)
+                        + " SY=" + Fmt(flameSocket.ScaleY)
+                        + " SZ=" + Fmt(flameSocket.ScaleZ)
+                        + ") applied to " + patched + " component(s)");
+                    result.ComponentsRetransformed = patched;
+                }
+                catch (Exception ex)
+                {
+                    var warn = "Flame socket transform patch failed: "
+                        + ex.GetType().Name + ": " + ex.Message
+                        + " - BP keeps vanilla flame position";
+                    result.Warnings.Add(warn);
+                    LogLine("  warn: " + warn);
+                }
+            }
+
             return result;
+        }
+
+        // -----------------------------------------------------------------
+        // Socket-transform overrides on the cloned BP's component templates.
+        //
+        // After the NameMap-rewrite pass writes the BP triplet, we open the
+        // staged .uasset and override RelativeLocation / RelativeRotation /
+        // RelativeScale3D on the three component-template exports the BP
+        // carries:
+        //   - NiagaraComponent  (the flame FX itself)
+        //   - <Preset>LightComponent  (BP_PointLight_TorchFire_C for torch,
+        //     name contains "Light" + has its own RelativeLocation)
+        //   - AudioComponent    (the ambient SFX loop - optional)
+        //
+        // For each present component we OVERWRITE existing transform
+        // properties with the socket's values. We don't ADD missing
+        // properties: the BP's SCS-Component defaults already include
+        // RelativeLocation for the components that need positioning - the
+        // ones that don't (AudioComponent at 0,0,0) get the socket's
+        // location too only if they had the property. For all three we set
+        // whatever transform properties exist on each.
+        //
+        // Identity-tolerance: if the socket has rotation=(0,0,0) and
+        // scale=(1,1,1), those count as "user didn't bother to set them" and
+        // are still WRITTEN OUT (overriding the vanilla light's
+        // Pitch=90/Yaw=180/Roll=180 with identity). That's the documented
+        // contract: pickup-from-socket means full override; users who want
+        // the vanilla orientation should explicitly rotate the socket to it.
+        // -----------------------------------------------------------------
+        int PatchSocketTransform(string assetPath, StaticMeshSocketReader.Socket socket)
+        {
+            if (string.IsNullOrEmpty(UsmapPath) || !File.Exists(UsmapPath))
+                throw new InvalidOperationException("UsmapPath missing: " + UsmapPath);
+
+            var mappings = new Usmap(UsmapPath);
+            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
+
+            int patched = 0;
+            for (int i = 0; i < asset.Exports.Count; i++)
+            {
+                var ex = asset.Exports[i] as NormalExport;
+                if (ex == null) continue;
+                if (!IsFlameRelatedComponent(ex)) continue;
+
+                bool touched = false;
+                touched |= SetRelativeLocation(ex, socket.LocX, socket.LocY, socket.LocZ);
+                touched |= SetRelativeRotation(ex, socket.Pitch, socket.Yaw, socket.Roll);
+                touched |= SetRelativeScale3D(ex, socket.ScaleX, socket.ScaleY, socket.ScaleZ);
+                if (touched)
+                {
+                    var classType = ex.GetExportClassType()?.Value?.Value ?? "<unknown>";
+                    var name = ex.ObjectName?.Value?.Value ?? "<noname>";
+                    LogLine("    component '" + name + "' (" + classType + ") transformed");
+                    patched++;
+                }
+            }
+
+            if (patched > 0)
+                asset.Write(assetPath);
+            return patched;
+        }
+
+        // Heuristic to find the BP's flame-related component templates without
+        // hardcoding export indices (the vanilla BP could be re-cooked with
+        // a different export order in a game patch). We look at the export
+        // class type + the object name and accept any of:
+        //   - NiagaraComponent
+        //   - AudioComponent
+        //   - any class containing "PointLight" (catches BP_PointLight_TorchFire_C)
+        //   - any class containing "Light" combined with Component
+        // The plain SceneComponent / StaticMesh / Default exports are
+        // excluded so we don't move the BP's own root or the mesh component.
+        static bool IsFlameRelatedComponent(NormalExport ex)
+        {
+            var classType = ex.GetExportClassType()?.Value?.Value ?? "";
+            var name = ex.ObjectName?.Value?.Value ?? "";
+
+            // The vanilla light component is named ...TorchFire_GEN_VARIABLE
+            // and has a custom BP class (BP_PointLight_TorchFire_C). The
+            // class-type contains "PointLight" which matches.
+            if (classType.IndexOf("Niagara", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (classType.IndexOf("PointLight", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (classType.IndexOf("Audio", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            // Defensive: future presets might use a different light BP whose
+            // class-type doesn't contain "PointLight". Match by name then.
+            if (name.IndexOf("Light", StringComparison.OrdinalIgnoreCase) >= 0
+                && name.IndexOf("Component", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (name.IndexOf("Flame", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            return false;
+        }
+
+        static bool SetRelativeLocation(NormalExport ex, double x, double y, double z)
+        {
+            foreach (var prop in ex.Data)
+            {
+                if (prop.Name?.Value?.Value != "RelativeLocation") continue;
+                if (prop is StructPropertyData stp
+                    && stp.Value != null && stp.Value.Count > 0
+                    && stp.Value[0] is VectorPropertyData vp)
+                {
+                    vp.Value = new FVector(x, y, z);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static bool SetRelativeRotation(NormalExport ex, double pitch, double yaw, double roll)
+        {
+            foreach (var prop in ex.Data)
+            {
+                if (prop.Name?.Value?.Value != "RelativeRotation") continue;
+                if (prop is StructPropertyData stp
+                    && stp.Value != null && stp.Value.Count > 0
+                    && stp.Value[0] is RotatorPropertyData rp)
+                {
+                    rp.Value = new FRotator(pitch, yaw, roll);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static bool SetRelativeScale3D(NormalExport ex, double sx, double sy, double sz)
+        {
+            foreach (var prop in ex.Data)
+            {
+                if (prop.Name?.Value?.Value != "RelativeScale3D") continue;
+                if (prop is StructPropertyData stp
+                    && stp.Value != null && stp.Value.Count > 0
+                    && stp.Value[0] is VectorPropertyData vp)
+                {
+                    vp.Value = new FVector(sx, sy, sz);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static string Fmt(double d)
+        {
+            return d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // -----------------------------------------------------------------
@@ -338,6 +526,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         public int NameMapRenames;
         public int ExportsRetargeted;
+
+        // Etappe J v4: number of component templates (NiagaraComponent,
+        // light, audio, ...) whose RelativeLocation/Rotation/Scale3D got
+        // overridden from the user's "flame" socket. 0 means either no
+        // socket was supplied or the BP carried no transform-bearing
+        // component template (extremely unlikely for the flame presets).
+        public int ComponentsRetransformed;
 
         public string StagedAssetPath;
         public string StagedUexpPath;
