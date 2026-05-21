@@ -305,7 +305,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // Allowlist: user-referenced asset stems (mesh, icon, every
             // texture param). These get staged even if they don't match
             // the AssetPrefix filter - e.g. shared default-VT textures
-            // like T_MTRMDefault or T_NormalFlat the user picks from the
+            // (see DefaultTextureProvider.Stems) the user picks from the
             // resource picker without an explicit prefix. Without this,
             // the cloned MI's NameMap rewrites point at unstaged files
             // and the material renders missing-texture / breaks the mesh.
@@ -374,7 +374,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 // Skip-if-exists: when multiple buildings share the same
                 // CookedFolderPath (or even just the same shared default
-                // textures like T_NormalFlat / T_MTRMDefault), each
+                // textures, see DefaultTextureProvider.Stems), each
                 // building's stage pass would otherwise re-copy and
                 // overwrite the previous building's already-staged files.
                 // For meshes this is catastrophic: building #1 has its
@@ -477,12 +477,51 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // top-level virtual path.
         bool NormalizeStagedUserAssetSelfPath(string stagedUassetPath, BuildingPatchResult result)
         {
+            bool changed = NormalizeAssetSelfPath(stagedUassetPath, UsmapPath, LogLine, out var error);
+            if (!changed && error != null)
+            {
+                // Not every staged file is a parseable Zen package - retoc
+                // sometimes emits sidecar files (e.g. .uptnl) that look like
+                // .uasset but aren't. Surface as a warning so a single weird
+                // file doesn't fail the whole build silently.
+                result.Warnings.Add(
+                    "FolderName normalize failed for " + Path.GetFileName(stagedUassetPath)
+                    + ": " + error
+                    + " (asset will be staged with original self-path; in-game load may fail).");
+            }
+            return changed;
+        }
+
+        // Static counterpart used by DefaultTextureProvider (which doesn't
+        // have an active BuildingPatcher instance during the pre-loop stage
+        // pass). Rewrites the asset's FolderName + every NameMap entry that
+        // holds the old FolderName so the asset's internal self-reference
+        // matches the top-level staging path /Game/Quartermaster/Items/<stem>.
+        //
+        // Returns true if a rewrite happened, false otherwise. When false,
+        // `error` is null for "no-op already correct" and a short type+message
+        // string when the underlying read/write threw. Caller decides whether
+        // to escalate the error (build pipeline records it as a warning).
+        //
+        // Why this matters for the shipped default textures: they were cooked
+        // in the editor under /Content/Quartermaster/<stem>, so their internal
+        // FolderName is /Game/Quartermaster/<stem>. We stage them at
+        // R5/Content/Quartermaster/Items/<stem>.uasset to keep all building
+        // assets under one virtual folder; without this rewrite the iostore
+        // loader silently fails to resolve the package (chunk path vs
+        // FolderName mismatch) and the MI's texture lookup falls back to
+        // the vanilla parent's texture - which is exactly the bug the user
+        // reported when picking any of the shipped default textures
+        // (see DefaultTextureProvider.Stems).
+        public static bool NormalizeAssetSelfPath(string stagedUassetPath, string usmapPath, Action<string> log, out string error)
+        {
+            error = null;
             var stem = Path.GetFileNameWithoutExtension(stagedUassetPath);
             var targetFolderName = "/Game/Quartermaster/Items/" + stem;
 
             try
             {
-                var mapping = new Usmap(UsmapPath);
+                var mapping = new Usmap(usmapPath);
                 var asset = new UAsset(stagedUassetPath, EngineVersion.VER_UE5_6, mapping);
 
                 var currentFolderName = asset.FolderName?.Value;
@@ -511,23 +550,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 asset.FolderName = FString.FromString(targetFolderName);
                 asset.Write(stagedUassetPath);
 
-                LogLine("  [normalize] " + Path.GetFileName(stagedUassetPath)
+                if (log != null) log("  [normalize] " + Path.GetFileName(stagedUassetPath)
                     + ": FolderName " + currentFolderName + " -> " + targetFolderName
                     + " (" + renamedSelfEntries + " NameMap self-entry rewrite(s))");
                 return true;
             }
             catch (Exception ex)
             {
-                // Not every staged file is a parseable Zen package - retoc
-                // sometimes emits sidecar files (e.g. .uptnl) that look like
-                // .uasset but aren't. Log + carry on so a single weird file
-                // doesn't fail the whole build.
-                result.Warnings.Add(
-                    "FolderName normalize failed for " + Path.GetFileName(stagedUassetPath)
-                    + ": " + ex.GetType().Name + " - " + ex.Message
-                    + " (asset will be staged with original self-path; in-game load may fail).");
-                LogLine("  [normalize] WARN " + Path.GetFileName(stagedUassetPath) + ": "
-                    + ex.GetType().Name + ": " + ex.Message);
+                error = ex.GetType().Name + " - " + ex.Message;
+                if (log != null) log("  [normalize] WARN " + Path.GetFileName(stagedUassetPath) + ": " + error);
                 return false;
             }
         }

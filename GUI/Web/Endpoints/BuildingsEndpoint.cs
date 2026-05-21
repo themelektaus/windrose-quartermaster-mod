@@ -60,7 +60,7 @@ public static class BuildingsEndpoint
         });
 
         // Default-texture stems the Building Creator ships with the
-        // app (T_White, T_NormalFlat, T_MTRMDefault). The frontend
+        // app (canonical list: DefaultTextureProvider.Stems). The frontend
         // pulls this list once at tab-open and surfaces it as an
         // "always available" optgroup in every per-slot texture
         // dropdown so the user can reference these stems without

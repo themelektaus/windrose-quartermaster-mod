@@ -114,10 +114,10 @@ namespace Windrose.Quartermaster.Core
             get { return Path.Combine(Tools, "Templates", "SoundWave_BinkInline.uexp"); }
         }
 
-        // Folder holding the shared VT default textures (T_White,
-        // T_NormalFlat, T_MTRMDefault) that the Building Creator's
-        // MI clones reference when the user doesn't pick a custom
-        // texture for a slot's Albedo / Normal / MTRM param. Each
+        // Folder holding the shared VT default textures (canonical
+        // stem list: DefaultTextureProvider.Stems) that the Building
+        // Creator's MI clones reference when the user doesn't pick a
+        // custom texture for a slot's Albedo / Normal / MTRM param. Each
         // texture lives as .uasset + .uexp + .ubulk triplet under
         // this folder; the build pipeline copies them into the
         // staging tree once per build (regardless of which buildings

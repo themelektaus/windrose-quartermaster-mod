@@ -1093,9 +1093,9 @@ namespace Windrose.Quartermaster.Core
                         _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
                         _buildingPatcher.TempDir = buildingTmp;
 
-                        // Stage the shipped VT default textures (T_White,
-                        // T_NormalFlat, T_MTRMDefault) once per build,
-                        // regardless of which buildings reference them.
+                        // Stage the shipped VT default textures once per
+                        // build, regardless of which buildings reference
+                        // them. Canonical stem list: DefaultTextureProvider.Stems.
                         // Cost is ~9 KB total cooked bytes; the upside is
                         // that the per-slot texture dropdowns can offer
                         // these stems as an "always available" group
@@ -1104,7 +1104,7 @@ namespace Windrose.Quartermaster.Core
                         // the provider preserves any user-cooked
                         // override with the same stem (rare but allowed).
                         LogLine("Buildings: staging shared default textures");
-                        DefaultTextureProvider.StageInto(_paths, stagingItemsDir, Log);
+                        DefaultTextureProvider.StageInto(_paths, stagingItemsDir, usmapPath, Log);
 
                         buildingResults = new List<BuildingPatchResult>();
                         // Track which building first claimed a given mesh

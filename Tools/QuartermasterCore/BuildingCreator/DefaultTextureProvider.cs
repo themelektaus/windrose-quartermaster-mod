@@ -41,6 +41,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             "T_White",
             "T_NormalFlat",
             "T_MTRMDefault",
+            "T_MTRMGlass",
         };
 
         // File-extension set per stem we copy. Mirrors what the UE5
@@ -63,7 +64,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // pak with no defaults staged. Buildings that reference the
         // missing stem will surface a broken-texture in-game; the log
         // line gives the user enough context to pull the file in.
-        public static int StageInto(WindrosePaths paths, string stagingItemsDir, Action<string> log)
+        public static int StageInto(WindrosePaths paths, string stagingItemsDir, string usmapPath, Action<string> log)
         {
             if (paths == null) throw new ArgumentNullException("paths");
             if (string.IsNullOrEmpty(stagingItemsDir)) throw new ArgumentNullException("stagingItemsDir");
@@ -73,15 +74,21 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (!Directory.Exists(srcDir))
             {
                 if (log != null) log("  warn: default-textures folder missing: " + srcDir
-                    + " - buildings that reference T_White / T_NormalFlat / T_MTRMDefault may render broken textures");
+                    + " - buildings that reference " + string.Join(" / ", Stems) + " may render broken textures");
                 return 0;
             }
 
             int copied = 0;
             int skipped = 0;
             int missing = 0;
+            // Per-stem flag: did we just copy a fresh .uasset that needs
+            // FolderName normalization? .uexp/.ubulk siblings don't need
+            // normalization themselves but the .uasset header drives the
+            // package-resolution check, so we run the rewrite once per stem.
+            var freshStems = new List<string>();
             foreach (var stem in Stems)
             {
+                bool stemFreshlyCopied = false;
                 foreach (var ext in Extensions)
                 {
                     var srcFile = Path.Combine(srcDir, stem + ext);
@@ -114,7 +121,38 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     }
                     File.Copy(srcFile, dstFile, overwrite: false);
                     copied++;
+                    if (string.Equals(ext, ".uasset", StringComparison.OrdinalIgnoreCase))
+                        stemFreshlyCopied = true;
                 }
+                if (stemFreshlyCopied) freshStems.Add(stem);
+            }
+
+            // Normalize FolderName on the freshly staged .uasset files so
+            // their internal self-reference matches the top-level staging
+            // path (/Game/Quartermaster/Items/<stem>). The default textures
+            // were cooked under /Content/Quartermaster/, so without this
+            // pass the iostore loader silently fails to resolve them at
+            // runtime and the MI's texture lookup falls back to the
+            // vanilla parent's texture - which is exactly why the user
+            // sees the original vanilla material despite picking T_White.
+            int normalized = 0;
+            int normalizeFailures = 0;
+            if (!string.IsNullOrEmpty(usmapPath) && File.Exists(usmapPath))
+            {
+                foreach (var stem in freshStems)
+                {
+                    var stagedAsset = Path.Combine(stagingItemsDir, stem + ".uasset");
+                    if (BuildingPatcher.NormalizeAssetSelfPath(stagedAsset, usmapPath, log, out var err))
+                        normalized++;
+                    else if (err != null)
+                        normalizeFailures++;
+                }
+            }
+            else
+            {
+                if (log != null) log("  warn: default-texture FolderName normalize SKIPPED (usmapPath missing or not found) - "
+                    + string.Join(" / ", Stems) + " may not load in-game; "
+                    + "MIs will fall back to the vanilla parent's textures");
             }
 
             if (log != null)
@@ -128,6 +166,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     log("  default textures: " + copied + " copied"
                         + (skipped > 0 ? ", " + skipped + " pre-existing (user-cooked override)" : "")
                         + (missing > 0 ? ", " + missing + " file(s) MISSING from " + srcDir : "")
+                        + (normalized > 0 ? ", " + normalized + " self-path normalized to /Game/Quartermaster/Items/<stem>" : "")
+                        + (normalizeFailures > 0 ? ", " + normalizeFailures + " normalize FAILURE(s)" : "")
                         + " - " + string.Join(", ", Stems));
                 }
             }

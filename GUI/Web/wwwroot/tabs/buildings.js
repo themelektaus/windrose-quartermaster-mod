@@ -365,8 +365,9 @@ function renderBuildingCreator() {
     }
     // First-render: also kick off the default-texture-stems load so
     // the per-slot texture dropdowns can list the shipped stems
-    // (T_White / T_NormalFlat / T_MTRMDefault) without the user
-    // having to cook them into their own folder. Re-render once the
+    // (served by /api/buildings/default-textures, see
+    // DefaultTextureProvider.Stems) without the user having to cook
+    // them into their own folder. Re-render once the
     // catalog arrives so the dropdown surfaces the new optgroup
     // (slot UI re-renders via triggerCookedInspect on tab interaction
     // anyway, but the re-render ensures the group appears immediately
@@ -965,9 +966,10 @@ function collectCookedTextureStems(building, _inspection) {
 // Render the per-slot texture-param <select> body. Emits:
 //   - "(use Vanilla: <vanillaStem>)" placeholder that selects to "" so
 //     the param falls through to the cloned MI's parent default
-//   - "Default textures" optgroup with the shipped stems (T_White,
-//     T_NormalFlat, T_MTRMDefault) - always present even if the
-//     user hasn't picked a cooked folder yet
+//   - "Default textures" optgroup with the shipped stems (canonical
+//     list lives in DefaultTextureProvider.Stems, fetched at runtime
+//     via /api/buildings/default-textures) - always present even if
+//     the user hasn't picked a cooked folder yet
 //   - "From cooked folder" optgroup with T_* stems the scan found
 //     (only when at least one is available); the shipped defaults
 //     are already filtered out of this list in collectCookedTextureStems
