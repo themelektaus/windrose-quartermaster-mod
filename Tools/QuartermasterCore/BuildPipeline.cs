@@ -580,8 +580,15 @@ namespace Windrose.Quartermaster.Core
                     LogLine("Deploying DLL + qm_items.json to game Binaries/Win64");
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
-                    deployer.EnsureDllInstalled();
-                    deployer.WriteItemsJson(buildingResults);
+                    // EnsureDllInstalled returns false on non-Windows
+                    // platforms (Steam Deck/Linux) - the inject mechanism
+                    // is Windows-PE only. We skip the JSON write too so we
+                    // don't leave an orphaned config sitting in Win64 with
+                    // no DLL to read it. Pak still ships normally.
+                    if (deployer.EnsureDllInstalled())
+                    {
+                        deployer.WriteItemsJson(buildingResults);
+                    }
                 }
                 else
                 {

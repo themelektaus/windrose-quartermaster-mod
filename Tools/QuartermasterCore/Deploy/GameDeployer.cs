@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using Windrose.Quartermaster.Core.BuildingCreator;
 
@@ -60,10 +61,11 @@ namespace Windrose.Quartermaster.Core.Deploy
         public string TargetItemsJsonPath() => Path.Combine(_gameWin64Dir, "qm_items.json");
 
         // Idempotent install of dxgi.dll + dxgi_org.dll. Returns true on
-        // success, throws InvalidOperationException if the guard refuses
-        // (= an unknown dxgi.dll is already there without our renamer
-        // alongside). The latter never recovers automatically: user has
-        // to investigate / remove the foreign file manually.
+        // success, false when the platform doesn't support the inject (Linux
+        // / Steam Deck - see below), throws InvalidOperationException if the
+        // guard refuses (= an unknown dxgi.dll is already there without our
+        // renamer alongside). The latter never recovers automatically: user
+        // has to investigate / remove the foreign file manually.
         //
         // Always re-copies our dxgi.dll over an existing proxy to ensure
         // the deployed binary matches the current build - we don't want
@@ -71,6 +73,24 @@ namespace Windrose.Quartermaster.Core.Deploy
         // didn't redeploy.
         public bool EnsureDllInstalled()
         {
+            // Platform gate: the dxgi-proxy inject is a Windows-only PE
+            // mechanism. Under Proton/Wine the renamer DLL would have to
+            // come from a Wine-provided dxgi.dll (compatdata prefix or
+            // Proton install) - not implemented yet. Build still produces
+            // the pak (Stack/Loot/Recipes/Trade work via the pak alone);
+            // only the inject-driven features (Custom Items + Buildings
+            // into Vorgefertigte Strukturen tab) are skipped. Loud log
+            // so the user understands why their painting doesn't appear.
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                LogLine("DLL inject SKIPPED: dxgi-proxy is Windows-only "
+                    + "(running on " + RuntimeInformation.OSDescription + "). "
+                    + "Pak-based features (Stacks, Loot, Recipes, Trade) work via the pak alone; "
+                    + "Custom Items / Buildings in the build menu need the dxgi.dll inject "
+                    + "and won't appear in-game until Steam Deck support is added.");
+                return false;
+            }
+
             if (!File.Exists(_dllSourcePath))
             {
                 throw new InvalidOperationException(
