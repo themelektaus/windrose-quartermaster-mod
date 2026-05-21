@@ -75,6 +75,23 @@ public static class BuildingsEndpoint
                 stems = DefaultTextureProvider.GetStems(),
             });
         });
+
+        // Etappe J: Flame-FX presets the user can attach to any building.
+        // Returns the canonical list (id + displayName + description)
+        // the GUI surfaces as a dropdown in each building's editor. When
+        // the user picks a preset, the build pipeline clones the
+        // corresponding vanilla "fire building" BP once per used preset
+        // and patches each opted-in building's DA to use the cloned BP
+        // as ItemClass - so the building spawns with Niagara flame FX,
+        // a flickering point light, and ambient loop SFX. Default state
+        // for any building is "no preset selected" (= no flame).
+        app.MapGet("/api/buildings/flame-presets", () =>
+        {
+            return Results.Json(new
+            {
+                presets = FlamePresetCatalog.GetDtos(),
+            });
+        });
     }
 
     static BuildingRecipeInspectionDto InspectRecipe(string templateId, string repoRoot)

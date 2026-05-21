@@ -948,6 +948,23 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 daReplacements[template.VanillaRecipePackagePath] = outRecipePath;
             }
 
+            // Etappe J: merge orchestrator-supplied extra NameMap rewrites
+            // (currently used for the FlamePreset ItemClass redirection -
+            // vanilla BP -> cloned QmFlaming BP). Done here so the single
+            // DataAssetPatcher run covers everything; no second open/write
+            // pass on the cloned DA needed. Later entries win on collision
+            // (the caller is responsible for not overlapping with built-in
+            // mesh/icon/da/recipe rewrites - in practice the BP refs live
+            // in a disjoint key space so this is safe).
+            if (inputs.ExtraDaNameMapRewrites != null)
+            {
+                foreach (var kv in inputs.ExtraDaNameMapRewrites)
+                {
+                    if (kv.Key == null || kv.Value == null) continue;
+                    daReplacements[kv.Key] = kv.Value;
+                }
+            }
+
             var patcher = new DataAssetPatcher { Log = LogLine };
             var pr = patcher.Patch(
                 inputAssetPath:  legacyDaPath,
@@ -1235,6 +1252,22 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // "free build" override (engine accepts a recipe with empty
         // RecipeCost). Items beyond the catalog are non-fatal warnings.
         public List<(string ItemPath, int Count)> RecipeCost;
+
+        // Etappe J: extra DA NameMap rewrites that the orchestrator wants
+        // merged into the standard daReplacements dictionary BEFORE the
+        // DataAssetPatcher runs. Used to retarget the cloned DA's ItemClass
+        // FSoftClassPath entries from a Vanilla BP class to our mod-owned
+        // cloned BP. Null = no extras (default for buildings without a
+        // flame preset).
+        //
+        // Why this is a generic "extra rewrites" bag rather than a
+        // FlamePreset-specific field: the orchestrator computes the
+        // vanilla-BP -> cloned-BP key pairs from the FlamePresetCatalog
+        // already, and BuildingPatcher.Patch's only concern is "swap these
+        // FName strings during the same NameMap pass." A generic bag keeps
+        // the patcher decoupled from Flame-specific knowledge and lets
+        // future features (e.g. multi-BP redirects) plug in the same way.
+        public Dictionary<string, string> ExtraDaNameMapRewrites;
     }
 
     // Per-slot user input (Etappe G mesh-driven).

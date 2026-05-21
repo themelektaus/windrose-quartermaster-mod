@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Windrose.Quartermaster.Core.BuildingCreator;
 using Windrose.Quartermaster.Core.Deploy;
@@ -81,6 +82,7 @@ namespace Windrose.Quartermaster.Core
         readonly BuildingPatcher _buildingPatcher;
         readonly BuildingItemsCsvPatcher _buildingItemsCsvPatcher;
         readonly RecipePatcher _recipePatcher;
+        readonly BlueprintPatcher _blueprintPatcher;
 
         public Action<string> Log;
 
@@ -150,6 +152,7 @@ namespace Windrose.Quartermaster.Core
             _buildingPatcher = new BuildingPatcher();
             _buildingItemsCsvPatcher = new BuildingItemsCsvPatcher();
             _recipePatcher = new RecipePatcher();
+            _blueprintPatcher = new BlueprintPatcher();
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -1093,6 +1096,13 @@ namespace Windrose.Quartermaster.Core
                         _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
                         _buildingPatcher.TempDir = buildingTmp;
 
+                        _blueprintPatcher.Log = Log;
+                        _blueprintPatcher.RetocExe = retocExe;
+                        _blueprintPatcher.UsmapPath = usmapPath;
+                        _blueprintPatcher.VanillaPaksDir = gamePaksDir;
+                        _blueprintPatcher.AesKey = WindroseGameSecrets.AesKey;
+                        _blueprintPatcher.TempDir = buildingTmp;
+
                         // Stage the shipped VT default textures once per
                         // build, regardless of which buildings reference
                         // them. Canonical stem list: DefaultTextureProvider.Stems.
@@ -1105,6 +1115,20 @@ namespace Windrose.Quartermaster.Core
                         // override with the same stem (rare but allowed).
                         LogLine("Buildings: staging shared default textures");
                         DefaultTextureProvider.StageInto(_paths, stagingItemsDir, usmapPath, Log);
+
+                        // Etappe J v3: flame BP clones are PER BUILDING
+                        // (not shared per preset). Each building gets its
+                        // own BP_QmFlaming_<BuildingId> with the vanilla
+                        // mesh ref baked into the BP's StaticMeshComponent
+                        // SCS-Node default rewritten to its own user mesh.
+                        // The shared-per-preset v1/v2 approach left every
+                        // flame-enabled building rendering the vanilla
+                        // torch mesh on top of the user mesh.
+                        // The actual Stage() call happens inside the
+                        // per-building loop below (after BuildBuildingInputs
+                        // so we know inputs.MeshStem).
+                        var stagedFlameBuildings =
+                            new Dictionary<string, BlueprintStageResult>(StringComparer.OrdinalIgnoreCase);
 
                         buildingResults = new List<BuildingPatchResult>();
                         // Track which building first claimed a given mesh
@@ -1150,6 +1174,35 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
+                            // Etappe J: when a flame preset is selected on
+                            // this building, override the user-picked
+                            // template with the preset's flame source-DA
+                            // refs (e.g. DA_BI_FloorTorch instead of
+                            // DA_BI_DecorativeFood_01). This is required
+                            // because R5BuildingItem DAs that ship without
+                            // ItemClass set (like DecorativeFood_01) leave
+                            // no FName entries we could redirect to our
+                            // cloned BP - and we can't byte-inject a missing
+                            // ItemClass property because of the
+                            // CollisionApproximation custom-serializer.
+                            //
+                            // The building inherits the flame source's
+                            // gameplay behaviour (snap rules, GameplayTag =
+                            // Comfort.Lighting, recipe class). The user's
+                            // mesh/icon stems are still substituted via the
+                            // regular NameMap-rewrite pass. ItemClass FName
+                            // entries get retargeted via inputs.ExtraDa-
+                            // NameMapRewrites (set in BuildBuildingInputs).
+                            var bldFlamePreset = FlamePresetCatalog.Resolve(b.FlamePresetId);
+                            if (bldFlamePreset != null)
+                            {
+                                LogLine("  [Flame] preset '" + bldFlamePreset.Id
+                                    + "' active for '" + b.Id + "' - swapping template '"
+                                    + template.Id + "' with source DA '"
+                                    + bldFlamePreset.SourceVanillaDaStem + "'");
+                                template = bldFlamePreset.ApplyTo(template);
+                            }
+
                             BuildingInputs inputs;
                             try
                             {
@@ -1160,10 +1213,74 @@ namespace Windrose.Quartermaster.Core
                                 LogLine("  warn: failed to build inputs for '" + b.Id + "': " + ex.Message + " - skipping");
                                 continue;
                             }
+
+                            // Etappe J v3: per-building BP clone (must run
+                            // before the DA patcher because inputs.Extra-
+                            // DaNameMapRewrites is populated from the
+                            // cloned BP stem the Stage() call produces).
+                            BlueprintStageResult bldBpStage = null;
+                            if (bldFlamePreset != null)
+                            {
+                                try
+                                {
+                                    var userMeshStem = inputs.MeshStem;
+                                    var userMeshPath = "/Game/Quartermaster/Items/" + userMeshStem;
+                                    bldBpStage = _blueprintPatcher.Stage(
+                                        bldFlamePreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir);
+                                    stagedFlameBuildings[b.Id] = bldBpStage;
+                                    foreach (var w in bldBpStage.Warnings ?? new List<string>())
+                                        LogLine("  warn: flame BP '" + b.Id + "': " + w);
+
+                                    // Wire ExtraDaNameMapRewrites: redirect
+                                    // the cloned DA's ItemClass FName entries
+                                    // (vanilla BP path + "_C" class name) to
+                                    // this building's per-building BP clone.
+                                    inputs.ExtraDaNameMapRewrites = new Dictionary<string, string>(StringComparer.Ordinal);
+                                    if (!string.IsNullOrEmpty(bldFlamePreset.SourceVanillaItemClassPath))
+                                    {
+                                        inputs.ExtraDaNameMapRewrites[bldFlamePreset.SourceVanillaItemClassPath]
+                                            = FlamePresetCatalog.FlamePreset.ClonedPackagePathFor(b.Id);
+                                    }
+                                    if (!string.IsNullOrEmpty(bldFlamePreset.SourceVanillaItemClassStem))
+                                    {
+                                        inputs.ExtraDaNameMapRewrites[bldFlamePreset.SourceVanillaItemClassStem + "_C"]
+                                            = bldBpStage.ClonedBpStem + "_C";
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogLine("  warn: flame BP staging failed for '" + b.Id
+                                        + "': " + ex.Message
+                                        + " - building will spawn under vanilla BP class (no FX)");
+                                }
+                            }
+
                             LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
                             var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
                             buildingResults.Add(result);
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
+
+                            // Etappe J v3: surface a confirmation line in
+                            // the build log when the per-building BP clone
+                            // landed AND the DA NameMap rewrites for
+                            // ItemClass fired (the actual rewriting happens
+                            // inside DataAssetPatcher via inputs.Extra-
+                            // DaNameMapRewrites - no second open/write
+                            // pass needed).
+                            if (bldFlamePreset != null && bldBpStage != null)
+                            {
+                                LogLine("  [Flame] DA ItemClass redirected via NameMap -> "
+                                    + bldBpStage.ClonedClassPath
+                                    + " (preset '" + bldFlamePreset.Id + "')");
+                            }
+                            else if (bldFlamePreset != null)
+                            {
+                                result.Warnings.Add(
+                                    "Flame preset '" + bldFlamePreset.Id
+                                    + "' BP staging failed for '" + b.Id
+                                    + "' - building will spawn under vanilla BP class instead of cloned BP.");
+                                LogLine("  warn: " + result.Warnings[^1]);
+                            }
 
                             // Etappe H2: emit the cloned recipe JSON
                             // (RecipeCost + per-building RecipeTag). The
@@ -2375,6 +2492,13 @@ namespace Windrose.Quartermaster.Core
                 Description       = b.Description,
                 MeshSlots         = new List<MeshSlotInput>(),
             };
+
+            // Etappe J v3: the flame-preset ExtraDaNameMapRewrites used
+            // to be wired here, but since BP-Clones are now per-building
+            // (each with its own user-mesh rewrite), the cloned BP stem
+            // is only known AFTER BlueprintPatcher.Stage() runs in the
+            // main loop. The caller wires inputs.ExtraDaNameMapRewrites
+            // there instead.
 
             foreach (var s in inspection.MeshSlots)
             {

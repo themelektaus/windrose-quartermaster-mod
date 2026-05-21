@@ -854,6 +854,9 @@ public static class ProfilesEndpoint
                 MeshStem = b.MeshStem,
                 IconStem = b.IconStem,
                 Slots = CloneCustomBuildingSlots(b.Slots),
+                // Etappe J: carry the optional flame-FX preset id through
+                // duplicate so the cloned profile inherits the flame setup.
+                FlamePresetId = b.FlamePresetId,
             });
         }
         return result;

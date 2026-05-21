@@ -828,6 +828,22 @@ namespace Windrose.Quartermaster.Core
         // RecipeCost array so the building can be built for free.
         public List<RecipeCostEntry> RecipeCost;
 
+        // Etappe J: optional Flame-FX preset. When set (non-empty), the
+        // build pipeline clones a vanilla "fire building" BP (e.g.
+        // BP_BuildingBlock_FloorTorch_C) once per used preset under
+        // /Game/Quartermaster/Items/, and patches this building's DA so
+        // its ItemClass soft-class-ref points at the cloned BP. Result:
+        // ingame the building spawns with the Niagara flame FX, the
+        // flickering point light, and the ambient loop SFX inherited
+        // from the vanilla BP (positioned at the BP's own SCS-Component
+        // offsets, which works correctly when the user's mesh is laid
+        // out with the flame point at the same approximate Z as the
+        // vanilla torch tip - ~150 cm). null or empty = no flame.
+        //
+        // Valid values: see FlamePresetCatalog.Presets (Id field).
+        // Currently: "torch". Future: "candle", "campfire", "brazier".
+        public string FlamePresetId;
+
         // -----------------------------------------------------------------
         // Returns the AssetPrefix that should drive the asset-allowlist
         // filter + the MI-clone stem naming. Reads the persisted field

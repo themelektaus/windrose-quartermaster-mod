@@ -47,6 +47,12 @@ const _vanillaBuildingsLoad = { promise: null };
 const _defaultTextureStemsLoad = { promise: null };
 let _defaultTextureStems = null;  // string[] once loaded
 
+// Etappe J: Flame-FX presets. Loaded once via /api/buildings/flame-presets
+// and surfaced as a per-building dropdown so the user can attach an FX +
+// Light bundle (cloned from a vanilla "fire building" BP) to any building.
+const _flamePresetsLoad = { promise: null };
+let _flamePresets = null;  // {id, displayName, description}[] once loaded
+
 // Cache for per-template inspections (Mesh/Icon/Recipe stems + FText
 // keys). Keyed by templateId, populated on demand when the user picks a
 // template OR when an existing building's templateId is rendered. Falls
@@ -94,6 +100,24 @@ function ensureVanillaResourcesLoaded() {
             return state.vanillaResources;
         });
     return _vanillaResourcesLoad.promise;
+}
+
+function ensureFlamePresetsLoaded() {
+    if (_flamePresets) return Promise.resolve(_flamePresets);
+    if (_flamePresetsLoad.promise) return _flamePresetsLoad.promise;
+    _flamePresetsLoad.promise = api('GET', '/api/buildings/flame-presets')
+        .then(dto => {
+            _flamePresets = (dto && Array.isArray(dto.presets)) ? dto.presets.slice() : [];
+            _flamePresetsLoad.promise = null;
+            return _flamePresets;
+        })
+        .catch(ex => {
+            _flamePresetsLoad.promise = null;
+            _flamePresets = [];
+            console.error('Failed to load flame presets:', ex);
+            return _flamePresets;
+        });
+    return _flamePresetsLoad.promise;
 }
 
 function ensureDefaultTextureStemsLoaded() {
@@ -377,6 +401,15 @@ function renderBuildingCreator() {
             renderBuildingCreator();
         });
     }
+    // Etappe J: same lazy-load pattern for the flame-preset catalog
+    // so the per-building Flame Preset dropdown can offer the shipped
+    // presets. The first render shows a "(loading...)" placeholder;
+    // the re-render after the catalog arrives swaps in the real list.
+    if (!_flamePresets && customs.length > 0) {
+        ensureFlamePresetsLoaded().then(() => {
+            renderBuildingCreator();
+        });
+    }
 }
 
 // Dropdown next to "New Building" - switches the active card.
@@ -490,8 +523,62 @@ function buildCustomBuildingCardHtml(custom, index) {
         +     '<div class="building-field building-field-wide" data-building-recipe-host>'
         +       '<div class="building-recipe-status"><em>Loading build cost...</em></div>'
         +     '</div>'
+        +     renderFlamePresetSelectHtml(custom)
         +   '</div>'
         + '</li>';
+}
+
+// Renders the Flame-FX preset dropdown for one building card.
+// Loaded list comes from /api/buildings/flame-presets (cached in
+// _flamePresets). When the list isn't loaded yet, render a disabled
+// placeholder; the re-render after ensureFlamePresetsLoaded resolves
+// swaps it for the real select.
+function renderFlamePresetSelectHtml(custom) {
+    const currentId = (custom && custom.flamePresetId) ? custom.flamePresetId : '';
+    const presets = Array.isArray(_flamePresets) ? _flamePresets : null;
+    const helpText = 'Optional. Wraps the building with FX + light cloned from a vanilla fire-building BP. '
+                   + 'No effect when set to None (default).';
+
+    if (!presets) {
+        // Not loaded yet - placeholder. Will re-render once the catalog arrives.
+        return ''
+            + '<label class="building-field building-field-wide">'
+            +   '<span>Flame preset</span>'
+            +   '<select data-building-field="flamePresetId" disabled>'
+            +     '<option value="">(loading...)</option>'
+            +   '</select>'
+            +   '<small><em>' + escapeHtml(helpText) + '</em></small>'
+            + '</label>';
+    }
+
+    let opts = '<option value="">None (no flame)</option>';
+    for (const p of presets) {
+        if (!p || !p.id) continue;
+        const sel = (p.id === currentId) ? ' selected' : '';
+        const label = escapeHtml(p.displayName || p.id);
+        opts += '<option value="' + escapeHtml(p.id) + '"' + sel + '>' + label + '</option>';
+    }
+    // If the profile carries an id that isn't in the catalog (e.g. someone
+    // hand-edited the JSON), preserve it as a non-matching option so the
+    // user sees "unknown" instead of a silent revert to None.
+    if (currentId && !presets.some(p => p && p.id === currentId)) {
+        opts += '<option value="' + escapeHtml(currentId) + '" selected>'
+              + escapeHtml(currentId) + ' (unknown - check catalog)</option>';
+    }
+
+    // Surface the picked preset's description as the hint line.
+    let hint = helpText;
+    if (currentId) {
+        const cur = presets.find(p => p && p.id === currentId);
+        if (cur && cur.description) hint = cur.description;
+    }
+
+    return ''
+        + '<label class="building-field building-field-wide">'
+        +   '<span>Flame preset</span>'
+        +   '<select data-building-field="flamePresetId">' + opts + '</select>'
+        +   '<small><em>' + escapeHtml(hint) + '</em></small>'
+        + '</label>';
 }
 
 // -----------------------------------------------------------------------
@@ -1218,6 +1305,19 @@ function onBuildingListChange(e) {
         } else if (field === 'iconStem') {
             custom.iconStem = t.value || '';
             refreshMissingFieldsBanner(card, custom);
+        } else if (field === 'flamePresetId') {
+            // Etappe J: empty string = no preset (default). Stored as
+            // null in the profile so older builds round-trip cleanly.
+            const v = (t.value || '').trim();
+            custom.flamePresetId = v ? v : null;
+            // Re-render this card's flame-preset block so the hint line
+            // (description) updates to match the new selection. Cheap:
+            // we just regen the one <label>.
+            const host = card.querySelector('label.building-field-wide select[data-building-field="flamePresetId"]');
+            if (host) {
+                const lbl = host.closest('label.building-field');
+                if (lbl) lbl.outerHTML = renderFlamePresetSelectHtml(custom);
+            }
         // (Etappe I removed the legacy `<select data-building-field=
         //  "templateId">` element; template picks now go through the
         //  central picker via data-building-template-input, handled
