@@ -36,6 +36,21 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (string.IsNullOrWhiteSpace(UsmapPath) || !File.Exists(UsmapPath))
                 throw new InvalidOperationException("CookedFolderInspector.UsmapPath not set or not found");
 
+            // Serialize against MaterialInstanceInspector: UAssetAPI is not
+            // thread-safe and `new Usmap(path)` opens the .usmap exclusively,
+            // so parallel inspect requests (one card with N slots all firing
+            // /api/vanilla-materials/inspect at once) would race on the
+            // shared usmap file. Lock is reentrant so the nested
+            // MaterialInstanceInspector.Inspect() calls below re-take it
+            // without issue.
+            lock (MaterialInstanceInspector.UsmapGate)
+            {
+                return InspectLocked(cookedFolderPath, meshStem);
+            }
+        }
+
+        CookedFolderInspection InspectLocked(string cookedFolderPath, string meshStem)
+        {
             var inspection = new CookedFolderInspection
             {
                 CookedFolderPath = cookedFolderPath,

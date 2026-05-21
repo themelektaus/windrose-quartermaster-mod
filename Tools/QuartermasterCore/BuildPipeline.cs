@@ -1086,16 +1086,54 @@ namespace Windrose.Quartermaster.Core
                         _buildingPatcher.AesKey = WindroseGameSecrets.AesKey;
                         _buildingPatcher.TempDir = buildingTmp;
 
+                        // Stage the shipped VT default textures (T_White,
+                        // T_NormalFlat, T_MTRMDefault) once per build,
+                        // regardless of which buildings reference them.
+                        // Cost is ~9 KB total cooked bytes; the upside is
+                        // that the per-slot texture dropdowns can offer
+                        // these stems as an "always available" group
+                        // without the user having to cook them into
+                        // their own UE project. Skip-if-exists inside
+                        // the provider preserves any user-cooked
+                        // override with the same stem (rare but allowed).
+                        LogLine("Buildings: staging shared default textures");
+                        DefaultTextureProvider.StageInto(_paths, stagingItemsDir, Log);
+
                         buildingResults = new List<BuildingPatchResult>();
+                        // Track which building first claimed a given mesh
+                        // file (keyed by staging filename = MeshStem). The
+                        // Per-Building patch in-place edits its mesh in
+                        // staging to point at MI_<BuildingId>_slot* clones;
+                        // if a second building tried to patch the same
+                        // staged mesh file, the first building's slot
+                        // refs would be silently overwritten. Skip-if-
+                        // exists in StageCookedAssets stops the re-copy,
+                        // but a duplicate MeshStem is a logical conflict
+                        // the user must resolve (or, more typically, a
+                        // copy-paste mistake in the GUI). We warn loudly
+                        // and skip the duplicate so the first building
+                        // wins deterministically.
+                        var meshOwner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var b in profile.CustomBuildings)
                         {
                             if (b == null) continue;
                             // Skeleton gate - same as HasCustomBuildingsConfiguration.
                             if (string.IsNullOrWhiteSpace(b.Id)) continue;
                             if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
-                            if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
                             if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
                             if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+                            if (string.IsNullOrWhiteSpace(b.ResolveAssetPrefix())) continue;
+
+                            if (meshOwner.TryGetValue(b.MeshStem, out var firstOwner))
+                            {
+                                LogLine("  warn: building '" + b.Id + "' uses MeshStem '"
+                                    + b.MeshStem + "' which was already claimed by building '"
+                                    + firstOwner + "'. Two buildings cannot share the same"
+                                    + " mesh file - rename or re-cook one of them. Skipping '"
+                                    + b.Id + "' to keep '" + firstOwner + "' intact.");
+                                continue;
+                            }
+                            meshOwner[b.MeshStem] = b.Id;
 
                             var template = ResolveBuildingTemplate(b.TemplateId);
                             if (template == null)
@@ -1352,9 +1390,9 @@ namespace Windrose.Quartermaster.Core
                 if (b == null) continue;
                 if (string.IsNullOrWhiteSpace(b.Id)) continue;
                 if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
-                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
                 if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
                 if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+                if (string.IsNullOrWhiteSpace(b.ResolveAssetPrefix())) continue;
                 n++;
             }
             return n;
@@ -2131,11 +2169,12 @@ namespace Windrose.Quartermaster.Core
         }
 
         // True when the profile has at least one CustomBuilding with the
-        // minimum fields populated (Id, TemplateId, AssetPrefix,
-        // CookedFolderPath, MeshStem). Skeleton entries (e.g. a "New
-        // Building" card without a cooked folder yet) get filtered so the
-        // patch step doesn't try to extract a non-existent template or
-        // walk a missing folder.
+        // minimum fields populated (Id, TemplateId, CookedFolderPath,
+        // MeshStem). AssetPrefix is derived from MeshStem so it isn't
+        // gated separately. Skeleton entries (e.g. a "New Building"
+        // card without a cooked folder yet) get filtered so the patch
+        // step doesn't try to extract a non-existent template or walk
+        // a missing folder.
         static bool HasCustomBuildingsConfiguration(Profile profile)
         {
             var buildings = profile.CustomBuildings;
@@ -2145,9 +2184,12 @@ namespace Windrose.Quartermaster.Core
                 if (b == null) continue;
                 if (string.IsNullOrWhiteSpace(b.Id)) continue;
                 if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
-                if (string.IsNullOrWhiteSpace(b.AssetPrefix)) continue;
                 if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
                 if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
+                // Resolved prefix must end up non-empty (covers the case
+                // where MeshStem is e.g. just "_01" and DeriveAssetPrefix
+                // would return "").
+                if (string.IsNullOrWhiteSpace(b.ResolveAssetPrefix())) continue;
                 return true;
             }
             return false;
@@ -2173,9 +2215,14 @@ namespace Windrose.Quartermaster.Core
                 var missing = new List<string>();
                 if (string.IsNullOrWhiteSpace(b.Id))               missing.Add("id");
                 if (string.IsNullOrWhiteSpace(b.TemplateId))       missing.Add("templateId");
-                if (string.IsNullOrWhiteSpace(b.AssetPrefix))      missing.Add("assetPrefix");
                 if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) missing.Add("cookedFolderPath");
                 if (string.IsNullOrWhiteSpace(b.MeshStem))         missing.Add("meshStem");
+                // No separate "assetPrefix missing" entry: empty prefix
+                // implies empty MeshStem here (the derive only returns ""
+                // when its input was unusable).
+                if (!string.IsNullOrWhiteSpace(b.MeshStem)
+                    && string.IsNullOrWhiteSpace(b.ResolveAssetPrefix()))
+                    missing.Add("meshStem (cannot derive asset prefix from this stem)");
                 if (missing.Count == 0) continue; // building is fine, must be a different cause
                 skeletonCount++;
                 var label = !string.IsNullOrWhiteSpace(b.Name) ? b.Name
@@ -2309,7 +2356,11 @@ namespace Windrose.Quartermaster.Core
             var inputs = new BuildingInputs
             {
                 BuildingId        = b.Id,
-                AssetPrefix       = b.AssetPrefix,
+                // ResolveAssetPrefix() falls back to the value derived
+                // from MeshStem when b.AssetPrefix is empty - covers the
+                // case where the profile was loaded from disk without
+                // going through the GUI save pipe that does the migrate.
+                AssetPrefix       = b.ResolveAssetPrefix(),
                 CookedFolderPath  = b.CookedFolderPath,
                 MeshStem          = b.MeshStem,
                 IconStem          = b.IconStem,

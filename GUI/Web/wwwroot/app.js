@@ -62,6 +62,11 @@ const state = {
     vanillaBuildingTemplates: null,        // [{id, displayName, category, packagePath}]
     vanillaBuildingInspections: new Map(), // id -> VanillaBuildingTemplateInspectDto
 
+    // Active card id for the Building Creator. The tab renders ONE card
+    // at a time (picked via the dropdown next to "New Building"); this
+    // holds the user's current selection across re-renders / tab visits.
+    buildingCreatorActiveId: null,
+
     picker: null,
 };
 
@@ -600,6 +605,10 @@ async function loadProfile(id) {
     state.current.customItems     = state.current.customItems     || [];
     state.current.customBuildings = state.current.customBuildings || [];
     migrateLegacyCustomBuildings(state.current);
+    // Reset Building Creator active selection so the picker doesn't try
+    // to surface a stale id from a different profile. renderBuildingCreator
+    // auto-selects the first entry when the id is null/missing.
+    state.buildingCreatorActiveId = null;
     rebuildSavedCustomItemIds();
     syncCustomItemsIntoCatalog();
     state.isDirty = false;

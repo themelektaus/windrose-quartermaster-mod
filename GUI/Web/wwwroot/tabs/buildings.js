@@ -39,6 +39,13 @@ const _resourceDisplayCache  = new Map();  // packagePath -> displayName
 const _vanillaMaterialsLoad = { promise: null };
 const _vanillaResourcesLoad = { promise: null };
 const _vanillaBuildingsLoad = { promise: null };
+// Default-texture stems shipped with the app
+// (Tools/Templates/DefaultTextures/T_*). The per-slot texture
+// dropdowns surface these as an "always available" optgroup on top
+// of whatever the user-cooked folder contributes. Loaded once on
+// first building-card render and re-used across cards.
+const _defaultTextureStemsLoad = { promise: null };
+let _defaultTextureStems = null;  // string[] once loaded
 
 // Cache for per-template inspections (Mesh/Icon/Recipe stems + FText
 // keys). Keyed by templateId, populated on demand when the user picks a
@@ -87,6 +94,24 @@ function ensureVanillaResourcesLoaded() {
             return state.vanillaResources;
         });
     return _vanillaResourcesLoad.promise;
+}
+
+function ensureDefaultTextureStemsLoaded() {
+    if (_defaultTextureStems) return Promise.resolve(_defaultTextureStems);
+    if (_defaultTextureStemsLoad.promise) return _defaultTextureStemsLoad.promise;
+    _defaultTextureStemsLoad.promise = api('GET', '/api/buildings/default-textures')
+        .then(dto => {
+            _defaultTextureStems = (dto && Array.isArray(dto.stems)) ? dto.stems.slice() : [];
+            _defaultTextureStemsLoad.promise = null;
+            return _defaultTextureStems;
+        })
+        .catch(ex => {
+            _defaultTextureStemsLoad.promise = null;
+            _defaultTextureStems = [];
+            console.error('Failed to load default-texture stems:', ex);
+            return _defaultTextureStems;
+        });
+    return _defaultTextureStemsLoad.promise;
 }
 
 function ensureVanillaBuildingTemplatesLoaded() {
@@ -236,49 +261,88 @@ function newCustomBuildingId() {
 
 // -----------------------------------------------------------------------
 // Top-level render.
+//
+// Active-card model: only one building card is rendered at a time. The
+// dropdown next to "New Building" picks which one. This keeps the panel
+// readable when many buildings exist AND avoids parallel inspect/scan
+// requests stepping on each other (retoc spawns, UAssetAPI's Usmap
+// construction etc. are not thread-safe under concurrent load).
 // -----------------------------------------------------------------------
 function renderBuildingCreator() {
-    const list = document.getElementById('buildings-list');
+    const list   = document.getElementById('buildings-list');
+    const picker = document.getElementById('buildings-active-picker');
+    const pickerWrap = picker ? picker.closest('.building-active-pick') : null;
     if (!list) return;
+
     if (!state.current) {
         list.innerHTML = '';
+        if (picker) picker.innerHTML = '';
+        if (pickerWrap) pickerWrap.hidden = true;
         return;
     }
+
     const customs = state.current.customBuildings || [];
+
     if (customs.length === 0) {
         list.innerHTML = '';
+        if (picker) picker.innerHTML = '';
+        if (pickerWrap) pickerWrap.hidden = true;
+        state.buildingCreatorActiveId = null;
         return;
     }
-    const parts = [];
-    for (let i = 0; i < customs.length; i++) {
-        parts.push(buildCustomBuildingCardHtml(customs[i], i));
-    }
-    list.innerHTML = parts.join('');
 
-    // For each card with a cooked folder set, kick off background work:
-    //  - the lightweight scan (file classification)
-    //  - the deep inspect (mesh slots + user-MI defaults) if both
+    // Resolve the active id: prefer the previously-selected one if it
+    // still exists, otherwise fall back to the first entry.
+    let activeId = state.buildingCreatorActiveId;
+    let activeIndex = customs.findIndex(c => c && c.id === activeId);
+    if (activeIndex < 0) {
+        activeIndex = 0;
+        activeId = customs[0].id;
+        state.buildingCreatorActiveId = activeId;
+    }
+
+    // Populate / refresh the dropdown. Hidden when only one building
+    // exists (no choice to make).
+    if (picker) {
+        const opts = [];
+        for (let i = 0; i < customs.length; i++) {
+            const c = customs[i];
+            if (!c) continue;
+            const label = (c.name && c.name.trim()) ? c.name : '(unnamed)';
+            const selAttr = (c.id === activeId) ? ' selected' : '';
+            opts.push('<option value="' + escapeHtml(c.id) + '"' + selAttr + '>'
+                + escapeHtml(label) + '</option>');
+        }
+        picker.innerHTML = opts.join('');
+    }
+    if (pickerWrap) pickerWrap.hidden = (customs.length <= 1);
+
+    // Render ONLY the active card.
+    const active = customs[activeIndex];
+    list.innerHTML = buildCustomBuildingCardHtml(active, activeIndex);
+
+    // Kick off background work for the active card only:
+    //  - lightweight scan (file classification)
+    //  - deep inspect (mesh slots + user-MI defaults) if both
     //    cookedFolderPath + meshStem are present
-    //  - the recipe default fetch (per templateId, cached) so the
+    //  - recipe default fetch (per templateId, cached) so the
     //    cost editor shows the vanilla pre-fill on initial render
-    for (let i = 0; i < customs.length; i++) {
-        const c = customs[i];
-        if (!c) continue;
-        if (c.cookedFolderPath) {
-            scanCookedFolderForCard(i, c.cookedFolderPath);
+    if (active) {
+        if (active.cookedFolderPath) {
+            scanCookedFolderForCard(activeIndex, active.cookedFolderPath);
         }
-        if (c.cookedFolderPath && c.meshStem) {
-            triggerCookedInspect(i, c.id, c.cookedFolderPath, c.meshStem);
+        if (active.cookedFolderPath && active.meshStem) {
+            triggerCookedInspect(activeIndex, active.id, active.cookedFolderPath, active.meshStem);
         }
-        if (c.templateId) {
-            triggerRecipeRender(c);
+        if (active.templateId) {
+            triggerRecipeRender(active);
             // Etappe I: kick off template inspection for the title hint line.
             // Only for Vanilla DA paths - the legacy "Painting"/"Bucket"
             // sentinels are not in the catalog and would 500. Heuristic:
             // Vanilla paths start with "/Game/Gameplay/Building/".
-            if (c.templateId.indexOf('/Game/Gameplay/Building/') === 0
-                && !state.vanillaBuildingInspections.has(c.templateId)) {
-                ensureVanillaBuildingInspection(c.templateId).then(() => {
+            if (active.templateId.indexOf('/Game/Gameplay/Building/') === 0
+                && !state.vanillaBuildingInspections.has(active.templateId)) {
+                ensureVanillaBuildingInspection(active.templateId).then(() => {
                     // Re-render to surface the resolved hint line.
                     renderBuildingCreator();
                 });
@@ -299,6 +363,29 @@ function renderBuildingCreator() {
                 state.vanillaBuildingCategories = [];
             });
     }
+    // First-render: also kick off the default-texture-stems load so
+    // the per-slot texture dropdowns can list the shipped stems
+    // (T_White / T_NormalFlat / T_MTRMDefault) without the user
+    // having to cook them into their own folder. Re-render once the
+    // catalog arrives so the dropdown surfaces the new optgroup
+    // (slot UI re-renders via triggerCookedInspect on tab interaction
+    // anyway, but the re-render ensures the group appears immediately
+    // even on a freshly-opened card).
+    if (!_defaultTextureStems && customs.length > 0) {
+        ensureDefaultTextureStemsLoaded().then(() => {
+            renderBuildingCreator();
+        });
+    }
+}
+
+// Dropdown next to "New Building" - switches the active card.
+function onBuildingsActivePickerChange(e) {
+    const picker = e.target;
+    if (!picker || picker.id !== 'buildings-active-picker') return;
+    const newId = picker.value || null;
+    if (!newId || newId === state.buildingCreatorActiveId) return;
+    state.buildingCreatorActiveId = newId;
+    renderBuildingCreator();
 }
 
 function buildCustomBuildingCardHtml(custom, index) {
@@ -314,9 +401,6 @@ function buildCustomBuildingCardHtml(custom, index) {
     const safeName   = escapeHtml(custom.name || '');
     const safeDesc   = escapeHtml(custom.description || '');
     const safePath   = escapeHtml(custom.cookedFolderPath || '');
-    const safePrefix = escapeHtml(custom.assetPrefix || '');
-    const safeMesh   = escapeHtml(custom.meshStem || '');
-    const safeIcon   = escapeHtml(custom.iconStem || '');
 
     const missingHtml = renderMissingRequiredBanner(custom, tpl);
 
@@ -375,13 +459,9 @@ function buildCustomBuildingCardHtml(custom, index) {
         +   '</header>'
         +   '<div class="building-fields">'
         +     missingHtml
-        +     '<label class="building-field">'
+        +     '<label class="building-field building-field-wide">'
         +       '<span>Name (in-game)</span>'
         +       '<input type="text" data-building-field="name" value="' + safeName + '" placeholder="Building display name">'
-        +     '</label>'
-        +     '<label class="building-field">'
-        +       '<span>Asset prefix<span class="required-marker" title="required">*</span></span>'
-        +       '<input type="text" data-building-field="assetPrefix" value="' + safePrefix + '" placeholder="QmPainting">'
         +     '</label>'
         +     '<label class="building-field building-field-wide">'
         +       '<span>Description (tooltip)</span>'
@@ -400,14 +480,7 @@ function buildCustomBuildingCardHtml(custom, index) {
                     ? '<div class="building-scan"><em>Scanning...</em></div>'
                     : '<div class="building-scan"><em>Pick a folder above and click Scan, or just type a path - we&apos;ll scan automatically when you stop editing.</em></div>')
         +     '</div>'
-        +     '<label class="building-field">'
-        +       '<span>Mesh stem (SM_...)<span class="required-marker" title="required">*</span></span>'
-        +       '<input type="text" data-building-field="meshStem" value="' + safeMesh + '" placeholder="SM_QmPainting_01">'
-        +     '</label>'
-        +     '<label class="building-field">'
-        +       '<span>Icon stem (T_..._Icon)</span>'
-        +       '<input type="text" data-building-field="iconStem" value="' + safeIcon + '" placeholder="T_QmPainting_Icon">'
-        +     '</label>'
+        +     renderMeshIconSelectsHtml(custom)
         +     '<div class="building-field building-field-wide" data-building-slots-host>'
         +       (custom.cookedFolderPath && custom.meshStem
                     ? '<div class="building-slots-status"><em>Reading mesh slots...</em></div>'
@@ -422,16 +495,14 @@ function buildCustomBuildingCardHtml(custom, index) {
 
 // -----------------------------------------------------------------------
 // Missing-fields banner. Required:
-//   - assetPrefix
 //   - cookedFolderPath
-//   - meshStem
-//   - iconStem  (Etappe G: required so the build menu thumbnail isn't blank)
+//   - meshStem        (asset prefix is derived from this server-side)
+//   - iconStem        (so the build menu thumbnail isn't blank)
 //   - per-slot VanillaMaterialParentPath (only when slot list is known)
 // -----------------------------------------------------------------------
 function renderMissingRequiredBanner(custom, _tpl) {
     if (!custom) return '';
     const missing = [];
-    if (!custom.assetPrefix      || !custom.assetPrefix.trim())      missing.push('Asset prefix');
     if (!custom.cookedFolderPath || !custom.cookedFolderPath.trim()) missing.push('Cooked folder path');
     if (!custom.meshStem         || !custom.meshStem.trim())         missing.push('Mesh stem');
     if (!custom.iconStem         || !custom.iconStem.trim())         missing.push('Icon stem');
@@ -543,7 +614,21 @@ function renderSlotPickersForCard(buildingId) {
         return;
     }
     if (!Array.isArray(inspection.meshSlots) || inspection.meshSlots.length === 0) {
-        host.innerHTML = '<div class="building-slots-status"><em>Mesh has no material slots.</em></div>';
+        // The backend swallows mesh-read exceptions into `warnings` but
+        // still returns ok=true with empty meshSlots. Surface those warnings
+        // here so the user sees the actual cause (e.g. UAssetAPI throwing
+        // under parallel load) instead of a silent "no slots" message.
+        const warnings = Array.isArray(inspection.warnings) ? inspection.warnings : [];
+        let html = '<div class="building-slots-status"><em>Mesh has no material slots.</em>';
+        if (warnings.length > 0) {
+            html += '<div class="building-slots-warnings">';
+            for (const w of warnings) {
+                html += '<div class="building-slots-warning">' + escapeHtml(String(w)) + '</div>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+        host.innerHTML = html;
         return;
     }
 
@@ -825,10 +910,7 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
             parts.push('<div class="building-slot-param">'
                 + '<label><span>' + escapeHtml(t.name) + '</span>'
                 + '<select data-param-texture="' + escapeHtml(t.name) + '">'
-                +   '<option value="">(use Vanilla: ' + escapeHtml(t.textureStem || '?') + ')</option>'
-                +   cookedTextures.map(s =>
-                        '<option value="' + escapeHtml(s) + '"' + (s === stem ? ' selected' : '') + '>' + escapeHtml(s) + '</option>'
-                    ).join('')
+                +   renderTextureOptions(cookedTextures, stem, t.textureStem)
                 + '</select>'
                 + '</label>'
                 + '<button type="button" class="btn-link" data-param-reset-texture="' + escapeHtml(t.name) + '" title="Reset to Vanilla">reset</button>'
@@ -849,29 +931,171 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
     refreshMissingFieldsBanner(card, building);
 }
 
-// Build the texture-stem dropdown options from files actually in the
-// user's cooked folder (only T_*.uasset entries). The scan result
-// gets cached per-card in _buildingScanCache - if it's not cached
-// yet, the GUI fires a scan when the user picks a path, so this
-// should be ready by the time the user opens the texture dropdown.
-function collectCookedTextureStems(building, inspection) {
-    const result = [];
-    // The inspection itself only lists MI files. For texture stems,
-    // we need to ask the scan-cooked endpoint. But that's already
-    // cached on the card host via DOM (renderScanResult writes the
-    // file list into the DOM). For simplicity we just pull from a
-    // separate cache populated by the scan endpoint.
+// Collect the texture-stem candidates the per-slot dropdown should
+// offer. Returns a { defaults, folder } pair so the renderer can keep
+// the two groups visually distinct (shipped defaults vs. files the
+// user actually cooked into their folder).
+//
+//   - defaults: stems shipped with the app
+//     (Tools/Templates/DefaultTextures/T_*). Always available; the
+//     build pipeline stages the matching .uasset/.uexp/.ubulk
+//     triplets into every build, so referencing them never breaks.
+//     Empty array until the lazy loader resolves - the dropdown
+//     re-renders once the catalog arrives.
+//   - folder: T_* stems from the user's cooked folder scan, with
+//     any stem that also appears in `defaults` filtered out so the
+//     same name doesn't show up twice. Empty until the scan runs.
+function collectCookedTextureStems(building, _inspection) {
+    const defaults = Array.isArray(_defaultTextureStems) ? _defaultTextureStems.slice() : [];
+    const defaultsSet = new Set(defaults);
+
+    const folder = [];
     const scanList = _buildingTextureStemCache.get(building.id);
     if (Array.isArray(scanList)) {
         for (const s of scanList) {
-            if (s && s.startsWith('T_')) result.push(s);
+            if (!s || !s.startsWith('T_')) continue;
+            if (defaultsSet.has(s)) continue;  // shipped default wins
+            folder.push(s);
         }
     }
-    result.sort((a, b) => a.localeCompare(b));
-    return result;
+    folder.sort((a, b) => a.localeCompare(b));
+    return { defaults, folder };
+}
+
+// Render the per-slot texture-param <select> body. Emits:
+//   - "(use Vanilla: <vanillaStem>)" placeholder that selects to "" so
+//     the param falls through to the cloned MI's parent default
+//   - "Default textures" optgroup with the shipped stems (T_White,
+//     T_NormalFlat, T_MTRMDefault) - always present even if the
+//     user hasn't picked a cooked folder yet
+//   - "From cooked folder" optgroup with T_* stems the scan found
+//     (only when at least one is available); the shipped defaults
+//     are already filtered out of this list in collectCookedTextureStems
+//   - Survival entry for a saved value that doesn't appear in either
+//     list (e.g. user typed a stem the scan no longer finds) so the
+//     dropdown doesn't visually drop the user's pick
+//
+// `currentStem` is the value currently saved on the slot's
+// textureParams; `vanillaStem` is the parent-MI's existing texture
+// reference for this param (used in the placeholder text only).
+function renderTextureOptions(stems, currentStem, vanillaStem) {
+    const parts = [];
+    parts.push('<option value="">(use Vanilla: ' + escapeHtml(vanillaStem || '?') + ')</option>');
+
+    let foundCurrent = false;
+    const mark = (stem) => {
+        const sel = (stem === currentStem) ? ' selected' : '';
+        if (stem === currentStem) foundCurrent = true;
+        return '<option value="' + escapeHtml(stem) + '"' + sel + '>' + escapeHtml(stem) + '</option>';
+    };
+
+    if (stems.defaults && stems.defaults.length > 0) {
+        parts.push('<optgroup label="Default textures (always available)">');
+        for (const s of stems.defaults) parts.push(mark(s));
+        parts.push('</optgroup>');
+    }
+    if (stems.folder && stems.folder.length > 0) {
+        parts.push('<optgroup label="From cooked folder">');
+        for (const s of stems.folder) parts.push(mark(s));
+        parts.push('</optgroup>');
+    }
+    // Saved value that didn't match either group - keep it as a free-
+    // standing option so the picker reflects current state instead of
+    // silently dropping the user's pick.
+    if (currentStem && !foundCurrent) {
+        parts.push('<option value="' + escapeHtml(currentStem) + '" selected>'
+            + escapeHtml(currentStem) + ' (not found)</option>');
+    }
+    return parts.join('');
 }
 
 const _buildingTextureStemCache = new Map(); // building.id -> [stem...]
+const _buildingMeshStemCache    = new Map(); // building.id -> [stem...] (SM_*)
+const _buildingIconStemCache    = new Map(); // building.id -> [stem...] (T_*_Icon)
+
+// -----------------------------------------------------------------------
+// Mesh + Icon stem dropdowns, populated from the cooked-folder scan.
+//
+// Asset prefix used to be a manual user input; it's now derived
+// automatically server-side from the picked MeshStem (e.g.
+// "SM_QmWieselburger_01" -> "QmWieselburger"). The Mesh/Icon selects
+// list every matching stem the scan found in the cooked folder so the
+// user picks instead of typing. If no scan has run yet (or the cache is
+// empty), we still show the currently-saved value as a single option so
+// the field stays addressable until the scan completes.
+// -----------------------------------------------------------------------
+function renderMeshIconSelectsHtml(custom) {
+    const meshStems = _buildingMeshStemCache.get(custom.id) || [];
+    const iconStems = _buildingIconStemCache.get(custom.id) || [];
+    return ''
+        + '<label class="building-field">'
+        +   '<span>Mesh stem (SM_...)<span class="required-marker" title="required">*</span></span>'
+        +   renderStemSelectHtml('meshStem', custom.meshStem || '', meshStems)
+        + '</label>'
+        + '<label class="building-field">'
+        +   '<span>Icon stem (T_..._Icon)<span class="required-marker" title="required">*</span></span>'
+        +   renderStemSelectHtml('iconStem', custom.iconStem || '', iconStems)
+        + '</label>';
+}
+
+function renderStemSelectHtml(field, currentValue, options) {
+    const opts = [];
+    const hasScan = options.length > 0;
+    // Placeholder option shown only when nothing is picked yet. We disable
+    // it once the user has chosen something so they can't accidentally
+    // revert to "empty" via keyboard. Empty-string value lets the field
+    // round-trip "no pick" cleanly to the profile JSON.
+    const placeholderText = hasScan
+        ? '— select —'
+        : '— scan folder first —';
+    opts.push('<option value="">' + placeholderText + '</option>');
+
+    let foundCurrent = false;
+    for (const stem of options) {
+        const sel = (stem === currentValue) ? ' selected' : '';
+        if (stem === currentValue) foundCurrent = true;
+        opts.push('<option value="' + escapeHtml(stem) + '"' + sel + '>' + escapeHtml(stem) + '</option>');
+    }
+    // Survive cache-misses: if the profile already has a value the scan
+    // didn't surface (e.g. card just rendered, scan still running, or
+    // folder no longer contains the stem), keep the saved value as a
+    // selected entry so the picker reflects current state instead of
+    // looking like the user lost their pick.
+    if (currentValue && !foundCurrent) {
+        const label = hasScan
+            ? escapeHtml(currentValue) + ' (not found in folder)'
+            : escapeHtml(currentValue);
+        opts.push('<option value="' + escapeHtml(currentValue) + '" selected>' + label + '</option>');
+    }
+    return '<select data-building-field="' + field + '">' + opts.join('') + '</select>';
+}
+
+// Re-render Mesh + Icon selects in-place after a scan refreshes the
+// per-kind stem caches. We replace the two label containers as a unit
+// instead of patching individual options to keep the markup in sync
+// with renderMeshIconSelectsHtml without a full card re-render (which
+// would lose focus/scroll state if the user is mid-edit).
+function refreshMeshIconSelects(card, custom) {
+    if (!card || !custom) return;
+    // The two .building-field labels for mesh/icon sit between the
+    // scan-host and the slots-host - easiest to find them by their
+    // data-building-field selects.
+    const meshSelect = card.querySelector('select[data-building-field="meshStem"]');
+    const iconSelect = card.querySelector('select[data-building-field="iconStem"]');
+    const meshLabel = meshSelect ? meshSelect.closest('label.building-field') : null;
+    const iconLabel = iconSelect ? iconSelect.closest('label.building-field') : null;
+    if (!meshLabel || !iconLabel) return;
+    const newHtml = renderMeshIconSelectsHtml(custom);
+    // Replace both labels at once: outerHTML on the first one would
+    // detach iconLabel from the DOM if we did them separately, so we
+    // wrap-and-swap via a documentFragment.
+    const tmp = document.createElement('div');
+    tmp.innerHTML = newHtml;
+    const newMesh = tmp.querySelector('label.building-field:nth-of-type(1)');
+    const newIcon = tmp.querySelector('label.building-field:nth-of-type(2)');
+    if (newMesh) meshLabel.replaceWith(newMesh);
+    if (newIcon) iconLabel.replaceWith(newIcon);
+}
 
 function rgbToHex(r, g, b) {
     const c = (x) => {
@@ -925,17 +1149,21 @@ async function onBuildingsNew() {
     if (!trimmed) return;
 
     state.current.customBuildings = state.current.customBuildings || [];
-    state.current.customBuildings.push({
+    const newEntry = {
         id: newCustomBuildingId(),
         templateId: template.id,
         name: trimmed,
         description: '',
         cookedFolderPath: '',
-        assetPrefix: '',
+        // assetPrefix is derived server-side from meshStem at save time;
+        // no user input here.
         meshStem: '',
         iconStem: '',
         slots: {},  // populated dynamically after mesh inspection
-    });
+    };
+    state.current.customBuildings.push(newEntry);
+    // Make the new building immediately active in the dropdown.
+    state.buildingCreatorActiveId = newEntry.id;
     state.isDirty = true;
     renderBuildingCreator();
     renderBuildingCreatorStatus();
@@ -964,6 +1192,12 @@ function onBuildingListChange(e) {
                 const safe = escapeHtml(custom.name || '');
                 titleEl.innerHTML = safe || '<em>(unnamed)</em>';
             }
+            // Keep the active-card dropdown in sync with the typed name.
+            const picker = document.getElementById('buildings-active-picker');
+            if (picker) {
+                const opt = picker.querySelector('option[value="' + cssEscape(custom.id) + '"]');
+                if (opt) opt.textContent = (custom.name && custom.name.trim()) ? custom.name : '(unnamed)';
+            }
         } else if (field === 'description') {
             custom.description = t.value;
         } else if (field === 'cookedFolderPath') {
@@ -972,9 +1206,6 @@ function onBuildingListChange(e) {
             if (custom.meshStem) {
                 triggerCookedInspect(index, custom.id, custom.cookedFolderPath, custom.meshStem);
             }
-            refreshMissingFieldsBanner(card, custom);
-        } else if (field === 'assetPrefix') {
-            custom.assetPrefix = t.value || '';
             refreshMissingFieldsBanner(card, custom);
         } else if (field === 'meshStem') {
             custom.meshStem = t.value || '';
@@ -1228,7 +1459,18 @@ async function onBuildingListClick(e) {
         const c = customs[index];
         const label = c.name || c.id;
         if (!await confirm('Delete building "' + label + '"?')) return;
+        const deletedId = c.id;
         customs.splice(index, 1);
+        // If we just deleted the active card, advance the active id to
+        // the next available entry (or clear it if the list is now empty).
+        if (state.buildingCreatorActiveId === deletedId) {
+            if (customs.length === 0) {
+                state.buildingCreatorActiveId = null;
+            } else {
+                const nextIdx = Math.min(index, customs.length - 1);
+                state.buildingCreatorActiveId = customs[nextIdx] ? customs[nextIdx].id : null;
+            }
+        }
         state.isDirty = true;
         renderBuildingCreator();
         renderBuildingCreatorStatus();
@@ -1290,13 +1532,38 @@ async function scanCookedFolderForCard(index, rawPath) {
         const scan = await api('GET', '/api/buildings/scan-cooked?path=' + encodeURIComponent(path));
         _buildingScanCache.set(index, path);
         host.innerHTML = renderScanResult(scan, customs[index]);
-        // Cache T_* stems so the texture-param dropdowns can list them.
+        // Cache stems per kind so the Mesh + Icon + Texture dropdowns
+        // can list them without re-fetching. The Mesh + Icon selects
+        // are then re-rendered in-place so the user sees the new picks
+        // appear without needing to switch buildings.
         if (scan && Array.isArray(scan.entries)) {
             const textureStems = [];
+            const meshStems = [];
+            const iconStems = [];
             for (const e of scan.entries) {
                 if (e.kind === 'texture' || e.kind === 'icon') textureStems.push(e.stem);
+                if (e.kind === 'mesh') meshStems.push(e.stem);
+                if (e.kind === 'icon') iconStems.push(e.stem);
             }
             _buildingTextureStemCache.set(customs[index].id, textureStems);
+            _buildingMeshStemCache.set(customs[index].id, meshStems);
+            _buildingIconStemCache.set(customs[index].id, iconStems);
+            refreshMeshIconSelects(card, customs[index]);
+            // If the saved Mesh/Icon stem is missing in the scan but
+            // there's exactly one candidate, auto-pick it. Saves a click
+            // for the common 1-mesh-per-folder case.
+            const c = customs[index];
+            let autoPicked = false;
+            if (!c.meshStem && meshStems.length === 1) { c.meshStem = meshStems[0]; autoPicked = true; }
+            if (!c.iconStem && iconStems.length === 1) { c.iconStem = iconStems[0]; autoPicked = true; }
+            if (autoPicked) {
+                state.isDirty = true;
+                refreshMeshIconSelects(card, c);
+                refreshMissingFieldsBanner(card, c);
+                if (c.cookedFolderPath && c.meshStem) {
+                    triggerCookedInspect(index, c.id, c.cookedFolderPath, c.meshStem);
+                }
+            }
         }
     } catch (ex) {
         host.innerHTML = '<div class="building-scan building-scan-error">Scan failed: '
@@ -1608,6 +1875,9 @@ function onBuildingListFocusIn(e) {
 function bindBuildingsHandlers() {
     const btn = document.getElementById('btn-buildings-new');
     if (btn) btn.addEventListener('click', onBuildingsNew);
+
+    const activePicker = document.getElementById('buildings-active-picker');
+    if (activePicker) activePicker.addEventListener('change', onBuildingsActivePickerChange);
 
     const list = document.getElementById('buildings-list');
     if (list) {

@@ -58,6 +58,23 @@ public static class BuildingsEndpoint
             var dto = InspectRecipe(templateId, repoRoot);
             return Results.Json(dto);
         });
+
+        // Default-texture stems the Building Creator ships with the
+        // app (T_White, T_NormalFlat, T_MTRMDefault). The frontend
+        // pulls this list once at tab-open and surfaces it as an
+        // "always available" optgroup in every per-slot texture
+        // dropdown so the user can reference these stems without
+        // cooking copies into their own UE project. The build
+        // pipeline copies the matching .uasset/.uexp/.ubulk
+        // triplets from Tools/Templates/DefaultTextures/ into the
+        // staging tree once per build (see DefaultTextureProvider).
+        app.MapGet("/api/buildings/default-textures", () =>
+        {
+            return Results.Json(new
+            {
+                stems = DefaultTextureProvider.GetStems(),
+            });
+        });
     }
 
     static BuildingRecipeInspectionDto InspectRecipe(string templateId, string repoRoot)

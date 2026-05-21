@@ -833,6 +833,16 @@ public static class ProfilesEndpoint
         foreach (var b in src)
         {
             if (b == null) { result.Add(null); continue; }
+            // AssetPrefix is no longer a user input. Persist the value
+            // derived from MeshStem so older code paths that read the
+            // field directly still see a non-empty string. If the
+            // incoming DTO already has one (e.g. an older profile that
+            // got loaded), prefer the existing value to avoid surprising
+            // renames on save. Empty MeshStem -> empty prefix; that's
+            // fine because the build pipeline gates on MeshStem first.
+            var resolvedPrefix = !string.IsNullOrWhiteSpace(b.AssetPrefix)
+                ? b.AssetPrefix
+                : CustomBuilding.DeriveAssetPrefixFromMeshStem(b.MeshStem);
             result.Add(new CustomBuilding
             {
                 Id = b.Id,
@@ -840,7 +850,7 @@ public static class ProfilesEndpoint
                 Name = b.Name,
                 Description = b.Description,
                 CookedFolderPath = b.CookedFolderPath,
-                AssetPrefix = b.AssetPrefix,
+                AssetPrefix = resolvedPrefix,
                 MeshStem = b.MeshStem,
                 IconStem = b.IconStem,
                 Slots = CloneCustomBuildingSlots(b.Slots),

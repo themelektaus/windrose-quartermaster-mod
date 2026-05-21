@@ -25,6 +25,14 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     // Reader pattern extracted from .build-tmp/mi-probe/Program.cs.
     public sealed class MaterialInstanceInspector
     {
+        // Serializes Usmap + UAsset reads. UAssetAPI is not thread-safe and
+        // `new Usmap(path)` opens the .usmap file with an exclusive handle,
+        // so two parallel inspect requests would otherwise collide with
+        // "file in use by another process". Lock is reentrant so
+        // CookedFolderInspector can hold it across an entire folder scan
+        // (mesh + MIs) without re-entrancy issues.
+        public static readonly object UsmapGate = new object();
+
         public string UsmapPath;
 
         // Inspect a MI file. Returns null only if the file isn't a
@@ -37,6 +45,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 throw new FileNotFoundException("MI asset not found", assetPath);
             if (string.IsNullOrEmpty(UsmapPath) || !File.Exists(UsmapPath))
                 throw new InvalidOperationException("MaterialInstanceInspector.UsmapPath not set or not found: " + UsmapPath);
+
+            lock (UsmapGate)
+            {
+                return InspectLocked(assetPath);
+            }
+        }
+
+        MaterialInstanceData InspectLocked(string assetPath)
+        {
 
             var mapping = new Usmap(UsmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mapping);

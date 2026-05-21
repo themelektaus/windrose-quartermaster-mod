@@ -333,6 +333,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var stagedUserAssets = new List<string>();
 
             int copied = 0;
+            int preexisting = 0;
             int skipped = 0;
             int rejected = 0;
             var rejectedSample = new List<string>();
@@ -370,7 +371,31 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
 
                 var dst = Path.Combine(stagingItemsDir, name);
-                File.Copy(f, dst, overwrite: true);
+
+                // Skip-if-exists: when multiple buildings share the same
+                // CookedFolderPath (or even just the same shared default
+                // textures like T_NormalFlat / T_MTRMDefault), each
+                // building's stage pass would otherwise re-copy and
+                // overwrite the previous building's already-staged files.
+                // For meshes this is catastrophic: building #1 has its
+                // user-MI refs rewritten to MI_<Id1>_slot* by Step 2; if
+                // building #2 then re-copies the raw cooked mesh on top,
+                // the patch is silently lost and the in-game mesh renders
+                // unmaterialed (white). For textures it's just wasted I/O.
+                //
+                // The first building to reach a file wins; subsequent
+                // buildings see it as preexisting and skip. Combined with
+                // BuildSlotCloneStem now keying on BuildingId instead of
+                // AssetPrefix, this makes the multi-building case in a
+                // shared cooked folder behave correctly.
+                if (File.Exists(dst))
+                {
+                    preexisting++;
+                    result.StagedFiles.Add(name); // still counts toward this building's manifest
+                    continue;
+                }
+
+                File.Copy(f, dst, overwrite: false);
                 LogLine("  [copy] " + name + (prefixOk ? "" : "  (allowlisted: user-referenced)"));
                 result.StagedFiles.Add(name);
                 copied++;
@@ -382,7 +407,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     stagedUserAssets.Add(dst);
             }
 
-            if (copied == 0)
+            // Both 0 means: no file matched the prefix/allowlist AND no
+            // earlier building already brought one. That's the real error
+            // state (probably a wrong cooked folder or wrong prefix);
+            // preexisting > 0 is fine because a previous building staged
+            // them already.
+            if (copied == 0 && preexisting == 0)
             {
                 // Build a directory-listing snapshot so the user can see
                 // immediately what's actually in the folder vs what they
@@ -405,6 +435,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     + "Files in folder: " + sampleMsg);
             }
             LogLine("[OK] " + copied + " file(s) staged"
+                + (preexisting > 0 ? " (" + preexisting + " already staged by an earlier building - shared cooked folder)" : "")
                 + (skipped > 0 ? " (" + skipped + " user-cooked material(s) skipped)" : "")
                 + (rejected > 0 ? " (" + rejected + " file(s) didn't match prefix"
                     + (rejectedSample.Count > 0 ? ", e.g. " + string.Join(", ", rejectedSample) : "") + ")" : ""));
@@ -928,15 +959,19 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // had to carry "M_<AssetPrefix>_<SlotName>" so the rewrite
         // could find it.
         //
-        // New (mesh-driven): "MI_<AssetPrefix>_slot<Index>". Slot
-        // indices are stable across cook iterations even if the user
-        // renames slots in the editor, so the clone stem stays
-        // deterministic. The mesh's existing user-MI ref is looked up
-        // by stem from CookedFolderInspector - no naming convention
-        // assumed.
+        // Etappe G v1 (mesh-driven, AssetPrefix-keyed): "MI_<AssetPrefix>_slot<Index>".
+        // Problem: two buildings sharing the same AssetPrefix (because the
+        // user cooked them under one project token, e.g. "QmWieselburger"
+        // _01 and _02) produced colliding MI clone paths - second build
+        // overwrote first build's MI in-place.
+        //
+        // Etappe G v2 (BuildingId-keyed): "MI_<BuildingId>_slot<Index>".
+        // BuildingId is a per-building GUID-derived stem (QmBldg_xxxxxxxx)
+        // so the clone path is guaranteed unique even when AssetPrefix
+        // collides. Consistent with the DA naming (DA_BI_<BuildingId>).
         // -----------------------------------------------------------------
         static string BuildSlotCloneStem(BuildingInputs inputs, MeshSlotInput slot)
-            => "MI_" + inputs.AssetPrefix + "_slot" + slot.Index;
+            => "MI_" + inputs.BuildingId + "_slot" + slot.Index;
 
         static string BuildSlotClonePath(BuildingInputs inputs, MeshSlotInput slot)
             => "/Game/Quartermaster/Items/" + BuildSlotCloneStem(inputs, slot);

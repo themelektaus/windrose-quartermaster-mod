@@ -794,6 +794,14 @@ namespace Windrose.Quartermaster.Core
         //     that the mesh's NameMap references and the patcher rewrites
         //   * Per-slot MI clone stems (MI_<AssetPrefix>_<SlotName>) the
         //     patcher emits into the mod pak
+        //
+        // No longer a user-facing field: the GUI removed the input and
+        // the value is auto-derived from MeshStem at save time (see
+        // DeriveAssetPrefixFromMeshStem). Kept as a persisted field so
+        // older profiles still round-trip and so build code reads the
+        // resolved string from a single place. Use ResolveAssetPrefix()
+        // when consuming - it falls back to the derived value when the
+        // stored field is empty (e.g. profile was hand-edited).
         public string AssetPrefix;
 
         // User-cooked mesh stem (no extension, no slashes). Expected to
@@ -819,6 +827,45 @@ namespace Windrose.Quartermaster.Core
         // user explicitly empties the list the patcher writes an empty
         // RecipeCost array so the building can be built for free.
         public List<RecipeCostEntry> RecipeCost;
+
+        // -----------------------------------------------------------------
+        // Returns the AssetPrefix that should drive the asset-allowlist
+        // filter + the MI-clone stem naming. Reads the persisted field
+        // first; falls back to the value derived from MeshStem when the
+        // field is empty. Returns "" when neither is available (caller
+        // gates on emptiness).
+        // -----------------------------------------------------------------
+        public string ResolveAssetPrefix()
+        {
+            if (!string.IsNullOrWhiteSpace(AssetPrefix)) return AssetPrefix.Trim();
+            return DeriveAssetPrefixFromMeshStem(MeshStem);
+        }
+
+        // -----------------------------------------------------------------
+        // Derive an asset prefix from a Mesh stem. The UE-editor naming
+        // convention is "SM_<Prefix>_<Suffix>" where Suffix is usually a
+        // sequence number (01, 02, ...). We:
+        //
+        //   1. Strip the leading "SM_" (case-insensitive).
+        //   2. Strip a trailing "_<digits>" if present.
+        //
+        // Examples:
+        //   "SM_QmWieselburger_01"   -> "QmWieselburger"
+        //   "SM_QmPaint_Mat_01"      -> "QmPaint_Mat"
+        //   "SM_QmPainting"          -> "QmPainting"   (no numeric suffix)
+        //   ""                       -> ""             (caller gates)
+        // -----------------------------------------------------------------
+        public static string DeriveAssetPrefixFromMeshStem(string meshStem)
+        {
+            if (string.IsNullOrWhiteSpace(meshStem)) return "";
+            var s = meshStem.Trim();
+            if (s.StartsWith("SM_", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(3);
+            // Strip a trailing "_<digits>" if present.
+            var m = System.Text.RegularExpressions.Regex.Match(s, @"^(.*)_\d+$");
+            if (m.Success) s = m.Groups[1].Value;
+            return s;
+        }
     }
 
     // One row in CustomBuilding.RecipeCost. Mirrors the wire-format

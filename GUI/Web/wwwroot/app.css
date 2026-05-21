@@ -413,6 +413,38 @@ dl dd {
   font-variant-numeric: tabular-nums;
 }
 
+.building-active-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: .35em;
+  font-size: var(--font-size-small);
+}
+
+.building-active-pick-label {
+  color: var(--text-dim);
+}
+
+.building-active-pick select {
+  min-width: 12em;
+  max-width: 24em;
+}
+
+.building-slots-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  margin-top: .35em;
+}
+
+.building-slots-warnings .building-slots-warning {
+  font-size: var(--font-size-small);
+  color: color-mix(in srgb, var(--warn, #d99) 70%, var(--text));
+  background: color-mix(in srgb, var(--warn, #d99) 12%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--warn, #d99) 60%, transparent);
+  padding: .25em .5em;
+  border-radius: var(--border-radius);
+}
+
 .mods-error {
   background: color-mix(in srgb, var(--danger), black 60%);
   color: var(--text);

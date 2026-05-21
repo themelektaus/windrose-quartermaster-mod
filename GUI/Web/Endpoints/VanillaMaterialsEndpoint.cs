@@ -213,15 +213,36 @@ public static class VanillaMaterialsEndpoint
         };
         foreach (var a in argv) psi.ArgumentList.Add(a);
 
+        // Capture stderr (and a bit of stdout) so non-zero exits give an
+        // actionable error message in the GUI's 500 response instead of
+        // a generic "exit 1". Both streams have to be drained or the
+        // child can deadlock waiting on a full stdout pipe.
+        var stdoutSb = new System.Text.StringBuilder();
+        var stderrSb = new System.Text.StringBuilder();
         var proc = System.Diagnostics.Process.Start(psi);
-        proc.OutputDataReceived += (_, e) => { /* swallow */ };
-        proc.ErrorDataReceived  += (_, e) => { /* swallow */ };
+        proc.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data == null) return;
+            lock (stdoutSb) { if (stdoutSb.Length < 4096) stdoutSb.AppendLine(e.Data); }
+        };
+        proc.ErrorDataReceived  += (_, e) =>
+        {
+            if (e.Data == null) return;
+            lock (stderrSb) { if (stderrSb.Length < 4096) stderrSb.AppendLine(e.Data); }
+        };
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
         proc.WaitForExit();
         if (proc.ExitCode != 0)
+        {
+            string tail;
+            lock (stderrSb) { tail = stderrSb.ToString().TrimEnd(); }
+            if (string.IsNullOrEmpty(tail)) { lock (stdoutSb) { tail = stdoutSb.ToString().TrimEnd(); } }
+            if (tail.Length > 800) tail = "..." + tail.Substring(tail.Length - 800);
+            var detail = string.IsNullOrEmpty(tail) ? "" : " - " + tail;
             throw new InvalidOperationException(
-                "retoc to-legacy failed for '" + stem + "' (exit " + proc.ExitCode + ")");
+                "retoc to-legacy failed for '" + stem + "' (exit " + proc.ExitCode + ")" + detail);
+        }
     }
 
     static MaterialInstanceDto ToDto(MaterialInstanceData mi)
