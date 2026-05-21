@@ -42,6 +42,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             "T_NormalFlat",
             "T_MTRMDefault",
             "T_MTRMGlass",
+            "T_MTRMZero",
+            "T_MTRMOne"
         };
 
         // File-extension set per stem we copy. Mirrors what the UE5
