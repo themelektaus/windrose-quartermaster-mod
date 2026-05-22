@@ -22,11 +22,20 @@ Was nicht funktioniert:
 
 ## Aktueller Deploy-Stand in `~mods`
 
-| Pak | Inhalt | Status |
+Stand 2026-05-22: **keiner der Shovel-Paks** ist mehr in `~mods/` deployed.
+Aktuell liegt dort nur `Quartermaster_<profile>_P.{pak,ucas,utoc}` aus der GUI.
+
+Sources sind noch da und re-deploybar (kein Rebuild noetig, das `build/`-Verzeichnis
+enthaelt das fertige IoStore-Triplet):
+
+| Pak | Inhalt | Repo-Pfad |
 |---|---|---|
-| `ShovelUnblock_P.{pak,ucas,utoc}` | DataAsset-Patch: `GAS.Ability.Terraform.Blocked` Tag aus 3x `DA_TerraformToolParams_*` raus | aktiv |
-| `ShovelNoGenericBlock_P.pak` | Config-Override: `R5TerraformProcessor_GenericActor` aus `+GlobalTerraformProcessors` auskommentiert (Legacy-Pak-Format ohne Zen) | aktiv |
-| `Quartermaster_QmTestPipeL1Clone_P.pak` | (unabhaengig, separates Thema) | aktiv |
+| `ShovelUnblock_P.{pak,ucas,utoc}` | DataAsset-Patch: `GAS.Ability.Terraform.Blocked` Tag aus 3x `DA_TerraformToolParams_*` raus | `Test/ShovelMod/build/` |
+| `ShovelNoGenericBlock_P.pak` | Config-Override: `R5TerraformProcessor_GenericActor` aus `+GlobalTerraformProcessors` auskommentiert (Legacy-Pak-Format ohne Zen) | `.build-tmp/shovel-genericactor-off/` (sofern `.build-tmp` noch vorhanden) |
+
+Reaktivieren: Files aus `Test/ShovelMod/build/` nach `R5/Content/Paks/~mods/` kopieren
+(bzw. den Config-Pak aus `.build-tmp/shovel-genericactor-off/` falls noch vorhanden -
+sonst neu builden, siehe "Source-Stand fuer Re-Build" weiter unten).
 
 ---
 
@@ -109,7 +118,7 @@ Mein Vorschlag fuer Resume: erst **E** (kostet nichts), dann **B** wenn E nichts
 
 ---
 
-## Side-Quest: Pickup-Crash mit `[QM] Test Pipe`
+## Side-Quest: Pickup-Crash mit `[QM] Test Pipe` (historisch)
 
 Bei einem Test wurde ein Stein eingesammelt, was zum Game-Crash gefuehrt hat. Root-Cause war
 nicht die Schaufel-Mod, sondern ein dangling Inventory-Item:
@@ -124,9 +133,13 @@ Das Save hatte `[QM] Test Pipe` Items im Inventar / auf der Map, aber das DA-Ass
 nicht im Pak-Set. Beim Inventory-Pickup-Check (Stein einsammeln pruft Stack-Merge ueber
 alle Slots) schlaegt `ItemParamsView` fehl, BL-Worker stirbt, Game geht in Inconsistent-State.
 
-**Workaround**: `Quartermaster_QmTestPipeL1Clone_P.pak` wieder mit deployed, damit die
+**Workaround damals**: `Quartermaster_QmTestPipeL1Clone_P.pak` wieder mit deployed, damit die
 DA-Referenz aufloesbar bleibt. Die Test-Pipes muessen vor Mod-Removal aus dem Inventar
-weggeworfen oder verbraucht werden.
+weggeworfen oder verbraucht werden. Heute relevant fuer alle Custom-Items: wenn ein Save
+ein DA-Item kennt, das im aktuellen Pak-Set fehlt, kann der naechste Inventory-Touch
+crashen. Loesung: das Pak deployed lassen bis das Item aus allen Saves verschwunden ist,
+oder einen Migrate-Stub-DA mit gleicher Klasse aber leeren Effekten als Soft-Replace
+mitliefern.
 
 **Offenes Folge-Thema**: Test-Pipes die auf der Map herumliegen (ausserhalb Inventar) -
 gibt's einen Cheat-Console-Befehl um die zu cleanen? Recon hat ergeben dass R5 sogar

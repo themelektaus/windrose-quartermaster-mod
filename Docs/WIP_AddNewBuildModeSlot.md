@@ -1,8 +1,10 @@
 # WIP: Add new Build Mode slot
 
-Status: **Phase B5 SUCCESS. Native UE5 DLL-Plugin baut neue Build-Items ohne AssetRegistry-Patching.** Quartermaster-Bedroll (`DA_BI_QmBedrl_01`) ist im Build-Menue platzierbar, hat eigenes Mesh/Icon und wird vom Spiel als regulaerer Slot behandelt. Discovery-Mauer aus Phase B1-B3 ist umgangen, nicht ueberwunden - wir injizieren nach dem nativen Filter zur Runtime.
+Status: **ERLEDIGT + erweitert.** Die DLL-Plugin-Loesung aus Phase B5 ist live und wurde danach in ein vollwertiges GUI-getriebenes Building-Authoring-System ausgebaut. Per Quartermaster-GUI kann der User beliebig viele eigene Buildings anlegen (Naming-Schema `QmBldg_<8hex>`), bekommt sie nach dem Build-Knopf-Druck im Build-Menue der gewuenschten Sparte angezeigt und kann sie ingame platzieren - inkl. eigenem Mesh/Icon/Recipe/Snap-Verhalten und (optional) Flame-Preset.
 
-Naechster Schritt: **Sparten-Targeting** - aktuell wird das Item in jede Build-Kategorie injiziert (Fanout). Soll nur in eine spezifische Sparte (z.B. Decorations) erscheinen.
+Naechster Schritt: **Sparten-Targeting** ist seit B5+ implementiert. Der Inject-Mechanismus filtert pro Item ueber `targetCategorySubstring` (Inject nur in Groups deren erstes Item den angegebenen Substring im Asset-Path hat - default `"BuildingDecoration"`), und global ueber `tabPurityFilter` (Hook ignoriert Aufrufe deren Result nicht in dem konfigurierten Build-Tab landet). Beides wird beim Build vom GUI in `qm_items.json` neben der DLL geschrieben (siehe `GameDeployer.cs::WriteItemsJson()`). Quartermaster-Bedroll war der Spike-Build, heute laeuft das System fuer beliebige `QmBldg_<hash>`-Buildings.
+
+Das Doc steht als Engineering-History stehen - die Architektur-Entscheidungen (Native-Hook statt Pak-Patching, FName-from-String fuer Discovery-Bypass, Auto-Discovery der Offsets) sind weiterhin gueltig und der Basis-Code lebt unveraendert.
 
 ## Ziel
 
@@ -89,34 +91,30 @@ Konsequenz: **AR-Patching war eine Sackgasse.** Pak-Layer wird vom Filter ignori
 
 Jeder Hit auf `GetBuildingGroupsByCategoryTag`:
 
-1. **Capture** (einmalig auf erstem Hit): Donor = `Groups[0].Items[0]`. Source-Group merken.
-2. **Spawn** (einmalig): WBP_Building_Item_C-Klasse aus `donor->Class`, SpawnObject UFunction ruft NewObject-Equivalent. ItemData via memcpy 0x30 Bytes vom Donor initialisiert.
-3. **Override** (einmal pro Hit erneut versucht, bis appliziert): FNameFromString konstruiert die zwei FNames fuer `/Game/Gameplay/Building/BuildingDecoration/DA_BI_QmBedrl_01` und `DA_BI_QmBedrl_01`. Werden in `ItemData.PackageName/AssetName` geschrieben, WeakPtr genullt.
-4. **Fanout** (jeder Hit, jede Group): Wenn Items[] der Group den Spawned-Pointer noch nicht enthaelt und `Num < Max`: append, `Num++`.
+1. **Tab-Purity-Gate** (`tabPurityFilter` aus `qm_items.json`): Wenn das erste Item des Results den Filter-Substring nicht im Package-Path traegt, return ohne Mutation. Verhindert Inject z.B. in Building-Brushes-Tabs.
+2. **Capture** (einmalig auf erstem passenden Hit): Donor = `Groups[0].Items[0]`. Source-Group merken. Class-Substring-Check verhindert Capture eines falschen Item-Types.
+3. **Spawn** pro konfiguriertem Item (einmalig): WBP_Building_Item_C-Klasse aus `donor->Class`, SpawnObject UFunction ruft NewObject-Equivalent. ItemData via memcpy 0x30 Bytes vom Donor initialisiert.
+4. **Override** pro Item (einmal pro Hit erneut versucht, bis appliziert): FNameFromString konstruiert PackageName/AssetName aus den `packagePath`/`assetName`-Strings des Items, WeakPtr genullt. Engine resolved beim naechsten Render aus IoStore/PackageStore.
+5. **Per-Item-Target-Filter**: Pro Group wird `targetCategorySubstring` gegen `Groups[i].Items[0]`'s Package-Path geprueft. Match -> Append des Spawned-Pointers; Miss -> skip.
 
-Resultat: in jeder Build-Kategorie taucht der QmBedrl-Slot zusaetzlich am Ende der ersten Group auf. Klick + Bauen funktioniert.
+Resultat: Jedes in `qm_items.json` gelistete Item taucht nur in den Build-Kategorien auf wo der `targetCategorySubstring` zutrifft (default `"BuildingDecoration"`), und nur in den Build-Tabs wo der globale `tabPurityFilter` durchlaesst.
 
-## Naechster Schritt: Sparten-Targeting
+## Wie das GUI das heute fuettert
 
-Aktuell injizieren wir in **jede** Kategorie ueber Fanout. Das ist gut fuer den Spike, aber falsch fuer ein finales Mod - Quartermaster-Bedroll soll nur in der **Decorations**-Sparte erscheinen, nicht in Walls/Floors/Roof/etc.
+Beim Build-Knopf-Druck (siehe `BuildPipeline.cs`):
 
-### Offene Fragen vor Implementation
+1. Pro Custom-Building patcht die GUI ein eigenes DataAsset (`DA_BI_QmBldg_<hash>`) + Mesh + Materials + (optional) Blueprint-Clone in einen `Quartermaster_<profile>_P.{pak,ucas,utoc}`.
+2. `GameDeployer.cs` schreibt `qm_items.json` neben die `dxgi.dll` mit einem Eintrag pro Custom-Building - jedes Item bekommt seinen `targetCategorySubstring` zugewiesen (typischerweise `"BuildingDecoration"`, kann pro Building variieren wenn andere Sparte gewuenscht ist).
+3. `GameDeployer` deployed bei Bedarf die DLL selbst (`dxgi.dll` + `dxgi_org.dll`) nach `R5/Binaries/Win64/`.
+4. DLL liest `qm_items.json` bei Game-Start, injiziert alle Items in die jeweils gewuenschte Sparte.
 
-| Frage | Wie pruefen |
-|---|---|
-| Welche Sparten gibt es? | Bereits im Log sichtbar - 5-6 verschiedene Categories pro Build-Session werden gehookt. CategoryTag-FName ist aber `<unresolved cmp=0 num=0>` weil wir den Stack-Slot fuer Param nicht zuverlaessig dekodiert haben. |
-| Wie wird der CategoryTag uebergeben? | UFunction-Signatur: `GetBuildingGroupsByCategoryTag(FGameplayTag CategoryTag, UR5BuildingBrush* SelectedBrush, TArray<...>& ReturnValue)`. FGameplayTag ist 0x08 (eine FName). Wir lesen aktuell aus Stack+offset, aber das Offset stimmt nicht zuverlaessig. |
-| Welchen Tag hat "Decorations"? | Wahrscheinlich `Building.Category.Decoration` oder aehnlich - im Dumper-Output unter `R5BuildingItem::CategoryTags` oder via Trial: einmal in jeder Kategorie ein anderes Item injizieren und Icon visuell zuordnen. |
+Heisst: Adding eines neuen Buildings ist ein reiner GUI-Vorgang, kein DLL-Rebuild, kein manuelles JSON-Editieren.
 
-### Implementations-Optionen
+## Erweiterungen seit B5 (nicht in diesem Doc bisher dokumentiert)
 
-| Option | Ansatz | Aufwand |
-|---|---|---|
-| **A - CategoryTag-Read fixen** | UFunction-Param-Layout via Dumper-Output verifizieren, ExecFn nutzt FFrame mit `P_GET_STRUCT_REF` - Stack-Slot via Frame-Walk lesen. Bei jedem Hit den Tag-String dumpen, mit gewuenschtem Tag matchen. | Mittel (1-2h) - Frame-Layout neu pruefen |
-| **B - Group-Identifizierung statt Tag** | Group-Widget hat vermutlich Properties die die Kategorie identifizieren (z.B. `CategoryTag` oder `GroupName`). Wenn wir die in Group-Widget lesen koennen, brauchen wir den Funktion-Param nicht. | Klein (~30min) - Class-Children-Walk auf WBP_Building_Group_C |
-| **C - Asset-Driven Kategorisierung** | DA_BI_QmBedrl_01 hat selbst eine `CategoryTags` Property in R5BuildingItem. Wenn der Spawned-Widget seine SoftRef hydratet, fragt das Game die Tags ab und sortiert ihn moeglicherweise selbst in die richtige Sparte. Testbar: aktuell injizieren wir in ALLE Kategorien - wenn wir Source-Group skippen, ist QmBedrl in N-1 Kategorien sichtbar. Korrekte Loesung waere ihn in 1 Kategorie sichtbar zu haben. | Sehr klein (~15min) - nur Testaufwand |
-
-Pragmatisch: **erst B testen** (Group-Properties), das beantwortet auch die Frage ob das Game den Slot via Asset-Tags selbst kategorisiert.
+- **Flame-Presets** (`FlamePresetCatalog.cs` + Phase 2 socket-driven placement): Buildings koennen einen Flame-Preset (z.B. `torch`) tragen, der dem Building eine NiagaraComponent + PointLight + Audio aus dem vanilla `BP_BuildingBlock_FloorTorch_C` mitgibt. Position/Rotation/Scale folgen einem im User-Mesh definierten Socket. Siehe `Docs/Howto_AuthorBuildingItem.md` Sektion "Socket (optional, fuer Flame-Preset)".
+- **Per-Building BP-Clone**: Jedes Flame-Building bekommt seinen eigenen `BP_QmFlaming_<BuildingId>` BP-Clone mit NameMap-Rewrite (damit das User-Mesh statt vanilla SM_TorchT01_01 gerendert wird).
+- **CSV-Loca-Patching**: `BuildingItemsCsvPatcher.cs` schreibt pro Building eine `BuildingItems.csv`-Row mit User-Display-Name + Description. FText-Keys werden via `RewriteInlineFTextKeys` in den DA-Bytes auf per-Building-Keys umgebogen (`Decorations_FloorTorch_Name` -> `QmBldg_<hash>_Name`).
 
 ## Reference-Artefakte (Phase A + B Engineering-History)
 

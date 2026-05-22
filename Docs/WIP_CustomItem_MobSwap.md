@@ -19,14 +19,24 @@ Was nicht funktioniert:
 
 ## Aktueller Deploy-Stand in `~mods`
 
-| Pak | Inhalt | Status |
-|---|---|---|
-| `Quartermaster_QmTestPipeL1Clone_P.pak` | Custom-Item `[QM] Test Pipe` (L1-Klon der Boar Whistle) + 30 Foliage-LootTables (jede Faserpflanze droppt die Pipe) + CSV mit Lokalisierung (korrekter Pfad `R5/Content/Localization/Data/InventoryItems.csv`) | aktiv, funktioniert |
-| Mob-Swap-Pak | aktuell **keiner** drin (Iter3-Wolf hatte gecrasht und wurde rausgeworfen) | - |
+Stand 2026-05-22: **keiner der Mini-Project-Paks** ist mehr in `~mods/` deployed.
+Aktuell laeuft dort nur der GUI-Build-Output `Quartermaster_<profile>_P.{pak,ucas,utoc}`,
+der die heutigen Custom-Buildings/-Items aus der Quartermaster-GUI traegt.
 
-Optional zur�ckdeploybar:
-- `DodoFriend_P.{pak,ucas,utoc}` - liefert Boar -> Dodo Swap (spawnt friendly Dodo, macht aber keinen Schaden)
-- `WolfIter2_P.pak` - liefert pure NameMap-Append (Welt l�dt, Spawn ist aber weiterhin Boar)
+Wer die historischen Experimente reaktivieren will, muss die Paks neu bauen (Sources +
+Tooling siehe weiter unten; das `Tools/bpgc-probe/`-Tree existiert allerdings nicht
+mehr - das wurde nach den Mob-Swap-Versuchen aufgeloest).
+
+Optionale Reaktivierungs-Kandidaten (Paks waren historisch gebaut, sind nicht mehr im Repo):
+- `Quartermaster_QmTestPipeL1Clone_P.pak` - Custom-Item `[QM] Test Pipe` (L1-Klon der Boar Whistle)
+  + 30 Foliage-LootTables (jede Faserpflanze droppt die Pipe) + CSV mit Lokalisierung
+- `DodoFriend_P.{pak,ucas,utoc}` - Boar -> Dodo Swap (spawnt friendly Dodo, macht aber keinen Schaden)
+- `WolfIter2_P.pak` - pure NameMap-Append (Welt laedt, Spawn ist aber weiterhin Boar)
+
+Das Custom-Item-Verfahren ist heute durch das **Item-Creator-Feature der Quartermaster-GUI**
+abgeloest (`ItemCreatorPatcher.cs` plus zugehoerige GUI-Tabs). Wer ein neues Item ohne
+Mob-Swap-Hintergrund authoren will, sollte das ueber die GUI machen statt das Repo-Tooling
+nachzubauen.
 
 ---
 
@@ -118,18 +128,20 @@ Resultat: Spiel laeuft, Spawn klappt, aber **Animation lief vorher schon nicht w
 
 ---
 
-## Tooling-Stand
+## Tooling-Stand (historisch)
 
 Beim Custom-Item / Mob-Swap entstanden:
 
-| Tool | Pfad | Zweck |
-|---|---|---|
-| `WolfPatcher` (Iter2/Iter3) | `Tools/bpgc-probe/...` | NameMap-Append + Super/Template-Index-Switch fuer `BP_Mob_Boar_Friend.uasset` |
-| `DodoFriendCloner` | gleicher Tool-Tree | Generischer UAssetAPI-Asset-Clone (NameMap-Patch + Save unter neuem Pfad) |
-| CDO-Inspector | gleicher Tool-Tree | Diff zwischen Ref-Mod und Vanilla CDO Export[4] |
-| Repak-basierter Build | `.build-tmp/whistle-recon/` etc. | Pak-Triplet Build via repak + AES-Key |
+| Tool | Pfad (damals) | Heute noch da? | Zweck |
+|---|---|---|---|
+| `WolfPatcher` (Iter2/Iter3) | `Tools/bpgc-probe/...` | **nein** (aufgeloest) | NameMap-Append + Super/Template-Index-Switch fuer `BP_Mob_Boar_Friend.uasset` |
+| `DodoFriendCloner` | gleicher Tool-Tree | **nein** | Generischer UAssetAPI-Asset-Clone (NameMap-Patch + Save unter neuem Pfad) |
+| CDO-Inspector | gleicher Tool-Tree | **nein** | Diff zwischen Ref-Mod und Vanilla CDO Export[4] |
+| Repak-basierter Build | `.build-tmp/whistle-recon/` etc. | partial - Konzept ueberlebt im IoStoreCompositeBuilder | Pak-Triplet Build via repak + AES-Key |
 
-`Tools/QuartermasterCore/` (Production-GUI-Pipeline) wurde fuer Custom-Item / Mob-Swap **nicht** veraendert. Alles laeuft via Build-Tmp und manuelles Deploy.
+Damaliger Zustand: `Tools/QuartermasterCore/` (Production-GUI-Pipeline) wurde fuer Custom-Item / Mob-Swap **nicht** veraendert. Alles lief via Build-Tmp und manuelles Deploy.
+
+Heutiger Zustand: Custom-Items laufen ueber `Tools/QuartermasterCore/ItemCreatorPatcher.cs` aus der GUI. Mob-Swap ist nicht in die GUI-Pipeline aufgenommen worden - die ungeloesten BPGC-CDO-Themen aus diesem Doc haetten dafuer erst eine der Optionen A/B/C/D weiter unten geloest werden muessen.
 
 ---
 

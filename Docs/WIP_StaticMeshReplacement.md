@@ -1,14 +1,25 @@
 # Work In Progress: Static Mesh Replacement
 
-Stand: 2026-05-17
+Stand: 2026-05-22 (Update)
 
 ## Big Picture
 
-Ziel: Ein vanilla Static Mesh (Inventar-Item, Schiffsteil, Moebel, Welt-Prop) soll durch
-ein vom User selbst erstelltes Modell ersetzt werden koennen, inklusive Material und
-Textur. Der Workflow soll analog zur funktionierenden Ship-Music-Pipeline laufen:
+Ziel: Ein **bereits im Spiel vorhandenes** vanilla Static Mesh (Inventar-Item,
+Schiffsteil, Moebel, Welt-Prop, Foliage wie Baeume/Bueschwerk) soll durch ein vom
+User selbst erstelltes Modell ersetzt werden koennen, inklusive Material und
+Textur. Der Effekt: ueberall wo das Spiel den vanilla Asset-Pfad referenziert
+(z.B. via Foliage-Painter, Hand-Placement, Prozedural-Spawn), wird das User-Mesh
+gerendert. Der Workflow soll analog zur funktionierenden Ship-Music-Pipeline laufen:
 User cookt einmal im UE5.6-Editor, Quartermaster patcht die FName-Table auf den
 Vanilla-Slot und buendelt das Ergebnis in einen IoStore-Pak.
+
+**Scope**: Single-Slot-Replace pro Mod-Eintrag. Ein vanilla Asset-Pfad wird durch
+genau ein User-Mesh ersetzt. Wenn der User z.B. "alle Eichen austauschen" will und
+die Eichen-Variante 5 verschiedene Asset-Pfade hat (`SM_Tree_Oak_01`/`_02`/...),
+muss er pro Variante einen eigenen Slot-Override anlegen - das Spiel macht
+dann pro Foliage-Placement-Eintrag den eigenen Lookup, und alle ersetzten
+Pfade renden das User-Mesh. Bulk-Replace per Pattern/Klasse ist ausdruecklich
+**nicht** Teil dieses Features (waere ein Convenience-Layer obendrueber).
 
 Aktueller Status: noch nicht implementiert. Dieses Dokument beschreibt den geplanten
 Workflow + offene Fragen.
@@ -174,10 +185,11 @@ Aktueller Kestrel-Cap (200 MB) reicht. Falls hochaufloesende Textur-Sets: hoch a
 ### Frontend
 
 Neuer Tab `staticmesh.html/js/css`:
-- Liste der Slot-Kategorien (Inventar / Schiff / Moebel / Props) -> aufklappbare Sections
+- Liste der Slot-Kategorien (Inventar / Schiff / Moebel / Props / Foliage) -> aufklappbare Sections
 - Pro Slot eine Card mit Drag-and-Drop fuer ganze Cook-Output-Ordner
 - Status: "Vanilla" / "Custom: N Dateien (X MB)"
 - "Reset to Vanilla"
+- Universal-Replacer-Sektion: freies Texteingabe-Feld fuer beliebigen vanilla Asset-Pfad, daneben Upload (fuer Power-User-Workflows wie "alle Eichen austauschen" - User listet pro Tree-Variante einen eigenen Eintrag auf)
 
 Optional Phase 2: 3D-Preview im Browser via three.js / model-viewer (parsed `.uasset`-Vertex-Buffer -> WebGL).
 
@@ -191,11 +203,13 @@ Welche Vanilla-Static-Meshes sind sinnvoll als ersetzbare Slots? Drei Strategien
 
 | Strategie | Pro | Contra |
 |---|---|---|
-| Curated (z.B. 50 ausgewaehlte Inventar-Items + 20 Schiffsteile + 30 Moebel) | UI ist sauber, Slot-Namen sind sprechend ("Cutlass", "Cannon", "Treasure Chest") | Manueller Aufwand: Pfade scrapen + Anzeige-Namen pflegen |
+| Curated (z.B. 50 ausgewaehlte Inventar-Items + 20 Schiffsteile + 30 Moebel + Foliage-Sets wie "Trees", "Bushes") | UI ist sauber, Slot-Namen sind sprechend ("Cutlass", "Cannon", "Tree Oak L1") | Manueller Aufwand: Pfade scrapen + Anzeige-Namen pflegen |
 | Auto-Scrape alles | Vollstaendig, kein Pflegeaufwand | UI: 5000+ Eintraege, unbedienbar |
-| Universal-Replacer (User gibt Pfad direkt ein) | Maximum-Flexibilitaet | Power-User-Feature, kein Discovery |
+| Universal-Replacer (User gibt Pfad direkt ein) | Maximum-Flexibilitaet, deckt Foliage-Bulk ab (User listet pro Tree-Variante einen Eintrag) | Power-User-Feature, kein Discovery |
 
 Empfehlung: Curated fuer v1, Universal als Power-User-Schalter danebenstellen.
+Wenn der User z.B. "alle Eichen austauschen" will, geht das mit dem Universal-Replacer
+durch das Auflisten aller `SM_Tree_Oak_*` Pfade als separate Slot-Overrides.
 
 ### Material-Pfad-Strategie
 

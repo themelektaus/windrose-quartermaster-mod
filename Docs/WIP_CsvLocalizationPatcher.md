@@ -1,6 +1,6 @@
 # Work In Progress: CSV Localization Patcher
 
-Stand: 2026-05-17
+Stand: 2026-05-22 (Update)
 
 ## Big Picture
 
@@ -8,9 +8,25 @@ Ziel: Beliebige im Spiel sichtbare Texte (Item-Namen, Decoration-Namen,
 Beschreibungen, UI-Strings) sollen ueber eine simple String-Edit-Mechanik
 veraenderbar sein, ohne ein Asset im UE-Editor anfassen zu muessen.
 
-Status: **Mechanik verifiziert, Feature noch nicht implementiert.** Ein manueller
-Probetest hat gezeigt dass eine modifizierte `BuildingItems.csv` aus einem Mod-Pak
-zur Laufzeit greift und die Anzeige im Build-Modus aendert.
+Status: **Mechanik verifiziert. Teilweise implementiert.**
+
+Was lebt heute:
+- **`BuildingItemsCsvPatcher.cs`** patcht `R5/Content/Localization/Data/BuildingItems.csv`
+  fuer jedes vom GUI erzeugte Custom-Building (Name + Description pro `QmBldg_<hash>`).
+- **`ItemCreatorPatcher.cs`** patcht `R5/Content/Localization/Data/InventoryItems.csv`
+  fuer GUI-erzeugte Custom-Items.
+- Pak-Format: das Mod-Pak enthaelt die gepatchte CSV neben den DataAssets, IoStore-Composite
+  laesst das Game beim naechsten Loca-Lookup den Mod-Eintrag finden (Pak-Override schlaegt
+  Vanilla wie im Probetest verifiziert).
+- FText-Keys in den DA-Bytes werden via `FTextKeyRewriter.cs` / `RewriteInlineFTextKeys`
+  auf die per-Building-Keys umgebogen (Vanilla-Key `Decorations_FloorTorch_Name` ->
+  per-Building `QmBldg_<hash>_Name`), damit die per-Building-CSV-Row referenziert wird.
+
+Was noch fehlt:
+- Generischer **User-facing Localization-Editor** (Tab "Localization"): User waehlt
+  beliebigen Vanilla-String aus einer CSV und ueberschreibt ihn. Heute geht das nur
+  intern fuer Auto-Generated-Items/Buildings, nicht fuer vorhandene Vanilla-Eintraege
+  wie z.B. den Anzeigenamen eines vanilla Iron-Ingot oder einer Quest.
 
 ---
 
@@ -149,18 +165,19 @@ Netto: 2.5 - 3.5 Tage fuer ein nutzbares Feature.
 
 ---
 
-## Verhaeltnis zum Build-Mode-MVP
+## Verhaeltnis zum Build-Mode-System (erledigt)
 
 Der Build-Mode-MVP (eigener Decoration-Slot in der Kategorie Dekorationen) ist
 **unabhaengig** von diesem Feature. Er braucht das CSV-Override-Verfahren aber
-intern: wenn wir einen neuen Slot `DA_BI_QmCustom_01` clonen, brauchen wir auch
-einen passenden Eintrag `Decorations_QmCustom_01_Name = "Test Decoration"` in
-der CSV.
+intern: bei jedem neuen Slot `DA_BI_QmBldg_<hash>` schreibt
+`BuildingItemsCsvPatcher.cs` einen passenden CSV-Eintrag
+`QmBldg_<hash>_Name = "<User-Name>"` plus die zugehoerige Description-Row, und
+`RewriteInlineFTextKeys` biegt die DA-internen Keys auf diese Rows um.
 
-Sequenz:
-1. Build-Mode-MVP zuerst (verifiziert "Spiel discovered neue Slots")
-2. Sobald MVP laeuft: dieses Feature als generischer Patcher dazubauen
-   (Benutzer-Override-UI fuer alle Texte, nicht nur den eigenen Slot)
+Sequenz (erledigt 2026-05):
+1. Build-Mode-MVP via DLL-Inject (Phase B5, siehe `WIP_AddNewBuildModeSlot.md`)
+2. GUI-Building-Authoring mit CSV-Loca-Integration (`BuildingItemsCsvPatcher.cs`)
+3. Analog fuer Items via `ItemCreatorPatcher.cs`
 
-Reihenfolge umgekehrt waere okay, aber der Build-Mode-MVP gibt uns das groessere
-Discovery-Signal.
+Was noch nicht passiert ist: der generische User-Override-Pfad fuer beliebige
+Vanilla-CSVs/Vanilla-Keys (siehe oben "Was noch fehlt").
