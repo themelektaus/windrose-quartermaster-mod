@@ -614,6 +614,15 @@ namespace Windrose.Quartermaster.Core
                             // per-profile JSON (no orphan empty entry in
                             // the DLL's scan).
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
+
+                            // If this was the user's last buildings profile,
+                            // the JSON delete leaves Win64 with zero
+                            // qm_items_*.json files - meaning the DLL has
+                            // nothing to inject anymore. Remove the DLL pair
+                            // so we don't leave an idle inject in the game
+                            // folder. No-op when other profiles still have
+                            // JSONs alongside.
+                            deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }
                     catch (Exception ex)

@@ -286,6 +286,14 @@ public static class ModsEndpoint
                         // will write a fresh JSON for the next active profile,
                         // which is a degraded but acceptable fallback).
                         TryRemoveDeployedProfileJson(repoRoot, displayName, recycled);
+
+                        // If this was the user's last Quartermaster pak,
+                        // the JSON delete leaves Win64 with zero
+                        // qm_items_*.json files - the DLL has nothing to
+                        // inject anymore. Remove the DLL pair so we don't
+                        // leave an idle proxy in the game folder. No-op
+                        // when other Quartermaster paks are still deployed.
+                        TryRemoveDeployedDllIfIdle(repoRoot, recycled);
                     }
                 }
             }
@@ -332,6 +340,36 @@ public static class ModsEndpoint
             // Not fatal: the pak is gone, the DLL just keeps an orphan
             // config that fails to resolve at inject time. Logged below
             // only if a more aggressive cleanup is added later.
+        }
+    }
+
+    // Best-effort removal of dxgi.dll + dxgi_original.dll when no
+    // qm_items_*.json profiles remain in Win64 (= no deployed
+    // Quartermaster pak wants the inject anymore). Routes through the
+    // trash for symmetry with the pak/JSON delete, so the user can
+    // recover the whole set from the recycle bin if they undo the
+    // deletion. No-op when other profile JSONs still exist or when
+    // the DLL pair was never deployed by us (safety guard inside
+    // GameDeployer.RemoveDllIfNoProfilesLeft).
+    static void TryRemoveDeployedDllIfIdle(string repoRoot, List<string> recycled)
+    {
+        try
+        {
+            var deployer = new GameDeployer(repoRoot);
+            deployer.RemoveDllIfNoProfilesLeft(path =>
+            {
+                CrossPlatformTrash.DeleteToTrash(path);
+                recycled.Add(Path.GetFileName(path));
+            });
+        }
+        catch
+        {
+            // Same fallback rationale as TryRemoveDeployedProfileJson:
+            // game folder may not be locatable / Win64 not writable.
+            // The pak/JSON deletes already succeeded - leaving the DLL
+            // pair behind without a JSON makes the DLL a no-op at the
+            // next game start (nothing to inject), so this is degraded
+            // but not broken.
         }
     }
 

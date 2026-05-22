@@ -249,6 +249,71 @@ namespace Windrose.Quartermaster.Core.Deploy
             return true;
         }
 
+        // Removes the dxgi.dll + dxgi_original.dll pair if there are no
+        // qm_items_*.json profiles left in Win64. Safe no-op when there
+        // are still profile JSONs around (at least one deployed pak
+        // wants the inject). Triggered by:
+        //   - BuildPipeline after a profile is built with 0 buildings
+        //     AND no other profile JSONs exist anymore (i.e. the user's
+        //     last buildings profile just emptied out).
+        //   - ModsEndpoint after the user trashes a Quartermaster pak
+        //     and the matching qm_items_<name>.json was removed too.
+        //
+        // Safety guard: only treats the dxgi.dll as ours when
+        // dxgi_original.dll is alongside (same proof as EnsureDllInstalled
+        // uses to reject foreign proxies). Without the pair we leave the
+        // unknown file alone.
+        //
+        // `deleter` is called once per file we decide to remove - the
+        // BuildPipeline path uses File.Delete, the ModsEndpoint path
+        // routes through CrossPlatformTrash so the user can recover the
+        // DLL the same way they recover the pak. Defaults to File.Delete.
+        //
+        // Returns true if at least one file was removed.
+        public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)
+        {
+            if (!Directory.Exists(_gameWin64Dir)) return false;
+
+            // Any per-profile JSON left -> another deployed pak still
+            // wants the inject. Keep the DLL installed.
+            if (EnumerateProfileItemsJsonPaths().Count > 0) return false;
+
+            var targetDll = TargetDllPath();
+            var targetOriginal = TargetDllOriginalPath();
+
+            bool dllExists = File.Exists(targetDll);
+            bool originalExists = File.Exists(targetOriginal);
+
+            if (!dllExists && !originalExists) return false; // already clean
+
+            // Same guard as EnsureDllInstalled: an existing dxgi.dll
+            // without dxgi_original.dll alongside is not our proxy.
+            // Refuse to touch it.
+            if (dllExists && !originalExists)
+            {
+                LogLine("Skipping DLL cleanup: dxgi.dll exists at " + targetDll
+                    + " but no dxgi_original.dll alongside (not our proxy).");
+                return false;
+            }
+
+            if (deleter == null) deleter = File.Delete;
+
+            bool removedAny = false;
+            if (dllExists)
+            {
+                LogLine("Removing dxgi.dll (no profile JSONs left) -> " + targetDll);
+                deleter(targetDll);
+                removedAny = true;
+            }
+            if (originalExists)
+            {
+                LogLine("Removing dxgi_original.dll (no profile JSONs left) -> " + targetOriginal);
+                deleter(targetOriginal);
+                removedAny = true;
+            }
+            return removedAny;
+        }
+
         // Pure builder so tests/inspection can verify the wire format
         // without writing to disk.
         public static string BuildItemsJson(
