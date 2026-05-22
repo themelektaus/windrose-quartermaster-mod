@@ -225,14 +225,43 @@ async function openVanillaBuildingPicker(inputEl, buildingIndex, selectAll) {
     }
 }
 
-// Suppression window after a template pick. The picker-option mousedown
-// closes the dropdown and re-renders the building card synchronously, so
-// the new template-input ends up right under the mouse cursor. The
-// follow-up mouseup/click then focuses that new input and would
-// re-open the picker via the focusin/click handlers. We tag the next
-// focusin+click on a buildingTemplateInput as "suppressed" for a short
-// window so the picker stays closed after a pick.
-let _suppressBuildingTemplatePickerReopenUntil = 0;
+// Suppression flag set right after a template pick. The picker-option
+// mousedown closes the dropdown and re-renders the building card
+// synchronously, so the new template-input ends up right under the
+// mouse cursor. The follow-up mouseup/click then focuses that new
+// input and would re-open the picker via the focusin/click handlers,
+// AND a possible `change` event on the old detached input bubbles to
+// onBuildingListChange which also opens the picker.
+//
+// We use a "next-user-gesture" semantic instead of a time window: the
+// flag stays armed until the user performs a fresh mousedown/keydown
+// anywhere in the document (which can only happen AFTER the current
+// gesture's mouseup+click+focusin chain has completed). A safety
+// timeout disarms after 5s in case neither event ever fires (e.g.
+// mouse leaves the window before release).
+let _suppressBuildingTemplatePickerReopen = false;
+function _armBuildingTemplatePickerReopenSuppression() {
+    _suppressBuildingTemplatePickerReopen = true;
+    let disarmed = false;
+    const disarm = () => {
+        if (disarmed) return;
+        disarmed = true;
+        _suppressBuildingTemplatePickerReopen = false;
+        document.removeEventListener('mousedown', disarm, true);
+        document.removeEventListener('keydown', disarm, true);
+        clearTimeout(safety);
+    };
+    // Defer wiring the listeners by one tick so the current gesture's
+    // tail events (mouseup -> click -> focusin) all see the flag still
+    // set. Those fire synchronously after the current mousedown task;
+    // setTimeout(0) callbacks run after them.
+    setTimeout(() => {
+        if (disarmed) return;
+        document.addEventListener('mousedown', disarm, true);
+        document.addEventListener('keydown', disarm, true);
+    }, 0);
+    const safety = setTimeout(disarm, 5000);
+}
 
 // Commit the picked template-id to the building card. Inspects in the
 // background so the recipe-default cache + slot/template hint refresh
@@ -248,10 +277,11 @@ async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
     // Clear the per-template recipe-default cache for the new id so
     // triggerRecipeRender re-fetches the new vanilla pre-fill.
     _recipeDefaultCache.delete(templateId);
-    // Arm the suppression flag *before* the re-render so the focusin/click
-    // that the mouse-release triggers on the new input is ignored. 250ms
-    // is comfortably longer than a mouseup+click cycle (~50ms typical).
-    _suppressBuildingTemplatePickerReopenUntil = Date.now() + 250;
+    // Arm the suppression *before* the re-render so the focusin/click
+    // (and any change event on the old detached input) that the mouse
+    // release triggers is ignored. The flag stays armed until the
+    // user's *next* fresh mousedown/keydown disarms it.
+    _armBuildingTemplatePickerReopenSuppression();
     // Re-render the card so the template-name input + summary line
     // refresh. The render loop itself triggers ensureVanillaBuildingInspection
     // for the hint line.
@@ -1353,6 +1383,18 @@ function onBuildingListChange(e) {
         // Etappe I: re-filter the vanilla-template picker as the user
         // types. Same input-as-search-box pattern as slotParentSearch /
         // recipeSearch above. Commit happens via onPickerClick.
+        //
+        // Suppression: after a pick, renderBuildingCreator() replaces
+        // the input which can trigger a `change` event on the now-
+        // detached old input (if its value differed since focus). That
+        // bubbles here and would re-open the picker. Bail out while
+        // the post-pick flag is armed.
+        if (_suppressBuildingTemplatePickerReopen) return;
+        // Defensive: detached old input from a re-render still has
+        // the dataset attribute but isn't visible; never open a picker
+        // anchored to a detached element (getBoundingClientRect would
+        // return zeros and the dropdown would appear at 0,0).
+        if (!document.body.contains(t)) return;
         if (state.picker && state.picker.input === t) {
             populatePicker(t.value);
             positionPicker(t);
@@ -1961,6 +2003,9 @@ function setRecipeResourceForRow(buildingId, rowIdx, packagePath) {
 // just-typed text.
 function openBuildingPickerForInput(t, selectAll) {
     if (!t || !t.dataset) return false;
+    // Defensive: detached inputs (e.g. leftover refs from a re-render)
+    // would anchor the dropdown at 0,0 via getBoundingClientRect. Bail.
+    if (!document.body.contains(t)) return false;
     if (selectAll === undefined) selectAll = true;
 
     // Vanilla MI parent search box -> open the centralized picker.
@@ -2008,7 +2053,7 @@ function onBuildingListFocusIn(e) {
     // after a picker-option click lands on the freshly rendered template
     // input. See setVanillaBuildingTemplateForCard.
     if (t && t.dataset && t.dataset.buildingTemplateInput !== undefined
-        && _suppressBuildingTemplatePickerReopenUntil > Date.now()) {
+        && _suppressBuildingTemplatePickerReopen) {
         return;
     }
     openBuildingPickerForInput(t);
@@ -2036,7 +2081,7 @@ function onBuildingListClickReopenPicker(e) {
     // Suppression: same as in onBuildingListFocusIn - ignore the click
     // that comes from the mouse-release after a picker-option pick.
     if (t.dataset.buildingTemplateInput !== undefined
-        && _suppressBuildingTemplatePickerReopenUntil > Date.now()) {
+        && _suppressBuildingTemplatePickerReopen) {
         return;
     }
     openBuildingPickerForInput(t);
