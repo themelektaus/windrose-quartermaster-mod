@@ -438,9 +438,9 @@ dl dd {
 
 .building-slots-warnings .building-slots-warning {
   font-size: var(--font-size-small);
-  color: color-mix(in srgb, var(--warn, #d99) 70%, var(--text));
-  background: color-mix(in srgb, var(--warn, #d99) 12%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--warn, #d99) 60%, transparent);
+  color: color-mix(in srgb, var(--warn) 70%, var(--text));
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--warn) 60%, transparent);
   padding: .25em .5em;
   border-radius: var(--border-radius);
 }
@@ -456,7 +456,7 @@ dl dd {
 }
 
 .btn-link {
-  background: none;
+  background-color: transparent !important;
   border: none;
   color: var(--text-dim);
   padding: .25em;

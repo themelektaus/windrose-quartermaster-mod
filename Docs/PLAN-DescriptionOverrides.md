@@ -1,6 +1,6 @@
 # Plan: Description (und andere FText-Felder) per Item überschreiben
 
-Status: **Planungsnotiz** — noch nicht umgesetzt. Aufgegriffen wird das, sobald
+Status: **Planungsnotiz** - noch nicht umgesetzt. Aufgegriffen wird das, sobald
 ein konkreter Use-Case dafür spricht (oder Lust am Wochenende).
 
 ## Ausgangslage
@@ -88,7 +88,7 @@ Das StringArray am Ende ist eine **Deduplizierungs-Optimierung**: identische
 Übersetzungen werden nur einmal gespeichert, alle Keys verweisen per Index
 darauf. `RefCount = -1` heißt "permanent referenced". Beim Schreiben können
 wir der Einfachheit halber `RefCount = 1` pro Eintrag setzen und keine
-Deduplizierung machen — die Mod-`.locres`-Files sind klein (50-100 Einträge),
+Deduplizierung machen - die Mod-`.locres`-Files sind klein (50-100 Einträge),
 das spart kaum Bytes.
 
 ## Auflöser-Reihenfolge der Engine
@@ -100,7 +100,7 @@ UE lädt `.locres`-Files in folgender Reihenfolge und merged sie:
 3. **Mod-Pak `.locres` aus `Game/Content/Localization/`** (höhere Priority)
 
 Heißt: Wir packen unsere Override-`.locres`-Files in dasselbe Pak wie die JSONs
-und sie überschreiben Vanilla für die Keys, die wir reinschreiben — **ohne**
+und sie überschreiben Vanilla für die Keys, die wir reinschreiben - **ohne**
 dass wir eine vollständige Kopie brauchen.
 
 ## Konkrete Pfade im Game-Pak
@@ -114,7 +114,7 @@ R5/Content/Localization/InventoryItems/zh-Hans/InventoryItems.locres
 ```
 
 (Tatsächliche Pfade vor Implementierung verifizieren via repak unpack des
-Vanilla-Paks — die JSONs nennen oft nur `TableId: "InventoryItems"`, der
+Vanilla-Paks - die JSONs nennen oft nur `TableId: "InventoryItems"`, der
 File-Mount-Path muss gefunden werden.)
 
 ## Profile-Schema-Erweiterung
@@ -231,7 +231,7 @@ für `name`/`description`/`vanityText`/`effects[i]`/`setEffects[i].name|descript
 ### Phase 5: Edge-Cases
 
 - **Locked Items** (vanilla=1, kein Promote): Text-Override soll trotzdem
-  funktionieren — `.locres`-Override braucht keinen Stack-Patch zum Item-JSON.
+  funktionieren - `.locres`-Override braucht keinen Stack-Patch zum Item-JSON.
 - **Items mit `effects[]`-Array unterschiedlicher Länge zwischen Versionen**:
   Index-basierte Keys (`effects[2]`) können brechen, wenn Game-Update das Array
   umordnet. Mitigation: Override hält den **TableId+Key** des Vanilla-Eintrags
@@ -248,11 +248,11 @@ für `name`/`description`/`vanityText`/`effects[i]`/`setEffects[i].name|descript
 
 | Phase | LoC | Risiko |
 |---|---:|---|
-| 1 — Roundtrip-Test | ~80 | gering (Reader existiert, nur Writer + Diff) |
-| 2 — `LocResWriter` | ~150 | mittel (Format-Details, CRC32-Casing-Bug-Potential) |
-| 3 — BuildPipeline | ~100 | gering (klare Erweiterung) |
-| 4 — GUI-Editor | ~250 | mittel (UI ist die meiste Arbeit) |
-| 5 — Edge-Cases + Tests | ~100 | gering |
+| 1 - Roundtrip-Test | ~80 | gering (Reader existiert, nur Writer + Diff) |
+| 2 - `LocResWriter` | ~150 | mittel (Format-Details, CRC32-Casing-Bug-Potential) |
+| 3 - BuildPipeline | ~100 | gering (klare Erweiterung) |
+| 4 - GUI-Editor | ~250 | mittel (UI ist die meiste Arbeit) |
+| 5 - Edge-Cases + Tests | ~100 | gering |
 | **gesamt** | **~680** | **mittel** |
 
 Plus: ~1-2 Tage Recherche-/Debug-Pufer für das `.locres`-Format, weil das die
@@ -260,7 +260,7 @@ unbekannteste Komponente ist.
 
 ## Was JETZT noch zu tun wäre, falls priorisiert
 
-1. Phase-1-Roundtrip schreiben — bevor wir alles plant haben, beweist das den
+1. Phase-1-Roundtrip schreiben - bevor wir alles plant haben, beweist das den
    kritischen Pfad. Wenn der Roundtrip nicht byte-identisch ist (oder nach
    Re-Read semantisch identisch), brauchen wir mehr Recherche.
 2. Vanilla-`.locres`-Pfade im Pak verifizieren (`repak list` auf
@@ -272,7 +272,7 @@ unbekannteste Komponente ist.
 ## Out of Scope (für jetzt)
 
 - **Item-Name-Override**: technisch identisch zur Description, GUI-mäßig
-  trivial — bleibt aber einer Folge-Iteration vorbehalten, weil der Use-Case
+  trivial - bleibt aber einer Folge-Iteration vorbehalten, weil der Use-Case
   "Description tunen" zuerst kam.
 - **VanityText / Effects / SetEffects**: dito, gleicher Mechanismus.
 - **Eigene Cultures hinzufügen** (z.B. ein Item nur auf Schwäbisch): Engine

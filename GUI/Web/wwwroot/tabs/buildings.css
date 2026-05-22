@@ -95,7 +95,7 @@
  * requires (Asset prefix / Mesh stem / Icon stem). Inline span so the
  * marker sits flush with the label text. */
 .required-marker {
-  color: var(--danger, #e16464);
+  color: var(--danger);
   margin-left: .25em;
   font-weight: bold;
 }
@@ -104,12 +104,12 @@
  * visual weight as .building-scan-error so the user can't miss it. */
 .building-missing-fields {
   grid-column: 1 / -1;
-  background-color: color-mix(in srgb, var(--danger, #e16464), black 75%);
-  border-left: 3px solid var(--danger, #e16464);
+  background-color: color-mix(in srgb, var(--danger), black 75%);
+  border-left: 3px solid var(--danger);
   border-radius: var(--border-radius);
   padding: .5em .75em;
   font-size: var(--font-size-small);
-  color: var(--danger, #e16464);
+  color: var(--danger);
 }
 
 .building-field input[disabled],
@@ -155,7 +155,7 @@
 }
 
 .building-scan-error {
-  color: var(--danger, #e16464);
+  color: var(--danger);
 }
 
 .building-scan-status {
@@ -165,7 +165,7 @@
 }
 
 .building-scan-status .bad {
-  color: var(--danger, #e16464);
+  color: var(--danger);
 }
 
 .building-scan-status .skip {
@@ -178,11 +178,10 @@
   list-style: none;
   padding: 0;
   margin: .25em 0 0 0;
-  max-height: 8em;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: .15em;
+  gap: .25em;
 }
 
 .building-scan-files li {
@@ -198,11 +197,11 @@
 }
 
 .building-scan-files .kind.skip {
-  color: var(--warning, #e0a01c);
+  color: var(--warn);
 }
 
 .building-scan-files .kind.bad {
-  color: var(--danger, #e16464);
+  color: var(--danger);
 }
 
 .building-scan-files .name {
@@ -241,7 +240,7 @@
 }
 
 .building-slot-required {
-  color: var(--warning, #e0a01c);
+  color: var(--warn);
   font-size: var(--font-size-small);
 }
 
@@ -330,7 +329,7 @@
  * centralized #picker-dropdown from the loot tab. See app.css. */
 
 .building-slot-params {
-  border-top: 1px dashed var(--border-color, #333);
+  border-top: 1px dashed var(--border);
   padding-top: .5em;
 }
 
@@ -352,14 +351,13 @@
 }
 
 .building-slot-params-group {
-  margin: .35em 0;
+  margin: 1em 0 0;
 }
 
 .building-slot-params-group-title {
   font-size: var(--font-size-small);
   font-weight: bold;
   color: var(--text-dim);
-  margin-bottom: .15em;
 }
 
 .building-slot-param {
@@ -377,11 +375,7 @@
 }
 
 .building-slot-param > label > span {
-  flex-shrink: 0;
-  min-width: 9em;
-  font-family: var(--monospace);
-  font-size: var(--monospace-size);
-  color: var(--text);
+  flex: 0 0 15em;
 }
 
 .building-slot-param input[type="number"] {
@@ -392,7 +386,7 @@
   height: 2em;
   width: 3em;
   padding: 0;
-  border: 1px solid var(--border-color, #444);
+  border: 1px solid var(--border);
   cursor: pointer;
 }
 
@@ -436,13 +430,13 @@
 }
 
 .building-recipe-source.vanilla {
-  background-color: color-mix(in srgb, var(--ok, #5e9c5e), black 50%);
-  color: var(--ok, #b2d8b2);
+  background-color: color-mix(in srgb, var(--success), black 50%);
+  color: var(--success);
 }
 
 .building-recipe-source.user {
-  background-color: color-mix(in srgb, var(--warn, #e9b85c), black 50%);
-  color: var(--warn, #e9b85c);
+  background-color: color-mix(in srgb, var(--warn), black 50%);
+  color: var(--warn);
 }
 
 .building-recipe-actions {

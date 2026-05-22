@@ -193,8 +193,9 @@ function ensureVanillaBuildingInspection(templateId) {
 // caused DA_DID_Item_Recipe_* entries to show up instead of DA_BI_*
 // building templates). Mirror openVanillaMiPicker / openResourcePicker
 // which manage the dropdown directly.
-async function openVanillaBuildingPicker(inputEl, buildingIndex) {
+async function openVanillaBuildingPicker(inputEl, buildingIndex, selectAll) {
     if (!inputEl) return;
+    if (selectAll === undefined) selectAll = true;
     closePicker();
     const card = inputEl.closest && inputEl.closest('.building-card');
     const cat  = card ? card.querySelector('[data-building-template-category]') : null;
@@ -214,8 +215,8 @@ async function openVanillaBuildingPicker(inputEl, buildingIndex) {
         dd.hidden = false;
     }
     positionPicker(inputEl);
-    if (inputEl.value) {
-        try { inputEl.select(); } catch (_) { /* ignore */ }
+    if (selectAll && inputEl.value) {
+        try { inputEl.select() } catch (_) { /* ignore */ }
     }
     await ensureVanillaBuildingTemplatesLoaded();
     if (state.picker && state.picker.input === inputEl) {
@@ -223,6 +224,15 @@ async function openVanillaBuildingPicker(inputEl, buildingIndex) {
         positionPicker(inputEl);
     }
 }
+
+// Suppression window after a template pick. The picker-option mousedown
+// closes the dropdown and re-renders the building card synchronously, so
+// the new template-input ends up right under the mouse cursor. The
+// follow-up mouseup/click then focuses that new input and would
+// re-open the picker via the focusin/click handlers. We tag the next
+// focusin+click on a buildingTemplateInput as "suppressed" for a short
+// window so the picker stays closed after a pick.
+let _suppressBuildingTemplatePickerReopenUntil = 0;
 
 // Commit the picked template-id to the building card. Inspects in the
 // background so the recipe-default cache + slot/template hint refresh
@@ -238,6 +248,10 @@ async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
     // Clear the per-template recipe-default cache for the new id so
     // triggerRecipeRender re-fetches the new vanilla pre-fill.
     _recipeDefaultCache.delete(templateId);
+    // Arm the suppression flag *before* the re-render so the focusin/click
+    // that the mouse-release triggers on the new input is ignored. 250ms
+    // is comfortably longer than a mouseup+click cycle (~50ms typical).
+    _suppressBuildingTemplatePickerReopenUntil = Date.now() + 250;
     // Re-render the card so the template-name input + summary line
     // refresh. The render loop itself triggers ensureVanillaBuildingInspection
     // for the hint line.
@@ -787,7 +801,8 @@ function extractStem(packagePath) {
 //     pick (this was the cause of the "dropdown re-opens after pick" bug)
 //   - dismisses on outside-click via app.js's global onDocClickClosePicker
 // -----------------------------------------------------------------------
-async function openVanillaMiPicker(input, buildingId, slotIndex) {
+async function openVanillaMiPicker(input, buildingId, slotIndex, selectAll) {
+    if (selectAll === undefined) selectAll = true;
     closePicker();
     state.picker = { input, source: 'vanillaMi', buildingId, slotIndex };
     // Show all immediately - if the catalog isn't cached yet a brief
@@ -803,7 +818,7 @@ async function openVanillaMiPicker(input, buildingId, slotIndex) {
         dd.hidden = false;
     }
     positionPicker(input);
-    if (input.value) {
+    if (selectAll && input.value) {
         try { input.select(); } catch (_) { /* ignore */ }
     }
     await ensureVanillaMaterialsLoaded();
@@ -961,7 +976,7 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
                 + '<label><span>' + escapeHtml(s.name) + '</span>'
                 + '<input type="number" step="0.01" data-param-scalar="' + escapeHtml(s.name) + '" value="' + v + '">'
                 + '</label>'
-                + '<button type="button" class="btn-link" data-param-reset-scalar="' + escapeHtml(s.name) + '" data-default="' + s.value + '" title="Reset to Vanilla default (' + s.value + ')">reset</button>'
+                + '<button type="button" class="btn-link" data-param-reset-scalar="' + escapeHtml(s.name) + '" data-default="' + s.value + '" title="Reset to Vanilla default (' + s.value + ')">Reset</button>'
                 + '</div>');
         }
         parts.push('</div>');
@@ -983,7 +998,7 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
                 + '</label>'
                 + '<button type="button" class="btn-link" data-param-reset-vector="' + escapeHtml(vp.name)
                     + '" data-default-r="' + vp.r + '" data-default-g="' + vp.g + '" data-default-b="' + vp.b + '" data-default-a="' + vp.a
-                    + '" title="Reset to Vanilla default">reset</button>'
+                    + '" title="Reset to Vanilla default">Reset</button>'
                 + '</div>');
         }
         parts.push('</div>');
@@ -1001,7 +1016,7 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
                 +   renderTextureOptions(cookedTextures, stem, t.textureStem)
                 + '</select>'
                 + '</label>'
-                + '<button type="button" class="btn-link" data-param-reset-texture="' + escapeHtml(t.name) + '" title="Reset to Vanilla">reset</button>'
+                + '<button type="button" class="btn-link" data-param-reset-texture="' + escapeHtml(t.name) + '" title="Reset to Vanilla">Reset</button>'
                 + '</div>');
         }
         parts.push('</div>');
@@ -1130,14 +1145,8 @@ function renderMeshIconSelectsHtml(custom) {
 function renderStemSelectHtml(field, currentValue, options) {
     const opts = [];
     const hasScan = options.length > 0;
-    // Placeholder option shown only when nothing is picked yet. We disable
-    // it once the user has chosen something so they can't accidentally
-    // revert to "empty" via keyboard. Empty-string value lets the field
-    // round-trip "no pick" cleanly to the profile JSON.
-    const placeholderText = hasScan
-        ? '— select —'
-        : '— scan folder first —';
-    opts.push('<option value="">' + placeholderText + '</option>');
+
+    opts.push('<option value=""></option>');
 
     let foundCurrent = false;
     for (const stem of options) {
@@ -1327,12 +1336,17 @@ function onBuildingListChange(e) {
         }
         state.isDirty = true;
     } else if (t.dataset.slotParentSearch !== undefined) {
-        // Re-filter the central picker while the user types. The picker
-        // was opened via the focusin handler; the input event just
-        // updates the visible matches.
+        // Re-filter the central picker while the user types. If the picker
+        // is not currently open for this input (e.g. focus stayed in the
+        // input after a previous pick, where focusin won't fire again),
+        // open it without select-all so the user's keystroke isn't
+        // clobbered. The opener also calls populatePicker with the current
+        // value, so the filter applies right away.
         if (state.picker && state.picker.input === t) {
             populatePicker(t.value);
             positionPicker(t);
+        } else {
+            openBuildingPickerForInput(t, false);
         }
         return;  // not dirty until they actually pick a result
     } else if (t.dataset.buildingTemplateInput !== undefined) {
@@ -1342,6 +1356,8 @@ function onBuildingListChange(e) {
         if (state.picker && state.picker.input === t) {
             populatePicker(t.value);
             positionPicker(t);
+        } else {
+            openBuildingPickerForInput(t, false);
         }
         return;
     } else if (t.dataset.buildingTemplateCategory !== undefined) {
@@ -1370,9 +1386,13 @@ function onBuildingListChange(e) {
     } else if (t.dataset.recipeSearch !== undefined) {
         // Mirror of slotParentSearch: re-filter the central picker as
         // the user types. Pick is committed via the central onPickerClick.
+        // If the picker isn't open for this input, open it (selectAll=false)
+        // so typing-while-focused also pops it up.
         if (state.picker && state.picker.input === t) {
             populatePicker(t.value);
             positionPicker(t);
+        } else {
+            openBuildingPickerForInput(t, false);
         }
         return;  // not dirty until they actually pick a result
     } else if (t.dataset.recipeCount !== undefined) {
@@ -1828,8 +1848,8 @@ function buildRecipeSectionHtml(rows, usingVanilla, vanillaTag, errMsg) {
         +     '<strong>Build cost</strong>'
         +     sourceBadge
         +     '<div class="building-recipe-actions">'
-        +       '<button type="button" class="btn-link" data-recipe-action="add">+ Add resource</button>'
-        +       (!usingVanilla ? '<button type="button" class="btn-link" data-recipe-action="reset" title="Discard overrides; use template default">Reset to Vanilla</button>' : '')
+        +       '<button type="button" class="primary" data-recipe-action="add">Add</button>'
+        +       (!usingVanilla ? '<button type="button" class="btn-link danger" data-recipe-action="reset" title="Discard overrides; use template default">Reset</button>' : '')
         +     '</div>'
         +   '</div>'
         +   errHtml
@@ -1895,7 +1915,8 @@ function ensureUserRecipeRows(custom) {
 // Recipe-resource picker - reuses the centralized #picker-dropdown, same
 // UX pattern as the loot-table item picker. Includes icon + name +
 // subtitle for each resource.
-async function openResourcePicker(input, buildingId, rowIdx) {
+async function openResourcePicker(input, buildingId, rowIdx, selectAll) {
+    if (selectAll === undefined) selectAll = true;
     closePicker();
     state.picker = { input, source: 'recipeResource', buildingId, rowIdx };
     const dd = document.getElementById('picker-dropdown');
@@ -1908,7 +1929,7 @@ async function openResourcePicker(input, buildingId, rowIdx) {
         dd.hidden = false;
     }
     positionPicker(input);
-    if (input.value) {
+    if (selectAll && input.value) {
         try { input.select(); } catch (_) { /* ignore */ }
     }
     await ensureVanillaResourcesLoaded();
@@ -1933,32 +1954,37 @@ function setRecipeResourceForRow(buildingId, rowIdx, packagePath) {
     updateButtons();
 }
 
-function onBuildingListFocusIn(e) {
-    const t = e.target;
-    if (!t || !t.dataset) return;
+// selectAll defaults to true (focusin/click paths want to select existing
+// text so the user can immediately type to replace it). The input-event
+// path passes false because the user is mid-keystroke - select() would
+// clobber the cursor position and the next character would replace the
+// just-typed text.
+function openBuildingPickerForInput(t, selectAll) {
+    if (!t || !t.dataset) return false;
+    if (selectAll === undefined) selectAll = true;
 
     // Vanilla MI parent search box -> open the centralized picker.
     if (t.dataset.slotParentSearch !== undefined) {
         const card = t.closest('li.building-card');
         const slotEl = t.closest('.building-slot');
-        if (!card || !slotEl) return;
+        if (!card || !slotEl) return false;
         const buildingId = card.dataset.buildingId;
         const slotIndex = parseInt(slotEl.dataset.slotIndex, 10);
-        if (!isFinite(slotIndex)) return;
-        openVanillaMiPicker(t, buildingId, slotIndex);
-        return;
+        if (!isFinite(slotIndex)) return false;
+        openVanillaMiPicker(t, buildingId, slotIndex, selectAll);
+        return true;
     }
 
     // Recipe-row resource search box -> open the centralized picker.
     if (t.dataset.recipeSearch !== undefined) {
         const card = t.closest('li.building-card');
         const rowEl = t.closest('li.building-recipe-row');
-        if (!card || !rowEl) return;
+        if (!card || !rowEl) return false;
         const buildingId = card.dataset.buildingId;
         const rowIdx = parseInt(rowEl.dataset.recipeRow, 10);
-        if (!isFinite(rowIdx)) return;
-        openResourcePicker(t, buildingId, rowIdx);
-        return;
+        if (!isFinite(rowIdx)) return false;
+        openResourcePicker(t, buildingId, rowIdx, selectAll);
+        return true;
     }
 
     // Template picker input (Etappe I) -> open the Vanilla building DA
@@ -1966,12 +1992,54 @@ function onBuildingListFocusIn(e) {
     // central dropdown.
     if (t.dataset.buildingTemplateInput !== undefined) {
         const card = t.closest('li.building-card');
-        if (!card) return;
+        if (!card) return false;
         const index = parseInt(card.dataset.buildingIndex, 10);
-        if (!isFinite(index)) return;
-        openVanillaBuildingPicker(t, index);
+        if (!isFinite(index)) return false;
+        openVanillaBuildingPicker(t, index, selectAll);
+        return true;
+    }
+
+    return false;
+}
+
+function onBuildingListFocusIn(e) {
+    const t = e.target;
+    // Suppression: ignore the focusin that fires when the mouse-release
+    // after a picker-option click lands on the freshly rendered template
+    // input. See setVanillaBuildingTemplateForCard.
+    if (t && t.dataset && t.dataset.buildingTemplateInput !== undefined
+        && _suppressBuildingTemplatePickerReopenUntil > Date.now()) {
         return;
     }
+    openBuildingPickerForInput(t);
+}
+
+// Re-open the central picker when the user clicks an already-focused
+// picker input. focusin only fires on focus changes; if the input still
+// has focus from a previous open+pick cycle (e.g. setVanillaMiParentForSlot
+// keeps the same input element, or mouseup re-focused the rendered input),
+// a second mousedown will not fire focusin and the picker would stay
+// closed. Mirroring the click here keeps "click input -> picker opens"
+// consistent regardless of focus state.
+function onBuildingListClickReopenPicker(e) {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+    // Only intercept the three picker-bound inputs.
+    if (t.dataset.slotParentSearch === undefined
+        && t.dataset.recipeSearch === undefined
+        && t.dataset.buildingTemplateInput === undefined) {
+        return;
+    }
+    // If the picker is already open for THIS input, the focusin path
+    // already handled it (or it was kept open by typing); do nothing.
+    if (state.picker && state.picker.input === t) return;
+    // Suppression: same as in onBuildingListFocusIn - ignore the click
+    // that comes from the mouse-release after a picker-option pick.
+    if (t.dataset.buildingTemplateInput !== undefined
+        && _suppressBuildingTemplatePickerReopenUntil > Date.now()) {
+        return;
+    }
+    openBuildingPickerForInput(t);
 }
 
 function bindBuildingsHandlers() {
@@ -1986,6 +2054,7 @@ function bindBuildingsHandlers() {
         list.addEventListener('input',   onBuildingListChange);
         list.addEventListener('change',  onBuildingListChange);
         list.addEventListener('click',   onBuildingListClick);
+        list.addEventListener('click',   onBuildingListClickReopenPicker);
         list.addEventListener('focusin', onBuildingListFocusIn);
         // Re-position the floating picker when the list scrolls so the
         // dropdown stays glued to the input. Mirrors the loot tab.

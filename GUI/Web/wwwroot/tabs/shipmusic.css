@@ -74,7 +74,7 @@
 .shipmusic-slot {
   display: flex;
   flex-direction: column;
-  gap: .4em;
+  gap: .5em;
   padding: .75em 1em;
   background-color: var(--bg-sunk);
   border-radius: var(--border-radius);
@@ -93,27 +93,24 @@
 
 .shipmusic-state {
   font-size: var(--font-size-small);
-  padding: 0 .6em;
+  padding: 0 .5em;
   border-radius: var(--border-radius);
   text-transform: uppercase;
   letter-spacing: .05em;
 }
 
 .shipmusic-state-vanilla {
-  background-color: var(--bg);
   color: var(--text-dim);
 }
 
 .shipmusic-state-custom {
-  background-color: var(--ok);
+  background-color: var(--success);
   color: var(--bg);
-  font-weight: bold;
 }
 
 .shipmusic-state-broken {
   background-color: var(--accent);
   color: var(--bg);
-  font-weight: bold;
 }
 
 .shipmusic-slot-meta {
@@ -127,8 +124,4 @@
   flex-wrap: wrap;
   gap: .5em;
   align-items: center;
-
-  .btn {
-    padding: .4em 1em;
-  }
 }

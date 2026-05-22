@@ -75,7 +75,7 @@
 
 .buyer-table th:nth-child(1),
 .buyer-table td:nth-child(1) {
-  width: 30vw;
+  width: auto;
 }
 
 .buyer-table th:nth-child(2),

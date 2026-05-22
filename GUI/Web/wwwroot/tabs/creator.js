@@ -108,8 +108,8 @@ function buildCustomItemCardHtml(custom, index) {
         +   '<div class="creator-fields">'
         +     '<div class="creator-field creator-field-wide creator-icon-actions">'
         +       '<input type="file" accept="image/png" data-creator-action="icon-pick" hidden>'
-        +       '<button type="button" class="btn-link" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
-        +       '<button type="button" class="btn-link" data-creator-action="icon-reset"'
+        +       '<button type="button" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
+        +       '<button type="button" data-creator-action="icon-reset"'
         +           (hasCustomIcon ? '' : ' disabled')
         +           ' title="Revert to template icon">Reset</button>'
         +       '<span class="creator-icon-status">'
