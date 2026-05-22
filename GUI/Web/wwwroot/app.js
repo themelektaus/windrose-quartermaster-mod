@@ -1320,6 +1320,191 @@ async function onQuit() {
     document.body.innerHTML = '<div class="shutdown-info">Server stopped. This window can be closed.</div>';
 }
 
+async function onReport() {
+    openReportModal();
+}
+
+function openReportModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const card = document.createElement('div');
+    card.className = 'modal-card report-modal';
+
+    const h = document.createElement('h2');
+    h.textContent = 'Report Issue';
+    h.style.margin = '0';
+    card.appendChild(h);
+
+    const intro = document.createElement('p');
+    intro.className = 'modal-message';
+    intro.textContent =
+        'Sends a bug report with R5.log, Quartermaster_Inject.log, all '
+      + 'profiles and the current ~mods file listing. Nothing is uploaded '
+      + 'until you click "Send".';
+    card.appendChild(intro);
+
+    const titleLabel = document.createElement('label');
+    titleLabel.textContent = 'Title';
+    titleLabel.style.fontWeight = 'bold';
+    card.appendChild(titleLabel);
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'modal-input';
+    titleInput.placeholder = 'Short summary (e.g. "Game crashes when building flame torch")';
+    card.appendChild(titleInput);
+
+    const descLabel = document.createElement('label');
+    descLabel.textContent = 'Description';
+    descLabel.style.fontWeight = 'bold';
+    card.appendChild(descLabel);
+
+    const descInput = document.createElement('textarea');
+    descInput.className = 'modal-input';
+    descInput.rows = 8;
+    descInput.placeholder =
+        'Steps to reproduce, expected vs actual behaviour, profile name, '
+      + 'anything else relevant. Logs are attached automatically.';
+    card.appendChild(descInput);
+
+    const status = document.createElement('div');
+    status.className = 'report-status';
+    status.hidden = true;
+    card.appendChild(status);
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    card.appendChild(actions);
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    actions.appendChild(cancel);
+
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'primary';
+    send.textContent = 'Send';
+    actions.appendChild(send);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    const close = () => {
+        document.removeEventListener('keydown', onKey, true);
+        overlay.remove();
+    };
+    const onKey = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        }
+    };
+    document.addEventListener('keydown', onKey, true);
+
+    cancel.addEventListener('click', close);
+
+    send.addEventListener('click', async () => {
+        const title = titleInput.value.trim();
+        const description = descInput.value.trim();
+        if (!title) {
+            setReportStatus(status, 'error', 'Title is required.');
+            titleInput.focus();
+            return;
+        }
+        if (!description) {
+            setReportStatus(status, 'error', 'Description is required.');
+            descInput.focus();
+            return;
+        }
+
+        // Disable form during submit
+        titleInput.disabled = true;
+        descInput.disabled = true;
+        send.disabled = true;
+        cancel.disabled = true;
+        setReportStatus(status, 'pending',
+            'Collecting logs, profiles and the mods listing, then uploading the report...');
+
+        let data = null;
+        let networkError = null;
+        try {
+            const r = await fetch('/api/report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description }),
+            });
+            try { data = await r.json(); } catch { data = null; }
+        } catch (ex) {
+            networkError = ex && ex.message ? ex.message : String(ex);
+        }
+
+        cancel.disabled = false;
+        cancel.textContent = 'Close';
+
+        if (networkError != null) {
+            send.disabled = false;
+            send.textContent = 'Retry';
+            setReportStatus(status, 'error',
+                'Could not reach the configurator backend: ' + networkError);
+            return;
+        }
+
+        if (data && data.success) {
+            const collected = (data.collected || []).join(', ');
+            const sizeKb = data.attachmentSizeBytes
+                ? (data.attachmentSizeBytes / 1024).toFixed(1) + ' KB'
+                : 'unknown size';
+            let msg = 'Report sent successfully ('
+                + sizeKb + '). Attached: ' + collected;
+            if (data.missing && data.missing.length) {
+                msg += '\nSkipped (not found): ' + data.missing.join(', ');
+            }
+            if (data.serverResponse) {
+                msg += '\nServer response: ' + data.serverResponse;
+            }
+            setReportStatus(status, 'success', msg);
+            send.style.display = 'none';
+            return;
+        }
+
+        // Backend returned a non-success payload (network ok, server-side
+        // failure - either the report-collection step or the outbound POST).
+        send.disabled = false;
+        send.textContent = 'Retry';
+        let errMsg = (data && data.error) ? data.error : 'Unknown error.';
+        if (data && data.statusCode) {
+            errMsg += '\nUpstream status: ' + data.statusCode;
+        }
+        if (data && data.serverResponse) {
+            errMsg += '\nUpstream response: ' + data.serverResponse;
+        }
+        if (data && data.missing && data.missing.length) {
+            errMsg += '\nNot collected: ' + data.missing.join(', ');
+        }
+        setReportStatus(status, 'error', errMsg);
+    });
+
+    titleInput.focus();
+}
+
+function setReportStatus(el, kind, message) {
+    el.hidden = false;
+    el.className = 'report-status report-status-' + kind;
+    el.textContent = '';
+
+    if (kind === 'pending') {
+        const spinner = document.createElement('span');
+        spinner.className = 'report-spinner';
+        el.appendChild(spinner);
+    }
+
+    const text = document.createElement('span');
+    text.className = 'report-status-text';
+    text.textContent = message;
+    el.appendChild(text);
+}
+
 function setFooterCollapsed(collapsed) {
     const footer = document.getElementById('footer');
     const btn    = document.getElementById('footer-toggle');
@@ -1343,6 +1528,7 @@ function bindHandlers() {
     document.getElementById('btn-save').addEventListener('click',      onSave);
     document.getElementById('btn-delete').addEventListener('click',    onDelete);
     document.getElementById('btn-build').addEventListener('click',     onBuild);
+    document.getElementById('btn-report').addEventListener('click',    onReport);
     document.getElementById('btn-quit').addEventListener('click',      onQuit);
 
     document.getElementById('footer-toggle').addEventListener('click', () => {
