@@ -897,3 +897,49 @@ footer.collapsed .footer-body {
   justify-content: center;
   color: var(--text-dim);
 }
+
+.profile-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.profile-drop-overlay[hidden] {
+  display: none;
+}
+
+.profile-drop-card {
+  border: 2px dashed var(--accent);
+  border-radius: var(--border-radius);
+  background: var(--bg-elev);
+  color: var(--text);
+  padding: 2em 3em;
+  text-align: center;
+  box-shadow: 0 0 32px rgba(0, 0, 0, 0.5);
+}
+
+.profile-drop-icon {
+  font-size: 3em;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: .25em;
+}
+
+.profile-drop-title {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin-bottom: .25em;
+}
+
+.profile-drop-hint {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+

@@ -128,6 +128,69 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
+        // POST /api/profiles/import?overwrite=false
+        //
+        // Accepts a profile JSON (same shape PUT /api/profiles/{id} writes),
+        // validates it has both id + name, and persists it as a new file. The
+        // frontend uses this for drag-and-drop import of profile files: the
+        // filename is irrelevant, only the embedded id matters.
+        //
+        // Conflict handling: if a profile with the same id already exists
+        // and overwrite=false (default), returns 409 with the existing
+        // profile's name so the GUI can prompt the user. Re-submit with
+        // overwrite=true to replace.
+        //
+        // Path safety: the id becomes the filename, so we reject anything
+        // that could escape the Profiles/ dir or land in a Win32-reserved
+        // name. Mirror of the implicit guarantee the regular POST gives by
+        // assigning Guid.NewGuid() server-side.
+        app.MapPost("/api/profiles/import", async (HttpRequest req, bool? overwrite) =>
+        {
+            Profile incoming;
+            try
+            {
+                incoming = await JsonSerializer.DeserializeAsync<Profile>(req.Body, ProfileStore.JsonOpts);
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON: " + ex.Message });
+            }
+            if (incoming == null) return Results.BadRequest(new { error = "Empty body" });
+            if (string.IsNullOrWhiteSpace(incoming.Id))
+                return Results.BadRequest(new { error = "id is required" });
+            if (string.IsNullOrWhiteSpace(incoming.Name))
+                return Results.BadRequest(new { error = "name is required" });
+
+            if (!IsSafeProfileId(incoming.Id))
+                return Results.BadRequest(new { error = "id contains unsafe characters (only letters, digits, '-' and '_' allowed)" });
+
+            var existing = store.Load(incoming.Id);
+            if (existing != null && overwrite != true)
+            {
+                return Results.Json(new
+                {
+                    error = "A profile with this id already exists",
+                    conflictId = existing.Id,
+                    existingName = existing.Name,
+                }, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            // Preserve CreatedAt on overwrite so the import doesn't reset
+            // the timestamp the user saw earlier. Save() will refresh
+            // ModifiedAt unconditionally.
+            if (existing != null)
+            {
+                incoming.CreatedAt = existing.CreatedAt;
+            }
+
+            try { store.Save(incoming); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return existing == null
+                ? Results.Created("/api/profiles/" + incoming.Id, incoming)
+                : Results.Json(incoming, ProfileStore.JsonOpts);
+        });
+
         app.MapPost("/api/profiles/{id}/duplicate", (string id) =>
         {
             var src = store.Load(id);
@@ -1078,6 +1141,35 @@ public static class ProfilesEndpoint
         return n.Campfire.GetValueOrDefault(false)
             || n.Furnace.GetValueOrDefault(false)
             || n.Kiln.GetValueOrDefault(false);
+    }
+
+    // Defends the Profiles/ dir against path-traversal at import time. The
+    // id becomes the filename, so anything that could escape (slash, dot-dot,
+    // colon, control char) or that Windows would reject (reserved device
+    // names like CON / NUL / COM1) is rejected up front. The regular POST
+    // path doesn't need this check because it assigns Guid.NewGuid() itself.
+    static bool IsSafeProfileId(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        if (id.Length > 128) return false;
+        foreach (var ch in id)
+        {
+            if (!(char.IsLetterOrDigit(ch) || ch == '-' || ch == '_'))
+                return false;
+        }
+        // Reserved Win32 device names (case-insensitive) - File.WriteAllText
+        // would either fail outright or, worse on some shells, redirect to
+        // the device.
+        switch (id.ToUpperInvariant())
+        {
+            case "CON":  case "PRN":  case "AUX":  case "NUL":
+            case "COM1": case "COM2": case "COM3": case "COM4":
+            case "COM5": case "COM6": case "COM7": case "COM8": case "COM9":
+            case "LPT1": case "LPT2": case "LPT3": case "LPT4":
+            case "LPT5": case "LPT6": case "LPT7": case "LPT8": case "LPT9":
+                return false;
+        }
+        return true;
     }
 
     static bool HasFastTravelBellsConfig(Profile p)

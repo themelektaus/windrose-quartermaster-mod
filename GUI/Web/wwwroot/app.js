@@ -1551,6 +1551,8 @@ function bindHandlers() {
         if (state.picker) positionPicker(state.picker.input);
     });
 
+    bindProfileDropHandlers();
+
     bindMiscHandlers();
     bindItemsHandlers();
     bindLootHandlers();
@@ -1562,6 +1564,166 @@ function bindHandlers() {
     bindCooldownsHandlers();
     bindStationsHandlers();
     bindShipMusicHandlers();
+}
+
+// Window-level drag-and-drop import for profile JSONs. A single JSON file
+// dropped anywhere over the app window triggers POST /api/profiles/import
+// with the parsed body. Conflict on existing id pops a confirm-dialog.
+// We deliberately only react to drags that announce a 'Files' type so
+// per-tab drop targets (ship-music audio etc.) can still own their own
+// pointer events when active.
+let _profileDropCounter = 0;
+
+function bindProfileDropHandlers() {
+    const overlay = document.getElementById('profile-drop-overlay');
+    if (!overlay) return;
+
+    // dragenter/leave fire for every child crossing the boundary; counter
+    // logic keeps the overlay sticky while the user moves the cursor over
+    // nested elements.
+    window.addEventListener('dragenter', e => {
+        if (!hasFilesPayload(e)) return;
+        e.preventDefault();
+        _profileDropCounter += 1;
+        overlay.hidden = false;
+    });
+    window.addEventListener('dragover', e => {
+        if (!hasFilesPayload(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    window.addEventListener('dragleave', e => {
+        if (!hasFilesPayload(e)) return;
+        _profileDropCounter = Math.max(0, _profileDropCounter - 1);
+        if (_profileDropCounter === 0) overlay.hidden = true;
+    });
+    window.addEventListener('drop', async e => {
+        if (!hasFilesPayload(e)) return;
+        e.preventDefault();
+        _profileDropCounter = 0;
+        overlay.hidden = true;
+        const files = e.dataTransfer && e.dataTransfer.files
+            ? Array.from(e.dataTransfer.files) : [];
+        if (files.length === 0) return;
+        if (files.length > 1) {
+            await alert('Drop one profile JSON at a time.');
+            return;
+        }
+        await handleProfileImportDrop(files[0]);
+    });
+}
+
+function hasFilesPayload(e) {
+    if (!e.dataTransfer) return false;
+    const types = e.dataTransfer.types;
+    if (!types) return false;
+    // DOMStringList in some browsers, plain array in others.
+    for (let i = 0; i < types.length; i++) {
+        if (types[i] === 'Files') return true;
+    }
+    return false;
+}
+
+async function handleProfileImportDrop(file) {
+    if (!file) return;
+    // Ignore obvious non-JSON drops so an accidental audio/png drag during
+    // the wrong tab doesn't pop a JSON-parse error.
+    const name = file.name || '';
+    const isJsonExt = /\.json$/i.test(name);
+    const isJsonMime = (file.type || '').toLowerCase() === 'application/json';
+    if (!isJsonExt && !isJsonMime) {
+        await alert('Drop a .json profile file.');
+        return;
+    }
+
+    let text;
+    try {
+        text = await file.text();
+    } catch (ex) {
+        await alert('Could not read file: ' + (ex && ex.message ? ex.message : String(ex)));
+        return;
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    } catch (ex) {
+        await alert('Not valid JSON: ' + ex.message);
+        return;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+        await alert('JSON root must be a profile object.');
+        return;
+    }
+    if (!parsed.id || typeof parsed.id !== 'string') {
+        await alert('Profile JSON is missing the "id" field.');
+        return;
+    }
+    if (!parsed.name || typeof parsed.name !== 'string') {
+        await alert('Profile JSON is missing the "name" field.');
+        return;
+    }
+
+    if (state.isDirty) {
+        if (!await confirm('You have unsaved changes that will be lost on switch. Continue with import?')) {
+            return;
+        }
+        state.isDirty = false;
+    }
+
+    await importProfilePayload(parsed, false);
+}
+
+async function importProfilePayload(payload, overwrite) {
+    const url = '/api/profiles/import' + (overwrite ? '?overwrite=true' : '');
+    let resp;
+    try {
+        resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    } catch (ex) {
+        await alert('Import failed: ' + (ex && ex.message ? ex.message : String(ex)));
+        return;
+    }
+
+    if (resp.status === 409 && !overwrite) {
+        let data = null;
+        try { data = await resp.json(); } catch { /* ignore */ }
+        const existingName = data && data.existingName ? data.existingName : '(unknown name)';
+        const ok = await confirm(
+            'A profile with id "' + payload.id + '" already exists ("' + existingName + '"). '
+            + 'Overwrite with the imported profile?');
+        if (!ok) return;
+        await importProfilePayload(payload, true);
+        return;
+    }
+
+    if (!resp.ok) {
+        let errMsg = 'HTTP ' + resp.status;
+        try {
+            const data = await resp.json();
+            if (data && data.error) errMsg = data.error;
+        } catch { /* ignore */ }
+        await alert('Import failed: ' + errMsg);
+        return;
+    }
+
+    let saved;
+    try {
+        saved = await resp.json();
+    } catch {
+        saved = null;
+    }
+    const importedId = (saved && saved.id) || payload.id;
+
+    // Refresh the profile list and switch to the imported profile so the
+    // user sees the result immediately.
+    state.profiles = await api('GET', '/api/profiles');
+    populateProfileSelect();
+    await loadProfile(importedId);
 }
 
 function onPickerClick(e) {
