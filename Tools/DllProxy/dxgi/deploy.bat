@@ -46,20 +46,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem qm_items.json is written by the build pipeline (GameDeployer.WriteItemsJson)
-rem on every profile build. We MUST NOT copy a stale dev-spike stub from this
-rem source folder over the freshly-built file - that's a silent regression
-rem (build emits 3 items, this copy reverts to 2 items, custom buildings pop
-rem in/out unpredictably). Earlier spike-style override removed 2026-05-21.
-if exist "%TARGET%\qm_items.json" (
-    echo [deploy] qm_items.json present in target - build pipeline owns it, left alone
+rem qm_items_<profile>.json files are written per-profile by the build pipeline
+rem (GameDeployer.WriteItemsJson) on every profile build. We MUST NOT copy any
+rem stale dev-spike stub from this source folder over the freshly-built files.
+rem Earlier spike-style override removed 2026-05-21.
+dir /b "%TARGET%\qm_items_*.json" 2>nul | findstr /r ".*" >nul
+if errorlevel 1 (
+    echo [deploy] No qm_items_*.json in target - DLL runs idle until next profile build
 ) else (
-    echo [deploy] No qm_items.json in target - DLL runs idle until next profile build
+    echo [deploy] qm_items_*.json files present in target - build pipeline owns them, left alone
 )
 
 echo.
 echo [deploy] Deploy complete. Files in target:
-dir /b "%TARGET%\dxgi*.dll" "%TARGET%\qm_items.json" 2>nul
+dir /b "%TARGET%\dxgi*.dll" "%TARGET%\qm_items_*.json" 2>nul
 
 echo.
 echo [deploy] Test plan:

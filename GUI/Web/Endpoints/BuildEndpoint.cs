@@ -63,21 +63,19 @@ public static class BuildEndpoint
 
             // Etappe I.2: share the Web-layer Vanilla-Building catalog
             // with the pipeline so it can resolve Vanilla-DA-path
-            // templateIds dynamically (instead of only the legacy
-            // "Painting"/"Bucket" sentinels). The catalog bootstraps
-            // lazily on first BuildingTemplatesEndpoint hit; pre-fetching
-            // it here ensures the first Build call doesn't pay the mount
-            // cost mid-pipeline.
+            // templateIds dynamically. The catalog bootstraps lazily on
+            // first BuildingTemplatesEndpoint hit; pre-fetching it here
+            // ensures the first Build call doesn't pay the mount cost
+            // mid-pipeline.
             try
             {
                 pipeline.BuildingTemplateCatalog = BuildingTemplatesEndpoint.GetSharedCatalog();
             }
             catch
             {
-                // Pre-Etappe-I profiles only use Painting/Bucket and
-                // don't need the catalog. Swallow the bootstrap failure
-                // so legacy builds keep working - the pipeline's
-                // template resolver will surface a clear warning if a
+                // Catalog not bootstrapped yet (e.g. user clicked Build
+                // before opening the Buildings tab). The pipeline's
+                // template resolver will surface a clear warning when a
                 // building actually needs the catalog.
             }
 
@@ -377,11 +375,11 @@ public static class BuildEndpoint
                 }
                 // Custom-buildings: one entry per BuildingPatchResult so
                 // the frontend can render a per-building line in the build
-                // log (e.g. "QmPainting_01 (template Painting): 7 staged
-                // files, 0 warnings"). null when the profile has no
-                // buildings or none passed validation. Note: the qm_items.json
-                // + dxgi.dll write happened inside the pipeline already;
-                // we just report what got included.
+                // log (e.g. "QmBldg_<8hex> (template DA_BI_FloorTorch_01):
+                // 7 staged files, 0 warnings"). null when the profile has no
+                // buildings or none passed validation. Note: the per-profile
+                // qm_items_<safeName>.json + dxgi.dll write happened inside
+                // the pipeline already; we just report what got included.
                 object customBuildingsInfo = null;
                 if (result.BuildingResults != null && result.BuildingResults.Count > 0)
                 {

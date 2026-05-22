@@ -270,8 +270,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     }
 
     // Full inspection result for one DA. Mirrors the field set on the
-    // legacy BuildingTemplate POCO (Painting/Bucket factories) - the
-    // BuildPipeline converts an inspection into a BuildingTemplate at
+    // BuildingTemplate POCO - the BuildPipeline converts an inspection
+    // into a BuildingTemplate via BuildingTemplate.FromInspection() at
     // build time.
     public sealed class VanillaBuildingTemplateInspection
     {
@@ -283,7 +283,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         public string AssetClass;       // "R5BuildingItem" expected
 
-        public string MeshStem;         // "SM_Bucket_01" etc.
+        public string MeshStem;         // "SM_FloorTorch_01" etc.
         public string MeshPath;
 
         public string IconStem;

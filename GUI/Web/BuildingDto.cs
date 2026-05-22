@@ -2,33 +2,6 @@ using System.Collections.Generic;
 
 namespace Windrose.Quartermaster.Web;
 
-// Wire-format for /api/building-templates. Each entry describes one
-// "Buildable" archetype the Building Creator tab can clone.
-//
-// Etappe G: templates only define gameplay-side properties (DA parent
-// for snap/collision/category). Material slots come from the user's
-// cooked mesh + per-slot Vanilla MI pick - see the inspect-cooked +
-// vanilla-materials endpoints.
-sealed class BuildingTemplateDto
-{
-    // Stable identifier referenced from CustomBuilding.TemplateId.
-    public string id;
-
-    // Human-friendly label shown in the template picker (e.g. "Painting").
-    public string label;
-
-    // Short description shown next to the picker (one line).
-    public string description;
-
-    // Coarse classification ("Decoration" today; "Furniture"/"Floor"/...
-    // future). Used by the GUI for grouping.
-    public string kind;
-
-    // The category-tag the inject-side DLL filter uses to recognise the
-    // build-menu tab this template's clones belong to.
-    public string categoryTag;
-}
-
 // Wire-format for /api/building-templates/vanilla (Etappe I.1).
 // One entry per Vanilla DA_BI_*.uasset that lives under
 // /Game/Gameplay/Building/ and is NOT in a BuildingBrushes/Houses
@@ -46,7 +19,7 @@ sealed class VanillaBuildingTemplateDto
     // doesn't have to guess which field to put on the profile).
     public string id;
 
-    // File stem ("DA_BI_Bucket_01") - the picker's user-facing label.
+    // File stem ("DA_BI_FloorTorch_01") - the picker's user-facing label.
     public string displayName;
 
     // Parent-folder name ("BuildingDecoration" / "BuildingPoi" / ...).
@@ -54,7 +27,7 @@ sealed class VanillaBuildingTemplateDto
     public string category;
 
     // UE virtual path, e.g.
-    // "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01".
+    // "/Game/Gameplay/Building/BuildingDecoration/DA_BI_FloorTorch_01".
     public string packagePath;
 }
 
@@ -66,8 +39,6 @@ sealed class VanillaBuildingTemplateDto
 //     gate before starting a long build) - the class field is surfaced
 //     in the picker preview pane
 //   - Pre-fill the recipe editor with the picked DA's default cost
-//     (instead of the previous static templateId="Painting"/"Bucket"
-//     lookup)
 //   - Show the Mesh / Icon stems so the user knows which files their
 //     cook folder needs to overwrite
 sealed class VanillaBuildingTemplateInspectDto

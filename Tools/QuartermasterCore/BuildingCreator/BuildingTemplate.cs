@@ -56,11 +56,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // FText slot. Optional: null = skip description rewrite (the
         // building keeps whatever description the cloned vanilla DA
         // came with; if the vanilla DA doesn't carry one this is fine).
-        // For Painting it is "Decoration_Paintings_T02_Description"
-        // (note the inconsistent vanilla naming: Name uses
-        // "Decorations_Paintings_HighLands_02_*" but Description uses
-        // "Decoration_Paintings_T02_*"). Cross-checked by dumping the
-        // DA's uexp bytes for the literal strings.
+        // The Vanilla key is discovered at inspection time by
+        // VanillaBuildingTemplateInspector and may not always match the
+        // Name key naming convention (the vanilla data set has several
+        // inconsistencies, e.g. one DA carries "Decorations_X_Name" but
+        // "Decoration_X_Description" - the inspector grabs both via
+        // separate FText scans rather than guessing from the Name key).
         public string VanillaDescriptionKey;
 
         // --- Vanilla Mesh donor (referenced by the DA) -------------------
@@ -82,7 +83,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //
         // The DLL's qm_config.cpp uses this to recognise which build tab
         // the injected widget belongs to. Values seen so far:
-        //   "BuildingDecoration" - paintings, buckets, lamps, etc.
+        //   "BuildingDecoration" - paintings, lamps, floor torches, etc.
         // Future templates may need extending the DLL's filter to
         // accept per-item tags (PENDING risk in G.2 plan).
         public string CategoryTag;
@@ -91,13 +92,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //
         // Each building references an external recipe DA which carries the
         // RecipeCost array (resource items + counts), RecipeTag, and
-        // CraftRequirement. Discovered via the Vanilla DA's NameMap: e.g.
-        // DA_BI_Paintings_HighLands_02 has both the full package path
+        // CraftRequirement. Discovered via the Vanilla DA's NameMap: a
+        // typical DA has both the full package path under
         // "/R5BusinessRules/Recipes/Building/Items/Decorations/
-        //  DA_RD_BuildObject_Deco_Paintings_T02" and the bare stem
-        // "DA_RD_BuildObject_Deco_Paintings_T02" in its NameMap. Both
-        // entries get rewritten via DataAssetPatcher to point at our
-        // cloned recipe under
+        //  DA_RD_BuildObject_Deco_<Stem>" and the bare stem
+        // "DA_RD_BuildObject_Deco_<Stem>" in its NameMap. Both entries
+        // get rewritten via DataAssetPatcher to point at our cloned
+        // recipe under
         // /R5BusinessRules/Recipes/Building/Items/Decorations/
         //   DA_RD_Qm<BuildingId>.
         //
@@ -108,90 +109,30 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // to the extracted source JSON under Sources/Vanilla.
         public string VanillaRecipeJsonPath;
 
-        // Bare file stem ("DA_RD_BuildObject_Deco_Paintings_T02"). Goes
-        // into the DataAssetPatcher's NameMap-replacement table.
+        // Bare file stem ("DA_RD_BuildObject_Deco_<Stem>"). Goes into
+        // the DataAssetPatcher's NameMap-replacement table.
         public string VanillaRecipeStem;
 
         // Full UE virtual path matching the second NameMap entry for the
         // recipe in the building's DA ("/R5BusinessRules/Recipes/.../
-        // DA_RD_BuildObject_Deco_Paintings_T02", WITHOUT the .Stem suffix
-        // - that style of path is unique to RecipeCost item refs).
+        // DA_RD_BuildObject_Deco_<Stem>", WITHOUT the .Stem suffix - that
+        // style of path is unique to RecipeCost item refs).
         public string VanillaRecipePackagePath;
 
         // -----------------------------------------------------------------
-        // Convenience factories.
-        // -----------------------------------------------------------------
-        public static BuildingTemplate Painting()
-        {
-            return new BuildingTemplate
-            {
-                Id          = "Painting",
-                DisplayName = "Painting",
-                Description = "Wall painting cloned from Vanilla HighLands painting (image on wall).",
-
-                VanillaDaStem          = "DA_BI_Paintings_HighLands_02",
-                VanillaDaPath          = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Paintings_HighLands_02",
-                VanillaNameKey         = "Decorations_Paintings_HighLands_02_Name",
-                VanillaDescriptionKey  = "Decoration_Paintings_T02_Description",
-
-                VanillaMeshStem = "SM_Paintings_HighLands_02",
-                VanillaMeshPath = "/Game/Environment/Gameplay/Building/BuildingDecoration/SM_Paintings_HighLands_02",
-
-                VanillaIconStem = "T_Paintings_HighLands_02",
-                VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_Paintings_HighLands_02",
-
-                CategoryTag = "BuildingDecoration",
-
-                // Recipe wiring (Etappe H2). Note the Painting DA's
-                // NameMap references the recipe by both full path and
-                // bare stem - DataAssetPatcher will rewrite both.
-                VanillaRecipeJsonPath    = "R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Paintings_T02.json",
-                VanillaRecipeStem        = "DA_RD_BuildObject_Deco_Paintings_T02",
-                VanillaRecipePackagePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Paintings_T02",
-            };
-        }
-
-        public static BuildingTemplate Bucket()
-        {
-            return new BuildingTemplate
-            {
-                Id          = "Bucket",
-                DisplayName = "Bucket",
-                Description = "Free-standing bucket cloned from Vanilla wooden bucket (floor placement).",
-
-                VanillaDaStem          = "DA_BI_Bucket_01",
-                VanillaDaPath          = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_Bucket_01",
-                // Discovered by binary-dumping DA_BI_Bucket_01.uexp; both
-                // keys sit inline in the export body (BuildingPatcher's
-                // post-NameMap binary rewrite handles them).
-                VanillaNameKey         = "Decorations_Bucket_01_Name",
-                VanillaDescriptionKey  = "Decorations_DecorDishes_01_Descriptions",
-
-                VanillaMeshStem = "SM_BucketWooden_01",
-                VanillaMeshPath = "/Game/Environment/Props/Camp/SM_BucketWooden_01",
-
-                VanillaIconStem = "T_BI_Bucket_01",
-                VanillaIconPath = "/Game/UI/HUD/Building/Icons/BuildingBits/T_BI_Bucket_01",
-
-                CategoryTag = "BuildingDecoration",
-
-                // Recipe wiring (Etappe H2).
-                VanillaRecipeJsonPath    = "R5/Plugins/R5BusinessRules/Content/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood.json",
-                VanillaRecipeStem        = "DA_RD_BuildObject_Deco_Dishes_T01_Wood",
-                VanillaRecipePackagePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/DA_RD_BuildObject_Deco_Dishes_T01_Wood",
-            };
-        }
-
         // Etappe I.2: build a BuildingTemplate dynamically from a
-        // VanillaBuildingTemplateInspection. Used by the BuildPipeline
-        // when the profile's TemplateId references a Vanilla DA path
-        // (rather than one of the legacy "Painting"/"Bucket" sentinels).
+        // VanillaBuildingTemplateInspection. This is the ONLY way to
+        // produce a BuildingTemplate today - the user picks a Vanilla DA
+        // via the GUI's template picker, the inspector reads the donor's
+        // Mesh/Icon/Recipe refs + FText keys, and this factory hydrates
+        // a BuildingTemplate from the result.
         //
         // The factory deliberately accepts partial inspections - missing
         // recipe refs are fine (some Vanilla DAs ship without a recipe;
         // the patcher's recipe step is a no-op when VanillaRecipeStem is
         // null). Missing Mesh/Icon refs would be fatal at build time, so
         // the inspector surfaces those as warnings the GUI can show.
+        // -----------------------------------------------------------------
         public static BuildingTemplate FromInspection(VanillaBuildingTemplateInspection ins)
         {
             if (ins == null) throw new System.ArgumentNullException("ins");

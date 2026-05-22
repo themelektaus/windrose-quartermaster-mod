@@ -77,12 +77,13 @@ namespace Windrose.Quartermaster.Core
         public List<CustomItem> CustomItems;
 
         // Custom buildings added via the Building Creator tab. Each entry
-        // describes one user-supplied "Buildable" (currently only the
-        // "Painting" template - a wall painting) that the BuildingPatcher
-        // synthesises from a Vanilla DA + Vanilla MI clone + the user's
-        // cooked mesh / icon / image texture. The patcher pipeline lives
-        // in Tools/QuartermasterCore/BuildingCreator/ and is invoked by
-        // the orchestrator (Etappe E) once per entry during Build.
+        // describes one user-supplied "Buildable" cloned from a Vanilla
+        // DA (the user picks the donor template via the GUI's Vanilla
+        // template browser). The BuildingPatcher synthesises it from the
+        // Vanilla DA + Vanilla MI clone + the user's cooked mesh / icon
+        // / image texture. The patcher pipeline lives in
+        // Tools/QuartermasterCore/BuildingCreator/ and is invoked by the
+        // orchestrator (Etappe E) once per entry during Build.
         //
         // Like CustomItems, this is an ordered list (not dict) so the UI
         // renders deterministic card positions while editing. Id is the
@@ -725,9 +726,10 @@ namespace Windrose.Quartermaster.Core
         public List<string> RecipeOrder;
     }
 
-    // A user-defined custom building, cloned from a Vanilla "Buildable"
-    // template (currently only "Painting" - wall painting). The
-    // BuildingPatcher pipeline:
+    // A user-defined custom building, cloned from a user-picked Vanilla
+    // "Buildable" template (any DA_BI_*.uasset under
+    // /Game/Gameplay/Building/, picked via the GUI's Vanilla template
+    // browser). The BuildingPatcher pipeline:
     //   1. Stages the user's cooked assets (mesh + icon + image texture)
     //      into the mod-pak's /Game/Quartermaster/Items/ folder. User-
     //      cooked custom Materials/MIs are SKIPPED - we bisected to the
@@ -741,13 +743,13 @@ namespace Windrose.Quartermaster.Core
     //      refs -> user-cooked stems; localization key -> per-building
     //      synthesized key).
     //   4. Patches the cloned MI's VectorParameterValues in-place via
-    //      UAssetAPI to apply template-declared color overrides (Painting
-    //      forces Canvas EdgeColor/AOColor to white so the user's image
-    //      renders untinted).
+    //      UAssetAPI to apply user-declared color overrides per slot
+    //      (e.g. forcing EdgeColor/AOColor to white so a user-supplied
+    //      image renders untinted).
     //
-    // The DLL's qm_items.json picks up DA_BI_<Id> via the orchestrator
-    // (Etappe E) so the engine spawns one widget per Building under the
-    // template's CategoryTag tab at inject-time.
+    // The DLL's per-profile qm_items_<safeName>.json picks up DA_BI_<Id> via
+    // the orchestrator (Etappe E) so the engine spawns one widget per Building
+    // under the template's CategoryTag tab at inject-time.
     //
     // Id convention "QmBldg_<8hex>" mirrors the CustomItem pattern. The
     // 8-hex suffix is frontend-generated at create-time and never changes,
@@ -758,12 +760,14 @@ namespace Windrose.Quartermaster.Core
         // underscore only). Drives:
         //   * Output DA stem: DA_BI_<Id>
         //   * Localization key: Decoration_<Id>_Name
-        //   * qm_items.json entry name
+        //   * qm_items_<profile>.json entry name
         public string Id;
 
-        // Template stem the BuildingTemplatesEndpoint serves (currently
-        // only "Painting"). The patcher uses this to look up the
-        // BuildingTemplate (Vanilla donor paths, slot list, category tag).
+        // Vanilla DA virtual path the user picked as donor template
+        // (e.g. "/Game/Gameplay/Building/BuildingDecoration/DA_BI_FloorTorch_01").
+        // The patcher resolves this through the BuildingTemplateCatalog
+        // + Inspector to hydrate a BuildingTemplate (donor paths, FText
+        // keys, recipe ref, category tag).
         public string TemplateId;
 
         // Free-text display name (shown in the in-game build menu). Stored

@@ -5,11 +5,15 @@
 // onto a spawned widget's SoftPath (Plan B+ override path). The asset itself
 // must exist on disk - either via a mod pak in ~mods/ or as a vanilla asset.
 //
-// Source of truth: `qm_items.json` sitting next to dxgi.dll in the game's
-// `R5/Binaries/Win64/` folder. The Quartermaster GUI ("Build" button) writes
-// this JSON when deploying a profile; no DLL rebuild is required to change
-// the item list. If the JSON is missing or malformed the DLL stays loaded
-// but injects nothing.
+// Source of truth: `qm_items_<profile>.json` files sitting next to dxgi.dll
+// in the game's `R5/Binaries/Win64/` folder, one file per deployed profile.
+// The DLL scans the directory for `qm_items_*.json` at startup and merges
+// every match into one item list - so multiple Quartermaster profiles
+// deployed side-by-side compose naturally. The Quartermaster GUI ("Build"
+// button) writes the per-profile file; deleting a pak in the mods tab
+// deletes the matching JSON too. No DLL rebuild is required to change the
+// item list. If no JSON files are present (or all are malformed) the DLL
+// stays loaded but injects nothing.
 
 #pragma once
 
@@ -42,10 +46,11 @@ extern int                   g_injectableItemCount;
 // Currently assumes all items share one tab; later we can per-item.
 extern const char* kTabPurityFilterSubstring;
 
-// Load qm_items.json from the directory containing this DLL. Safe to call
-// multiple times (later calls reload the file). Returns true on success
-// (including the "file missing -> empty list" no-op case); false only on
-// hard parse errors. Errors are logged via QM_LOG_*.
+// Scan the directory containing this DLL for qm_items_*.json files, parse
+// each, and merge their items into one list. Safe to call multiple times
+// (later calls clear and re-merge). Returns true on success (including the
+// "no files matched -> empty list" no-op case); false only when one or
+// more files hit a hard parse error. Errors are logged via QM_LOG_*.
 bool QmConfigLoad();
 
 // Optional explicit shutdown - releases the internal vectors. Not required

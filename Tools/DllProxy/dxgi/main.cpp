@@ -108,13 +108,13 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
     // Crash diagnostics first so any subsequent failure gets captured.
     QmCrashInstallHandler();
 
-    // Load injectable-item list from qm_items.json (sits next to this DLL).
-    // The GUI writes that file on "Build" / "Deploy"; missing file = no
-    // injects (DLL stays idle, no harm). Done off DllMain to keep Loader-Lock
-    // clean.
+    // Load injectable-item list by scanning qm_items_*.json next to this DLL.
+    // The GUI writes one file per deployed profile on "Build" / "Deploy"; no
+    // matching files = no injects (DLL stays idle, no harm). Done off DllMain
+    // to keep Loader-Lock clean.
     QmConfigLoad();
 
-    // Self-disable mode: when the JSON is missing or has zero items, this DLL
+    // Self-disable mode: when no JSON files matched or zero items merged, this DLL
     // is along for the ride (e.g. profile has only custom items / recipes -
     // those don't need injection). Skip MinHook + UE probe entirely so we have
     // zero per-frame overhead and zero crash surface. Re-loading requires a

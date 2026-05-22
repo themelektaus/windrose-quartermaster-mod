@@ -42,13 +42,6 @@ const state = {
         error: null,
     },
 
-    buildingTemplates: {
-        loaded: false,
-        list: [],
-        byId: new Map(),
-        error: null,
-    },
-
     // Lazy-loaded full catalogs the Building Creator's picker dropdowns
     // filter client-side (same pattern as state.items for loot tables).
     // null until the user first opens a relevant picker.
@@ -107,7 +100,6 @@ async function loadAppData() {
     indexLootCrossReferences();
 
     loadItemTemplates();
-    loadBuildingTemplates();
 
     populateProfileSelect();
     populateValueFilter('filter-class',  'itemClass', 'All classes');
@@ -581,15 +573,8 @@ function setActiveTab(tab) {
         }
     }
     if (tab === 'buildings') {
-        if (!state.buildingTemplates.loaded) {
-            loadBuildingTemplates().then(() => {
-                renderBuildingCreator();
-                renderBuildingCreatorStatus();
-            });
-        } else {
-            renderBuildingCreator();
-            renderBuildingCreatorStatus();
-        }
+        renderBuildingCreator();
+        renderBuildingCreatorStatus();
     }
 }
 
@@ -633,7 +618,7 @@ async function loadProfile(id) {
         renderItemCreator();
         renderItemCreatorStatus();
     }
-    if (state.activeTab === 'buildings' && state.buildingTemplates.loaded) {
+    if (state.activeTab === 'buildings') {
         renderBuildingCreator();
         renderBuildingCreatorStatus();
     }

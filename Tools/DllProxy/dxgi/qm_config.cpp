@@ -1,22 +1,31 @@
 // Quartermaster injectable-item config - runtime JSON loader.
 // -----------------------------------------------------------
-// Reads qm_items.json from the directory containing this DLL at startup.
-// The GUI ("Build" button) writes that file when deploying a profile, so the
-// item list can change without rebuilding the DLL. Storage is owned here:
-// the InjectableItem rows handed out to the rest of the DLL reference c_str()
-// pointers into the file-static std::string/std::wstring vectors below, which
-// live for the lifetime of the DLL.
+// Scans the directory containing this DLL for qm_items_*.json files at
+// startup, parses each, and merges their items into one in-memory list.
+// One file per deployed Quartermaster profile - the GUI ("Build" button)
+// writes the per-profile file (qm_items_<profile>.json), deleting a pak
+// in the mods tab deletes the matching JSON too, and CleanupGame() removes
+// all of them. So the item list can change without rebuilding the DLL.
+// Storage is owned here: the InjectableItem rows handed out to the rest of
+// the DLL reference c_str() pointers into the file-static std::string /
+// std::wstring vectors below, which live for the lifetime of the DLL.
+//
+// tabPurityFilter (a top-level string in each file) controls which build-
+// menu tab the inject targets. If multiple files set conflicting values
+// the first one (sorted by filename) wins and the conflict is logged -
+// in practice all our deployed profiles target "BuildingBrushes" so the
+// conflict path is never hit.
 //
 // JSON format (flat, only strings - no numbers or bools needed):
 //   {
-//     "tabPurityFilter": "BuildingDecoration",
+//     "tabPurityFilter": "BuildingBrushes",
 //     "items": [
 //       {
-//         "name":                    "QmPainting_01",
+//         "name":                    "QmBldg_a1b2c3d4",
 //         "className":               "R5BuildingItem",
-//         "assetName":               "DA_BI_QmPainting_01",
-//         "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmPainting_01",
-//         "targetCategorySubstring": "BuildingDecoration"
+//         "assetName":               "DA_BI_QmBldg_a1b2c3d4",
+//         "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmBldg_a1b2c3d4",
+//         "targetCategorySubstring": "BuildingBrushes"
 //       }
 //     ]
 //   }
@@ -31,6 +40,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -304,7 +314,10 @@ bool ParseRoot(JsonParser& jp, std::string& tabFilterOut, std::vector<ItemStorag
 // ---------------------------------------------------------------------------
 // Disk I/O and self-locating helpers.
 // ---------------------------------------------------------------------------
-bool LocateConfigPath(char* out, size_t outSz)
+
+// Writes the directory containing this DLL into `out`. No trailing
+// separator. Used as the scan-root for qm_items_*.json files.
+bool LocateConfigDir(char* out, size_t outSz)
 {
     if (!out || outSz == 0) return false;
 
@@ -316,7 +329,7 @@ bool LocateConfigPath(char* out, size_t outSz)
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCSTR)&QmConfigLoad, &self) || !self)
     {
-        QM_LOG_WARN("[Config] GetModuleHandleEx failed (gle=%lu) - cannot locate qm_items.json",
+        QM_LOG_WARN("[Config] GetModuleHandleEx failed (gle=%lu) - cannot locate config dir",
                     GetLastError());
         return false;
     }
@@ -337,9 +350,41 @@ bool LocateConfigPath(char* out, size_t outSz)
     }
     *lastSep = '\0';
 
-    int written = snprintf(out, outSz, "%s\\qm_items.json", dllPath);
-    if (written <= 0 || (size_t)written >= outSz) return false;
+    size_t dlen = strlen(dllPath);
+    if (dlen + 1 > outSz) return false;
+    memcpy(out, dllPath, dlen + 1);
     return true;
+}
+
+// Scans `dir` for files matching qm_items_*.json (top-level only) and
+// returns absolute paths sorted by filename (so deterministic order across
+// runs and across machines). Empty result is OK - the DLL just stays idle.
+std::vector<std::string> EnumerateConfigFiles(const char* dir)
+{
+    std::vector<std::string> out;
+    if (!dir || !*dir) return out;
+
+    char pattern[MAX_PATH];
+    int written = snprintf(pattern, sizeof(pattern), "%s\\qm_items_*.json", dir);
+    if (written <= 0 || (size_t)written >= sizeof(pattern)) return out;
+
+    WIN32_FIND_DATAA fd = {};
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do
+    {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        char full[MAX_PATH];
+        int w = snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+        if (w <= 0 || (size_t)w >= sizeof(full)) continue;
+        out.emplace_back(full);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+
+    // Sort by filename so a build's log output is stable across runs and
+    // the "first non-empty tabPurityFilter wins" rule is deterministic.
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 bool ReadWholeFile(const char* path, std::string& out)
@@ -402,42 +447,92 @@ void RebuildView()
 // ---------------------------------------------------------------------------
 bool QmConfigLoad()
 {
-    // Reset to empty so a reload doesn't show stale state if parse fails.
+    // Reset to empty so a reload doesn't show stale state if every parse fails.
     g_storage.clear();
     g_tabFilter.clear();
     RebuildView();
 
-    char path[MAX_PATH];
-    if (!LocateConfigPath(path, sizeof(path)))
+    char dir[MAX_PATH];
+    if (!LocateConfigDir(dir, sizeof(dir)))
         return false;
 
-    QM_LOG_INFO("[Config] looking for %s", path);
-
-    std::string body;
-    if (!ReadWholeFile(path, body))
+    auto files = EnumerateConfigFiles(dir);
+    if (files.empty())
     {
-        QM_LOG_INFO("[Config] file not present - no items will be injected (DLL stays idle)");
-        return true;   // not-an-error: GUI may not have deployed yet
-    }
-    StripUtf8Bom(body);
-
-    JsonParser jp(body.data(), body.size());
-    std::string tabFilter;
-    std::vector<ItemStorage> items;
-    bool parsed = ParseRoot(jp, tabFilter, items);
-    if (!parsed || !jp.ok)
-    {
-        long offset = (long)(jp.p - body.data());
-        QM_LOG_ERROR("[Config] parse error: %s at byte offset %ld - injecting nothing",
-                     jp.lastError ? jp.lastError : "unknown", offset);
-        return false;
+        QM_LOG_INFO("[Config] no qm_items_*.json files in %s - DLL stays idle", dir);
+        return true;   // not-an-error: GUI may not have deployed any profile yet
     }
 
-    g_storage   = std::move(items);
-    g_tabFilter = std::move(tabFilter);
+    QM_LOG_INFO("[Config] scanning %zu file(s) under %s", files.size(), dir);
+
+    std::vector<ItemStorage> mergedItems;
+    std::string mergedTabFilter;
+    std::string mergedTabFilterSource;  // filename that won the conflict, for log
+    bool anyParseError = false;
+
+    for (const auto& path : files)
+    {
+        const char* fname = strrchr(path.c_str(), '\\');
+        fname = fname ? fname + 1 : path.c_str();
+
+        std::string body;
+        if (!ReadWholeFile(path.c_str(), body))
+        {
+            QM_LOG_WARN("[Config]   %s: read failed - skipping", fname);
+            continue;
+        }
+        StripUtf8Bom(body);
+
+        JsonParser jp(body.data(), body.size());
+        std::string tabFilter;
+        std::vector<ItemStorage> items;
+        bool parsed = ParseRoot(jp, tabFilter, items);
+        if (!parsed || !jp.ok)
+        {
+            long offset = (long)(jp.p - body.data());
+            QM_LOG_ERROR("[Config]   %s: parse error: %s at byte offset %ld - skipping",
+                         fname, jp.lastError ? jp.lastError : "unknown", offset);
+            anyParseError = true;
+            continue;
+        }
+
+        QM_LOG_INFO("[Config]   %s: %zu item(s), tabPurityFilter='%s'",
+                    fname, items.size(),
+                    tabFilter.empty() ? "<disabled>" : tabFilter.c_str());
+
+        // First non-empty tabPurityFilter wins. If a later file has a
+        // different non-empty filter we log it but keep the winner.
+        if (!tabFilter.empty())
+        {
+            if (mergedTabFilter.empty())
+            {
+                mergedTabFilter       = tabFilter;
+                mergedTabFilterSource = fname;
+            }
+            else if (mergedTabFilter != tabFilter)
+            {
+                QM_LOG_WARN("[Config]   %s: tabPurityFilter='%s' conflicts with '%s' from %s - keeping the first",
+                            fname, tabFilter.c_str(),
+                            mergedTabFilter.c_str(), mergedTabFilterSource.c_str());
+            }
+        }
+
+        // Merge items. We don't dedupe by name - if two profiles ship a
+        // building with the same internal name (extremely unlikely given the
+        // QmBldg_<8hex> scheme) they'd both inject; the second one would
+        // simply collide on the FName slot and the inject pipeline would
+        // skip the duplicate at runtime.
+        for (auto& it : items)
+        {
+            mergedItems.push_back(std::move(it));
+        }
+    }
+
+    g_storage   = std::move(mergedItems);
+    g_tabFilter = std::move(mergedTabFilter);
     RebuildView();
 
-    QM_LOG_INFO("[Config] loaded %d item(s), tabPurityFilter='%s'",
+    QM_LOG_INFO("[Config] merged total %d item(s), tabPurityFilter='%s'",
                 g_injectableItemCount,
                 kTabPurityFilterSubstring ? kTabPurityFilterSubstring : "<disabled>");
     for (int i = 0; i < g_injectableItemCount; ++i)
@@ -447,7 +542,11 @@ bool QmConfigLoad()
                     i, it.name, it.className, it.assetName, it.packagePathW,
                     it.targetCategorySubstring ? it.targetCategorySubstring : "<match-all>");
     }
-    return true;
+
+    // Return false only if there was a hard parse error on at least one
+    // file. Empty results from "all files were silently skipped" still
+    // count as success (we logged the per-file failures).
+    return !anyParseError;
 }
 
 void QmConfigUnload()

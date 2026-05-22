@@ -13,13 +13,12 @@ using CUE4Parse.UE4.Versions;
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
     // Indexes all Vanilla BuildingItem DataAsset files (DA_BI_*.uasset)
-    // under /Game/Gameplay/Building/ - the donor pool for Etappe I's
-    // dynamic template picker. Replaces the hardcoded
-    // BuildingTemplate.Painting() / Bucket() factories.
+    // under /Game/Gameplay/Building/ - the donor pool for the dynamic
+    // template picker (Etappe I).
     //
     // What this catalog gives the GUI:
     //   - id          stable identifier (the UE virtual /Game/... path)
-    //   - displayName file stem ("DA_BI_Bucket_01") - the user-readable
+    //   - displayName file stem ("DA_BI_FloorTorch_01") - the user-readable
     //                 label in the picker; not localized
     //   - category    parent-folder name ("BuildingDecoration",
     //                 "BuildingPoi", "BuildingCrafts", ...) for the
@@ -306,7 +305,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     public sealed class VanillaBuildingTemplateEntry
     {
         public string Id;               // = PackagePath, the GUI's stable handle
-        public string DisplayName;      // file stem ("DA_BI_Bucket_01")
+        public string DisplayName;      // file stem ("DA_BI_FloorTorch_01")
         public string Category;         // parent folder ("BuildingDecoration")
         public string PackagePath;      // "/Game/Gameplay/Building/.../DA_BI_..."
         public string PakRelativePath;  // "R5/Content/Gameplay/.../DA_BI_..." (no extension)

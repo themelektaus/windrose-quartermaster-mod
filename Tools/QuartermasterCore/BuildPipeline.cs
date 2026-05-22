@@ -102,8 +102,8 @@ namespace Windrose.Quartermaster.Core
         public Func<string> GamePaksDirProvider;
 
         // Etappe I: when set, the pipeline resolves building templateIds
-        // that are NOT "Painting"/"Bucket" through this catalog. The Web
-        // layer wires its shared VanillaBuildingTemplateCatalog instance
+        // (Vanilla DA virtual paths) through this catalog. The Web layer
+        // wires its shared VanillaBuildingTemplateCatalog instance
         // in before calling Build(); CLI smoke tests leave it null and
         // get the legacy hardcoded-factory behavior.
         public VanillaBuildingTemplateCatalog BuildingTemplateCatalog;
@@ -390,8 +390,8 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in itemCreatorResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                // Custom Buildings: user-defined buildings (e.g. Paintings
-                // with their own image and frame). Each building's user-
+                // Custom Buildings: user-defined buildings (e.g. a floor
+                // torch with custom flame VFX). Each building's user-
                 // cooked mesh + icon + textures get staged under
                 // tmpDir/R5/Content/Quartermaster/Items/, the per-slot
                 // Vanilla MIs get cloned + retargeted at the user's
@@ -411,8 +411,9 @@ namespace Windrose.Quartermaster.Core
                 // which then goes through retoc to-zen at the end.
                 //
                 // Output: the in-pak assets the DLL inject pipeline targets
-                // at runtime - the qm_items.json next to dxgi.dll picks
-                // them up via the GameDeployer hook AFTER the pak is built.
+                // at runtime - the per-profile qm_items_<safeName>.json next
+                // to dxgi.dll picks them up via the GameDeployer hook AFTER
+                // the pak is built.
                 List<BuildingPatchResult> buildingResults = null;
                 bool buildingsActive = HasCustomBuildingsConfiguration(profile);
 
@@ -568,19 +569,20 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
-                // GameDeployer: write qm_items.json + (if needed) install
-                // dxgi.dll into the game's Binaries/Win64. Idempotent and
-                // narrow - only this folder is touched, the pak triple was
+                // GameDeployer: write qm_items_<profile>.json + (if needed)
+                // install dxgi.dll into the game's Binaries/Win64. Idempotent
+                // and narrow - only this folder is touched, the pak triple was
                 // already shipped to ~mods/ via OutputDir. Per Variant C
                 // (PENDING.md #13): DLL stays permanently once installed;
-                // empty JSON makes it idle without uninstalling. We only
-                // touch the game folder when the user has actually used
-                // the buildings feature - never silently inject our DLL
-                // into a stack/loot-only profile.
+                // missing per-profile JSON makes that profile contribute
+                // nothing without uninstalling the DLL. We only touch the
+                // game folder when the user has actually used the buildings
+                // feature - never silently inject our DLL into a stack/loot-
+                // only profile.
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
                 if (buildingsCount > 0)
                 {
-                    LogLine("Deploying DLL + qm_items.json to game Binaries/Win64");
+                    LogLine("Deploying DLL + qm_items_" + safeName + ".json to game Binaries/Win64");
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
                     // EnsureDllInstalled returns false on non-Windows
@@ -590,32 +592,36 @@ namespace Windrose.Quartermaster.Core
                     // no DLL to read it. Pak still ships normally.
                     if (deployer.EnsureDllInstalled())
                     {
-                        deployer.WriteItemsJson(buildingResults);
+                        deployer.WriteItemsJson(safeName, buildingResults);
                     }
                 }
                 else
                 {
-                    // User has no buildings now - if DLL was previously
-                    // deployed, write empty JSON so it goes idle (no stale
-                    // injects against assets that aren't in the pak any
-                    // more). If DLL was never deployed: skip entirely,
-                    // never invasively touch the game folder.
+                    // User has no buildings in this profile now - if DLL was
+                    // previously deployed AND we left a per-profile JSON
+                    // behind, delete it so the DLL stops injecting stale
+                    // items on next start. Other profiles' JSONs stay
+                    // untouched (they belong to other paks in ~mods/).
+                    // If DLL was never deployed: skip entirely, never
+                    // invasively touch the game folder.
                     try
                     {
                         var deployer = new GameDeployer(_paths.ModRoot);
                         deployer.Log = Log;
                         if (File.Exists(deployer.TargetDllPath()))
                         {
-                            LogLine("No custom buildings - writing empty qm_items.json to keep deployed DLL idle");
-                            deployer.WriteItemsJson(new List<BuildingPatchResult>());
+                            // WriteItemsJson with an empty list deletes the
+                            // per-profile JSON (no orphan empty entry in
+                            // the DLL's scan).
+                            deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
                         }
                     }
                     catch (Exception ex)
                     {
                         // Locating the game folder is optional here - if it
-                        // fails we just skip the idle write. The user can
-                        // run CleanupGame manually.
-                        LogLine("Warning: skipped idle JSON write (game folder lookup failed): " + ex.Message);
+                        // fails we just skip the cleanup. The user can run
+                        // CleanupGame manually.
+                        LogLine("Warning: skipped per-profile JSON cleanup (game folder lookup failed): " + ex.Message);
                     }
                 }
 
@@ -2431,26 +2437,16 @@ namespace Windrose.Quartermaster.Core
         // come from the user's cooked mesh, not the template, since
         // Etappe G.
         //
-        // Two id forms supported:
-        //   1) Legacy sentinel "Painting" / "Bucket" - routed to the
-        //      hardcoded factory. Kept for backwards compat with profiles
-        //      saved before Etappe I.
-        //   2) Vanilla DA virtual path "/Game/Gameplay/Building/.../DA_BI_*"
-        //      - resolved through the BuildingTemplateCatalog +
-        //      VanillaBuildingTemplateInspector (Etappe I.2). Catalog
-        //      must be set (Web layer does this); CLI smoke tests that
-        //      don't set it can still build Painting/Bucket buildings.
+        // The templateId is a Vanilla DA virtual path
+        // "/Game/Gameplay/Building/.../DA_BI_*" - resolved through the
+        // BuildingTemplateCatalog + VanillaBuildingTemplateInspector
+        // (Etappe I.2). The catalog must be set (Web layer does this);
+        // CLI smoke tests without a catalog skip building resolution
+        // with a clear warning.
         BuildingTemplate ResolveBuildingTemplate(string templateId)
         {
             if (string.IsNullOrWhiteSpace(templateId)) return null;
             var trimmed = templateId.Trim();
-
-            // Legacy aliases first - they never go through the catalog
-            // since the factories ship hardcoded constants.
-            if (string.Equals(trimmed, "Painting", StringComparison.OrdinalIgnoreCase))
-                return BuildingTemplate.Painting();
-            if (string.Equals(trimmed, "Bucket", StringComparison.OrdinalIgnoreCase))
-                return BuildingTemplate.Bucket();
 
             // Vanilla DA path form - look it up in the catalog.
             if (BuildingTemplateCatalog == null)
@@ -2750,7 +2746,8 @@ namespace Windrose.Quartermaster.Core
         // Custom-building patch results, one per CustomBuilding in the
         // profile. null when the profile has no CustomBuildings. Each
         // entry carries the patched asset stems + warnings; the GameDeployer
-        // step turns this list into the qm_items.json the DLL reads.
+        // step turns this list into the per-profile qm_items_<safeName>.json
+        // the DLL merges at startup.
         public List<BuildingPatchResult> BuildingResults;
         public string TmpDir;
         public bool Success;

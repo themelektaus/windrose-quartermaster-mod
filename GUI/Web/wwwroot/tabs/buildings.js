@@ -292,29 +292,6 @@ async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
     ensureVanillaBuildingInspection(templateId);
 }
 
-async function loadBuildingTemplates() {
-    const errBox = document.getElementById('buildings-error');
-    if (errBox) {
-        errBox.hidden = true;
-        errBox.textContent = '';
-    }
-    try {
-        const list = await api('GET', '/api/building-templates');
-        const byId = new Map();
-        for (const t of list || []) byId.set(t.id, t);
-        state.buildingTemplates.list = list || [];
-        state.buildingTemplates.byId = byId;
-        state.buildingTemplates.loaded = true;
-        state.buildingTemplates.error = null;
-    } catch (ex) {
-        state.buildingTemplates.error = (ex && ex.message) ? ex.message : String(ex);
-        if (errBox) {
-            errBox.hidden = false;
-            errBox.textContent = 'Failed to load building templates: ' + state.buildingTemplates.error;
-        }
-    }
-}
-
 function newCustomBuildingId() {
     const bytes = new Uint8Array(4);
     if (window.crypto && window.crypto.getRandomValues) {
@@ -468,10 +445,10 @@ function onBuildingsActivePickerChange(e) {
 
 function buildCustomBuildingCardHtml(custom, index) {
     if (!custom) return '';
-    // Legacy compatibility: Painting/Bucket sentinels resolve through
-    // the static catalog the backend still ships. Anything else is
-    // resolved against the on-demand vanilla-inspection cache.
-    const tpl = state.buildingTemplates.byId.get(custom.templateId) || null;
+    // The templateId is a Vanilla DA virtual path (e.g.
+    // "/Game/Gameplay/Building/.../DA_BI_FloorTorch_01"). The picker
+    // populates the on-demand vanilla-inspection cache on selection
+    // so subsequent renders avoid re-hitting the backend.
     const ins = (custom.templateId && state.vanillaBuildingInspections.get)
         ? state.vanillaBuildingInspections.get(custom.templateId) || null
         : null;
@@ -480,23 +457,20 @@ function buildCustomBuildingCardHtml(custom, index) {
     const safeDesc   = escapeHtml(custom.description || '');
     const safePath   = escapeHtml(custom.cookedFolderPath || '');
 
-    const missingHtml = renderMissingRequiredBanner(custom, tpl);
+    const missingHtml = renderMissingRequiredBanner(custom, null);
 
-    // Template label: the picker shows the file stem (Vanilla DA) or
-    // the legacy label ("Painting"/"Bucket"). The inspection cache
-    // wins for Vanilla DA paths because the user picked them.
+    // Template label: file stem from the inspection when available,
+    // otherwise fall back to the raw templateId so the user can see
+    // which DA was picked even if the inspection cache is cold.
     let tplLabel = '';
     if (ins) tplLabel = ins.displayName || ins.id || '';
-    else if (tpl) tplLabel = tpl.label || tpl.id || '';
     else if (custom.templateId) tplLabel = custom.templateId;
 
-    // Per-template hint line: for legacy templates use the description;
-    // for Vanilla DAs surface mesh/icon/category for context.
+    // Per-template hint line: surface mesh/icon/category from the
+    // inspection for context. Shows a resolving placeholder while the
+    // inspection is still loading from the backend.
     let tplHint = '';
-    if (tpl) {
-        tplHint = escapeHtml(tpl.description || '')
-            + (tpl.categoryTag ? ' (tab: ' + escapeHtml(tpl.categoryTag) + ')' : '');
-    } else if (ins) {
+    if (ins) {
         const parts = [];
         if (ins.category) parts.push(escapeHtml(ins.category));
         if (ins.meshStem) parts.push('mesh: ' + escapeHtml(ins.meshStem));
@@ -1250,11 +1224,8 @@ function hexToRgb(hex) {
 // -----------------------------------------------------------------------
 function renderBuildingCreatorStatus() {
     const customs = (state.current && state.current.customBuildings) || [];
-    const tpls = state.buildingTemplates.list.length;
     const cEl = document.getElementById('buildings-stat-count');
-    const tEl = document.getElementById('buildings-stat-templates');
     if (cEl) cEl.textContent = customs.length;
-    if (tEl) tEl.textContent = tpls;
     const cnt = document.getElementById('buildings-count');
     if (cnt) cnt.textContent = customs.length === 0
         ? '' : (customs.length + ' building' + (customs.length === 1 ? '' : 's'));
@@ -1262,16 +1233,7 @@ function renderBuildingCreatorStatus() {
 
 async function onBuildingsNew() {
     if (!state.current) return;
-    if (!state.buildingTemplates.loaded) {
-        await loadBuildingTemplates();
-    }
-    const tpls = state.buildingTemplates.list;
-    if (tpls.length === 0) {
-        await alert('No building templates available - the backend returned an empty catalog.');
-        return;
-    }
-    const template = tpls[0];
-    const name = await prompt('Name for the new building:', 'My ' + template.label);
+    const name = await prompt('Name for the new building:', 'My Building');
     if (name == null) return;
     const trimmed = String(name).trim();
     if (!trimmed) return;
@@ -1279,7 +1241,9 @@ async function onBuildingsNew() {
     state.current.customBuildings = state.current.customBuildings || [];
     const newEntry = {
         id: newCustomBuildingId(),
-        templateId: template.id,
+        // Empty templateId: the user picks the donor Vanilla DA via
+        // the per-card template picker after creation.
+        templateId: '',
         name: trimmed,
         description: '',
         cookedFolderPath: '',

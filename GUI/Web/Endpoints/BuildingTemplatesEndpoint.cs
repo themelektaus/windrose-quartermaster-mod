@@ -7,15 +7,11 @@ using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// GET /api/building-templates -> the catalog of "Buildable" archetypes
-// the Building Creator tab can clone.
+// Building Creator tab endpoints. The Vanilla-DA browser is the only
+// template source - the user picks a vanilla DA via the picker, the
+// inspector reads its Mesh / Icon / Recipe refs + FText keys, and the
+// build pipeline hydrates a BuildingTemplate from the result.
 //
-// Etappe I.1 introduces the Vanilla-DA browser:
-//   /api/building-templates                           -> hardcoded
-//                                                        Painting + Bucket
-//                                                        (legacy templates,
-//                                                         kept until I.2
-//                                                         migration is in)
 //   /api/building-templates/vanilla?search=&category= -> indexed Vanilla
 //                                                        DA_BI_*.uasset
 //                                                        catalog (~850
@@ -25,10 +21,10 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //                                                        names for the
 //                                                        picker's facet
 //                                                        filter
-//
-// I.2 will add an /inspect endpoint that returns per-DA metadata
-// (Mesh / Icon / Recipe refs + FText keys) for the dynamic template
-// hydration in the patcher.
+//   /api/building-templates/vanilla/inspect?id=...    -> per-DA metadata
+//                                                        (Mesh / Icon /
+//                                                        Recipe refs +
+//                                                        FText keys)
 public static class BuildingTemplatesEndpoint
 {
     static readonly object _gate = new object();
@@ -40,19 +36,6 @@ public static class BuildingTemplatesEndpoint
         // first endpoint hit so a missing Steam install or usmap doesn't
         // crash the app at startup. Failures become 503s on the first
         // request instead of a "Quartermaster failed to start" dialog.
-
-        // Legacy: hardcoded Painting + Bucket templates. The Building
-        // Creator GUI still consumes this endpoint for the "Quick
-        // template" dropdown until the I.2 frontend swap.
-        app.MapGet("/api/building-templates", () =>
-        {
-            var catalog = new List<BuildingTemplateDto>
-            {
-                ToDto(BuildingTemplate.Painting()),
-                ToDto(BuildingTemplate.Bucket()),
-            };
-            return Results.Json(catalog);
-        });
 
         // Etappe I.1: searchable catalog over every Vanilla DA_BI_*.uasset
         // under /Game/Gameplay/Building/. Lightweight - path-level
@@ -190,23 +173,4 @@ public static class BuildingTemplatesEndpoint
 
     static VanillaBuildingTemplateCatalog GetVanillaCatalog() => _vanillaCatalog
         ?? throw new InvalidOperationException("Vanilla building template catalog not bootstrapped");
-
-    // Project the (Core-side) BuildingTemplate onto the (Web-side) DTO.
-    // Etappe G: templates no longer carry material slot definitions
-    // (slots come from the user's cooked mesh) - the DTO only exposes
-    // gameplay-side metadata.
-    static BuildingTemplateDto ToDto(BuildingTemplate t)
-    {
-        return new BuildingTemplateDto
-        {
-            id          = t.Id,
-            label       = t.DisplayName,
-            description = t.Description,
-            // All current templates target the Decoration tab; encode as
-            // a coarse kind so a future GUI grouping has something to
-            // hang on.
-            kind        = "Decoration",
-            categoryTag = t.CategoryTag,
-        };
-    }
 }

@@ -152,18 +152,12 @@ public static class BuildingsEndpoint
 
     // Mirrors BuildPipeline.ResolveBuildingTemplate but lives here so
     // the inspect-recipe endpoint stays decoupled from the build path.
-    // Supports two id forms:
-    //   - "Painting"/"Bucket" sentinels (legacy hardcoded factories)
-    //   - Vanilla DA virtual path ("/Game/Gameplay/Building/.../DA_BI_*")
-    //     resolved via the shared catalog + inspector (Etappe I.2)
+    // Accepts a Vanilla DA virtual path ("/Game/Gameplay/Building/.../DA_BI_*")
+    // and resolves it via the shared catalog + inspector (Etappe I.2).
     static BuildingTemplate ResolveTemplate(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
         var trimmed = id.Trim();
-        if (string.Equals(trimmed, "Painting", StringComparison.OrdinalIgnoreCase))
-            return BuildingTemplate.Painting();
-        if (string.Equals(trimmed, "Bucket", StringComparison.OrdinalIgnoreCase))
-            return BuildingTemplate.Bucket();
 
         try
         {

@@ -131,7 +131,7 @@ long QmBumpHookHits()
 // Savegame pre-warm.
 //
 // Called once from the probe thread shortly after GObjects becomes live. Sync-
-// loads every Building-DA package listed in qm_items.json so the IoStore
+// loads every Building-DA package listed across the merged qm_items_*.json set so the IoStore
 // PackageStore has resolved entries before any savegame attempts to
 // deserialize a placed custom building.
 //

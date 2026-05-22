@@ -4,6 +4,7 @@ using System.IO;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
+using Windrose.Quartermaster.Core.Deploy;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
@@ -272,6 +273,19 @@ public static class ModsEndpoint
                         var rawPakPath = Path.Combine(modsDir, rawPakName);
                         if (File.Exists(rawPakPath))
                             RecycleTriplet(rawPakPath, recycled);
+
+                        // Per-profile DLL config (qm_items_<displayName>.json)
+                        // lives in <Game>/R5/Binaries/Win64 alongside dxgi.dll.
+                        // The pak and the JSON share one logical mod -
+                        // deleting the pak without the JSON would leave the
+                        // DLL injecting stale items against assets that no
+                        // longer exist (the cause of the resolve-failures the
+                        // user hit when manually deleting paks). Best-effort:
+                        // if we can locate the game folder, remove the JSON;
+                        // otherwise log and continue (the next Build click
+                        // will write a fresh JSON for the next active profile,
+                        // which is a degraded but acceptable fallback).
+                        TryRemoveDeployedProfileJson(repoRoot, displayName, recycled);
                     }
                 }
             }
@@ -292,6 +306,33 @@ public static class ModsEndpoint
                 recycled,
             });
         });
+    }
+
+    // Best-effort removal of the per-profile qm_items_<displayName>.json that
+    // a previous build deployed alongside dxgi.dll. Silent on game-folder-
+    // lookup failures (the JSON only matters when the DLL is also deployed;
+    // if we can't find the game folder, we couldn't deploy the DLL either,
+    // so there's nothing to clean up). Adds the deleted filename to the
+    // `recycled` list so the user sees what was removed.
+    static void TryRemoveDeployedProfileJson(string repoRoot, string displayName, List<string> recycled)
+    {
+        try
+        {
+            var deployer = new GameDeployer(repoRoot);
+            var path = deployer.TargetItemsJsonPath(displayName);
+            if (!File.Exists(path)) return;
+            // Use the trash instead of File.Delete so the user can recover
+            // it the same way they recover the pak itself.
+            CrossPlatformTrash.DeleteToTrash(path);
+            recycled.Add(Path.GetFileName(path));
+        }
+        catch
+        {
+            // Game folder not locatable / Win64 dir not writable / etc.
+            // Not fatal: the pak is gone, the DLL just keeps an orphan
+            // config that fails to resolve at inject time. Logged below
+            // only if a more aggressive cleanup is added later.
+        }
     }
 
     // Sums file sizes of <basename>.{pak,ucas,utoc} for the given .pak path.

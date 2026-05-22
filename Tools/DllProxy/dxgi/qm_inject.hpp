@@ -114,7 +114,7 @@ QmInjectSnapshot QmGetInjectSnapshot();
 long QmBumpHookHits();
 
 // ----- Savegame pre-warm (DLL init time, gated by canary poll) -------------
-// Sync-load every Building-DA package from qm_items.json via
+// Sync-load every Building-DA package from the merged qm_items_*.json set via
 // UKismetSystemLibrary::LoadAsset_Blocking so the IoStore PackageStore has
 // resolved entries before any savegame can attempt to deserialize a placed
 // custom building. Without this, the actor deserializer can't resolve the

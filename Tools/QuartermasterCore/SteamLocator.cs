@@ -174,7 +174,7 @@ namespace Windrose.Quartermaster.Core
         // Returns the absolute path to Windrose's Binaries/Win64 folder
         //   <SteamLib>\steamapps\common\Windrose\R5\Binaries\Win64
         // which is where the game executable lives and where the dxgi.dll
-        // proxy + qm_items.json have to land for the inject pipeline to
+        // proxy + qm_items_<profile>.json files have to land for the inject pipeline to
         // load. Derived from FindVanillaPak (.../Content/Paks/<pak>) by
         // walking up to the R5 root and back down to Binaries/Win64.
         // Throws via FindVanillaPak when the game can't be located so

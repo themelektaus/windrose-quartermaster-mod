@@ -44,7 +44,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     //   - The CSV-Synthese-Pattern for DisplayName/Description
     //     localization. Mirrors ItemCreatorPatcher's StringTable approach,
     //     handled by the orchestrator.
-    //   - GameDeployer (.pak triple + dxgi.dll + qm_items.json).
+    //   - GameDeployer (.pak triple + dxgi.dll + qm_items_<profile>.json).
     public sealed class BuildingPatcher
     {
         public Action<string> Log;
@@ -1324,7 +1324,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string TemplateId;
 
         // Output asset identity (post-clone). The orchestrator uses these
-        // when writing qm_items.json so the DLL knows what to inject.
+        // when writing qm_items_<profile>.json so the DLL knows what to inject.
         public string OutputDaStem;
         public string OutputDaPath;
         // FText StringTableEntry keys the binary rewriter actually
