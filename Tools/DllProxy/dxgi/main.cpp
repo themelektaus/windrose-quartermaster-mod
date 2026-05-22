@@ -1,7 +1,7 @@
 // Quartermaster dxgi.dll Proxy + MinHook Bootstrap
 // =================================================
 // Lifecycle:
-//   1. PE forwarders make us a drop-in dxgi.dll (real DXGI = dxgi_org.dll).
+//   1. PE forwarders make us a drop-in dxgi.dll (real DXGI = dxgi_original.dll).
 //   2. DllMain process-attach -> QmLogInit() + WriteInjectMarker() + spawn
 //      WorkerThread.
 //   3. WorkerThread installs crash diagnostics, brings up MinHook with a
@@ -32,27 +32,27 @@
 #include "qm_config.hpp"
 
 // ============================================================================
-// 1. PE export forwarders - dxgi_org.dll is the real DXGI; we tunnel through.
+// 1. PE export forwarders - dxgi_original.dll is the real DXGI; we tunnel through.
 // ============================================================================
-#pragma comment(linker, "/EXPORT:ApplyCompatResolutionQuirking=dxgi_org.ApplyCompatResolutionQuirking,@1")
-#pragma comment(linker, "/EXPORT:CompatString=dxgi_org.CompatString,@2")
-#pragma comment(linker, "/EXPORT:CompatValue=dxgi_org.CompatValue,@3")
-#pragma comment(linker, "/EXPORT:DXGIDumpJournal=dxgi_org.DXGIDumpJournal,@4")
-#pragma comment(linker, "/EXPORT:PIXBeginCapture=dxgi_org.PIXBeginCapture,@5")
-#pragma comment(linker, "/EXPORT:PIXEndCapture=dxgi_org.PIXEndCapture,@6")
-#pragma comment(linker, "/EXPORT:PIXGetCaptureState=dxgi_org.PIXGetCaptureState,@7")
-#pragma comment(linker, "/EXPORT:SetAppCompatStringPointer=dxgi_org.SetAppCompatStringPointer,@8")
-#pragma comment(linker, "/EXPORT:UpdateHMDEmulationStatus=dxgi_org.UpdateHMDEmulationStatus,@9")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory=dxgi_org.CreateDXGIFactory,@10")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory1=dxgi_org.CreateDXGIFactory1,@11")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory2=dxgi_org.CreateDXGIFactory2,@12")
-#pragma comment(linker, "/EXPORT:DXGID3D10CreateDevice=dxgi_org.DXGID3D10CreateDevice,@13")
-#pragma comment(linker, "/EXPORT:DXGID3D10CreateLayeredDevice=dxgi_org.DXGID3D10CreateLayeredDevice,@14")
-#pragma comment(linker, "/EXPORT:DXGID3D10GetLayeredDeviceSize=dxgi_org.DXGID3D10GetLayeredDeviceSize,@15")
-#pragma comment(linker, "/EXPORT:DXGID3D10RegisterLayers=dxgi_org.DXGID3D10RegisterLayers,@16")
-#pragma comment(linker, "/EXPORT:DXGIDeclareAdapterRemovalSupport=dxgi_org.DXGIDeclareAdapterRemovalSupport,@17")
-#pragma comment(linker, "/EXPORT:DXGIGetDebugInterface1=dxgi_org.DXGIGetDebugInterface1,@18")
-#pragma comment(linker, "/EXPORT:DXGIReportAdapterConfiguration=dxgi_org.DXGIReportAdapterConfiguration,@19")
+#pragma comment(linker, "/EXPORT:ApplyCompatResolutionQuirking=dxgi_original.ApplyCompatResolutionQuirking,@1")
+#pragma comment(linker, "/EXPORT:CompatString=dxgi_original.CompatString,@2")
+#pragma comment(linker, "/EXPORT:CompatValue=dxgi_original.CompatValue,@3")
+#pragma comment(linker, "/EXPORT:DXGIDumpJournal=dxgi_original.DXGIDumpJournal,@4")
+#pragma comment(linker, "/EXPORT:PIXBeginCapture=dxgi_original.PIXBeginCapture,@5")
+#pragma comment(linker, "/EXPORT:PIXEndCapture=dxgi_original.PIXEndCapture,@6")
+#pragma comment(linker, "/EXPORT:PIXGetCaptureState=dxgi_original.PIXGetCaptureState,@7")
+#pragma comment(linker, "/EXPORT:SetAppCompatStringPointer=dxgi_original.SetAppCompatStringPointer,@8")
+#pragma comment(linker, "/EXPORT:UpdateHMDEmulationStatus=dxgi_original.UpdateHMDEmulationStatus,@9")
+#pragma comment(linker, "/EXPORT:CreateDXGIFactory=dxgi_original.CreateDXGIFactory,@10")
+#pragma comment(linker, "/EXPORT:CreateDXGIFactory1=dxgi_original.CreateDXGIFactory1,@11")
+#pragma comment(linker, "/EXPORT:CreateDXGIFactory2=dxgi_original.CreateDXGIFactory2,@12")
+#pragma comment(linker, "/EXPORT:DXGID3D10CreateDevice=dxgi_original.DXGID3D10CreateDevice,@13")
+#pragma comment(linker, "/EXPORT:DXGID3D10CreateLayeredDevice=dxgi_original.DXGID3D10CreateLayeredDevice,@14")
+#pragma comment(linker, "/EXPORT:DXGID3D10GetLayeredDeviceSize=dxgi_original.DXGID3D10GetLayeredDeviceSize,@15")
+#pragma comment(linker, "/EXPORT:DXGID3D10RegisterLayers=dxgi_original.DXGID3D10RegisterLayers,@16")
+#pragma comment(linker, "/EXPORT:DXGIDeclareAdapterRemovalSupport=dxgi_original.DXGIDeclareAdapterRemovalSupport,@17")
+#pragma comment(linker, "/EXPORT:DXGIGetDebugInterface1=dxgi_original.DXGIGetDebugInterface1,@18")
+#pragma comment(linker, "/EXPORT:DXGIReportAdapterConfiguration=dxgi_original.DXGIReportAdapterConfiguration,@19")
 
 // ============================================================================
 // 2. Inject marker - first log lines so the user knows the proxy attached.

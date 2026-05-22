@@ -4,7 +4,7 @@ rem ============================================================
 rem Quartermaster dxgi.dll Proxy Deploy Script
 rem  Targets: E:\Games\steamapps\common\Windrose\R5\Binaries\Win64
 rem    - dxgi.dll      : our proxy (built by build.bat)
-rem    - dxgi_org.dll  : renamed copy of C:\Windows\System32\dxgi.dll
+rem    - dxgi_original.dll  : renamed copy of C:\Windows\System32\dxgi.dll
 rem ============================================================
 
 set SCRIPT_DIR=%~dp0
@@ -20,23 +20,23 @@ if not exist "%TARGET%" (
     exit /b 1
 )
 
-rem Re-deploy is fine - we control the file. dxgi_org.dll guard below ensures
+rem Re-deploy is fine - we control the file. dxgi_original.dll guard below ensures
 rem we never overwrite a non-proxy dxgi.dll that shipped with the game.
-if exist "%TARGET%\dxgi.dll" if not exist "%TARGET%\dxgi_org.dll" (
-    echo [deploy] WARNING: %TARGET%\dxgi.dll exists but no dxgi_org.dll alongside.
+if exist "%TARGET%\dxgi.dll" if not exist "%TARGET%\dxgi_original.dll" (
+    echo [deploy] WARNING: %TARGET%\dxgi.dll exists but no dxgi_original.dll alongside.
     echo          Refusing to overwrite - could be a game-shipped dxgi.dll.
     exit /b 1
 )
 
-if not exist "%TARGET%\dxgi_org.dll" (
-    echo [deploy] Copying C:\Windows\System32\dxgi.dll -^> %TARGET%\dxgi_org.dll
-    copy /Y "C:\Windows\System32\dxgi.dll" "%TARGET%\dxgi_org.dll" >nul
+if not exist "%TARGET%\dxgi_original.dll" (
+    echo [deploy] Copying C:\Windows\System32\dxgi.dll -^> %TARGET%\dxgi_original.dll
+    copy /Y "C:\Windows\System32\dxgi.dll" "%TARGET%\dxgi_original.dll" >nul
     if errorlevel 1 (
         echo [deploy] Failed to copy system dxgi.dll.
         exit /b 1
     )
 ) else (
-    echo [deploy] dxgi_org.dll already present, skipping copy
+    echo [deploy] dxgi_original.dll already present, skipping copy
 )
 
 echo [deploy] Copying proxy: %SCRIPT_DIR%dxgi.dll -^> %TARGET%\dxgi.dll

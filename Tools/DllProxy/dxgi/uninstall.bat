@@ -7,9 +7,9 @@ if exist "%TARGET%\dxgi.dll" (
     del /q "%TARGET%\dxgi.dll"
     echo [uninstall] removed %TARGET%\dxgi.dll
 )
-if exist "%TARGET%\dxgi_org.dll" (
-    del /q "%TARGET%\dxgi_org.dll"
-    echo [uninstall] removed %TARGET%\dxgi_org.dll
+if exist "%TARGET%\dxgi_original.dll" (
+    del /q "%TARGET%\dxgi_original.dll"
+    echo [uninstall] removed %TARGET%\dxgi_original.dll
 )
 
 echo.

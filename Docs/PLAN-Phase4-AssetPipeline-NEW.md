@@ -39,7 +39,7 @@ Die Architektur ist heute zweigeteilt:
 - Runtime-JSON-Loader fuer die Item-Liste (`qm_config.cpp` liest `qm_items.json`)
 - Auto-Discovery der UE-Offsets pro Game-Update (`qm_scan.cpp`)
 - Infrastruktur: `qm_crash`, `qm_log`, `qm_ue`, `qm_alloc`, `qm_state`, `qm_diag`
-- Wird per `GameDeployer.cs` aktiv nach jedem Build deployed (`dxgi.dll`, `dxgi_org.dll`, `qm_items.json` -> `R5/Binaries/Win64/`)
+- Wird per `GameDeployer.cs` aktiv nach jedem Build deployed (`dxgi.dll`, `dxgi_original.dll`, `qm_items.json` -> `R5/Binaries/Win64/`)
 
 Ohne die DLL erscheinen Custom Buildings nicht im Build-Menu - der `.pak` allein reicht nicht, weil das Build-Menu seine Eintraege erst zur Laufzeit aus dem `GetBuildingGroupsByCategoryTag`-Callsite zieht und die DLL dort fremde DAs reinhaengt.
 

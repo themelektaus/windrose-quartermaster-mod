@@ -28,7 +28,7 @@ Loesung des Discovery-Problems durch Runtime-Hook in `UR5BuildingPanelWidget::Ge
 
 | Sub-Phase | Was bewiesen | Mechanik |
 |---|---|---|
-| **Phase 1 - DLL-Bootstrap** | dxgi.dll Proxy + MinHook + Logging | `dxgi.dll`-Hijack in `R5/Binaries/Win64/`, Sleep-Hook als proof-of-life. Alle Vanilla-DXGI-Exports werden via `/EXPORT:foo=dxgi_org.foo` weitergereicht. |
+| **Phase 1 - DLL-Bootstrap** | dxgi.dll Proxy + MinHook + Logging | `dxgi.dll`-Hijack in `R5/Binaries/Win64/`, Sleep-Hook als proof-of-life. Alle Vanilla-DXGI-Exports werden via `/EXPORT:foo=dxgi_original.foo` weitergereicht. |
 | **Phase 2a - UFunction-Hook** | UE5-Reflection erreichbar, Detour fired | GObjects-Walk findet `UR5BuildingPanelWidget`, dessen `GetBuildingGroupsByCategoryTag` UFunction hat einen native ExecFn-Pointer. MinHook detoured ExecFn auf unseren Trampoline. Original-Funktion wird forwarded, dann inspizieren wir Stack/Result. |
 | **Phase 2b.1 - Result-Inspection** | TArray-Layout korrekt gelesen | `Groups[]` ist `TArray<UR5BuildingGroupWidget*>` (Header @ Stack+0x10), jede Group hat `Items[]` @ +0x350. Layout-Annahme byte-perfekt verifiziert. |
 | **Phase 2b.2 - Group-Spoof (Pivot)** | Group-Pointer-Append wird von UMG dedupliziert | Erstes Group[0]-Append landet im TArray aber UMG zeichnet zwei gleiche Group-Pointer nur einmal. Beweist: Pointer-Inject auf Group-Ebene ist falsche Abstraktion. |
@@ -105,7 +105,7 @@ Beim Build-Knopf-Druck (siehe `BuildPipeline.cs`):
 
 1. Pro Custom-Building patcht die GUI ein eigenes DataAsset (`DA_BI_QmBldg_<hash>`) + Mesh + Materials + (optional) Blueprint-Clone in einen `Quartermaster_<profile>_P.{pak,ucas,utoc}`.
 2. `GameDeployer.cs` schreibt `qm_items.json` neben die `dxgi.dll` mit einem Eintrag pro Custom-Building - jedes Item bekommt seinen `targetCategorySubstring` zugewiesen (typischerweise `"BuildingDecoration"`, kann pro Building variieren wenn andere Sparte gewuenscht ist).
-3. `GameDeployer` deployed bei Bedarf die DLL selbst (`dxgi.dll` + `dxgi_org.dll`) nach `R5/Binaries/Win64/`.
+3. `GameDeployer` deployed bei Bedarf die DLL selbst (`dxgi.dll` + `dxgi_original.dll`) nach `R5/Binaries/Win64/`.
 4. DLL liest `qm_items.json` bei Game-Start, injiziert alle Items in die jeweils gewuenschte Sparte.
 
 Heisst: Adding eines neuen Buildings ist ein reiner GUI-Vorgang, kein DLL-Rebuild, kein manuelles JSON-Editieren.
