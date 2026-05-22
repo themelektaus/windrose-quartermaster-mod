@@ -36,7 +36,10 @@ public static class BuildingTemplatesEndpoint
 
     public static void Map(WebApplication app, string repoRoot)
     {
-        EnsureBootstrap(repoRoot);
+        // Lazy bootstrap: defer SteamLocator / UsmapLocator lookups to the
+        // first endpoint hit so a missing Steam install or usmap doesn't
+        // crash the app at startup. Failures become 503s on the first
+        // request instead of a "Quartermaster failed to start" dialog.
 
         // Legacy: hardcoded Painting + Bucket templates. The Building
         // Creator GUI still consumes this endpoint for the "Quick
@@ -60,6 +63,7 @@ public static class BuildingTemplatesEndpoint
         {
             try
             {
+                EnsureBootstrap(repoRoot);
                 var cat = GetVanillaCatalog();
                 int lim = limit.GetValueOrDefault(100);
                 if (lim < 1) lim = 1;
@@ -92,6 +96,7 @@ public static class BuildingTemplatesEndpoint
         {
             try
             {
+                EnsureBootstrap(repoRoot);
                 var cat = GetVanillaCatalog();
                 return Results.Json(cat.Categories);
             }
@@ -114,6 +119,7 @@ public static class BuildingTemplatesEndpoint
 
             try
             {
+                EnsureBootstrap(repoRoot);
                 var dto = InspectVanillaTemplate(id);
                 return Results.Json(dto);
             }

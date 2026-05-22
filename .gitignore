@@ -23,8 +23,10 @@ Thumbs.db
 /repak.exe
 /retoc.exe
 
-# Oodle decompression DLL (auto-downloaded by IconExtractor from OodleUE GitHub release)
-oo2core_*.dll
+/Detex.dll
+/liboodle-data-shared.so
+/oo2core_*.dll
+/oodle-data-shared.dll
 
 # VS auto-generated, contains user-local ports
 GUI/*/Properties/launchSettings.json

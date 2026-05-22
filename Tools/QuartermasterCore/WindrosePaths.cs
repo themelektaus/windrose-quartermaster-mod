@@ -130,10 +130,60 @@ namespace Windrose.Quartermaster.Core
             get { return Path.Combine(Tools, "Templates", "DefaultTextures"); }
         }
 
+        // Folder where lazily-extracted / lazily-downloaded native sidecar
+        // DLLs land (oodle-data-shared.dll from the OodleUE GitHub release,
+        // Detex.dll from an embedded resource in CUE4Parse-Conversion).
+        // Defaults to ModRoot, which means:
+        //   - dev runs: lands in the workspace root (gitignored)
+        //   - deployed runs: lands in <exe-dir>/QuartermasterData/ alongside
+        //     dxgi.dll / *.usmap / Profiles / Icons - so a portable install
+        //     (USB stick) carries the natives with the rest of the state
+        //     instead of leaving them stranded next to the EXE.
+        public string NativeDllDir
+        {
+            get { return ModRoot; }
+        }
+
+        // Static fallback the EnsureOodle / EnsureDetex sites consult when
+        // they have no WindrosePaths in scope (they are static methods or
+        // CUE4Parse-style instance classes with only PaksDir / AesKey
+        // fields, no full paths struct). FromModRoot sets this to ModRoot
+        // automatically so the typical Web / CLI startup primes it; the
+        // AppContext.BaseDirectory fallback keeps callers safe even if they
+        // skip the configure step (e.g. unit tests, ad-hoc tooling).
+        static string s_globalNativeDllDir;
+
+        // Override the global native-DLL dir explicitly. The Web layer also
+        // calls this from CreateWebApp belt-and-braces - the FromModRoot
+        // auto-set uses the same value, but an explicit call documents the
+        // intent at the entry point.
+        public static void ConfigureNativeDllDir(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return;
+            s_globalNativeDllDir = Path.GetFullPath(dir);
+        }
+
+        // Resolves the directory native sidecar DLLs should be cached in.
+        // Falls back to AppContext.BaseDirectory (= original behavior) when
+        // no caller has primed the path yet, so we never crash on a missing
+        // configure call.
+        public static string ResolveNativeDllDir()
+        {
+            return !string.IsNullOrEmpty(s_globalNativeDllDir)
+                ? s_globalNativeDllDir
+                : AppContext.BaseDirectory;
+        }
+
         public static WindrosePaths FromModRoot(string modRoot)
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");
             modRoot = Path.GetFullPath(modRoot);
+            // Prime the static native-DLL dir so subsequent EnsureOodle /
+            // EnsureDetex sites land their downloads in the data root the
+            // rest of the app uses. ConfigureNativeDllDir is idempotent and
+            // tolerates repeated calls with the same value (every endpoint
+            // builds its own WindrosePaths instance, so this fires often).
+            ConfigureNativeDllDir(modRoot);
             var vanilla = Path.Combine(modRoot, "Sources", "Vanilla");
             // Match the in-pak directory layout exactly so output trees can be
             // re-packed without path massaging.

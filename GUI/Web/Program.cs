@@ -132,6 +132,15 @@ public static class Program
         Directory.CreateDirectory(iconsDir);
         Directory.CreateDirectory(Path.Combine(resolvedRoot, "Profiles"));
 
+        // Prime the native-DLL cache dir so the lazily-extracted /
+        // lazily-downloaded sidecars (oodle-data-shared.dll from the
+        // OodleUE GitHub release, Detex.dll from a CUE4Parse-Conversion
+        // embedded resource) land in the data root instead of next to the
+        // EXE. The per-endpoint WindrosePaths.FromModRoot calls would set
+        // the same value, but doing it once at startup documents intent at
+        // the entry point and removes the first-request ordering risk.
+        Windrose.Quartermaster.Core.WindrosePaths.ConfigureNativeDllDir(resolvedRoot);
+
         // Deployed EXE: seed the embedded UE5 *.usmap so setup works without
         // the user first dumping one via UE4SS. Only seed when none is
         // present so a user-supplied newer dump (e.g. after a game update)
@@ -146,6 +155,7 @@ public static class Program
         if (isDeployed)
         {
             SeedUsmapIfMissing(resolvedRoot);
+            SeedDxgiDllIfMissing(resolvedRoot);
         }
 
         // Static files: prefer the on-disk wwwroot if it sits next to the
@@ -328,6 +338,42 @@ public static class Program
         // dump and the user sees the version-tagged filename.
         var filename = resourceName.Substring(prefix.Length);
         var targetPath = Path.Combine(dataRoot, filename);
+        using var src = asm.GetManifestResourceStream(resourceName);
+        if (src == null) return;
+        using var dst = File.Create(targetPath);
+        src.CopyTo(dst);
+    }
+
+    /// <summary>
+    /// Writes the embedded dxgi-proxy DLL (<c>DllProxy.dxgi.dll</c> resource)
+    /// into <paramref name="dataRoot"/> as <c>dxgi.dll</c>, but only if no
+    /// such file is already there. A user-supplied newer DLL (drop-in
+    /// upgrade after the EXE was published) wins.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Windrose.Quartermaster.Core.Deploy.GameDeployer"/> probes
+    /// two source paths in order when it needs to install the proxy into
+    /// the game's <c>Binaries/Win64/</c>:
+    /// </para>
+    /// <list type="number">
+    ///   <item><c>&lt;ModRoot&gt;/Tools/DllProxy/dxgi/dxgi.dll</c> (dev tree,
+    ///         freshly built via <c>build.bat</c>)</item>
+    ///   <item><c>&lt;ModRoot&gt;/dxgi.dll</c> (this seeded file)</item>
+    /// </list>
+    /// <para>
+    /// In a deployed run only the seeded file exists; in dev mode the
+    /// Tools path wins so devs always deploy whatever they just built
+    /// without having to manually re-copy.
+    /// </para>
+    /// </remarks>
+    static void SeedDxgiDllIfMissing(string dataRoot)
+    {
+        var targetPath = Path.Combine(dataRoot, "dxgi.dll");
+        if (File.Exists(targetPath)) return;
+
+        var asm = typeof(Program).Assembly;
+        const string resourceName = "DllProxy.dxgi.dll";
         using var src = asm.GetManifestResourceStream(resourceName);
         if (src == null) return;
         using var dst = File.Create(targetPath);

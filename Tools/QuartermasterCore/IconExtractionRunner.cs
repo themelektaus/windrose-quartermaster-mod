@@ -93,6 +93,7 @@ namespace Windrose.Quartermaster.Core
                         OutDir       = outDir,
                         UsmapPath    = usmap,
                         GameVersion  = GameVersion,
+                        NativeDllDir = _paths.NativeDllDir,
                     },
                     Log);
             }

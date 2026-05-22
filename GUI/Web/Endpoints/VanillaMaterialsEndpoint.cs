@@ -43,15 +43,20 @@ public static class VanillaMaterialsEndpoint
 
     public static void Map(WebApplication app, string repoRoot)
     {
-        // Resolve shared inputs once at startup so all endpoint paths
-        // see the same configured catalog. Failures here become 503s
-        // on first request rather than crashing the host.
-        EnsureBootstrap(repoRoot);
+        // Lazy bootstrap: shared inputs (paks dir, AES key, usmap, retoc.exe)
+        // are resolved on the first endpoint hit rather than at process
+        // startup. Eager startup-time resolution used to crash the whole
+        // host (and the WPF wrapper's "Quartermaster failed to start"
+        // dialog) when e.g. retoc.exe wasn't deployed yet - the deployed
+        // build doesn't ship it; RetocResolver downloads it on demand into
+        // <DataRoot>. Failures here surface as 503s on the first request
+        // instead of preventing the app from opening.
 
         app.MapGet("/api/vanilla-materials", (string search, int? limit) =>
         {
             try
             {
+                EnsureBootstrap(repoRoot);
                 var cat = GetCatalog();
                 int lim = limit.GetValueOrDefault(50);
                 if (lim < 1) lim = 1;
@@ -84,6 +89,7 @@ public static class VanillaMaterialsEndpoint
 
             try
             {
+                EnsureBootstrap(repoRoot);
                 var dto = InspectVanillaMaterial(path);
                 return Results.Json(dto);
             }
@@ -106,10 +112,18 @@ public static class VanillaMaterialsEndpoint
             _aesKey  = WindroseGameSecrets.AesKey;
             _usmapPath = UsmapLocator.Find(repoRoot);
 
-            // retoc.exe: same resolver as the build pipeline. Repo root
-            // by convention contains retoc.exe at workspace level (see
-            // BuildPipeline.cs - retoc is resolved relative to ModRoot).
-            _retocExe = ResolveRetocExe(repoRoot);
+            // retoc.exe: same resolver as the build pipeline. Auto-
+            // downloads to <repoRoot>/retoc.exe (= QuartermasterData/
+            // in deployed runs, workspace root in dev) and SHA256-
+            // verifies on first use. Subsequent calls are a no-op
+            // lookup. We pipe the resolver's progress messages to the
+            // catalog log so the first vanilla-materials request shows
+            // the ~10s download instead of looking hung.
+            var retocResolver = new RetocResolver(repoRoot)
+            {
+                Log = msg => Console.WriteLine("[vanilla-catalog/retoc] " + msg),
+            };
+            _retocExe = retocResolver.Resolve();
 
             _inspectCacheDir = Path.Combine(Path.GetTempPath(),
                 "QuartermasterVanillaMiInspect");
@@ -127,24 +141,6 @@ public static class VanillaMaterialsEndpoint
 
     static VanillaMaterialCatalog GetCatalog() => _catalog
         ?? throw new InvalidOperationException("Vanilla material catalog not bootstrapped");
-
-    // Resolve retoc.exe relative to the repo root. Mirrors the
-    // convention used by BuildPipeline which expects it next to
-    // repak.exe at the workspace level.
-    static string ResolveRetocExe(string repoRoot)
-    {
-        var candidates = new[]
-        {
-            Path.Combine(repoRoot, "retoc.exe"),
-            Path.Combine(repoRoot, "Tools", "retoc.exe"),
-        };
-        foreach (var c in candidates)
-        {
-            if (File.Exists(c)) return c;
-        }
-        throw new InvalidOperationException(
-            "retoc.exe not found - searched: " + string.Join(", ", candidates));
-    }
 
     // Lazy extract + inspect a vanilla MI by package path. Caches the
     // legacy extract on disk (under temp) keyed by stem so subsequent

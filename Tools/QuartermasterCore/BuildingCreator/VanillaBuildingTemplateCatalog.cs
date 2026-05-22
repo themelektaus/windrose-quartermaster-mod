@@ -277,9 +277,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return "/Game" + pakInternal.Substring(idx + contentMarker.Length - 1);
         }
 
+        // Resolves the cache dir via WindrosePaths so the download lands in
+        // the data root rather than the EXE folder (see NativeDllDir).
         void EnsureOodle()
         {
-            var here = AppContext.BaseDirectory;
+            var here = WindrosePaths.ResolveNativeDllDir();
             var dllPath = Path.Combine(here, OodleHelper.OodleFileName);
             if (!File.Exists(dllPath))
             {

@@ -25,12 +25,16 @@ public static class VanillaResourcesEndpoint
 
     public static void Map(WebApplication app, string repoRoot)
     {
-        EnsureBootstrap(repoRoot);
+        // Lazy bootstrap on first endpoint hit instead of at process startup -
+        // avoids crashing the host (and the WPF wrapper's "Quartermaster
+        // failed to start" dialog) if e.g. the Sources/Vanilla tree hasn't
+        // been dumped yet. Failures surface as 503s on the first request.
 
         app.MapGet("/api/vanilla-resources", (string search, int? limit) =>
         {
             try
             {
+                EnsureBootstrap(repoRoot);
                 var cat = GetCatalog();
                 int lim = limit.GetValueOrDefault(50);
                 if (lim < 1) lim = 1;

@@ -90,6 +90,24 @@
     </EmbeddedResource>
   </ItemGroup>
   <!--
+    Embed the dxgi-proxy DLL so a deployed EXE can deploy it into the
+    game's Binaries/Win64/ without the user having to ship the
+    Tools/DllProxy/ source tree along. On first launch we write this
+    into <DataRoot>/dxgi.dll (= <exe-dir>/QuartermasterData/dxgi.dll
+    for deployed runs), and GameDeployer reads from there as a fallback
+    after probing the dev-tree Tools/DllProxy/dxgi/dxgi.dll first.
+    Dev re-builds of the DLL (via Tools/DllProxy/dxgi/build.bat) still
+    win because the resolver prefers the on-disk Tools path. The embed
+    is a glob: if the DLL is missing the published EXE silently won't
+    seed it (matches the *.usmap behaviour above), and GameDeployer
+    raises the existing "build it first" error at deploy time.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Tools\DllProxy\dxgi\dxgi.dll">
+      <LogicalName>DllProxy.dxgi.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
     Pickup-radius is no longer shipped pre-baked: the build pipeline
     invokes retoc + UAssetAPI per build to extract the live game's
     GA_Loot_AutoPickup, patch MagnetRadius to (400 * multiplier), and

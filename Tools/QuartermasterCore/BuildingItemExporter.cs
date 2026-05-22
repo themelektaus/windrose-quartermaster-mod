@@ -211,9 +211,13 @@ namespace Windrose.Quartermaster.Core
         // run on a fresh install (where the user never opened the Items tab
         // and thus IconExtractor never primed Oodle) still works end-to-end.
         // OodleHelper.Initialize is idempotent so calling it twice is fine.
+        //
+        // Native sidecar DLLs land in WindrosePaths.ResolveNativeDllDir() so
+        // they live alongside the rest of the data root (dxgi.dll / *.usmap /
+        // Profiles / Icons) instead of next to the EXE - see NativeDllDir.
         static void EnsureOodle()
         {
-            var here = AppContext.BaseDirectory;
+            var here = WindrosePaths.ResolveNativeDllDir();
             var dllPath = Path.Combine(here, OodleHelper.OodleFileName);
             if (!File.Exists(dllPath))
             {

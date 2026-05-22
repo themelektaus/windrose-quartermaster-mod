@@ -36,10 +36,19 @@ namespace Windrose.Quartermaster.Core.Deploy
     {
         public Action<string> Log;
 
-        // <Mod>/Tools/DllProxy/dxgi/dxgi.dll - the freshly built proxy we
-        // copy to the game. Dev workflow: the user runs build.bat once.
-        // Ship workflow (later): bundled with the installed GUI.
-        readonly string _dllSourcePath;
+        // Source path probed at install time. Two locations in priority
+        // order:
+        //   1) <ModRoot>/Tools/DllProxy/dxgi/dxgi.dll - dev tree, freshly
+        //      built via Tools/DllProxy/dxgi/build.bat. Wins when present
+        //      so dev iteration always deploys the latest build.
+        //   2) <ModRoot>/dxgi.dll - the seeded copy of the embedded
+        //      resource Program.SeedDxgiDllIfMissing wrote on first
+        //      launch (deployed EXEs only). Used by end users who
+        //      installed the published EXE bundle and don't have the
+        //      DllProxy source tree alongside.
+        // EnsureDllInstalled() re-resolves at call time so the picked path
+        // appears in the build log honestly.
+        readonly string _modRoot;
 
         // <Game>/R5/Binaries/Win64/ - target for all three files we own.
         readonly string _gameWin64Dir;
@@ -47,13 +56,25 @@ namespace Windrose.Quartermaster.Core.Deploy
         public GameDeployer(string modRoot, string gameWin64Dir = null)
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");
-            _dllSourcePath = Path.Combine(modRoot, "Tools", "DllProxy", "dxgi", "dxgi.dll");
+            _modRoot = modRoot;
             _gameWin64Dir = !string.IsNullOrEmpty(gameWin64Dir)
                 ? gameWin64Dir
                 : SteamLocator.FindBinariesWin64Dir();
         }
 
-        public string DllSourcePath => _dllSourcePath;
+        // Probes the two known source locations and returns the first one
+        // that exists, or the dev path (= the more informative error
+        // target) if neither is present.
+        string ResolveDllSourcePath()
+        {
+            var devPath = Path.Combine(_modRoot, "Tools", "DllProxy", "dxgi", "dxgi.dll");
+            if (File.Exists(devPath)) return devPath;
+            var seededPath = Path.Combine(_modRoot, "dxgi.dll");
+            if (File.Exists(seededPath)) return seededPath;
+            return devPath;
+        }
+
+        public string DllSourcePath => ResolveDllSourcePath();
         public string GameWin64Dir  => _gameWin64Dir;
 
         public string TargetDllPath()      => Path.Combine(_gameWin64Dir, "dxgi.dll");
@@ -91,11 +112,14 @@ namespace Windrose.Quartermaster.Core.Deploy
                 return false;
             }
 
-            if (!File.Exists(_dllSourcePath))
+            var dllSourcePath = ResolveDllSourcePath();
+            if (!File.Exists(dllSourcePath))
             {
                 throw new InvalidOperationException(
-                    "dxgi.dll source not found at " + _dllSourcePath
-                    + " - build it first via Tools/DllProxy/dxgi/build.bat.");
+                    "dxgi.dll source not found at " + dllSourcePath
+                    + " (and no seeded fallback at " + Path.Combine(_modRoot, "dxgi.dll") + ")"
+                    + " - dev: build it via Tools/DllProxy/dxgi/build.bat;"
+                    + " deployed: relaunch the EXE so the embedded copy seeds.");
             }
 
             var targetDll = TargetDllPath();
@@ -132,8 +156,8 @@ namespace Windrose.Quartermaster.Core.Deploy
 
             // Proxy: always overwrite so users running an older deployed
             // build pick up the latest after a rebuild + click Build.
-            LogLine("Copying " + _dllSourcePath + " -> " + targetDll);
-            File.Copy(_dllSourcePath, targetDll, overwrite: true);
+            LogLine("Copying " + dllSourcePath + " -> " + targetDll);
+            File.Copy(dllSourcePath, targetDll, overwrite: true);
 
             return true;
         }

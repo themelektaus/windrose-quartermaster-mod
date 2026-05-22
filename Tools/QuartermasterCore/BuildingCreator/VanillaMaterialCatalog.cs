@@ -177,9 +177,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         // Mirror of BuildingItemExporter.EnsureOodle - the catalog can be
         // initialized before any other CUE4Parse user has primed Oodle.
+        // Resolves the cache dir via WindrosePaths so the download lands in
+        // the data root rather than the EXE folder (see NativeDllDir).
         void EnsureOodle()
         {
-            var here = AppContext.BaseDirectory;
+            var here = WindrosePaths.ResolveNativeDllDir();
             var dllPath = Path.Combine(here, OodleHelper.OodleFileName);
             if (!File.Exists(dllPath))
             {

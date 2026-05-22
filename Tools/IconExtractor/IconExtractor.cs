@@ -81,6 +81,7 @@ public sealed class IconExtractorOptions
     public string UsmapPath { get; set; } = string.Empty;
     public string GameVersion { get; set; } = "UE5_6";
     public bool NoMeta { get; set; }
+    public string NativeDllDir { get; set; } = string.Empty;
 }
 
 public static class IconExtractor
@@ -180,8 +181,15 @@ public static class IconExtractor
         var manifest = LoadManifest(a.ManifestPath);
         Out($"[OK] Manifest entries: {manifest.Count}");
 
-        EnsureOodle();
-        EnsureDetex();
+        // NativeDllDir falls back to AppContext.BaseDirectory when the
+        // caller didn't fill it (= historic behavior: drop the DLLs next
+        // to the EXE). The Web/Core caller fills it with the data root so
+        // a portable install carries the natives with the rest of the state.
+        var nativeDir = string.IsNullOrEmpty(a.NativeDllDir)
+            ? AppContext.BaseDirectory
+            : a.NativeDllDir;
+        EnsureOodle(nativeDir);
+        EnsureDetex(nativeDir);
 
         Out($"[..] Initializing CUE4Parse provider ({a.GameVersion})");
         Out($"     PaksDir: {a.PaksDir}");
@@ -620,11 +628,12 @@ public static class IconExtractor
 
     // UE5 IoStore (.utoc/.ucas) usually uses Oodle compression. Windrose ships
     // without an oo2core DLL so we let CUE4Parse fetch one from the official
-    // OodleUE distribution on first run and cache it next to our exe.
-    private static void EnsureOodle()
+    // OodleUE distribution on first run and cache it in nativeDir (the data
+    // root, see IconExtractorOptions.NativeDllDir - falls back to the EXE
+    // dir for ad-hoc tooling that doesn't fill the option).
+    private static void EnsureOodle(string nativeDir)
     {
-        var here = AppContext.BaseDirectory;
-        var dllPath = Path.Combine(here, OodleHelper.OodleFileName);
+        var dllPath = Path.Combine(nativeDir, OodleHelper.OodleFileName);
         if (!File.Exists(dllPath))
         {
             Out($"[..] Downloading Oodle DLL ({OodleHelper.OodleFileName})");
@@ -641,7 +650,7 @@ public static class IconExtractor
         OodleHelper.Initialize(dllPath);
     }
 
-    private static void EnsureDetex()
+    private static void EnsureDetex(string nativeDir)
     {
         if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
         {
@@ -650,8 +659,7 @@ public static class IconExtractor
             return;
         }
 
-        var here = AppContext.BaseDirectory;
-        var dllPath = Path.Combine(here, DetexHelper.DLL_NAME);
+        var dllPath = Path.Combine(nativeDir, DetexHelper.DLL_NAME);
         if (!File.Exists(dllPath))
         {
             Out($"[..] Extracting Detex DLL ({DetexHelper.DLL_NAME})");
