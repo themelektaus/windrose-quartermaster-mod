@@ -1194,13 +1194,61 @@ namespace Windrose.Quartermaster.Core
                             // entries get retargeted via inputs.ExtraDa-
                             // NameMapRewrites (set in BuildBuildingInputs).
                             var bldFlamePreset = FlamePresetCatalog.Resolve(b.FlamePresetId);
+
+                            // Etappe J v4: socket-driven single flame.
+                            // Read the FIRST socket from the user's cooked
+                            // mesh (name-agnostic). If the mesh has no
+                            // sockets at all, silently skip the entire
+                            // flame pipeline for this building (no template
+                            // override, no BP clone, no DA ItemClass swap).
+                            // That keeps the user's chosen template intact
+                            // for meshes that simply don't carry sockets.
+                            //
+                            // Multi-flame across N sockets was attempted in
+                            // J v5 but UE crashed at load time on cloned
+                            // NiagaraComponent exports (UAssetAPI doesn't
+                            // fully implement NiagaraVariableWithOffsetPropertyData
+                            // so the deep-clone produced byte-malformed
+                            // output that retoc's legacy->zen pass let
+                            // through). Rolled back to single-socket: any
+                            // additional sockets on the mesh are ignored.
+                            StaticMeshSocketReader.Socket bldFlameSocket = null;
                             if (bldFlamePreset != null)
                             {
-                                LogLine("  [Flame] preset '" + bldFlamePreset.Id
-                                    + "' active for '" + b.Id + "' - swapping template '"
-                                    + template.Id + "' with source DA '"
-                                    + bldFlamePreset.SourceVanillaDaStem + "'");
-                                template = bldFlamePreset.ApplyTo(template);
+                                try
+                                {
+                                    var userMeshFile = Path.Combine(b.CookedFolderPath, b.MeshStem + ".uasset");
+                                    var reader = new StaticMeshSocketReader
+                                    {
+                                        UsmapPath = usmapPath,
+                                        Log       = Log,
+                                    };
+                                    bldFlameSocket = reader.FindFirst(userMeshFile);
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogLine("  warn: socket read failed for mesh '" + b.MeshStem
+                                        + "': " + ex.Message + " - skipping flame for this building");
+                                    bldFlameSocket = null;
+                                }
+
+                                if (bldFlameSocket == null)
+                                {
+                                    LogLine("  [Flame] preset '" + bldFlamePreset.Id
+                                        + "' set but mesh '" + b.MeshStem
+                                        + "' has no sockets - skipping flame for this building"
+                                        + " (add at least one socket to the mesh to enable flame placement)");
+                                    bldFlamePreset = null; // disable flame for this building
+                                }
+                                else
+                                {
+                                    LogLine("  [Flame] preset '" + bldFlamePreset.Id
+                                        + "' active for '" + b.Id + "' - using socket '"
+                                        + (bldFlameSocket.Name ?? "<noname>")
+                                        + "', swapping template '" + template.Id
+                                        + "' with source DA '" + bldFlamePreset.SourceVanillaDaStem + "'");
+                                    template = bldFlamePreset.ApplyTo(template);
+                                }
                             }
 
                             BuildingInputs inputs;
@@ -1226,43 +1274,14 @@ namespace Windrose.Quartermaster.Core
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = "/Game/Quartermaster/Items/" + userMeshStem;
 
-                                    // Etappe J v4: read the user's cooked
-                                    // mesh and look for a socket called
-                                    // "flame" (case-insensitive). If found,
-                                    // its transform overrides the cloned
-                                    // BP's NiagaraComponent/Light/Audio
-                                    // positions. If absent, the BP keeps
-                                    // the vanilla position which only
-                                    // visually works for meshes that have
-                                    // their flame tip near the Vanilla
-                                    // torch height (~158 cm).
-                                    StaticMeshSocketReader.Socket flameSocket = null;
-                                    try
-                                    {
-                                        var userMeshFile = Path.Combine(b.CookedFolderPath, b.MeshStem + ".uasset");
-                                        var reader = new StaticMeshSocketReader
-                                        {
-                                            UsmapPath = usmapPath,
-                                            Log       = Log,
-                                        };
-                                        flameSocket = reader.FindFlame(userMeshFile);
-                                        if (flameSocket == null)
-                                        {
-                                            LogLine("  [Flame] no socket named 'flame' on mesh '"
-                                                + b.MeshStem + "' - using vanilla position"
-                                                + " (add a 'flame' socket to your mesh to control"
-                                                + " flame placement)");
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        LogLine("  warn: socket read failed for mesh '" + b.MeshStem
-                                            + "': " + ex.Message + " - using vanilla position");
-                                    }
-
+                                    // Etappe J v4: pass the single picked
+                                    // socket to the patcher; it overwrites
+                                    // RelativeLocation/Rotation/Scale3D on
+                                    // the BP's vanilla NiagaraComponent +
+                                    // Light + Audio templates in-place.
                                     bldBpStage = _blueprintPatcher.Stage(
                                         bldFlamePreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
-                                        flameSocket);
+                                        bldFlameSocket);
                                     stagedFlameBuildings[b.Id] = bldBpStage;
                                     foreach (var w in bldBpStage.Warnings ?? new List<string>())
                                         LogLine("  warn: flame BP '" + b.Id + "': " + w);

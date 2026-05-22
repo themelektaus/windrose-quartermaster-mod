@@ -22,10 +22,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     // ->Cook with Z=80cm and (Rot=0, Scale=1) automatically.
     //
     // Used by the build pipeline when a building has a FlamePresetId set:
-    // the socket named "flame" (case-insensitive) is consulted to position
-    // the cloned BP's NiagaraComponent / Light / Audio components. If no
-    // such socket exists, the BP falls back to the vanilla position (~Z=158
-    // for the Torch preset).
+    // the FIRST socket found (name-agnostic) is consulted to position the
+    // cloned BP's NiagaraComponent / Light / Audio components. If the mesh
+    // has zero sockets, the build pipeline skips the flame for that
+    // building entirely (no BP clone, no DA ItemClass swap).
     public sealed class StaticMeshSocketReader
     {
         public string UsmapPath;
@@ -33,8 +33,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         public sealed class Socket
         {
-            // SocketName as it appears in the cooked mesh - the build pipeline
-            // lower-cases this for the match against "flame" / "flame_<n>".
+            // SocketName as it appears in the cooked mesh. The build pipeline
+            // takes the first socket regardless of name (name-agnostic), but
+            // logs the name so users can see which socket their flame ended
+            // up at.
             public string Name;
             // RelativeLocation in UE-cm. Defaults to (0,0,0) if missing.
             public double LocX;
@@ -133,18 +135,18 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return sockets;
         }
 
-        // Convenience: returns the socket named "flame" (case-insensitive),
-        // or null if the mesh has no such socket. The pipeline calls this
-        // when a flame preset is active.
-        public Socket FindFlame(string meshAssetPath)
+        // Convenience: returns the FIRST socket found in the mesh (any
+        // name accepted - name-agnostic), or null if the mesh has no
+        // sockets at all. The pipeline calls this when a flame preset is
+        // active. The original revision matched only sockets named "flame"
+        // (case-insensitive); the current contract accepts any socket
+        // because users have legitimate reasons to use other names
+        // (e.g. "Flame_01", "torch_tip") and the multi-flame-from-N-sockets
+        // experiment was rolled back so only the first socket is consumed.
+        public Socket FindFirst(string meshAssetPath)
         {
-            const string wanted = "flame";
-            foreach (var s in ReadAll(meshAssetPath))
-            {
-                if (string.Equals(s.Name, wanted, StringComparison.OrdinalIgnoreCase))
-                    return s;
-            }
-            return null;
+            var all = ReadAll(meshAssetPath);
+            return all.Count > 0 ? all[0] : null;
         }
 
         void LogLine(string s)

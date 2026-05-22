@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
@@ -95,9 +94,20 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // Etappe J v4: if flameSocket is non-null, the BP's NiagaraComponent
         // / light-component / audio-component RelativeLocation / Rotation /
         // Scale3D properties are overridden with the socket transform so the
-        // flame sits exactly where the user placed the "flame" socket in
-        // their mesh. If null, the BP keeps the vanilla position (~Z=158 cm
-        // for the Torch preset).
+        // flame sits exactly where the user placed a socket on their mesh.
+        // If null, the BP keeps the vanilla position (~Z=158 cm for the
+        // Torch preset).
+        //
+        // Etappe J v5 rolled back: an earlier attempt cloned the Niagara +
+        // Light component templates + SCS_Nodes for sockets[1..N] to spawn
+        // multiple flames per building. UE crashed at load time with
+        // "Bad name index <huge>/<NameMap count>" on the cloned NiagaraComponent
+        // because UAssetAPI doesn't fully implement NiagaraVariableWithOffsetPropertyData
+        // - the deep-clone ended up sharing references to partially-parsed
+        // properties whose Write() emitted bytes that didn't round-trip
+        // through retoc's legacy->zen converter. Reverted to single-socket;
+        // the patcher now takes only the first socket the caller found
+        // (name-agnostic - any socket counts). Multi-flame is parked.
         public BlueprintStageResult Stage(
             FlamePresetCatalog.FlamePreset preset,
             string buildingId,
@@ -214,27 +224,29 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 + result.ExportsRetargeted + " export retargets -> " + cloneStem
                 + " (mesh rewritten to '" + userMeshStem + "')");
 
-            // Etappe J v4: socket-driven component transform override.
-            // Re-open the just-saved BP and patch RelativeLocation /
-            // RelativeRotation / RelativeScale3D on the NiagaraComponent,
-            // the Light component, and the AudioComponent. We do this in
-            // a second pass (not folded into the DataAssetPatcher run)
-            // because property mutation needs the full UAssetAPI property
-            // tree which the rename-pass doesn't touch.
+            // Etappe J v4: single-socket flame placement.
+            //
+            // The just-saved BP keeps the vanilla SCS-Component layout
+            // (1 NiagaraComponent, 1 Light, 1 Audio); we only overwrite
+            // their RelativeLocation/Rotation/Scale to match the picked
+            // socket. The caller picks "first socket found" (name-agnostic);
+            // any additional sockets on the mesh are ignored.
+            //
+            // If flameSocket is null, this entire pass is skipped and the
+            // BP keeps the vanilla component positions (~Z=158 cm for the
+            // Torch preset). The orchestrator decides whether to call
+            // Stage() at all when no sockets exist - see the buildings-
+            // step body in BuildPipeline.cs (current contract: "skip flame
+            // entirely when 0 sockets", warning logged).
             if (flameSocket != null)
             {
                 try
                 {
                     var patched = PatchSocketTransform(stagedAsset, flameSocket);
-                    LogLine("  [Flame] socket 'flame' (X=" + Fmt(flameSocket.LocX)
-                        + " Y=" + Fmt(flameSocket.LocY)
-                        + " Z=" + Fmt(flameSocket.LocZ)
-                        + " | Pitch=" + Fmt(flameSocket.Pitch)
-                        + " Yaw=" + Fmt(flameSocket.Yaw)
-                        + " Roll=" + Fmt(flameSocket.Roll)
-                        + " | SX=" + Fmt(flameSocket.ScaleX)
-                        + " SY=" + Fmt(flameSocket.ScaleY)
-                        + " SZ=" + Fmt(flameSocket.ScaleZ)
+                    LogLine("  [Flame] socket '" + (flameSocket.Name ?? "<noname>")
+                        + "' (X=" + Fmt(flameSocket.LocX) + " Y=" + Fmt(flameSocket.LocY) + " Z=" + Fmt(flameSocket.LocZ)
+                        + " | Pitch=" + Fmt(flameSocket.Pitch) + " Yaw=" + Fmt(flameSocket.Yaw) + " Roll=" + Fmt(flameSocket.Roll)
+                        + " | SX=" + Fmt(flameSocket.ScaleX) + " SY=" + Fmt(flameSocket.ScaleY) + " SZ=" + Fmt(flameSocket.ScaleZ)
                         + ") applied to " + patched + " component(s)");
                     result.ComponentsRetransformed = patched;
                 }
@@ -282,6 +294,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         {
             if (string.IsNullOrEmpty(UsmapPath) || !File.Exists(UsmapPath))
                 throw new InvalidOperationException("UsmapPath missing: " + UsmapPath);
+            if (socket == null) return 0;
 
             var mappings = new Usmap(UsmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
@@ -529,8 +542,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         // Etappe J v4: number of component templates (NiagaraComponent,
         // light, audio, ...) whose RelativeLocation/Rotation/Scale3D got
-        // overridden from the user's "flame" socket. 0 means either no
-        // socket was supplied or the BP carried no transform-bearing
+        // overridden from the user's picked mesh socket. 0 means either
+        // no socket was supplied or the BP carried no transform-bearing
         // component template (extremely unlikely for the flame presets).
         public int ComponentsRetransformed;
 

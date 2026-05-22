@@ -187,13 +187,17 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 // dump of vanilla DA_BI_FloorTorch (see flame-da-probe).
                 SourceVanillaDaStem      = "DA_BI_FloorTorch",
                 SourceVanillaDaPath      = "/Game/Gameplay/Building/BuildingDecoration/DA_BI_FloorTorch",
-                // FText keys: left null for now (the binary rewriter is
-                // skipped, the building shows up under the vanilla
-                // "Floor Torch" name + description ingame). Probing the
-                // exact key strings in the DA's RawExport body is a
-                // future polish step.
-                SourceVanillaNameKey         = null,
-                SourceVanillaDescriptionKey  = null,
+                // FText keys: verified by strings-dumping the vanilla
+                // DA_BI_FloorTorch.uasset body (NOT the CSV - the CSV has
+                // both 'Decorations_FloorTorch_Description' and a 'NoComfort'
+                // variant; only the latter is actually referenced from the
+                // DA's StringTableEntry record). Both keys are long enough
+                // to hold the per-building QmBldg_<8hex>_<suffix> form
+                // (27/43 chars vs. 20/27 needed), so RewriteInlineFTextKeys
+                // succeeds and the building shows the user's Name/Description
+                // ingame instead of "Floor Torch" + the vanilla flavor text.
+                SourceVanillaNameKey         = "Decorations_FloorTorch_Name",
+                SourceVanillaDescriptionKey  = "Decorations_NoComfortFloorTorch_Description",
 
                 SourceVanillaMeshStem = "SM_TorchT01_01",
                 SourceVanillaMeshPath = "/Game/Environment/Gameplay/Building/Furniture/FurnitureSet_T01/SM_TorchT01_01",
