@@ -1254,7 +1254,13 @@ namespace Windrose.Quartermaster.Core
                             {
                                 try
                                 {
-                                    var userMeshFile = Path.Combine(b.CookedFolderPath, b.MeshStem + ".uasset");
+                                    // Resolve profile-relative folders (e.g.
+                                    // CookedFolderPath = "MyPainting" ->
+                                    // <Profiles>/<profile.Id>/MyPainting) so the
+                                    // socket reader finds the mesh file. Absolute
+                                    // paths are returned as-is by the resolver.
+                                    var resolvedCookedFolder = _paths.ResolveProfileRelativeFolder(profile.Id, b.CookedFolderPath);
+                                    var userMeshFile = Path.Combine(resolvedCookedFolder, b.MeshStem + ".uasset");
                                     var reader = new StaticMeshSocketReader
                                     {
                                         UsmapPath = usmapPath,
@@ -1291,7 +1297,7 @@ namespace Windrose.Quartermaster.Core
                             BuildingInputs inputs;
                             try
                             {
-                                inputs = BuildBuildingInputs(b, template, usmapPath, Log);
+                                inputs = BuildBuildingInputs(b, template, usmapPath, _paths, profile.Id, Log);
                             }
                             catch (Exception ex)
                             {
@@ -2547,14 +2553,23 @@ namespace Windrose.Quartermaster.Core
             return list;
         }
 
-        static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template, string usmapPath, Action<string> log)
+        static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template, string usmapPath, WindrosePaths paths, string profileId, Action<string> log)
         {
+            // Resolve profile-relative folder strings (e.g. CookedFolderPath
+            // = "MyPainting" -> <Profiles>/<profileId>/MyPainting) once
+            // here, then thread the absolute path through both the
+            // inspector AND BuildingInputs so every downstream
+            // Directory.GetFiles/Path.Combine sees a usable absolute
+            // path. The user-typed value in the profile JSON is left
+            // untouched - this is on-the-fly resolution only.
+            var resolvedCookedFolder = paths.ResolveProfileRelativeFolder(profileId, b.CookedFolderPath);
+
             var inspector = new CookedFolderInspector
             {
                 UsmapPath = usmapPath,
                 Log = log,
             };
-            var inspection = inspector.Inspect(b.CookedFolderPath, b.MeshStem);
+            var inspection = inspector.Inspect(resolvedCookedFolder, b.MeshStem);
             if (inspection.MeshSlots == null || inspection.MeshSlots.Count == 0)
                 throw new InvalidOperationException(
                     "Mesh '" + b.MeshStem + "' has no material slots (or could not be read) - check the cooked folder");
@@ -2567,7 +2582,7 @@ namespace Windrose.Quartermaster.Core
                 // case where the profile was loaded from disk without
                 // going through the GUI save pipe that does the migrate.
                 AssetPrefix       = b.ResolveAssetPrefix(),
-                CookedFolderPath  = b.CookedFolderPath,
+                CookedFolderPath  = resolvedCookedFolder,
                 MeshStem          = b.MeshStem,
                 IconStem          = b.IconStem,
                 DisplayName       = b.Name,

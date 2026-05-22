@@ -781,13 +781,22 @@ namespace Windrose.Quartermaster.Core
         // "Decoration_<Id>_Desc".
         public string Description;
 
-        // Absolute path to the user's cooked-output folder for this
-        // building's assets. Typically the per-project
-        //   <UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/Quartermaster/Items/
-        // The build pipeline scans this folder for files whose stem
-        // starts with AssetPrefix and stages them; user-cooked materials
-        // (stem matching M_<AssetPrefix>_<SlotName>) are skipped because
-        // those crash the shipping game.
+        // Path to the user's cooked-output folder for this building's
+        // assets. Two accepted shapes:
+        //   - Absolute path, typically the per-project
+        //       <UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/Quartermaster/Items/
+        //   - Profile-relative folder name (e.g. "MyPainting") which the
+        //     build pipeline resolves via WindrosePaths.ResolveProfile-
+        //     RelativeFolder to <Profiles>/<profileId>/<value> when that
+        //     folder exists. Useful for portable profiles where the user
+        //     drops the cooked output next to the profile JSON. Profile-
+        //     relative resolution is applied at consumption time only -
+        //     the stored value is never rewritten, so what the user
+        //     typed round-trips through save/load.
+        // The build pipeline scans the resolved folder for files whose
+        // stem starts with AssetPrefix and stages them; user-cooked
+        // materials (stem matching M_<AssetPrefix>_<SlotName>) are
+        // skipped because those crash the shipping game.
         public string CookedFolderPath;
 
         // Asset-prefix the user picked in the UE editor (e.g.

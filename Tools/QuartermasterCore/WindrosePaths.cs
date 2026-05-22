@@ -80,6 +80,46 @@ namespace Windrose.Quartermaster.Core
             return Path.Combine(Profiles, profileId, "ShipMusic", slotStem);
         }
 
+        // Resolves a user-supplied folder string (e.g. CustomBuilding.Cooked-
+        // FolderPath = "MyPainting") to an absolute filesystem path,
+        // preferring a profile-relative location.
+        //
+        // Lookup order:
+        //   1. If `<Profiles>/<profileId>/<raw>` exists as a directory,
+        //      return its absolute path. This makes users able to drop
+        //      a "MyPainting" cooked folder next to the profile JSON and
+        //      reference it with just the folder name in the GUI.
+        //   2. Otherwise return `raw` as-is. The caller is responsible
+        //      for whatever fallback semantics make sense for them
+        //      (most call sites either treat absolute paths verbatim,
+        //      or surface a "Folder does not exist" error).
+        //
+        // The stored CustomBuilding.CookedFolderPath value is NEVER
+        // rewritten by this helper - what the user typed stays in the
+        // profile JSON. This method only computes a usable absolute
+        // path on the fly at consumption time.
+        public string ResolveProfileRelativeFolder(string profileId, string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return raw;
+            if (!string.IsNullOrEmpty(profileId))
+            {
+                try
+                {
+                    var candidate = Path.Combine(Profiles, profileId, raw);
+                    if (Directory.Exists(candidate))
+                        return Path.GetFullPath(candidate);
+                }
+                catch
+                {
+                    // Path.Combine / GetFullPath can throw on
+                    // pathologically malformed input (invalid chars on
+                    // Windows etc.). Fall through to the raw return so
+                    // the caller's existing error handling kicks in.
+                }
+            }
+            return raw;
+        }
+
         // Absolute path to the in-tree Bink Audio encoder CLI. We ship
         // it next to repak.exe / retoc.exe under Tools/ so it travels
         // with the published app. Source under Tools/BinkAudioEnc/.

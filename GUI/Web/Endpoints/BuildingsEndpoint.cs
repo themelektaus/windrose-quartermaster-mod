@@ -17,14 +17,18 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 // without exposing a free-form file-system read endpoint to anyone
 // who can reach the local Kestrel:
 //
-//   GET /api/buildings/scan-cooked?path=<absolute>
+//   GET /api/buildings/scan-cooked?path=<raw>&profileId=<id>
 //       Lists files in the user's cooked-output folder so the GUI can
 //       preview what's there before the user commits the path to the
-//       profile. Classifies each file by stem+extension (mesh / icon /
-//       texture / material / sidecar / other) so the GUI can warn about
-//       likely-missing items (no mesh found, no icon found, ...) and
-//       flag user-cooked materials that will get skipped at build time
-//       (because they crash shipping - per the spike bisect).
+//       profile. The optional profileId is used to resolve profile-
+//       relative folder names (e.g. path="MyPainting" with profileId
+//       set resolves to <Profiles>/<profileId>/MyPainting when that
+//       folder exists; otherwise path is used as-is). Classifies each
+//       file by stem+extension (mesh / icon / texture / material /
+//       sidecar / other) so the GUI can warn about likely-missing items
+//       (no mesh found, no icon found, ...) and flag user-cooked
+//       materials that will get skipped at build time (because they
+//       crash shipping - per the spike bisect).
 //
 // Phase 1 only ships the scan endpoint. Future endpoints could:
 //   - validate-cook (sanity check the prefix + slot expectations match
@@ -34,18 +38,20 @@ public static class BuildingsEndpoint
 {
     public static void Map(WebApplication app, string repoRoot)
     {
-        app.MapGet("/api/buildings/scan-cooked", (string path) =>
+        app.MapGet("/api/buildings/scan-cooked", (string path, string profileId) =>
         {
-            var dto = ScanCookedFolder(path);
+            var dto = ScanCookedFolder(path, profileId, repoRoot);
             return Results.Json(dto);
         });
 
         // Deep inspect: read the mesh's material slot list + each
         // user-cooked MI in the folder. The GUI uses this to drive its
-        // dynamic per-slot UI (Etappe G).
-        app.MapGet("/api/buildings/inspect-cooked", (string path, string meshStem) =>
+        // dynamic per-slot UI (Etappe G). The optional profileId is
+        // used the same way as in scan-cooked to resolve profile-
+        // relative folder names.
+        app.MapGet("/api/buildings/inspect-cooked", (string path, string meshStem, string profileId) =>
         {
-            var dto = InspectCookedFolder(path, meshStem, repoRoot);
+            var dto = InspectCookedFolder(path, meshStem, profileId, repoRoot);
             return Results.Json(dto);
         });
 
@@ -177,7 +183,7 @@ public static class BuildingsEndpoint
         }
     }
 
-    static CookedFolderScanDto ScanCookedFolder(string raw)
+    static CookedFolderScanDto ScanCookedFolder(string raw, string profileId, string repoRoot)
     {
         var dto = new CookedFolderScanDto
         {
@@ -191,10 +197,19 @@ public static class BuildingsEndpoint
             return dto;
         }
 
+        // Resolve profile-relative folder names (e.g. raw="MyPainting"
+        // + profileId set -> <Profiles>/<profileId>/MyPainting when
+        // that folder exists). Absolute paths and unknown profile-
+        // relative names fall through to the raw value, which then
+        // hits the existing Path.GetFullPath + Directory.Exists check
+        // so the user sees the same "Folder does not exist" message
+        // as before.
+        var resolved = ResolveCookedPath(raw, profileId, repoRoot);
+
         string normalized;
         try
         {
-            normalized = Path.GetFullPath(raw);
+            normalized = Path.GetFullPath(resolved);
         }
         catch (Exception ex)
         {
@@ -302,6 +317,27 @@ public static class BuildingsEndpoint
         return stem.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
+    // Wraps WindrosePaths.ResolveProfileRelativeFolder for the two
+    // GUI helper endpoints (scan-cooked + inspect-cooked). Tolerates
+    // missing profileId and any path init failure - falls back to the
+    // raw string so the caller's existing "Folder does not exist"
+    // error surfaces unchanged. The user-typed CookedFolderPath stays
+    // in the profile JSON verbatim; this resolves on the fly only.
+    static string ResolveCookedPath(string raw, string profileId, string repoRoot)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+        if (string.IsNullOrWhiteSpace(profileId)) return raw;
+        try
+        {
+            var paths = WindrosePaths.FromModRoot(repoRoot);
+            return paths.ResolveProfileRelativeFolder(profileId, raw);
+        }
+        catch
+        {
+            return raw;
+        }
+    }
+
     // -----------------------------------------------------------------
     // Etappe G: deep inspect of the cooked folder. Reads the mesh's
     // material slot list (via UAssetAPI through CookedFolderInspector)
@@ -313,7 +349,7 @@ public static class BuildingsEndpoint
     //     user-MI dict to determine the pre-fill source
     // -----------------------------------------------------------------
     static CookedFolderInspectionDto InspectCookedFolder(
-        string rawPath, string meshStem, string repoRoot)
+        string rawPath, string meshStem, string profileId, string repoRoot)
     {
         var dto = new CookedFolderInspectionDto
         {
@@ -330,10 +366,16 @@ public static class BuildingsEndpoint
             return dto;
         }
 
+        // Mirror ScanCookedFolder: resolve profile-relative folder
+        // names via WindrosePaths so "MyPainting" + profileId picks
+        // up the per-profile cooked output without the user needing
+        // to type an absolute path.
+        var resolved = ResolveCookedPath(rawPath, profileId, repoRoot);
+
         string normalized;
         try
         {
-            normalized = Path.GetFullPath(rawPath);
+            normalized = Path.GetFullPath(resolved);
         }
         catch (Exception ex)
         {

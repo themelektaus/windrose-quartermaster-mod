@@ -675,9 +675,15 @@ async function runCookedInspect(index, buildingId, rawPath, meshStem) {
 
     let inspection;
     try {
+        // profileId lets the backend resolve profile-relative folder
+        // names like "MyPainting" -> <Profiles>/<profileId>/MyPainting.
+        // Absolute paths and unknown names fall through to the raw
+        // value (= unchanged "Folder does not exist" behaviour).
+        const profileId = (state.current && state.current.id) ? state.current.id : '';
         const url = '/api/buildings/inspect-cooked?path='
             + encodeURIComponent(path)
-            + '&meshStem=' + encodeURIComponent(stem);
+            + '&meshStem=' + encodeURIComponent(stem)
+            + '&profileId=' + encodeURIComponent(profileId);
         inspection = await api('GET', url);
     } catch (ex) {
         if (host) host.innerHTML = '<div class="building-slots-status building-scan-error">Failed to read mesh: '
@@ -1657,7 +1663,11 @@ async function scanCookedFolderForCard(index, rawPath) {
 
     host.innerHTML = '<div class="building-scan"><em>Scanning ' + escapeHtml(path) + '...</em></div>';
     try {
-        const scan = await api('GET', '/api/buildings/scan-cooked?path=' + encodeURIComponent(path));
+        // profileId lets the backend resolve profile-relative folder
+        // names like "MyPainting" -> <Profiles>/<profileId>/MyPainting.
+        const profileId = (state.current && state.current.id) ? state.current.id : '';
+        const scan = await api('GET', '/api/buildings/scan-cooked?path=' + encodeURIComponent(path)
+            + '&profileId=' + encodeURIComponent(profileId));
         _buildingScanCache.set(index, path);
         host.innerHTML = renderScanResult(scan, customs[index]);
         // Cache stems per kind so the Mesh + Icon + Texture dropdowns
