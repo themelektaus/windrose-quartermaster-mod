@@ -344,10 +344,10 @@ Kein manueller Copy-Step, kein retoc-Aufruf, kein DLL-Rebuild.
 
 ## Verwandte Docs
 
-- `Docs/DONE_AddNewBuildModeSlot.md` - wie ein neuer **Tab** in der
+- `Docs/PLAN-AddNewBuildModeSlot-DONE.md` - wie ein neuer **Tab** in der
   Build-UI angelegt wird (anderes Thema - hier addieren wir nur Slots
   in bestehenden Tabs)
-- `Docs/PLAN-ShipMusicAddTracks.md` - Praezedenz: Custom-Audio-Pipeline
+- `Docs/PLAN-ShipMusicAddTracks-NEW.md` - Praezedenz: Custom-Audio-Pipeline
   mit aehnlicher Cook-then-NameMap-Rewrite-Strategie
-- `Docs/WIP_CsvLocalizationPatcher.md` - wie die per-Building-CSV-Rows
+- `Docs/PLAN-CsvLocalizationPatcher-WIP.md` - wie die per-Building-CSV-Rows
   in die BuildingItems.csv kommen

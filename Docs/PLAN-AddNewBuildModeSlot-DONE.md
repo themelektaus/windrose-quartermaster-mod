@@ -112,7 +112,7 @@ Heisst: Adding eines neuen Buildings ist ein reiner GUI-Vorgang, kein DLL-Rebuil
 
 ## Erweiterungen seit B5 (nicht in diesem Doc bisher dokumentiert)
 
-- **Flame-Presets** (`FlamePresetCatalog.cs` + Phase 2 socket-driven placement): Buildings koennen einen Flame-Preset (z.B. `torch`) tragen, der dem Building eine NiagaraComponent + PointLight + Audio aus dem vanilla `BP_BuildingBlock_FloorTorch_C` mitgibt. Position/Rotation/Scale folgen einem im User-Mesh definierten Socket. Siehe `Docs/Howto_AuthorBuildingItem.md` Sektion "Socket (optional, fuer Flame-Preset)".
+- **Flame-Presets** (`FlamePresetCatalog.cs` + Phase 2 socket-driven placement): Buildings koennen einen Flame-Preset (z.B. `torch`) tragen, der dem Building eine NiagaraComponent + PointLight + Audio aus dem vanilla `BP_BuildingBlock_FloorTorch_C` mitgibt. Position/Rotation/Scale folgen einem im User-Mesh definierten Socket. Siehe `Docs/HowTo-AuthorBuildingItem.md` Sektion "Socket (optional, fuer Flame-Preset)".
 - **Per-Building BP-Clone**: Jedes Flame-Building bekommt seinen eigenen `BP_QmFlaming_<BuildingId>` BP-Clone mit NameMap-Rewrite (damit das User-Mesh statt vanilla SM_TorchT01_01 gerendert wird).
 - **CSV-Loca-Patching**: `BuildingItemsCsvPatcher.cs` schreibt pro Building eine `BuildingItems.csv`-Row mit User-Display-Name + Description. FText-Keys werden via `RewriteInlineFTextKeys` in den DA-Bytes auf per-Building-Keys umgebogen (`Decorations_FloorTorch_Name` -> `QmBldg_<hash>_Name`).
 
@@ -123,8 +123,8 @@ Heisst: Adding eines neuen Buildings ist ein reiner GUI-Vorgang, kein DLL-Rebuil
 | `Tools/ar_writer/ar_patcher.py` | Strukturell korrekter AssetRegistry.bin-Append-Patcher. NameMap-Hash-Aware, FStore-Extension-aware. Letzter Stand: B3.1 (chunk_ids=[] Variante). Hat die Sackgasse bewiesen - in B5-Solution unbenutzt. |
 | `Tools/ar_writer/ar_parser.py` | UE5.6 AssetRegistry.bin-Parser. Header / NameMap / FStore (text-first) / FAssetData. Verifiziert gegen R5 AssetRegistry.bin (Version 21). |
 | `.build-tmp/b28-bedroll/` | B2.8 Build-Artefakte (Cannon-Icon Asset) - in B5 als Mod-Pak-Source weiterverwendet (`QmBedrl_P.{pak,ucas,utoc}` aktuell in `~mods/`) |
-| `Docs/WIP_CsvLocalizationPatcher.md` | Verwandt: CSV-StringTable-Override-Mechanik |
-| `Docs/WIP_StaticMeshReplacement.md` | Verwandt: Mesh-Reference-Patching im Zen-Chunk |
+| `Docs/PLAN-CsvLocalizationPatcher-WIP.md` | Verwandt: CSV-StringTable-Override-Mechanik |
+| `Docs/PLAN-StaticMeshReplacement-WIP.md` | Verwandt: Mesh-Reference-Patching im Zen-Chunk |
 
 ## Erkenntnisse fuer kuenftiges Plugin-Engineering
 

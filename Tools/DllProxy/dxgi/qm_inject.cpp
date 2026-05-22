@@ -136,7 +136,7 @@ long QmBumpHookHits()
 // deserialize a placed custom building.
 //
 // Background: the native UAssetManager::ScanPathsForPrimaryAssets filter
-// rejects mod paks (see GAME_UPDATE_RECOVERY.md, DONE_AddNewBuildModeSlot.md
+// rejects mod paks (see GAME_UPDATE_RECOVERY.md, PLAN-AddNewBuildModeSlot-DONE.md
 // Phase B2/B3). At BuildingMenu render time, our DLL inject works around this
 // by constructing PackageName/AssetName FNames from strings and writing them
 // into a widget's SoftObjectPath - the next render reads that SoftPath and
@@ -160,7 +160,7 @@ long QmBumpHookHits()
 // that subsequent saved-actor SoftRefs naturally pin via their own load.
 // ============================================================================
 // Known-good vanilla DA used for the canary load. Decoration item that ships
-// in vanilla pakchunks (verified via Docs/Howto_AuthorBuildingItem.md). If
+// in vanilla pakchunks (verified via Docs/HowTo-AuthorBuildingItem.md). If
 // this asset is renamed in a future game update the canary will refuse to
 // pass and pre-warm never runs - that's a recoverable failure mode (the
 // build-menu hook still works, only the post-savegame pop-in returns). Use

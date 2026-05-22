@@ -2,7 +2,7 @@
 # cooked T_MTRMGlass.uasset/uexp/ubulk default texture shipped under
 # Tools/Templates/DefaultTextures/.
 #
-# MTRM channel semantics (Studio convention, see Docs/Howto_AuthorBuildingItem.md):
+# MTRM channel semantics (Studio convention, see Docs/HowTo-AuthorBuildingItem.md):
 #   R = Metallic
 #   G = Tint / Specular / often unused (engine-default 0.5 = 128)
 #   B = Roughness  (LOW = glossy/mirror, HIGH = matte) - BUT see note below

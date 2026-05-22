@@ -5,7 +5,7 @@
 > Asset-Patching ist vom DLL-Inject-Pfad auf CUE4Parse/UAssetAPI am
 > Build-Server migriert, die DLL lebt aber weiter mit reduziertem
 > Scope (Build-Menu-Widget-Inject + Item-Config-Loading). Aktive
-> Pipeline-Doku: `Docs/Howto_AuthorBuildingItem.md` + `README.md`.
+> Pipeline-Doku: `Docs/HowTo-AuthorBuildingItem.md` + `README.md`.
 > DLL-spezifische Recovery-Hinweise: `Tools/DllProxy/dxgi/GAME_UPDATE_RECOVERY.md`.
 
 ## Was urspruenglich geplant war
@@ -26,7 +26,7 @@ Damals war Schritt 3 + 5 (per-Item hardcoded) erledigt, der Rest fehlte.
 |---|---|---|
 | **A: Code-Refactor** (main.cpp 1752 Zeilen -> qm_*.cpp/hpp Splits) | Commit `1d29543` "DLL: split main.cpp into focused modules" | Modul-Split lebt unveraendert. 22 .cpp/.hpp unter `Tools/DllProxy/dxgi/` sind aktiv im Repo und werden bei jedem Build deployed |
 | **B: Multi-Item Config** (constexpr Array von `InjectableItem`) | Commit `6ca6169` "DLL: multi-item config (workstream B)", spaeter `d3f8053` "DLL: runtime JSON config loader (qm_items.json)" | Aktiv - `qm_config.cpp` liest weiterhin `qm_items.json` neben der DLL. Die Datei wird heute vom GUI-"Build"-Knopf beim Deploy geschrieben, statt von Hand gepflegt |
-| **C: Asset-Pipeline-Anleitung** (UE Editor -> Pak Schritt-fuer-Schritt) | Wurde nie in der ursprueglich geplanten Form gemacht, weil die Pipeline auf Build-Time Asset-Patching umgestellt wurde | `Docs/Howto_AuthorBuildingItem.md` (rewrite mit GUI-zentriertem Flow) |
+| **C: Asset-Pipeline-Anleitung** (UE Editor -> Pak Schritt-fuer-Schritt) | Wurde nie in der ursprueglich geplanten Form gemacht, weil die Pipeline auf Build-Time Asset-Patching umgestellt wurde | `Docs/HowTo-AuthorBuildingItem.md` (rewrite mit GUI-zentriertem Flow) |
 
 ## Was sich seither geaendert hat (DLL vs. CUE4Parse)
 
@@ -77,7 +77,7 @@ der nicht datengetrieben ist.
 | `main.cpp` Boot-Logic | unveraendert in `Tools/DllProxy/dxgi/main.cpp` |
 | `qm_config.cpp` JSON-Loader | unveraendert - liest `qm_items.json`. Quelle der Datei: `GUI/Web` schreibt `Profiles/<name>.json`, `Tools/QuartermasterCore` (`BuildPipeline.cs`) generiert daraus `qm_items.json` beim Deploy |
 | `qm_inject` OverrideTarget + Spawn-Pool | unveraendert - sorgt fuer Sichtbarkeit im Build-Menu |
-| Asset-Pipeline UE Editor -> Pak | `Howto_AuthorBuildingItem.md` (GUI cook + Build-Button), Patcher-Kette in `Tools/QuartermasterCore/Patchers/*.cs` |
+| Asset-Pipeline UE Editor -> Pak | `HowTo-AuthorBuildingItem.md` (GUI cook + Build-Button), Patcher-Kette in `Tools/QuartermasterCore/Patchers/*.cs` |
 
 ## Lessons Learned (fuer kuenftige Phase-Planung)
 
