@@ -136,7 +136,7 @@ long QmBumpHookHits()
 // deserialize a placed custom building.
 //
 // Background: the native UAssetManager::ScanPathsForPrimaryAssets filter
-// rejects mod paks (see GAME_UPDATE_RECOVERY.md, WIP_AddNewBuildModeSlot.md
+// rejects mod paks (see GAME_UPDATE_RECOVERY.md, DONE_AddNewBuildModeSlot.md
 // Phase B2/B3). At BuildingMenu render time, our DLL inject works around this
 // by constructing PackageName/AssetName FNames from strings and writing them
 // into a widget's SoftObjectPath - the next render reads that SoftPath and

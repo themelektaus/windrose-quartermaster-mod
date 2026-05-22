@@ -271,7 +271,7 @@ namespace QmUE
     //
     // Why we need it: our injectable building DAs live in a mod pak that the
     // native UAssetManager::ScanPathsForPrimaryAssets filter rejects (see
-    // GAME_UPDATE_RECOVERY.md / WIP_AddNewBuildModeSlot.md Phase B2/B3). When
+    // GAME_UPDATE_RECOVERY.md / DONE_AddNewBuildModeSlot.md Phase B2/B3). When
     // a savegame is loaded BEFORE the player has opened the Build menu, the
     // actor deserializer reads the saved SoftPath but cannot resolve it: the
     // PackageStore has no entry for /Game/Quartermaster/Items/DA_BI_*, and

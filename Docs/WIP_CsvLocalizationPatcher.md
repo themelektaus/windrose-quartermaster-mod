@@ -175,7 +175,7 @@ intern: bei jedem neuen Slot `DA_BI_QmBldg_<hash>` schreibt
 `RewriteInlineFTextKeys` biegt die DA-internen Keys auf diese Rows um.
 
 Sequenz (erledigt 2026-05):
-1. Build-Mode-MVP via DLL-Inject (Phase B5, siehe `WIP_AddNewBuildModeSlot.md`)
+1. Build-Mode-MVP via DLL-Inject (Phase B5, siehe `DONE_AddNewBuildModeSlot.md`)
 2. GUI-Building-Authoring mit CSV-Loca-Integration (`BuildingItemsCsvPatcher.cs`)
 3. Analog fuer Items via `ItemCreatorPatcher.cs`
 
