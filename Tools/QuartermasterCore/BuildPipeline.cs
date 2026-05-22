@@ -543,7 +543,20 @@ namespace Windrose.Quartermaster.Core
 
                 PakBuildResult pakResult = null;
                 string pakPath = null;
-                if (totalWritten > 0)
+                // totalWritten is a predictive counter - e.g.
+                // CountBuildableBuildings assumes every valid building
+                // contributes a BuildingItems.csv row, but the CSV
+                // synthesizer silently skips when no FText keys are
+                // committed / display names are blank, and the recipe
+                // patcher skips when the template carries no
+                // VanillaRecipeJsonPath. Result: totalWritten > 0 yet
+                // tmpDir empty -> repak refuses to pack ("Source folder
+                // is empty"). Verify actual file presence in tmpDir
+                // before invoking repak.
+                bool tmpHasFiles = totalWritten > 0
+                    && Directory.Exists(tmpDir)
+                    && Directory.EnumerateFiles(tmpDir, "*", SearchOption.AllDirectories).Any();
+                if (tmpHasFiles)
                 {
                     LogLine("Resolving repak.exe...");
                     _repakResolver.Log = Log;
@@ -563,6 +576,15 @@ namespace Windrose.Quartermaster.Core
                     LogLine("Pak built: " + outPakPath
                             + " (" + Math.Round(pakResult.SizeBytes / 1024.0, 1) + " KB, "
                             + pakResult.FileCount + " files)");
+                }
+                else if (totalWritten > 0)
+                {
+                    // Predictive counter was optimistic but every
+                    // contributing patcher hit its skip branch.
+                    // Whatever changes the profile carries land in the
+                    // IoStore composite (if active) or nowhere - main
+                    // pak is genuinely empty, skip it.
+                    LogLine("No legacy-pak content produced (predictive counters were optimistic) - main pak skipped.");
                 }
                 else if (!ioStoreActive)
                 {
