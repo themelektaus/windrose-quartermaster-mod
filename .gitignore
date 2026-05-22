@@ -45,6 +45,8 @@ GUI/*/Properties/launchSettings.json
 /Tools/DllProxy/dxgi/build.log
 /Tools/DllProxy/dxgi/build_out.txt
 
+/Tools/ReportReceiver/publish/
+
 # Python caches
 __pycache__/
 *.pyc
@@ -54,3 +56,4 @@ __pycache__/
 
 # Throwaway one-off spike folders (verified socket parsing, etc.)
 /.spike-*
+

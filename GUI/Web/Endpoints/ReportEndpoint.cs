@@ -49,7 +49,7 @@ public static class ReportEndpoint
     // returns any 2xx status on success. Response body (if any) is
     // forwarded to the user so a server can return e.g. an issue URL.
     // ------------------------------------------------------------------
-    private const string ReportEndpointUrl = "https://example.com/quartermaster-reports";
+    private const string ReportEndpointUrl = "https://quartermaster-report.nockal.com";
 
     // Cap on the outbound JSON body. The base64-encoded ZIP can grow with
     // multi-MB R5.log files; we still want a sane upper bound so the
