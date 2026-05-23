@@ -202,6 +202,7 @@ public static class Program
         ModsEndpoint.Map(app, resolvedRoot);
         ExportEndpoint.Map(app, resolvedRoot);
         ReportEndpoint.Map(app, resolvedRoot);
+        PlayEndpoint.Map(app, resolvedRoot);
 
         app.MapPost("/api/shutdown", (Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime) =>
         {

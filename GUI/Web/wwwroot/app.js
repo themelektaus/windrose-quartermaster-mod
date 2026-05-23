@@ -1320,6 +1320,28 @@ async function onQuit() {
     document.body.innerHTML = '<div class="shutdown-info">Server stopped. This window can be closed.</div>';
 }
 
+async function onPlay() {
+    // Launch Windrose.exe via the backend. The button never disables - the
+    // game runs as its own process, and if the user wants to relaunch (or
+    // the launch failed and they want to retry) they shouldn't have to wait
+    // for any state to clear.
+    const btn = document.getElementById('btn-play');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/play', { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.success) {
+            await alert('Could not launch Windrose:\n\n' + (data.error || ('HTTP ' + r.status)));
+        }
+        await new Promise(x => setTimeout(x, 1000))
+    } catch (e) {
+        await alert('Could not launch Windrose:\n\n' + (e && e.message ? e.message : String(e)));
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 async function onReport() {
     openReportModal();
 }
@@ -1528,6 +1550,7 @@ function bindHandlers() {
     document.getElementById('btn-save').addEventListener('click',      onSave);
     document.getElementById('btn-delete').addEventListener('click',    onDelete);
     document.getElementById('btn-build').addEventListener('click',     onBuild);
+    document.getElementById('btn-play').addEventListener('click',      onPlay);
     document.getElementById('btn-report').addEventListener('click',    onReport);
     document.getElementById('btn-quit').addEventListener('click',      onQuit);
 
