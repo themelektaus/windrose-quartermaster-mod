@@ -731,9 +731,9 @@ namespace Windrose.Quartermaster.Core
     // /Game/Gameplay/Building/, picked via the GUI's Vanilla template
     // browser). The BuildingPatcher pipeline:
     //   1. Stages the user's cooked assets (mesh + icon + image texture)
-    //      into the mod-pak's /Game/Quartermaster/Items/ folder. User-
-    //      cooked custom Materials/MIs are SKIPPED - we bisected to the
-    //      fact that those crash the shipping game.
+    //      into the mod-pak's output namespace (WindrosePaths.ModItems-
+    //      PackagePath). User-cooked custom Materials/MIs are SKIPPED -
+    //      we bisected to the fact that those crash the shipping game.
     //   2. Rewrites the user-cooked mesh's NameMap so its per-slot
     //      material refs (M_<AssetPrefix>_<SlotName>) point at our
     //      cloned MI stems (MI_<AssetPrefix>_<SlotName>).
@@ -782,9 +782,13 @@ namespace Windrose.Quartermaster.Core
         public string Description;
 
         // Path to the user's cooked-output folder for this building's
-        // assets. Two accepted shapes:
-        //   - Absolute path, typically the per-project
-        //       <UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/Quartermaster/Items/
+        // assets. The folder can live anywhere on disk - the patcher
+        // restages every asset under the mod's output namespace at build
+        // time and self-path-normalizes their FolderName field, so the
+        // source layout (subfolders, naming) is up to the user. Two
+        // accepted shapes:
+        //   - Absolute path, e.g. some
+        //       <UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/<UserSubfolder>/
         //   - Profile-relative folder name (e.g. "MyPainting") which the
         //     build pipeline resolves via WindrosePaths.ResolveProfile-
         //     RelativeFolder to <Profiles>/<profileId>/<value> when that
@@ -843,8 +847,8 @@ namespace Windrose.Quartermaster.Core
 
         // Etappe J: optional Flame-FX preset. When set (non-empty), the
         // build pipeline clones a vanilla "fire building" BP (e.g.
-        // BP_BuildingBlock_FloorTorch_C) once per used preset under
-        // /Game/Quartermaster/Items/, and patches this building's DA so
+        // BP_BuildingBlock_FloorTorch_C) once per used preset into the
+        // mod-pak's output namespace, and patches this building's DA so
         // its ItemClass soft-class-ref points at the cloned BP. Result:
         // ingame the building spawns with the Niagara flame FX, the
         // flickering point light, and the ambient loop SFX inherited
@@ -921,8 +925,8 @@ namespace Windrose.Quartermaster.Core
     //
     //   - VanillaMaterialParentPath: the Vanilla MI the user picked
     //     as the parent for this slot's clone. The patcher extracts
-    //     this MI via retoc to-legacy and clones it under
-    //     /Game/Quartermaster/Items/MI_<AssetPrefix>_<SlotKey>.
+    //     this MI via retoc to-legacy and clones it into the mod's
+    //     output namespace as MI_<AssetPrefix>_<SlotKey>.
     //
     //   - ScalarParams / VectorParams / TextureParams: user overrides
     //     for parameters that exist in the picked Vanilla MI. The GUI

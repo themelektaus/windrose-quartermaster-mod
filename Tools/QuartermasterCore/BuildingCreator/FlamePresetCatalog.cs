@@ -24,7 +24,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     //     BlueprintPatcher runs `retoc to-legacy --filter <stem>` to extract
     //     the .uasset, then rewrites its NameMap so the package path and
     //     class name point at our mod-owned clone.
-    //   - ClonedBpStem: the stem we emit under /Game/Quartermaster/Items/
+    //   - ClonedBpStem: the stem we emit under the mod's output namespace
     //     (without the trailing "_C" suffix - BP package stem, not class).
     //     The class name appended at runtime is "<ClonedBpStem>_C".
     //
@@ -73,10 +73,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             public static string ClonedBpStemFor(string buildingId)
                 => "BP_QmFlaming_" + buildingId;
             public static string ClonedClassPathFor(string buildingId)
-                => "/Game/Quartermaster/Items/" + ClonedBpStemFor(buildingId)
+                => WindrosePaths.ModItemsPackagePath + ClonedBpStemFor(buildingId)
                    + "." + ClonedBpStemFor(buildingId) + "_C";
             public static string ClonedPackagePathFor(string buildingId)
-                => "/Game/Quartermaster/Items/" + ClonedBpStemFor(buildingId);
+                => WindrosePaths.ModItemsPackagePath + ClonedBpStemFor(buildingId);
 
             // ----- Source-template overrides (set when FlamePresetId is set
             // on a building, the user's chosen template is OVERRIDDEN with

@@ -392,11 +392,12 @@ namespace Windrose.Quartermaster.Core
 
                 // Custom Buildings: user-defined buildings (e.g. a floor
                 // torch with custom flame VFX). Each building's user-
-                // cooked mesh + icon + textures get staged under
-                // tmpDir/R5/Content/Quartermaster/Items/, the per-slot
-                // Vanilla MIs get cloned + retargeted at the user's
-                // textures, and the per-building Vanilla DA gets renamed
-                // to DA_BI_<BuildingId>. The cloned MI / DA / mesh refs
+                // cooked mesh + icon + textures get staged into the mod-
+                // pak's output namespace (WindrosePaths.ModItems-
+                // PackagePath), the per-slot Vanilla MIs get cloned +
+                // retargeted at the user's textures, and the per-building
+                // Vanilla DA gets renamed to DA_BI_<BuildingId>. The
+                // cloned MI / DA / mesh refs
                 // get wired together via NameMap rewrites done by
                 // DataAssetPatcher.
                 //
@@ -1099,12 +1100,13 @@ namespace Windrose.Quartermaster.Core
             // BuildingPatcher already handles its own retoc-to-legacy
             // extraction of the Vanilla DA/MI internally, then writes the
             // patched bytes (user-cooked mesh + icon + textures + cloned
-            // MIs + cloned DA) directly into stagingDir at
-            // /R5/Content/Quartermaster/Items/. These need to land in the
-            // IoStore .ucas/.utoc - LoadPackage("/Game/Quartermaster/Items/
-            // DA_BI_<id>") only resolves when the package is in the IoStore
-            // global index, not in a legacy .pak. New asset paths (vs DT
-            // overrides) MUST go through retoc to-zen.
+            // MIs + cloned DA) directly into stagingDir at the mod-pak's
+            // output namespace (WindrosePaths.ModItemsPackagePath). These
+            // need to land in the IoStore .ucas/.utoc - LoadPackage on the
+            // emitted DA path (e.g. "<ModItemsPackagePath>DA_BI_<id>") only
+            // resolves when the package is in the IoStore global index, not
+            // in a legacy .pak. New asset paths (vs DT overrides) MUST go
+            // through retoc to-zen.
             List<BuildingPatchResult> buildingResults = null;
             if (buildingsActive)
             {
@@ -1315,7 +1317,7 @@ namespace Windrose.Quartermaster.Core
                                 try
                                 {
                                     var userMeshStem = inputs.MeshStem;
-                                    var userMeshPath = "/Game/Quartermaster/Items/" + userMeshStem;
+                                    var userMeshPath = WindrosePaths.ModItemsPackagePath + userMeshStem;
 
                                     // Etappe J v4: pass the single picked
                                     // socket to the patcher; it overwrites

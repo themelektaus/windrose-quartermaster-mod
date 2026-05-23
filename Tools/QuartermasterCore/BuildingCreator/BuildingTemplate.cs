@@ -34,7 +34,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //
         // The patcher clones this DA, rewrites its NameMap so the
         // mesh/icon/self refs point at our mod paths, and ships the
-        // result as DA_BI_<Building.Id> under /Game/Quartermaster/Items/.
+        // result as DA_BI_<Building.Id> under the mod's output namespace.
         public string VanillaDaStem;
         public string VanillaDaPath;
 

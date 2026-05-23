@@ -927,8 +927,8 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
     // the user-cooked MI that exactly match the Vanilla parent's default
     // are NOT promoted to overrides. Writing vanilla-matching values
     // adds clutter (scalar/vector) or is actively harmful for textures
-    // (redirects the texture path to /Game/Quartermaster/Items/<vanilla>
-    // which doesn't exist).
+    // (redirects the texture path under the mod's output namespace to a
+    // vanilla stem that doesn't exist there).
     building.slots = building.slots || {};
     const slotKey = String(slotIndex);
     building.slots[slotKey] = building.slots[slotKey] || {};

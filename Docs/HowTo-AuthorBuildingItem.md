@@ -20,8 +20,8 @@ Was die Pipeline automatisch macht:
 
 - Vanilla-Building-DA klonen + NameMap-Rewrite (Mesh/Icon/Recipe/FText-Keys
   auf deine Stems)
-- Per-Slot MI-Clones unter `/Game/Quartermaster/Items/MI_<Prefix>_<Slot>`
-  mit deinen Param-Overrides
+- Per-Slot MI-Clones unter dem mod-internen Output-Namespace
+  (`MI_<Prefix>_<Slot>`) mit deinen Param-Overrides
 - Lokalisierungs-CSV-Row mit deinem Name + Description
 - (Optional) Flame-FX-BP-Clone + ItemClass-Rewrite + Socket-getriebene
   Flammenposition
@@ -61,7 +61,7 @@ Was die Pipeline automatisch macht:
         |                                       |                              |
         |  Cooked-Output unter                  |  inspect-cooked              |
         |  Saved/Cooked/Windows/.../Content/    |  liest Mesh +                v
-        |  Quartermaster/Items/                 |  listet Slots + MIs       Ingame:
+        |  <dein Ordner>/                       |  listet Slots + MIs       Ingame:
         v                                       |                          Build-Menu
    SM_QmFoo_01.uasset/.uexp/.ubulk              |
    T_QmFoo_Icon.uasset/.uexp/.ubulk             |
@@ -92,9 +92,17 @@ Was die Pipeline automatisch macht:
 
 ### Folder-Konvention
 
-Lege im Content Browser **einmalig** `/Game/Quartermaster/Items/` an.
-Alle Assets fuer Custom-Buildings landen dort - die Pipeline scannt
-genau diesen Ordner.
+Lege dir im Content Browser einen Ordner fuer deine Custom-Building-
+Assets an - **der Name ist beliebig** (z.B. `/Game/MyBuildings/` oder
+`/Game/QmStuff/Painting/`). Wichtig ist nur, dass du **innerhalb des
+Ordners** Mesh + Texturen + (optional) MIs sammelst und beim Cook der
+Inhalt unter `<UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/<dein
+Ordner>/` landet - genau diesen Pfad traegst du spaeter in der GUI als
+"Cooked Folder" ein.
+
+Quartermaster schreibt beim Build alles in seinen eigenen mod-internen
+Output-Namespace um (so dass keine Pfad-Kollisionen mit anderen Mods
+moeglich sind) - dein UE-Source-Ordner kann also heissen wie du willst.
 
 ## Schritt 3: Asset-Prefix waehlen
 
@@ -122,7 +130,7 @@ Wichtig: **Master-Materials (`M_*`) werden vom Build absichtlich rausgefiltert**
 
 ## Schritt 4: Texturen importieren
 
-1. Content Browser -> `/Game/Quartermaster/Items/` -> Drag&Drop deiner PNGs
+1. Content Browser -> in deinen Building-Ordner aus Schritt 2 -> Drag&Drop deiner PNGs
 2. Pro Textur im Import-Dialog:
    - **Texture Group**: `World` (Mesh-Texturen), `UI` (Icon)
    - **sRGB**: an fuer Diffuse + Icon, aus fuer Normal/Roughness/Metallic
@@ -134,7 +142,7 @@ Wichtig: **Master-Materials (`M_*`) werden vom Build absichtlich rausgefiltert**
 
 ## Schritt 5: Mesh importieren
 
-1. Content Browser -> `/Game/Quartermaster/Items/` -> FBX reinziehen
+1. Content Browser -> in deinen Building-Ordner aus Schritt 2 -> FBX reinziehen
 2. Import-Dialog:
    - **Static Mesh** an, **Skeletal Mesh** aus
    - **Generate Lightmap UVs** an
@@ -189,8 +197,8 @@ Hier gibt es zwei Wege - meistens reicht **Variante A**.
    "Create Material Instance" auf einem Master-Material das die
    gewuenschten Params hat
 2. Name: `MI_<Prefix>_<SlotName>` (`MI_QmWieselburger_Body`)
-3. Im MI-Editor Params setzen (Texturen reinziehen aus
-   `/Game/Quartermaster/Items/`, Skalare/Vektoren editieren)
+3. Im MI-Editor Params setzen (Texturen reinziehen aus deinem
+   Building-Ordner, Skalare/Vektoren editieren)
 4. Mesh-Slot auf diese MI setzen
 5. Cooken
 
@@ -207,7 +215,7 @@ weiter editieren.
 Output landet unter:
 
 ```
-<UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/Quartermaster/Items/
+<UEProj>/Saved/Cooked/Windows/<ProjectName>/Content/<dein Ordner aus Schritt 2>/
   SM_QmWieselburger_01.uasset / .uexp / .ubulk
   T_QmWieselburger_Diffuse.uasset / .uexp / .ubulk
   T_QmWieselburger_Icon.uasset / .uexp / .ubulk
@@ -229,7 +237,7 @@ Output landet unter:
    | **Name** | Wie das Building ingame heisst (Build-Menu + Tooltip) |
    | **Description** | Tooltip-Text |
    | **Template** | Picker -> Vanilla-DA von dem geclont wird. Bestimmt Snap-Verhalten, Hit-Box, Build-Tab. Beispiele: `DA_BI_DishesCup_01` (free-standing), `DA_BI_Paintings_HighLands_02` (wall-mount). 849 Vanilla-Templates verfuegbar. |
-   | **Cooked Folder** | Absoluter Pfad zum Cooked-Items-Ordner aus Schritt 7 (`<UEProj>/Saved/Cooked/Windows/.../Quartermaster/Items/`). |
+   | **Cooked Folder** | Pfad zum Cooked-Ordner aus Schritt 7 (`<UEProj>/Saved/Cooked/Windows/.../<dein Ordner>/`). Absoluter Pfad ODER profile-relativer Folder-Name (z.B. `MyPainting`) - der wird dann gegen `<Profiles>/<id>/MyPainting/` aufgeloest, praktisch fuer portable Profile mit ZIP-Export. |
    | **Mesh stem** | Stem deines Meshes ohne `.uasset` (`SM_QmWieselburger_01`). |
    | **Icon stem** | Stem deines Icons (`T_QmWieselburger_Icon`). |
    | **Flame Preset** (optional) | Dropdown: None / Torch. Siehe Schritt 8.2. |

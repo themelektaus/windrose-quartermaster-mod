@@ -14,7 +14,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     // editor project (4x4 RGBA pages, VT-enabled). The build pipeline
     // copies them into the per-build staging tree once (regardless of
     // which buildings reference them) so the cloned MIs always resolve
-    // these stems under /Game/Quartermaster/Items/. The frontend asks
+    // these stems under the mod's output namespace. The frontend asks
     // the backend for the stem list via /api/buildings/default-textures
     // so the per-slot texture dropdowns can list them as an "always
     // available" group on top of whatever the user-cooked folder
@@ -131,8 +131,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             // Normalize FolderName on the freshly staged .uasset files so
             // their internal self-reference matches the top-level staging
-            // path (/Game/Quartermaster/Items/<stem>). The default textures
-            // were cooked under /Content/Quartermaster/, so without this
+            // path (mod-pak output namespace + <stem>). The default
+            // textures were cooked under /Content/Quartermaster/, so without this
             // pass the iostore loader silently fails to resolve them at
             // runtime and the MI's texture lookup falls back to the
             // vanilla parent's texture - which is exactly why the user
@@ -168,7 +168,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     log("  default textures: " + copied + " copied"
                         + (skipped > 0 ? ", " + skipped + " pre-existing (user-cooked override)" : "")
                         + (missing > 0 ? ", " + missing + " file(s) MISSING from " + srcDir : "")
-                        + (normalized > 0 ? ", " + normalized + " self-path normalized to /Game/Quartermaster/Items/<stem>" : "")
+                        + (normalized > 0 ? ", " + normalized + " self-path normalized to " + WindrosePaths.ModItemsPackagePath + "<stem>" : "")
                         + (normalizeFailures > 0 ? ", " + normalizeFailures + " normalize FAILURE(s)" : "")
                         + " - " + string.Join(", ", Stems));
                 }

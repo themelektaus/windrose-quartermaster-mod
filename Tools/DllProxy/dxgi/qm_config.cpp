@@ -24,11 +24,15 @@
 //         "name":                    "QmBldg_a1b2c3d4",
 //         "className":               "R5BuildingItem",
 //         "assetName":               "DA_BI_QmBldg_a1b2c3d4",
-//         "packagePath":             "/Game/Quartermaster/Items/DA_BI_QmBldg_a1b2c3d4",
+//         "packagePath":             "<mod-namespace>/DA_BI_QmBldg_a1b2c3d4",
 //         "targetCategorySubstring": "BuildingBrushes"
 //       }
 //     ]
 //   }
+//
+// packagePath is whatever absolute UE virtual path the C# build pipeline
+// emits the cooked DA at (see WindrosePaths.ModItemsPackagePath); the DLL
+// treats it as an opaque string and forwards it to LoadAssetByPath.
 //
 // Missing fields default to empty / null. "targetCategorySubstring" empty ->
 // nullptr (match-all). "tabPurityFilter" empty -> nullptr (gate disabled).

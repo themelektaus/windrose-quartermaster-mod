@@ -138,7 +138,7 @@ foreach ($asset in $assets) {
         continue
     }
 
-    # /Game/Quartermaster/Items/QmOtter/M_QmOtter_01 -> Content\Quartermaster\Items\QmOtter\M_QmOtter_01.<ext>
+    # /Game/<Subfolders>/<Stem> -> Content\<Subfolders>\<Stem>.<ext>
     $relPath = $packagePath -replace '^/Game/', '' -replace '/', '\'
     $targetFile = Join-Path $ContentRoot "$relPath$($asset.Extension)"
 

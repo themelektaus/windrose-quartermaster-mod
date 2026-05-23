@@ -24,7 +24,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     //
     // What this patcher DOES touch:
     //   - The BP's own self-name and package path in the NameMap (so the
-    //     emitted .uasset/.uexp ends up under /Game/Quartermaster/Items/
+    //     emitted .uasset/.uexp ends up under the mod's output namespace
     //     instead of /Game/Gameplay/Building/Actors/Furniture/).
     //   - The "_C" class-name variant (cooked BPs reference themselves by
     //     both the package stem and the "<stem>_C" class name).

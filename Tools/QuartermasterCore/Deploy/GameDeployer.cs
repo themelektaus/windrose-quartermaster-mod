@@ -333,7 +333,7 @@ namespace Windrose.Quartermaster.Core.Deploy
                 var b = buildings[i];
                 var packagePath = !string.IsNullOrEmpty(b.OutputDaPath)
                     ? b.OutputDaPath
-                    : "/Game/Quartermaster/Items/" + (b.OutputDaStem ?? "");
+                    : WindrosePaths.ModItemsPackagePath + (b.OutputDaStem ?? "");
                 var assetName = b.OutputDaStem ?? "";
                 // R5BuildingItem is the donor class our inject pipeline
                 // expects. We don't yet have a template-driven class but

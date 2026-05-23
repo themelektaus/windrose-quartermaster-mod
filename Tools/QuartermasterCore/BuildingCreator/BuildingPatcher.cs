@@ -25,7 +25,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     //      Vanilla MI (per template - usually one MI shared across all
     //      slots, but we extract once and clone N times).
     //   4) Per slot: DataAssetPatcher renames the Vanilla MI's NameMap so
-    //      it lives under our mod path (/Game/Quartermaster/Items/MI_*),
+    //      it lives under our mod's output namespace as MI_*,
     //      with texture refs swapped to user-custom (if provided) or to
     //      the shared default-VT names. Then patch VectorParameterValues
     //      in-place via UAssetAPI for any template-declared overrides.
@@ -63,8 +63,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string TempDir;
 
         // Per-building entry point. Writes patched assets into
-        // stagingItemsDir (which the orchestrator typically points at
-        // <staging>/R5/Content/Quartermaster/Items/).
+        // stagingItemsDir (the on-disk folder the orchestrator wires to
+        // the mod's output namespace - WindrosePaths.ModItemsPackagePath -
+        // inside the staging tree).
         //
         // Returns a structured result the orchestrator can fold into the
         // SSE-streamed Build report.
@@ -285,7 +286,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (!Directory.Exists(inputs.CookedFolderPath))
                 throw new DirectoryNotFoundException(
                     "Cooked folder not found: " + inputs.CookedFolderPath
-                    + " - cook /Game/Quartermaster/Items/ in the UE editor first.");
+                    + " - cook the user assets in the UE editor first.");
 
             // Greedy-match by asset-prefix (Punkt 7 of the planning doc).
             // Skip-set: every user-cooked MI the mesh references (each
@@ -441,10 +442,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     + (rejectedSample.Count > 0 ? ", e.g. " + string.Join(", ", rejectedSample) : "") + ")" : ""));
 
             // ---- Step 1.5: normalize FolderName + self-NameMap --------
-            // The user's UE editor typically cooks assets under a project
-            // subfolder (e.g. /Game/Quartermaster/Items/QmPainting/SM_*).
-            // We stage every asset at top-level /Game/Quartermaster/Items/<stem>,
-            // so the asset's internal FolderName + NameMap self-path entries
+            // The user's UE editor cooks assets under whatever project
+            // subfolder they chose (e.g. /Game/MyStuff/QmPainting/SM_*).
+            // We stage every asset top-level under the mod's output
+            // namespace (WindrosePaths.ModItemsPackagePath) as <stem>, so
+            // the asset's internal FolderName + NameMap self-path entries
             // disagree with the chunk path the iostore lookup uses. UE5's
             // iostore loader silently fails to resolve the package on
             // mismatch -> mesh + icon are invisible in-game. Fix: rewrite
@@ -456,21 +458,21 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 if (NormalizeStagedUserAssetSelfPath(uassetPath, result)) normalized++;
             }
             if (normalized > 0)
-                LogLine("[OK] " + normalized + " staged file(s) self-path normalized to /Game/Quartermaster/Items/<stem>");
+                LogLine("[OK] " + normalized + " staged file(s) self-path normalized to " + WindrosePaths.ModItemsPackagePath + "<stem>");
         }
 
         // Rewrites the asset's FolderName + every NameMap entry that holds
         // the old FolderName string, so the asset's internal self-reference
-        // matches the top-level staging path /Game/Quartermaster/Items/<stem>.
-        // Returns true if a rewrite happened, false if the asset was already
+        // matches the top-level staging path under the mod's output
+        // namespace (WindrosePaths.ModItemsPackagePath + <stem>). Returns
+        // true if a rewrite happened, false if the asset was already
         // correct (no-op).
         //
         // Why this matters: when the user's UE project cooks an asset under
-        // /Game/Quartermaster/Items/<subfolder>/<stem>, the cooked .uasset
-        // carries FolderName = "/Game/Quartermaster/Items/<subfolder>/<stem>"
-        // and a matching NameMap entry. retoc-to-zen builds the iostore
-        // chunk path from the file location on disk - which here is
-        // R5/Content/Quartermaster/Items/<stem>.uasset i.e. top-level. The
+        // some <UserFolder>/<subfolder>/<stem>, the cooked .uasset carries
+        // a matching FolderName + NameMap entry. retoc-to-zen builds the
+        // iostore chunk path from the file location on disk - which here
+        // is the mod-pak's output namespace, top-level. The
         // loader uses the chunk path to find the package, but the package
         // header's FolderName drives the engine's name-resolution checks.
         // Mismatch silently fails the load. We normalize both to the same
@@ -496,7 +498,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // have an active BuildingPatcher instance during the pre-loop stage
         // pass). Rewrites the asset's FolderName + every NameMap entry that
         // holds the old FolderName so the asset's internal self-reference
-        // matches the top-level staging path /Game/Quartermaster/Items/<stem>.
+        // matches the top-level staging path under the mod's output
+        // namespace (WindrosePaths.ModItemsPackagePath + <stem>).
         //
         // Returns true if a rewrite happened, false otherwise. When false,
         // `error` is null for "no-op already correct" and a short type+message
@@ -505,9 +508,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //
         // Why this matters for the shipped default textures: they were cooked
         // in the editor under /Content/Quartermaster/<stem>, so their internal
-        // FolderName is /Game/Quartermaster/<stem>. We stage them at
-        // R5/Content/Quartermaster/Items/<stem>.uasset to keep all building
-        // assets under one virtual folder; without this rewrite the iostore
+        // FolderName is /Game/Quartermaster/<stem>. We stage them under the
+        // mod's output namespace to keep all building assets under one
+        // virtual folder; without this rewrite the iostore
         // loader silently fails to resolve the package (chunk path vs
         // FolderName mismatch) and the MI's texture lookup falls back to
         // the vanilla parent's texture - which is exactly the bug the user
@@ -517,7 +520,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         {
             error = null;
             var stem = Path.GetFileNameWithoutExtension(stagedUassetPath);
-            var targetFolderName = "/Game/Quartermaster/Items/" + stem;
+            var targetFolderName = WindrosePaths.ModItemsPackagePath + stem;
 
             try
             {
@@ -692,7 +695,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // under the slot's clone path. Rewrite NameMap so:
         //   - self-name+path point at the clone
         //   - each texture param the user overrode points at the user's
-        //     texture stem (under /Game/Quartermaster/Items/)
+        //     texture stem (under the mod's output namespace)
         // Then patch Scalar/Vector parameter values via UAssetAPI for
         // any params the user overrode. Texture stems get rewritten via
         // the NameMap path (DataAssetPatcher); scalars/vectors via direct
@@ -719,7 +722,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     "Vanilla MI '" + vanillaStem + "' didn't parse as MaterialInstanceConstant");
 
             // Self-name + path: needed so the clone packs under the new
-            // /Game/Quartermaster/Items/ location.
+            // mod-pak output-namespace location.
             var matReplacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [vanillaStem] = cloneStem,
@@ -729,11 +732,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // Per-texture-param user overrides: look up the Vanilla
             // texture-ref this param currently carries and rewrite to
             // the user's texture stem. The user's texture must exist
-            // under /Game/Quartermaster/Items/<stem> in staging (the
-            // cooked-folder step already copied it there).
+            // under the mod-pak's output namespace at <stem> in staging
+            // (the cooked-folder step already copied it there).
             // Vanilla-matching overrides are skipped (no-op writes plus
-            // a harmful path redirect to /Game/Quartermaster/Items/<vanilla>
-            // that doesn't exist on disk).
+            // a harmful path redirect to a non-existent vanilla stem
+            // under the mod namespace).
             int textureSkippedVanilla = 0;
             if (slot.TextureParams != null)
             {
@@ -755,7 +758,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                         continue;
                     }
                     var newStem = kv.Value;
-                    var newPath = "/Game/Quartermaster/Items/" + newStem;
+                    var newPath = WindrosePaths.ModItemsPackagePath + newStem;
                     if (!string.IsNullOrEmpty(existing.TextureStem))
                         matReplacements[existing.TextureStem] = newStem;
                     if (!string.IsNullOrEmpty(existing.TexturePath))
@@ -913,7 +916,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                             string legacyDaPath, string stagingItemsDir, BuildingPatchResult result)
         {
             var outDaStem = "DA_BI_" + inputs.BuildingId;
-            var outDaPath = "/Game/Quartermaster/Items/" + outDaStem;
+            var outDaPath = WindrosePaths.ModItemsPackagePath + outDaStem;
             var outDaFile = Path.Combine(stagingItemsDir, outDaStem + ".uasset");
 
             // Output mesh / icon stems (the ones the user-cooked assets
@@ -921,9 +924,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // necessarily share inputs.BuildingId - the icon is typically
             // T_<AssetPrefix>_Icon, the mesh SM_<AssetPrefix>_<n>.
             var outMeshStem = inputs.MeshStem;
-            var outMeshPath = "/Game/Quartermaster/Items/" + outMeshStem;
+            var outMeshPath = WindrosePaths.ModItemsPackagePath + outMeshStem;
             var outIconStem = inputs.IconStem;
-            var outIconPath = "/Game/Quartermaster/Items/" + outIconStem;
+            var outIconPath = WindrosePaths.ModItemsPackagePath + outIconStem;
 
             // Etappe H2: per-building recipe clone target. The vanilla
             // building DA's NameMap references the recipe DA both by full
@@ -1037,7 +1040,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             => "MI_" + inputs.BuildingId + "_slot" + slot.Index;
 
         static string BuildSlotClonePath(BuildingInputs inputs, MeshSlotInput slot)
-            => "/Game/Quartermaster/Items/" + BuildSlotCloneStem(inputs, slot);
+            => WindrosePaths.ModItemsPackagePath + BuildSlotCloneStem(inputs, slot);
 
         // -----------------------------------------------------------------
         // UAssetAPI helper: locate a ScalarParameterValues entry by

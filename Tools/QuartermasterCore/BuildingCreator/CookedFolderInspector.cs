@@ -223,6 +223,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public int    Index;
         public string SlotName;            // e.g. "WorldGridMaterial", "lambert1", "Frame"
         public string UserMaterialStem;    // user-cooked MI ref, e.g. "MI_QmPainting_Canvas"
-        public string UserMaterialPath;    // package path, e.g. "/Game/Quartermaster/Items/MI_QmPainting_Canvas"
+        public string UserMaterialPath;    // package path under the mod's output namespace, e.g. "<ModItemsPackagePath>MI_QmPainting_Canvas"
     }
 }

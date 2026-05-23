@@ -338,7 +338,8 @@ static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
 // The premise. Placed custom buildings render invisible after savegame load
 // (until the first build action retroactively hydrates all instances). Root
 // cause: the saved TSoftObjectPtr<UR5BuildingItem> references our mod-pak
-// /Game/Quartermaster/Items/DA_BI_QmBldg_* which the AssetManager filter
+// DA_BI_QmBldg_* paths (emitted by the patcher under WindrosePaths.Mod-
+// ItemsPackagePath on the C# side) which the AssetManager filter
 // rejected at boot, so the actor deserializer's TryLoad returns null and the
 // mesh-component attach silently fails. Once ANY code path (e.g. our
 // build-menu inject's FNameFromString) pokes the PackageStore for the same

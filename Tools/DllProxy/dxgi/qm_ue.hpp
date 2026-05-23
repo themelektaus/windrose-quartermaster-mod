@@ -274,7 +274,9 @@ namespace QmUE
     // GAME_UPDATE_RECOVERY.md / PLAN-AddNewBuildModeSlot-DONE.md Phase B2/B3). When
     // a savegame is loaded BEFORE the player has opened the Build menu, the
     // actor deserializer reads the saved SoftPath but cannot resolve it: the
-    // PackageStore has no entry for /Game/Quartermaster/Items/DA_BI_*, and
+    // PackageStore has no entry for the mod-emitted DA_BI_* paths (the
+    // patcher restages every building DA into the mod's output namespace
+    // - see WindrosePaths.ModItemsPackagePath on the C# side), and
     // the IoStore-by-PackageName lookup that the BuildingMenu inject relies
     // on hasn't been triggered yet. Result: placed custom buildings show up
     // invisible until the player opens the build menu and our inject runs.
@@ -284,7 +286,8 @@ namespace QmUE
     // load and populates the PackageStore cache, so the saved actor's later
     // TryLoad call hits the cache and resolves immediately.
     //
-    // packagePathW: wide string, e.g. L"/Game/Quartermaster/Items/DA_BI_QmBldg_xxx"
+    // packagePathW: wide string, the full mod-namespace path emitted by
+    //               the patcher (e.g. L"<ModItemsPackagePath>DA_BI_QmBldg_xxx")
     // assetNameW:   wide string, e.g. L"DA_BI_QmBldg_xxx"
     //
     // Returns the loaded UObject* on success, nullptr on any failure

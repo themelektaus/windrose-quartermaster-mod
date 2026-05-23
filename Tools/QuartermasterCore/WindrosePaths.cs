@@ -8,6 +8,26 @@ namespace Windrose.Quartermaster.Core
     // i.e. the directory that contains Sources/, Builds/, Profiles/ etc.
     public sealed class WindrosePaths
     {
+        // UE virtual package directory under which Quartermaster emits ALL
+        // mod-pak assets (cloned DAs, cloned MIs, staged user meshes, default
+        // textures, etc.). This is purely an OUTPUT convention controlled by
+        // the build pipeline - the user's UE-editor cooked-folder source path
+        // can be anywhere on disk, but the patcher always restages and
+        // self-path-normalizes everything into this single mod-side prefix so
+        // the runtime injector only ever has one place to look. Trailing
+        // slash is intentional: callers concatenate stems directly.
+        //
+        // Centralized here (instead of repeated as a string literal across
+        // BuildingPatcher / GameDeployer / FlamePresetCatalog) so a future
+        // relocation needs a single edit + a rebuild of the C# tooling. The
+        // shipped DefaultTextures + any user-cooked asset are FolderName-
+        // normalized to this prefix at staging time (see
+        // BuildingPatcher.NormalizeAssetSelfPath), so no UE-editor recook
+        // is needed. The dxgi DLL also needs no rebuild - it reads the
+        // packagePath as an opaque string from qm_items_<profile>.json,
+        // which the deployer regenerates per build.
+        public const string ModItemsPackagePath = "/Game/Quartermaster/";
+
         public string ModRoot;
         public string Sources;
         public string Vanilla;
