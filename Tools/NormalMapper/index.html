@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Normal Map Generator</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #252526;
+    --elev: #2d2d30;
+    --border: #3f3f46;
+    --text: #d4d4d4;
+    --muted: #858585;
+    --accent: #0e639c;
+    --accent-hover: #1177bb;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    height: 100%;
+  }
+  body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+  header {
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  header .hint {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  main {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    overflow: hidden;
+  }
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 14px;
+    overflow-y: auto;
+  }
+  aside h2 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 14px 0 6px;
+    letter-spacing: 0.04em;
+  }
+  aside h2:first-child { margin-top: 0; }
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .row label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .row label .val {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+  }
+  .row input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  .row select {
+    background: var(--elev);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+    font-size: 12px;
+  }
+  .check-row input { accent-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: var(--border); cursor: not-allowed; }
+  .ghost {
+    background: var(--elev);
+    border: 1px solid var(--border);
+  }
+  .ghost:hover { background: var(--border); }
+  .button-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .button-row button { flex: 1; }
+  section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .pane {
+    background: var(--bg);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pane h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pane h3 .size {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .canvas-wrap {
+    flex: 1;
+    background: #111;
+    background-image:
+      linear-gradient(45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1a1a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1a1a 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    border: 1px solid var(--border);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .canvas-wrap canvas {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+  .drop {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+  }
+  .drop.over {
+    background: rgba(14, 99, 156, 0.15);
+    outline: 2px dashed var(--accent);
+    outline-offset: -8px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Normal Map Generator</h1>
+  <span class="hint">Drop a texture or use the file picker. Output uses DirectX convention by default (Y down).</span>
+</header>
+<main>
+  <aside>
+    <h2>Input</h2>
+    <input type="file" id="file" accept="image/*" style="display:none">
+    <div class="button-row">
+      <button id="pick" class="ghost">Open file</button>
+      <button id="paste" class="ghost" title="Paste image from clipboard (Ctrl+V)">Paste</button>
+    </div>
+
+    <h2>Source channel</h2>
+    <div class="row">
+      <select id="src">
+        <option value="lum" selected>Luminance (perceptual)</option>
+        <option value="avg">Average RGB</option>
+        <option value="r">Red only</option>
+        <option value="g">Green only</option>
+        <option value="b">Blue only</option>
+        <option value="max">Max (R,G,B)</option>
+      </select>
+    </div>
+
+    <h2>Pre-pass</h2>
+    <div class="row">
+      <label>Blur radius <span class="val" id="blur-val">0</span></label>
+      <input type="range" id="blur" min="0" max="10" step="0.5" value="0">
+    </div>
+    <div class="row">
+      <label>Contrast <span class="val" id="contrast-val">1.00</span></label>
+      <input type="range" id="contrast" min="0.1" max="3" step="0.05" value="1">
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="invert-h">
+      <label for="invert-h">Invert height (dark = high)</label>
+    </div>
+
+    <h2>Normal</h2>
+    <div class="row">
+      <label>Strength <span class="val" id="strength-val">5.0</span></label>
+      <input type="range" id="strength" min="0.1" max="30" step="0.1" value="5">
+    </div>
+    <div class="row">
+      <label>Filter</label>
+      <select id="filter">
+        <option value="sobel" selected>Sobel (3x3)</option>
+        <option value="scharr">Scharr (3x3, sharper)</option>
+        <option value="prewitt">Prewitt (3x3, soft)</option>
+        <option value="sobel5">Sobel (5x5, smoother)</option>
+      </select>
+    </div>
+
+    <h2>Output</h2>
+    <div class="check-row">
+      <input type="checkbox" id="flip-g">
+      <label for="flip-g">Flip Y / Green (OpenGL convention)</label>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="invert-x">
+      <label for="invert-x">Invert X / Red</label>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="tile">
+      <label for="tile">Tile (wrap edges seamless)</label>
+    </div>
+
+    <h2>Export</h2>
+    <div class="button-row">
+      <button id="download">Download PNG</button>
+      <button id="copy" class="ghost" title="Copy normal map to clipboard">Copy</button>
+    </div>
+  </aside>
+
+  <section>
+    <div class="pane">
+      <h3>Diffuse <span class="size" id="size-in"></span></h3>
+      <div class="canvas-wrap" id="wrap-in">
+        <div class="drop" id="drop-in">Drop image here or click "Open file"</div>
+        <canvas id="canvas-in" hidden></canvas>
+      </div>
+    </div>
+    <div class="pane">
+      <h3>Normal <span class="size" id="size-out"></span></h3>
+      <div class="canvas-wrap" id="wrap-out">
+        <canvas id="canvas-out"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+'use strict';
+
+const ui = {
+  file: document.getElementById('file'),
+  pick: document.getElementById('pick'),
+  paste: document.getElementById('paste'),
+  src: document.getElementById('src'),
+  blur: document.getElementById('blur'),
+  blurVal: document.getElementById('blur-val'),
+  contrast: document.getElementById('contrast'),
+  contrastVal: document.getElementById('contrast-val'),
+  invertH: document.getElementById('invert-h'),
+  strength: document.getElementById('strength'),
+  strengthVal: document.getElementById('strength-val'),
+  filter: document.getElementById('filter'),
+  flipG: document.getElementById('flip-g'),
+  invertX: document.getElementById('invert-x'),
+  tile: document.getElementById('tile'),
+  download: document.getElementById('download'),
+  copy: document.getElementById('copy'),
+  canvasIn: document.getElementById('canvas-in'),
+  canvasOut: document.getElementById('canvas-out'),
+  dropIn: document.getElementById('drop-in'),
+  wrapIn: document.getElementById('wrap-in'),
+  sizeIn: document.getElementById('size-in'),
+  sizeOut: document.getElementById('size-out')
+};
+
+let currentImage = null;
+let currentName = 'normal.png';
+
+ui.pick.addEventListener('click', () => ui.file.click());
+ui.file.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadFile(f);
+});
+
+ui.paste.addEventListener('click', async () => {
+  try {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      for (const type of item.types) {
+        if (type.startsWith('image/')) {
+          const blob = await item.getType(type);
+          loadBlob(blob, 'clipboard.png');
+          return;
+        }
+      }
+    }
+    alert('No image found in clipboard.');
+  } catch (e) {
+    alert('Clipboard read failed: ' + e.message);
+  }
+});
+
+document.addEventListener('paste', e => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type.startsWith('image/')) {
+      loadBlob(it.getAsFile(), 'clipboard.png');
+      e.preventDefault();
+      return;
+    }
+  }
+});
+
+['dragenter', 'dragover'].forEach(ev => {
+  ui.wrapIn.addEventListener(ev, e => {
+    e.preventDefault();
+    ui.dropIn.classList.add('over');
+  });
+});
+['dragleave', 'drop'].forEach(ev => {
+  ui.wrapIn.addEventListener(ev, e => {
+    e.preventDefault();
+    ui.dropIn.classList.remove('over');
+  });
+});
+ui.wrapIn.addEventListener('drop', e => {
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  if (e.target.closest('#wrap-in')) return;
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+function loadFile(file) {
+  currentName = file.name.replace(/\.[^.]+$/, '') + '_N.png';
+  loadBlob(file, currentName);
+}
+
+function loadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    currentImage = img;
+    drawInput(img);
+    regenerate();
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    alert('Could not decode this file as an image.');
+  };
+  img.src = url;
+}
+
+function drawInput(img) {
+  const c = ui.canvasIn;
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  c.hidden = false;
+  ui.dropIn.style.display = 'none';
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  ui.sizeIn.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+}
+
+// --- live updates ---
+[ui.src, ui.blur, ui.contrast, ui.invertH, ui.strength, ui.filter, ui.flipG, ui.invertX, ui.tile].forEach(el => {
+  el.addEventListener('input', () => {
+    syncLabels();
+    regenerate();
+  });
+});
+
+function syncLabels() {
+  ui.blurVal.textContent = (+ui.blur.value).toFixed(1);
+  ui.contrastVal.textContent = (+ui.contrast.value).toFixed(2);
+  ui.strengthVal.textContent = (+ui.strength.value).toFixed(1);
+}
+syncLabels();
+
+// --- core pipeline ---
+function regenerate() {
+  if (!currentImage) return;
+  const w = currentImage.naturalWidth;
+  const h = currentImage.naturalHeight;
+
+  // 1. read input pixels
+  const inCtx = ui.canvasIn.getContext('2d');
+  const inData = inCtx.getImageData(0, 0, w, h);
+
+  // 2. build heightmap as Float32Array (0..1)
+  let height = new Float32Array(w * h);
+  const mode = ui.src.value;
+  const contrast = +ui.contrast.value;
+  const invertH = ui.invertH.checked;
+  for (let i = 0; i < w * h; i++) {
+    const r = inData.data[i * 4] / 255;
+    const g = inData.data[i * 4 + 1] / 255;
+    const b = inData.data[i * 4 + 2] / 255;
+    let v;
+    switch (mode) {
+      case 'avg': v = (r + g + b) / 3; break;
+      case 'r': v = r; break;
+      case 'g': v = g; break;
+      case 'b': v = b; break;
+      case 'max': v = Math.max(r, g, b); break;
+      default: v = 0.2126 * r + 0.7152 * g + 0.0722 * b; // luminance
+    }
+    // contrast around 0.5
+    v = (v - 0.5) * contrast + 0.5;
+    if (v < 0) v = 0; else if (v > 1) v = 1;
+    if (invertH) v = 1 - v;
+    height[i] = v;
+  }
+
+  // 3. optional blur
+  const blurR = +ui.blur.value;
+  if (blurR > 0.1) {
+    height = gaussBlur(height, w, h, blurR, ui.tile.checked);
+  }
+
+  // 4. sobel/scharr/prewitt
+  const tile = ui.tile.checked;
+  const strength = +ui.strength.value;
+  const flipG = ui.flipG.checked;
+  const invertX = ui.invertX.checked;
+  const filter = ui.filter.value;
+
+  const out = ui.canvasOut;
+  out.width = w;
+  out.height = h;
+  const outCtx = out.getContext('2d');
+  const outData = outCtx.createImageData(w, h);
+
+  const sampler = tile ? sampleWrap : sampleClamp;
+
+  if (filter === 'sobel5') {
+    applySobel5(height, w, h, sampler, strength, flipG, invertX, outData.data);
+  } else {
+    let kx, ky, norm;
+    if (filter === 'scharr') {
+      kx = [-3, 0, 3, -10, 0, 10, -3, 0, 3];
+      ky = [-3, -10, -3, 0, 0, 0, 3, 10, 3];
+      norm = 32;
+    } else if (filter === 'prewitt') {
+      kx = [-1, 0, 1, -1, 0, 1, -1, 0, 1];
+      ky = [-1, -1, -1, 0, 0, 0, 1, 1, 1];
+      norm = 6;
+    } else {
+      kx = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+      ky = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+      norm = 8;
+    }
+    applyKernel3(height, w, h, sampler, kx, ky, norm, strength, flipG, invertX, outData.data);
+  }
+
+  outCtx.putImageData(outData, 0, 0);
+  ui.sizeOut.textContent = `${w} × ${h}`;
+}
+
+function sampleClamp(arr, w, h, x, y) {
+  if (x < 0) x = 0; else if (x >= w) x = w - 1;
+  if (y < 0) y = 0; else if (y >= h) y = h - 1;
+  return arr[y * w + x];
+}
+function sampleWrap(arr, w, h, x, y) {
+  x = ((x % w) + w) % w;
+  y = ((y % h) + h) % h;
+  return arr[y * w + x];
+}
+
+function applyKernel3(height, w, h, sample, kx, ky, norm, strength, flipG, invertX, out) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let gx = 0, gy = 0;
+      let ki = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const v = sample(height, w, h, x + dx, y + dy);
+          gx += v * kx[ki];
+          gy += v * ky[ki];
+          ki++;
+        }
+      }
+      gx = (gx / norm) * strength;
+      gy = (gy / norm) * strength;
+      writeNormal(out, (y * w + x) * 4, gx, gy, flipG, invertX);
+    }
+  }
+}
+
+function applySobel5(height, w, h, sample, strength, flipG, invertX, out) {
+  // 5x5 Sobel kernels (normalized denominator: 96 for both)
+  const sx = [
+    -1, -2, 0, 2, 1,
+    -4, -8, 0, 8, 4,
+    -6, -12, 0, 12, 6,
+    -4, -8, 0, 8, 4,
+    -1, -2, 0, 2, 1
+  ];
+  const sy = [
+    -1, -4, -6, -4, -1,
+    -2, -8, -12, -8, -2,
+    0, 0, 0, 0, 0,
+    2, 8, 12, 8, 2,
+    1, 4, 6, 4, 1
+  ];
+  const norm = 96;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let gx = 0, gy = 0;
+      let ki = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const v = sample(height, w, h, x + dx, y + dy);
+          gx += v * sx[ki];
+          gy += v * sy[ki];
+          ki++;
+        }
+      }
+      gx = (gx / norm) * strength;
+      gy = (gy / norm) * strength;
+      writeNormal(out, (y * w + x) * 4, gx, gy, flipG, invertX);
+    }
+  }
+}
+
+function writeNormal(out, i, gx, gy, flipG, invertX) {
+  // normal = normalize(-gx, -gy, 1)  --> DirectX convention (Y down on texture = +Y in tangent space pointing down)
+  // We compute as if texture Y increases downward; default = DirectX (G channel encodes -dHeight/dY of the texture, which UE expects)
+  let nx = -gx;
+  let ny = -gy;
+  let nz = 1;
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  nx /= len; ny /= len; nz /= len;
+
+  if (invertX) nx = -nx;
+  if (flipG) ny = -ny; // flip to OpenGL convention
+
+  out[i]     = Math.round((nx * 0.5 + 0.5) * 255);
+  out[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+  out[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+  out[i + 3] = 255;
+}
+
+// --- separable gaussian blur ---
+function gaussBlur(src, w, h, radius, tile) {
+  const sigma = Math.max(0.5, radius);
+  const r = Math.max(1, Math.ceil(sigma * 3));
+  const kernel = new Float32Array(r * 2 + 1);
+  let sum = 0;
+  for (let i = -r; i <= r; i++) {
+    const v = Math.exp(-(i * i) / (2 * sigma * sigma));
+    kernel[i + r] = v;
+    sum += v;
+  }
+  for (let i = 0; i < kernel.length; i++) kernel[i] /= sum;
+  const sampler = tile ? sampleWrap : sampleClamp;
+
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let k = -r; k <= r; k++) {
+        acc += sampler(src, w, h, x + k, y) * kernel[k + r];
+      }
+      tmp[y * w + x] = acc;
+    }
+  }
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let k = -r; k <= r; k++) {
+        acc += sampler(tmp, w, h, x, y + k) * kernel[k + r];
+      }
+      out[y * w + x] = acc;
+    }
+  }
+  return out;
+}
+
+// --- export ---
+ui.download.addEventListener('click', () => {
+  if (!currentImage) { alert('Load an image first.'); return; }
+  ui.canvasOut.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = currentName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+});
+
+ui.copy.addEventListener('click', async () => {
+  if (!currentImage) { alert('Load an image first.'); return; }
+  try {
+    const blob = await new Promise(r => ui.canvasOut.toBlob(r, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    ui.copy.textContent = 'Copied!';
+    setTimeout(() => ui.copy.textContent = 'Copy', 1200);
+  } catch (e) {
+    alert('Copy failed: ' + e.message);
+  }
+});
+</script>
+</body>
+</html>
