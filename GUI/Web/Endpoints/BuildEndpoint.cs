@@ -63,20 +63,22 @@ public static class BuildEndpoint
 
             // Etappe I.2: share the Web-layer Vanilla-Building catalog
             // with the pipeline so it can resolve Vanilla-DA-path
-            // templateIds dynamically. The catalog bootstraps lazily on
-            // first BuildingTemplatesEndpoint hit; pre-fetching it here
-            // ensures the first Build call doesn't pay the mount cost
-            // mid-pipeline.
+            // templateIds dynamically. GetSharedCatalog triggers the lazy
+            // bootstrap itself, so a Build click before the Buildings tab
+            // was ever opened still gets a populated catalog (previously
+            // silent-swallowed here, which produced
+            // "BuildingTemplateCatalog is not configured - skipping" for
+            // every Vanilla-DA-path templateId and a hollow pak).
             try
             {
                 pipeline.BuildingTemplateCatalog = BuildingTemplatesEndpoint.GetSharedCatalog();
             }
-            catch
+            catch (Exception ex)
             {
-                // Catalog not bootstrapped yet (e.g. user clicked Build
-                // before opening the Buildings tab). The pipeline's
-                // template resolver will surface a clear warning when a
-                // building actually needs the catalog.
+                // Bootstrap genuinely failed (Steam install missing, usmap
+                // missing, etc.). Surface it as a build log line so the
+                // user sees the cause instead of a hollow success.
+                log.Add("[ERR] Building template catalog bootstrap failed: " + ex.Message);
             }
 
             // Redirect the pak straight into Windrose's ~mods/ folder so

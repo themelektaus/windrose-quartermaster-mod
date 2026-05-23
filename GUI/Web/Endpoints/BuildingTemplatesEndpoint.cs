@@ -29,9 +29,18 @@ public static class BuildingTemplatesEndpoint
 {
     static readonly object _gate = new object();
     static VanillaBuildingTemplateCatalog _vanillaCatalog;
+    // Captured at Map() time so other endpoints (BuildEndpoint) can trigger
+    // the same lazy bootstrap without re-plumbing repoRoot through every
+    // call site. Without this, clicking Build before opening the Buildings
+    // tab leaves _vanillaCatalog null and ResolveBuildingTemplate logs
+    // "BuildingTemplateCatalog is not configured - skipping" for every
+    // Vanilla-DA-path templateId.
+    static string _repoRoot;
 
     public static void Map(WebApplication app, string repoRoot)
     {
+        _repoRoot = repoRoot;
+
         // Lazy bootstrap: defer SteamLocator / UsmapLocator lookups to the
         // first endpoint hit so a missing Steam install or usmap doesn't
         // crash the app at startup. Failures become 503s on the first
@@ -145,10 +154,25 @@ public static class BuildingTemplatesEndpoint
 
     // Used by other endpoints (BuildingsEndpoint.InspectRecipe) and by
     // BuildPipeline.ResolveBuildingTemplate to hydrate a profile's
-    // templateId into a full BuildingTemplate. Public-static to keep the
-    // catalog singleton accessible across endpoint files.
-    public static VanillaBuildingTemplateCatalog GetSharedCatalog() => _vanillaCatalog
-        ?? throw new InvalidOperationException("Vanilla building template catalog not bootstrapped");
+    // templateId into a full BuildingTemplate. Triggers the lazy bootstrap
+    // itself so callers that bypass the Buildings tab (notably the Build
+    // button) still see a populated catalog.
+    public static VanillaBuildingTemplateCatalog GetSharedCatalog()
+    {
+        EnsureBootstrap();
+        return _vanillaCatalog
+            ?? throw new InvalidOperationException("Vanilla building template catalog not bootstrapped");
+    }
+
+    // No-arg overload for callers outside this endpoint (BuildEndpoint).
+    // Uses the repoRoot captured at Map() time.
+    public static void EnsureBootstrap()
+    {
+        if (_vanillaCatalog != null) return;
+        if (string.IsNullOrEmpty(_repoRoot))
+            throw new InvalidOperationException("BuildingTemplatesEndpoint.Map was not invoked - repoRoot unknown");
+        EnsureBootstrap(_repoRoot);
+    }
 
     static void EnsureBootstrap(string repoRoot)
     {
