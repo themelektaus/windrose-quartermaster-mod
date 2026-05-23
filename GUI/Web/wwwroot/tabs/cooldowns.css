@@ -14,7 +14,7 @@
     gap: 2em;
     margin-inline: auto;
     padding: 4em 2em;
-    height: 0;
+    height: max-content;
     max-width: 120em;
 
     .card {

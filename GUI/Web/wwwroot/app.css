@@ -231,8 +231,9 @@ button:disabled {
 
 button.primary,
 button.success,
+button.warn,
 button.danger {
-  border-color: transparent;
+  border-color: var(--border);
 }
 
 button.primary {
@@ -241,6 +242,11 @@ button.primary {
 
 button.success {
   background-color: color-mix(in srgb, var(--success), #000 30%);
+}
+
+button.warn {
+  color: var(--bg);
+  background-color: color-mix(in srgb, var(--warn), #000 10%);
 }
 
 button.danger {
@@ -386,6 +392,10 @@ dl dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.pane.left {
+  overflow-y: auto;
 }
 
 .pane.right {
@@ -733,8 +743,11 @@ footer.collapsed .footer-body {
   font-family: inherit;
 }
 
-.report-status {
+.report-status:not([hidden]) {
   display: flex;
+}
+
+.report-status {
   align-items: flex-start;
   gap: .5em;
   padding: .75em;

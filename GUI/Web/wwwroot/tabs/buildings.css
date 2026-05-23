@@ -372,6 +372,11 @@
   display: flex;
   align-items: center;
   gap: .5em;
+  pointer-events: none;
+}
+
+.building-slot-param > label *:not(span) {
+  pointer-events: all;
 }
 
 .building-slot-param > label > span {
@@ -387,7 +392,6 @@
   width: 3em;
   padding: 0;
   border: 1px solid var(--border);
-  cursor: pointer;
 }
 
 .building-slot-param select {
