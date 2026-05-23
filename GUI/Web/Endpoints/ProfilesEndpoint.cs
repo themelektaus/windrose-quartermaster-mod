@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -189,6 +190,216 @@ public static class ProfilesEndpoint
             return existing == null
                 ? Results.Created("/api/profiles/" + incoming.Id, incoming)
                 : Results.Json(incoming, ProfileStore.JsonOpts);
+        });
+
+        // POST /api/profiles/import-zip?overwrite=false  multipart -> ingest
+        // an exported profile bundle (single .zip).
+        //
+        // ZIP shape: anywhere inside the archive there is a profile JSON
+        // whose filename stem matches the embedded `id` field (i.e.
+        // <id>.json), and optionally a sibling <id>/ directory holding the
+        // per-profile assets (Icons/*.png, ShipMusic/<slot>/audio.wav, ...).
+        // We auto-detect the JSON by walking every *.json entry, parsing
+        // it, and picking the first one whose stem == id and whose `name`
+        // field is set. The directory the JSON lives in becomes the "root":
+        // every entry under <root>/<id>/ is extracted to Profiles/<id>/.
+        //
+        // Conflict handling mirrors /import: same id already present and
+        // overwrite=false -> 409 with existingName so the GUI can prompt.
+        // Re-submit with overwrite=true to replace both the JSON AND the
+        // entire Profiles/<id>/ subfolder (we wipe it first so leftover
+        // files from the previous profile can't bleed through).
+        //
+        // ZipSlip defense: every extracted path is canonicalised and
+        // verified to live under Profiles/<id>/ before bytes touch disk.
+        app.MapPost("/api/profiles/import-zip", async (HttpRequest req, bool? overwrite) =>
+        {
+            if (!req.HasFormContentType)
+                return Results.BadRequest(new { error = "Expected multipart/form-data with a 'file' field" });
+
+            IFormFile zipFile;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                zipFile = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+            if (zipFile == null || zipFile.Length == 0)
+                return Results.BadRequest(new { error = "No file uploaded (form key 'file' or first file)" });
+
+            // Generous cap. Per-profile ShipMusic dir easily reaches 100+
+            // MB (10 slots * ~15 MB WAV), so 500 MB lets users round-trip
+            // a fully populated profile.
+            const long maxBytes = 500L * 1024 * 1024;
+            if (zipFile.Length > maxBytes)
+                return Results.BadRequest(new {
+                    error = "File too large: " + zipFile.FileName
+                          + " (" + zipFile.Length + " bytes, cap " + maxBytes + ")"
+                });
+
+            // Stage to memory so the ZipArchive can seek freely (the form
+            // stream is forward-only). MemoryStream is fine here because
+            // we already capped at 500 MB above.
+            byte[] zipBytes;
+            using (var ms = new MemoryStream())
+            {
+                await zipFile.CopyToAsync(ms);
+                zipBytes = ms.ToArray();
+            }
+
+            ZipArchive archive;
+            try
+            {
+                archive = new ZipArchive(new MemoryStream(zipBytes), ZipArchiveMode.Read, leaveOpen: false);
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Not a valid ZIP: " + ex.Message });
+            }
+
+            using (archive)
+            {
+                // Find the profile JSON: any *.json entry whose stem matches
+                // its embedded id and has a non-empty name. We prefer entries
+                // closer to the archive root (shorter path) so a nested
+                // duplicate can't shadow the canonical top-level one.
+                Profile incoming = null;
+                string jsonEntryPath = null;
+                foreach (var e in archive.Entries
+                    .Where(e => !string.IsNullOrEmpty(e.Name)
+                             && e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e => e.FullName.Length))
+                {
+                    Profile parsed;
+                    try
+                    {
+                        using var s = e.Open();
+                        parsed = JsonSerializer.Deserialize<Profile>(s, ProfileStore.JsonOpts);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                    if (parsed == null) continue;
+                    if (string.IsNullOrWhiteSpace(parsed.Id)) continue;
+                    if (string.IsNullOrWhiteSpace(parsed.Name)) continue;
+                    var stem = Path.GetFileNameWithoutExtension(e.Name);
+                    if (!string.Equals(stem, parsed.Id, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    incoming = parsed;
+                    jsonEntryPath = e.FullName;
+                    break;
+                }
+
+                if (incoming == null || jsonEntryPath == null)
+                    return Results.BadRequest(new { error = "No profile JSON found inside the ZIP (expected <id>.json with matching id + name fields)" });
+
+                if (!IsSafeProfileId(incoming.Id))
+                    return Results.BadRequest(new { error = "id contains unsafe characters (only letters, digits, '-' and '_' allowed)" });
+
+                var existing = store.Load(incoming.Id);
+                if (existing != null && overwrite != true)
+                {
+                    return Results.Json(new
+                    {
+                        error = "A profile with this id already exists",
+                        conflictId = existing.Id,
+                        existingName = existing.Name,
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                if (existing != null)
+                    incoming.CreatedAt = existing.CreatedAt;
+
+                // Resolve the prefix the JSON lives under so we can pick
+                // out the matching <id>/ subfolder. ZipArchive uses '/' as
+                // separator regardless of platform.
+                var prefix = "";
+                var slashIdx = jsonEntryPath.LastIndexOf('/');
+                if (slashIdx >= 0) prefix = jsonEntryPath.Substring(0, slashIdx + 1);
+                var subfolderPrefix = prefix + incoming.Id + "/";
+
+                // Target paths. ProfileStore.Save() will normally create
+                // Profiles/ on demand and write <id>.json; we mirror that
+                // explicitly so the subfolder extraction below can rely on
+                // the parent dir existing.
+                var profilesDir = paths.Profiles;
+                Directory.CreateDirectory(profilesDir);
+                var targetSubfolder = Path.Combine(profilesDir, incoming.Id);
+
+                // On overwrite, wipe the existing per-profile subfolder so
+                // leftover Icons / ShipMusic from the previous incarnation
+                // can't bleed into the imported one. The JSON itself is
+                // overwritten atomically by ProfileStore.Save() below.
+                if (existing != null && Directory.Exists(targetSubfolder))
+                {
+                    try { Directory.Delete(targetSubfolder, recursive: true); }
+                    catch (Exception ex)
+                    {
+                        return Results.BadRequest(new { error = "Could not clear existing subfolder for overwrite: " + ex.Message });
+                    }
+                }
+
+                // Save the JSON first (so a corrupt subfolder extraction
+                // surfaces with a recoverable profile on disk, not an
+                // orphaned tree of files).
+                try { store.Save(incoming); }
+                catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+                // Extract every entry under <prefix><id>/ to Profiles/<id>/.
+                // We canonicalise the destination path before writing so a
+                // crafted entry name (".." etc.) can never escape the
+                // subfolder.
+                int extractedFiles = 0;
+                var targetRoot = Path.GetFullPath(targetSubfolder);
+                foreach (var e in archive.Entries)
+                {
+                    if (string.IsNullOrEmpty(e.FullName)) continue;
+                    if (!e.FullName.StartsWith(subfolderPrefix, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    // Directory entries (trailing '/') have empty Name.
+                    var relative = e.FullName.Substring(subfolderPrefix.Length);
+                    if (string.IsNullOrEmpty(relative)) continue;
+                    var dest = Path.GetFullPath(Path.Combine(targetSubfolder,
+                        relative.Replace('/', Path.DirectorySeparatorChar)));
+                    if (!dest.StartsWith(targetRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(dest, targetRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Zip-slip attempt: skip silently rather than abort
+                        // the whole import (the rest of the archive may be
+                        // legitimate).
+                        continue;
+                    }
+                    if (e.FullName.EndsWith("/", StringComparison.Ordinal))
+                    {
+                        Directory.CreateDirectory(dest);
+                        continue;
+                    }
+                    var destDir = Path.GetDirectoryName(dest);
+                    if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
+                    using var src = e.Open();
+                    using var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await src.CopyToAsync(fs);
+                    extractedFiles++;
+                }
+
+                return existing == null
+                    ? Results.Created("/api/profiles/" + incoming.Id, new
+                    {
+                        profile = incoming,
+                        extractedFiles,
+                        subfolderFound = extractedFiles > 0,
+                    })
+                    : Results.Json(new
+                    {
+                        profile = incoming,
+                        extractedFiles,
+                        subfolderFound = extractedFiles > 0,
+                    }, ProfileStore.JsonOpts);
+            }
         });
 
         app.MapPost("/api/profiles/{id}/duplicate", (string id) =>

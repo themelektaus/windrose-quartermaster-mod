@@ -1606,7 +1606,7 @@ function bindProfileDropHandlers() {
             ? Array.from(e.dataTransfer.files) : [];
         if (files.length === 0) return;
         if (files.length > 1) {
-            await alert('Drop one profile JSON at a time.');
+            await alert('Drop one profile file at a time.');
             return;
         }
         await handleProfileImportDrop(files[0]);
@@ -1626,13 +1626,34 @@ function hasFilesPayload(e) {
 
 async function handleProfileImportDrop(file) {
     if (!file) return;
-    // Ignore obvious non-JSON drops so an accidental audio/png drag during
-    // the wrong tab doesn't pop a JSON-parse error.
+    // Two accepted shapes: a bare .json profile, or a .zip bundle that
+    // contains <id>.json (and optionally a sibling <id>/ subfolder with
+    // Icons / ShipMusic assets). The MIME sniff is permissive because
+    // browsers report .zip as application/zip OR application/x-zip-compressed
+    // OR empty, depending on platform - the extension is the primary cue.
     const name = file.name || '';
+    const lowerType = (file.type || '').toLowerCase();
+    const isZipExt = /\.zip$/i.test(name);
+    const isZipMime = lowerType === 'application/zip'
+                   || lowerType === 'application/x-zip-compressed'
+                   || lowerType === 'application/x-compressed';
     const isJsonExt = /\.json$/i.test(name);
-    const isJsonMime = (file.type || '').toLowerCase() === 'application/json';
-    if (!isJsonExt && !isJsonMime) {
-        await alert('Drop a .json profile file.');
+    const isJsonMime = lowerType === 'application/json';
+
+    if (!isJsonExt && !isJsonMime && !isZipExt && !isZipMime) {
+        await alert('Drop a .json profile file or a .zip profile bundle.');
+        return;
+    }
+
+    if (state.isDirty) {
+        if (!await confirm('You have unsaved changes that will be lost on switch. Continue with import?')) {
+            return;
+        }
+        state.isDirty = false;
+    }
+
+    if (isZipExt || isZipMime) {
+        await handleProfileImportZip(file);
         return;
     }
 
@@ -1665,14 +1686,66 @@ async function handleProfileImportDrop(file) {
         return;
     }
 
-    if (state.isDirty) {
-        if (!await confirm('You have unsaved changes that will be lost on switch. Continue with import?')) {
-            return;
-        }
-        state.isDirty = false;
+    await importProfilePayload(parsed, false);
+}
+
+// ZIP-bundle import. Server inspects the archive, finds <id>.json + the
+// matching <id>/ subfolder, and writes both into Profiles/. On id-conflict
+// the server returns 409 with existingName so we can prompt for overwrite,
+// mirroring the JSON path.
+async function handleProfileImportZip(file) {
+    await importProfileZipFile(file, false);
+}
+
+async function importProfileZipFile(file, overwrite) {
+    const url = '/api/profiles/import-zip' + (overwrite ? '?overwrite=true' : '');
+    const form = new FormData();
+    form.append('file', file, file.name || 'profile.zip');
+
+    let resp;
+    try {
+        resp = await fetch(url, { method: 'POST', body: form });
+    } catch (ex) {
+        await alert('Import failed: ' + (ex && ex.message ? ex.message : String(ex)));
+        return;
     }
 
-    await importProfilePayload(parsed, false);
+    if (resp.status === 409 && !overwrite) {
+        let data = null;
+        try { data = await resp.json(); } catch { /* ignore */ }
+        const conflictId = data && data.conflictId ? data.conflictId : '(unknown id)';
+        const existingName = data && data.existingName ? data.existingName : '(unknown name)';
+        const ok = await confirm(
+            'A profile with id "' + conflictId + '" already exists ("' + existingName + '"). '
+            + 'Overwrite the JSON and replace its subfolder with the ZIP contents?');
+        if (!ok) return;
+        await importProfileZipFile(file, true);
+        return;
+    }
+
+    if (!resp.ok) {
+        let errMsg = 'HTTP ' + resp.status;
+        try {
+            const data = await resp.json();
+            if (data && data.error) errMsg = data.error;
+        } catch { /* ignore */ }
+        await alert('Import failed: ' + errMsg);
+        return;
+    }
+
+    let saved;
+    try { saved = await resp.json(); } catch { saved = null; }
+    // Server returns { profile, extractedFiles, subfolderFound }.
+    const importedProfile = saved && saved.profile ? saved.profile : null;
+    const importedId = importedProfile && importedProfile.id ? importedProfile.id : null;
+    if (!importedId) {
+        await alert('Import succeeded but server response did not include the profile id.');
+        return;
+    }
+
+    state.profiles = await api('GET', '/api/profiles');
+    populateProfileSelect();
+    await loadProfile(importedId);
 }
 
 async function importProfilePayload(payload, overwrite) {
