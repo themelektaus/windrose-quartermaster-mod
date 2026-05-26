@@ -16,27 +16,40 @@ namespace Windrose.Quartermaster.Core
     // so the engine indexes it as
     //   /R5BusinessRules/InventoryItems/Custom/<Id>.<Id>
     //
-    // Localization is handled by emitting an extended copy of the vanilla
-    // InventoryItems.csv string-table at
-    //   R5/Content/Localization/Data/InventoryItems.csv
-    // The patched JSONs reference {TableId:"InventoryItems", Key:"<Id>_..."}
-    // for ItemName / ItemDescription, which the engine resolves against the
-    // CSV at runtime. Because a mod pak's CSV completely overrides vanilla
-    // at the same path, the emitted file MUST contain every vanilla row
-    // plus the new ones - otherwise vanilla item names break.
+    // Localization is handled by emitting a per-profile string-table CSV
+    // at
+    //   R5/Content/Localization/Data/InventoryItems_<shortProfileId>.csv
+    // The patched JSONs reference {TableId:"InventoryItems_<shortId>",
+    // Key:"<Id>_..."} for ItemName / ItemDescription / ItemVanity, which
+    // the engine resolves against the per-profile CSV at runtime. Using
+    // a per-profile CSV name (instead of overriding the shared vanilla
+    // InventoryItems.csv) means two profiles' paks no longer collide via
+    // pak load-order - the loser's items would otherwise resolve to
+    // <MISSING_STRING> because only one pak's CSV at the shared path
+    // wins. ShortProfileId comes from WindrosePaths and is the first 8
+    // hex chars of the Profile.Id GUID (matches the QmBldg_<8hex> id
+    // scheme).
     //
     // Idempotency: if no custom items exist, the patcher returns an empty
     // result without touching any files.
     //
     // Output formatting matches vanilla: tab indent (size 1), CRLF line
     // endings, trailing CRLF for the JSONs (BuyerPatcher / LootPatcher
-    // share this style). The CSV is emitted with the vanilla CRLF style
-    // and the same trailing-newline rule.
+    // share this style). The CSV uses BOM + CRLF + standard
+    // Key,SourceString,Context header (matches vanilla CSV layout).
     public sealed class ItemCreatorPatcher
     {
         // Output anchor paths inside the staging directory.
         const string CustomItemsFolder = "Custom";
-        const string CsvOutRelPath = "R5/Content/Localization/Data/InventoryItems.csv";
+
+        // CSV header. Matches the vanilla layout exactly.
+        const string CsvHeader = "Key,SourceString,Context\r\n";
+
+        // BOM (\xEF\xBB\xBF) - the Windrose CSV loader uses it as a
+        // sanity marker; omitting it would make the loader reject the
+        // file silently. Each per-profile CSV starts with the BOM and
+        // then the header line.
+        static readonly byte[] Utf8Bom = new byte[] { 0xEF, 0xBB, 0xBF };
 
         // No-BOM UTF-8 (the vanilla CSV / JSON files are saved this way).
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
@@ -57,9 +70,14 @@ namespace Windrose.Quartermaster.Core
             HashSet<string> bakeableItemIds = null)
         {
             if (string.IsNullOrEmpty(vanillaInventoryItemsDir)) throw new ArgumentNullException("vanillaInventoryItemsDir");
-            if (string.IsNullOrEmpty(vanillaInventoryCsvPath))  throw new ArgumentNullException("vanillaInventoryCsvPath");
             if (string.IsNullOrEmpty(outDir))                   throw new ArgumentNullException("outDir");
             if (profile == null)                                 throw new ArgumentNullException("profile");
+            if (string.IsNullOrEmpty(profile.Id))                throw new ArgumentException("profile.Id is required (drives the per-profile string-table id)");
+
+            // vanillaInventoryCsvPath is no longer read - the per-profile
+            // CSV is a fresh file with only the profile's own rows. Param
+            // is kept for API stability (callers still pass it).
+            _ = vanillaInventoryCsvPath;
 
             var result = new ItemCreatorPatchResult();
             var customs = profile.CustomItems;
@@ -67,12 +85,14 @@ namespace Windrose.Quartermaster.Core
 
             if (!Directory.Exists(vanillaInventoryItemsDir))
                 throw new DirectoryNotFoundException(vanillaInventoryItemsDir);
-            if (!File.Exists(vanillaInventoryCsvPath))
-                throw new FileNotFoundException(
-                    "Vanilla InventoryItems.csv not found at " + vanillaInventoryCsvPath
-                    + " - re-run setup so the dumper extracts it.");
 
             Directory.CreateDirectory(outDir);
+
+            // Per-profile string-table id. Every custom item's FText
+            // properties reference this TableId, and the CSV gets written
+            // under R5/Content/Localization/Data/<TableId>.csv so the
+            // Windrose loader registers exactly this table at boot.
+            var itemsTableId = WindrosePaths.InventoryItemsTableIdFor(profile.Id);
 
             // Cache template JSONs by basename across the loop so two
             // custom items cloning the same template don't pay for two
@@ -143,7 +163,7 @@ namespace Windrose.Quartermaster.Core
                         + "(Re-upload the PNG, or run a GUI build.)");
                 }
 
-                ApplyCustomItemOverrides(root, custom, willBakeIcon);
+                ApplyCustomItemOverrides(root, custom, willBakeIcon, itemsTableId);
 
                 // Write the JSON at the conventional Custom/ subfolder.
                 var relFile = Path.Combine("R5", "Plugins", "R5BusinessRules",
@@ -171,7 +191,8 @@ namespace Windrose.Quartermaster.Core
 
             if (csvRows.Count > 0)
             {
-                WriteExtendedCsv(vanillaInventoryCsvPath, outDir, csvRows, result);
+                var pakInternalCsvPath = WindrosePaths.InventoryItemsCsvPakPathFor(profile.Id);
+                WriteCsv(pakInternalCsvPath, outDir, csvRows, result);
             }
 
             return result;
@@ -211,7 +232,7 @@ namespace Windrose.Quartermaster.Core
         // profile. willBakeIcon comes from the build pipeline's pre-flight
         // PNG existence check; only when true do we point ItemTexture at
         // the synthesized Custom/T_QmCustomIcon_<id> asset.
-        static void ApplyCustomItemOverrides(JsonObject root, CustomItem custom, bool willBakeIcon)
+        static void ApplyCustomItemOverrides(JsonObject root, CustomItem custom, bool willBakeIcon, string itemsTableId)
         {
             var gpp = root["InventoryItemGppData"] as JsonObject;
             var ui  = root["InventoryItemUIData"]  as JsonObject;
@@ -271,12 +292,12 @@ namespace Windrose.Quartermaster.Core
                 // the engine resolves these at runtime.
                 ui["ItemName"] = new JsonObject
                 {
-                    ["TableId"] = "InventoryItems",
+                    ["TableId"] = itemsTableId,
                     ["Key"] = custom.Id + "_ItemName",
                 };
                 ui["ItemDescription"] = new JsonObject
                 {
-                    ["TableId"] = "InventoryItems",
+                    ["TableId"] = itemsTableId,
                     ["Key"] = custom.Id + "_ItemDescription",
                 };
 
@@ -311,44 +332,28 @@ namespace Windrose.Quartermaster.Core
                 // matching CSV row.
                 ui["VanityText"] = new JsonObject
                 {
-                    ["TableId"] = "InventoryItems",
+                    ["TableId"] = itemsTableId,
                     ["Key"] = custom.Id + "_ItemVanity",
                 };
             }
         }
 
-        // The CSV layout matches what repak extracts: UTF-8 (no BOM), CRLF
-        // line endings, header row "Key,SourceString,Context", and each
-        // data row uses doubled double-quotes for escaping. We read the
-        // vanilla file as-is and append our rows verbatim - this keeps
-        // diffs against vanilla tiny and avoids re-quoting issues with
-        // edge cases (entries containing newlines, etc.).
-        void WriteExtendedCsv(string vanillaCsvPath, string outDir,
+        // Writes a fresh per-profile CSV at <outDir>/<pakInternalCsvPath>.
+        // No vanilla baseline is copied - the per-profile TableId only
+        // carries this profile's custom-item rows, so the file is small
+        // and focused. The Windrose CSV loader expects a BOM + standard
+        // header on its localization CSVs, and CRLF line endings; we
+        // emit all three to match the vanilla layout.
+        void WriteCsv(string pakInternalCsvPath, string outDir,
             List<CsvRow> rows, ItemCreatorPatchResult result)
         {
-            var outPath = Path.Combine(outDir, CsvOutRelPath.Replace('/', Path.DirectorySeparatorChar));
+            var outPath = Path.Combine(outDir, pakInternalCsvPath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(outPath));
 
-            // Slurp the vanilla bytes. We append to a binary buffer so
-            // BOM / trailing-newline subtleties are preserved exactly.
-            var vanillaBytes = File.ReadAllBytes(vanillaCsvPath);
-
             using var ms = new MemoryStream();
-            ms.Write(vanillaBytes, 0, vanillaBytes.Length);
-
-            // Ensure the vanilla content ends with CRLF before we append.
-            // Most exports do, but the last line of pak-extracted CSVs is
-            // sometimes naked - this avoids merging "...vanilla" +
-            // "QmItem...,..." into one corrupt line.
-            if (vanillaBytes.Length > 0)
-            {
-                var lastByte = vanillaBytes[vanillaBytes.Length - 1];
-                if (lastByte != (byte)'\n')
-                {
-                    ms.WriteByte((byte)'\r');
-                    ms.WriteByte((byte)'\n');
-                }
-            }
+            ms.Write(Utf8Bom, 0, Utf8Bom.Length);
+            var headerBytes = Utf8NoBom.GetBytes(CsvHeader);
+            ms.Write(headerBytes, 0, headerBytes.Length);
 
             foreach (var row in rows)
             {
@@ -363,6 +368,7 @@ namespace Windrose.Quartermaster.Core
             File.WriteAllBytes(outPath, ms.ToArray());
             result.CsvRowsAppended = rows.Count;
             result.CsvWritten = true;
+            result.CsvOutPath = outPath;
         }
 
         // Standard CSV escaping: wrap in double quotes, double any internal
@@ -425,8 +431,11 @@ namespace Windrose.Quartermaster.Core
     {
         public int Scanned;
         public int ItemsWritten;      // count of new JSONs written under Custom/
-        public bool CsvWritten;       // true if the extended InventoryItems.csv was emitted
-        public int CsvRowsAppended;   // 2x ItemsWritten (Name + Description) for a successful run
+        public bool CsvWritten;       // true if the per-profile InventoryItems_<shortId>.csv was emitted
+        public int CsvRowsAppended;   // 3x ItemsWritten (Name + Description + Vanity) for a successful run
+        // Absolute on-disk path of the written CSV (per-profile, lives
+        // under <outDir>/R5/Content/Localization/Data/InventoryItems_<shortId>.csv).
+        public string CsvOutPath;
 
         public List<string> WrittenItems = new List<string>();
         public List<string> Warnings    = new List<string>();

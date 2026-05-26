@@ -65,6 +65,17 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // replacements, scans every RawExport.Data array and rewrites
         // all matching FString-encoded occurrences in place.
         //
+        // Optionally also rewrites the FText.TableId FName preceding each
+        // matched Key (oldTableId -> newTableId). When both are non-null,
+        // the new TableId is added to the asset's NameMap (UAssetAPI
+        // assigns the next free index), and every raw-export byte position
+        // where an 8-byte FName matching the old TableId's index appears
+        // immediately before a matched Key gets its NameIndex spliced to
+        // the new entry's index. Used to give each profile its own
+        // StringTable (BuildingItems_<shortProfileId>) so two profiles
+        // shipping at the same R5/Content/Localization/Data/<stem>.csv
+        // path never collide via pak load-order.
+        //
         // Returns per-key hit counts so callers can warn on dead-letter
         // replacements (vanilla key not found at all = template / cooked-
         // DA mismatch, worth surfacing). Missing keys are NOT a hard error
@@ -72,7 +83,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public FTextKeyRewriteResult Patch(
             string assetPath,
             string usmapPath,
-            IReadOnlyDictionary<string, string> replacements)
+            IReadOnlyDictionary<string, string> replacements,
+            string oldTableId = null,
+            string newTableId = null)
         {
             if (string.IsNullOrEmpty(assetPath))
                 throw new ArgumentNullException("assetPath");
@@ -101,6 +114,36 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var mappings = new Usmap(usmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
 
+            // Resolve TableId rewrite. We add the new TableId to the
+            // NameMap up-front (UAssetAPI keeps existing indices stable so
+            // any byte-pattern scans for old indices remain valid) and look
+            // up the old TableId's index. If either lookup misses, we run
+            // the Key rewrite without the TableId touch and surface the
+            // skip in the result.
+            bool wantTableIdRewrite = !string.IsNullOrEmpty(oldTableId) && !string.IsNullOrEmpty(newTableId);
+            int oldTableIdIndex = -1;
+            int newTableIdIndex = -1;
+            int tableIdRewriteHits = 0;
+            string tableIdRewriteSkippedReason = null;
+            byte[] oldTableIdLE = null;
+            byte[] newTableIdLE = null;
+            if (wantTableIdRewrite)
+            {
+                var oldFName = asset.SearchNameReference(new FString(oldTableId));
+                if (oldFName < 0)
+                {
+                    tableIdRewriteSkippedReason =
+                        "old TableId '" + oldTableId + "' not in asset NameMap";
+                }
+                else
+                {
+                    oldTableIdIndex = oldFName;
+                    newTableIdIndex = asset.AddNameReference(new FString(newTableId));
+                    oldTableIdLE = Int32LE(oldTableIdIndex);
+                    newTableIdLE = Int32LE(newTableIdIndex);
+                }
+            }
+
             var perKeyHits = new Dictionary<string, int>(rewrites.Count, StringComparer.Ordinal);
             foreach (var r in rewrites) perKeyHits[r.VanillaKey] = 0;
 
@@ -113,15 +156,32 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 bool touched = false;
                 foreach (var r in rewrites)
                 {
-                    int hits = RewriteAllOccurrences(raw.Data, r);
+                    int hits = RewriteAllOccurrences(raw.Data, r, oldTableIdLE, newTableIdLE, out int tableIdHits);
                     if (hits > 0)
                     {
                         perKeyHits[r.VanillaKey] = perKeyHits[r.VanillaKey] + hits;
                         touched = true;
                         LogLine("  FText[" + i + "] '" + r.VanillaKey + "' -> '" + r.NewKey + "' (" + hits + " occurrence" + (hits == 1 ? "" : "s") + ")");
                     }
+                    if (tableIdHits > 0)
+                    {
+                        tableIdRewriteHits += tableIdHits;
+                        touched = true;
+                    }
                 }
                 if (touched) rawExportsTouched++;
+            }
+
+            if (wantTableIdRewrite && oldTableIdIndex >= 0)
+            {
+                LogLine("  FText TableId '" + oldTableId + "' -> '" + newTableId
+                        + "' (NameMap idx " + oldTableIdIndex + " -> " + newTableIdIndex
+                        + ", " + tableIdRewriteHits + " FName occurrence(s) patched)");
+            }
+            else if (wantTableIdRewrite)
+            {
+                LogLine("  warn: FText TableId rewrite skipped (" + tableIdRewriteSkippedReason
+                        + "); cloned DA stays bound to the vanilla TableId.");
             }
 
             if (rawExportsTouched > 0)
@@ -145,7 +205,20 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 PerKeyHits = perKeyHits,
                 Missed = missed,
                 RawExportsTouched = rawExportsTouched,
+                TableIdRewriteAttempted = wantTableIdRewrite,
+                TableIdRewriteHits = tableIdRewriteHits,
+                TableIdRewriteSkippedReason = tableIdRewriteSkippedReason,
             };
+        }
+
+        static byte[] Int32LE(int v)
+        {
+            var b = new byte[4];
+            b[0] = (byte)(v & 0xFF);
+            b[1] = (byte)((v >> 8) & 0xFF);
+            b[2] = (byte)((v >> 16) & 0xFF);
+            b[3] = (byte)((v >> 24) & 0xFF);
+            return b;
         }
 
         // Walk one byte array and replace every FString-encoded
@@ -154,9 +227,34 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // 4-byte length prefix gets re-written too (a no-op since old
         // and new have the same length, but explicit so future variable-
         // length code paths can hang off the same scaffolding).
-        static int RewriteAllOccurrences(byte[] data, KeyRewrite r)
+        //
+        // When oldTableIdLE / newTableIdLE are non-null AND the 8 bytes
+        // immediately preceding the matched Key encode an FName whose
+        // NameIndex equals oldTableIdLE (Number, the trailing 4 bytes,
+        // is left untouched), the NameIndex is spliced to newTableIdLE.
+        // This is the same-length splice for the FText.TableId, paired
+        // with the Key rewrite so a single pass updates the entire FText
+        // StringTableEntry record. tableIdHits is the count of FName
+        // splices actually committed (0 when the FName preceding the Key
+        // didn't match the expected old index - logged at call site).
+        //
+        // FText StringTableEntry wire layout (UE 5.6 binary serializer):
+        //   [Flags: int32]
+        //   [HistoryType: int8 = 11]
+        //   [FName TableId: int32 NameIndex + int32 Number]   <- 8 bytes
+        //   [FString Key: int32 length + UTF-8 bytes + 1 null]
+        // We anchor on the Key's length prefix, then look back 8 bytes
+        // for the FName NameIndex. The HistoryType byte at offset -9 is
+        // not validated explicitly - the NameIndex match is sufficient
+        // because the NameMap only contains "BuildingItems"/"InventoryItems"
+        // for FText TableId use in these DAs (any other use would put
+        // the FName at a different byte offset relative to the Key).
+        static int RewriteAllOccurrences(byte[] data, KeyRewrite r,
+                                         byte[] oldTableIdLE, byte[] newTableIdLE,
+                                         out int tableIdHits)
         {
             int hits = 0;
+            tableIdHits = 0;
             int prefixLen = 4;                       // FString length prefix bytes
             int totalLen  = prefixLen + r.OnDiskLength;
 
@@ -176,6 +274,26 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
                 if (!match) continue;
                 if (data[i + prefixLen + r.VanillaBytes.Length] != 0) continue;
+
+                // TableId rewrite: look 8 bytes back for the FName whose
+                // NameIndex (first 4 bytes LE) matches the old TableId
+                // index. Only splice if it does. The Number (last 4
+                // bytes of the FName) stays untouched.
+                if (oldTableIdLE != null && newTableIdLE != null && i >= 8)
+                {
+                    int fnameIdx = i - 8;
+                    if (data[fnameIdx]     == oldTableIdLE[0]
+                     && data[fnameIdx + 1] == oldTableIdLE[1]
+                     && data[fnameIdx + 2] == oldTableIdLE[2]
+                     && data[fnameIdx + 3] == oldTableIdLE[3])
+                    {
+                        data[fnameIdx]     = newTableIdLE[0];
+                        data[fnameIdx + 1] = newTableIdLE[1];
+                        data[fnameIdx + 2] = newTableIdLE[2];
+                        data[fnameIdx + 3] = newTableIdLE[3];
+                        tableIdHits++;
+                    }
+                }
 
                 // Splice in new key. Same length means no shift.
                 Buffer.BlockCopy(r.NewBytes, 0, data, i + prefixLen, r.NewBytes.Length);
@@ -272,6 +390,22 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // Number of RawExports that had at least one rewrite. Used to
         // decide whether to re-write the file (0 = skip the I/O).
         public int RawExportsTouched;
+
+        // True when Patch() was invoked with non-empty oldTableId/newTableId.
+        public bool TableIdRewriteAttempted;
+        // Count of FName splices actually committed across all RawExports
+        // (one per (Name|Description) Key found, since each FText with
+        // StringTableEntry HistoryType carries one TableId FName). Zero
+        // when the FName preceding the Key didn't match the expected old
+        // index - the asset stays bound to the vanilla TableId in that
+        // case and the caller should warn.
+        public int TableIdRewriteHits;
+        // Non-null when the rewrite was attempted but couldn't proceed
+        // (e.g. old TableId not in the asset's NameMap). Caller can
+        // surface this as a warning - the building still renders with
+        // whatever the cloned DA's TableId already pointed at, which means
+        // it'll fall back to vanilla in-game text.
+        public string TableIdRewriteSkippedReason;
     }
 
     // Shared utility for constructing the per-building FText keys that

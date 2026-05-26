@@ -1356,7 +1356,7 @@ namespace Windrose.Quartermaster.Core
                             }
 
                             LogLine("Patching building '" + b.Id + "' (template=" + template.Id + ")");
-                            var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir);
+                            var result = _buildingPatcher.Patch(template, inputs, stagingItemsDir, profile.Id);
                             buildingResults.Add(result);
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
 
@@ -1431,39 +1431,46 @@ namespace Windrose.Quartermaster.Core
                         }
                         LogLine("Patched buildings: " + buildingResults.Count + " written");
 
-                        // BuildingItems.csv synthesis: append rows for the
-                        // freshly-rewritten FText keys so the engine
-                        // resolves them to the user-supplied display text
-                        // at runtime. The CSV ships in the legacy main
-                        // pak (NOT in the IoStore composite) - vanilla's
-                        // localization manager loads CSVs as runtime data,
-                        // not as cooked assets. The legacy-pak staging
-                        // tree lives at <BuildTmp>/<profile.Id>/ (see
-                        // the outer Build() method's tmpDir; reconstructed
-                        // here instead of plumbed through BuildIoStoreComposite's
-                        // signature to keep that signature stable).
+                        // Per-profile BuildingItems CSV: pairs with the
+                        // FText.TableId rewrite committed by FTextKey-
+                        // Rewriter (in BuildingPatcher.Step 7) so each
+                        // profile ships its own uniquely-named string-table
+                        // under R5/Content/Localization/Data/BuildingItems_
+                        // <shortProfileId>.csv. Two profiles' paks can
+                        // both add custom buildings without overriding
+                        // each other's CSV - no more pak-load-order
+                        // shadowing the loser's display text to
+                        // <MISSING_STRING>. The CSV ships in the legacy
+                        // main pak (NOT in the IoStore composite) -
+                        // Windrose's localization loader reads CSVs as
+                        // runtime data, not as cooked assets. The legacy-
+                        // pak staging tree lives at <BuildTmp>/<profile.Id>/
+                        // (see the outer Build() method's tmpDir;
+                        // reconstructed here instead of plumbed through
+                        // BuildIoStoreComposite's signature to keep that
+                        // signature stable).
                         try
                         {
                             _buildingItemsCsvPatcher.Log = Log;
                             var legacyPakStagingDir = Path.Combine(_paths.BuildTmp, profile.Id);
                             var csvRes = _buildingItemsCsvPatcher.PatchToDirectory(
-                                _paths.VanillaBuildingItemsCsv,
                                 legacyPakStagingDir,
+                                profile.Id,
                                 buildingResults);
                             if (csvRes.CsvWritten)
                             {
-                                LogLine("BuildingItems.csv extended: +"
-                                        + csvRes.NameRowsAppended + " name row(s), +"
+                                LogLine("Per-profile BuildingItems CSV: "
+                                        + csvRes.NameRowsAppended + " name row(s) + "
                                         + csvRes.DescriptionRowsAppended + " description row(s)");
                             }
                         }
                         catch (Exception ex)
                         {
                             // Non-fatal: building still ships, just with
-                            // the vanilla in-game text. Surface as warning
-                            // so the user knows to re-run Setup if the
-                            // baseline CSV is missing.
-                            LogLine("  warn: BuildingItems.csv synthesis skipped: " + ex.Message);
+                            // the vanilla in-game text (or <MISSING_STRING>
+                            // when another profile's pak wins). Surface as
+                            // warning so the user knows the CSV is missing.
+                            LogLine("  warn: per-profile BuildingItems CSV synthesis skipped: " + ex.Message);
                         }
                     },
                 });

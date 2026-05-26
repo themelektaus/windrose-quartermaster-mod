@@ -6,10 +6,18 @@ using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Extends the vanilla R5/Content/Localization/Data/BuildingItems.csv
-    // with per-Building Name / Description rows so the FText keys that
-    // FTextKeyRewriter committed to each cloned DA's body resolve to the
-    // user-supplied display text at runtime.
+    // Writes a per-profile R5/Content/Localization/Data/BuildingItems_<shortProfileId>.csv
+    // string-table containing one row per cloned-building FText key. The
+    // Windrose game registers every CSV under that directory at boot as a
+    // StringTable whose TableId equals the filename stem, so the per-
+    // profile naming gives each profile its own independently-loaded
+    // string-table - two profiles can ship custom buildings without
+    // their (identically-named) "BuildingItems.csv" overrides colliding
+    // via pak load-order.
+    //
+    // Pairs with FTextKeyRewriter which rewrites each cloned building
+    // DA's FText.TableId FName from "BuildingItems" to the same per-
+    // profile id, so the DA body and CSV resolve against each other.
     //
     // This is the sister of ItemCreatorPatcher's CSV emission, with two
     // structural differences:
@@ -28,38 +36,43 @@ namespace Windrose.Quartermaster.Core
     // PatchToDirectory is a no-op and returns an empty result without
     // touching disk.
     //
-    // Output formatting matches vanilla exactly: UTF-8 (no BOM), CRLF
-    // line endings, header preserved verbatim, doubled-double-quote
-    // escaping for the appended rows. The vanilla CSV body is copied
-    // verbatim and the new rows are appended at the end so diffs stay
-    // minimal and re-pack tooling can verify integrity by comparing
-    // prefixes.
+    // Output formatting matches vanilla exactly: UTF-8 with BOM (the
+    // Windrose CSV loader expects the BOM marker), CRLF line endings,
+    // the standard "Key,SourceString,Context" header, and doubled-double-
+    // quote escaping for each data row.
     public sealed class BuildingItemsCsvPatcher
     {
-        // Output path inside the staging directory (matches the pak-
-        // internal layout under R5/Content/Localization/Data/).
-        const string CsvOutRelPath = "R5/Content/Localization/Data/BuildingItems.csv";
+        // BOM (\xEF\xBB\xBF) prefix on the header line. The vanilla CSVs
+        // start with it and the Windrose CSV-loader uses it as a sanity
+        // marker - omitting the BOM here would make the loader reject
+        // the file silently.
+        static readonly byte[] Utf8Bom = new byte[] { 0xEF, 0xBB, 0xBF };
 
-        // No-BOM UTF-8 (the vanilla CSV is saved this way).
+        // CSV header. Matches the vanilla layout exactly.
+        const string CsvHeader = "Key,SourceString,Context\r\n";
+
+        // No-BOM UTF-8 (the vanilla CSV body is saved this way; the BOM
+        // is a single 3-byte prefix on the file, not on every line).
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public Action<string> Log;
 
-        // Emits the extended CSV into <outDir>/R5/Content/Localization/
-        // Data/BuildingItems.csv based on the per-Building OutputNameKey /
-        // OutputDescriptionKey set on each BuildingPatchResult.
+        // Emits the per-profile CSV into
+        //   <outDir>/R5/Content/Localization/Data/BuildingItems_<shortProfileId>.csv
+        // based on the per-Building OutputNameKey / OutputDescriptionKey
+        // set on each BuildingPatchResult.
         //
-        // vanillaBuildingItemsCsvPath: absolute path to the dumped vanilla
-        // CSV (WindrosePaths.VanillaBuildingItemsCsv). Must exist - if
-        // setup hasn't extracted it yet, the caller should re-run Setup
-        // to dump the baseline before invoking this patcher.
+        // profileId: the full GUID-form Profile.Id. WindrosePaths.ShortProfileId
+        // strips dashes and takes the first 8 hex chars - that suffix
+        // becomes the CSV filename stem and the FText TableId. Must be
+        // non-empty.
         public BuildingItemsCsvPatchResult PatchToDirectory(
-            string vanillaBuildingItemsCsvPath,
             string outDir,
+            string profileId,
             IList<BuildingPatchResult> buildingResults)
         {
-            if (string.IsNullOrEmpty(vanillaBuildingItemsCsvPath)) throw new ArgumentNullException("vanillaBuildingItemsCsvPath");
-            if (string.IsNullOrEmpty(outDir))                       throw new ArgumentNullException("outDir");
+            if (string.IsNullOrEmpty(outDir))   throw new ArgumentNullException("outDir");
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
 
             var result = new BuildingItemsCsvPatchResult();
             if (buildingResults == null || buildingResults.Count == 0)
@@ -95,45 +108,27 @@ namespace Windrose.Quartermaster.Core
                 return result;
             }
 
-            if (!File.Exists(vanillaBuildingItemsCsvPath))
-            {
-                throw new FileNotFoundException(
-                    "Vanilla BuildingItems.csv not found at " + vanillaBuildingItemsCsvPath
-                    + " - re-run Setup so the dumper extracts it.");
-            }
-
-            WriteExtendedCsv(vanillaBuildingItemsCsvPath, outDir, csvRows, result);
+            var pakInternalPath = WindrosePaths.BuildingItemsCsvPakPathFor(profileId);
+            WriteCsv(pakInternalPath, outDir, csvRows, result);
             return result;
         }
 
-        // Identical structure to ItemCreatorPatcher.WriteExtendedCsv -
-        // slurp vanilla bytes, ensure trailing CRLF, append new rows
-        // with CSV-escaped fields, write to outDir. Refactoring the
-        // shared code into a helper isn't worth the indirection for
-        // two callers and two CSV layouts.
-        void WriteExtendedCsv(string vanillaCsvPath, string outDir,
-                              IList<CsvRow> rows, BuildingItemsCsvPatchResult result)
+        // Writes a fresh CSV at <outDir>/<pakInternalPath>. No vanilla
+        // baseline is included - the per-profile TableId is brand-new
+        // and only carries this profile's keys, so a small focused file
+        // is correct (and avoids inflating every profile's pak with the
+        // full vanilla CSV body). The header + BOM match vanilla so the
+        // Windrose loader accepts it.
+        void WriteCsv(string pakInternalPath, string outDir,
+                      IList<CsvRow> rows, BuildingItemsCsvPatchResult result)
         {
-            var outPath = Path.Combine(outDir, CsvOutRelPath.Replace('/', Path.DirectorySeparatorChar));
+            var outPath = Path.Combine(outDir, pakInternalPath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(outPath));
 
-            var vanillaBytes = File.ReadAllBytes(vanillaCsvPath);
-
             using var ms = new MemoryStream();
-            ms.Write(vanillaBytes, 0, vanillaBytes.Length);
-
-            // Ensure trailing CRLF before we append - matches the
-            // ItemCreator pattern exactly (some pak extracts produce a
-            // naked last line).
-            if (vanillaBytes.Length > 0)
-            {
-                var lastByte = vanillaBytes[vanillaBytes.Length - 1];
-                if (lastByte != (byte)'\n')
-                {
-                    ms.WriteByte((byte)'\r');
-                    ms.WriteByte((byte)'\n');
-                }
-            }
+            ms.Write(Utf8Bom, 0, Utf8Bom.Length);
+            var headerBytes = Utf8NoBom.GetBytes(CsvHeader);
+            ms.Write(headerBytes, 0, headerBytes.Length);
 
             foreach (var row in rows)
             {
@@ -148,7 +143,8 @@ namespace Windrose.Quartermaster.Core
             File.WriteAllBytes(outPath, ms.ToArray());
             result.CsvRowsAppended = rows.Count;
             result.CsvWritten = true;
-            LogLine("Extended BuildingItems.csv written: " + outPath + " (+" + rows.Count + " rows)");
+            result.CsvOutPath = outPath;
+            LogLine("Per-profile BuildingItems CSV written: " + outPath + " (" + rows.Count + " rows)");
         }
 
         // Standard CSV escaping: wrap in double quotes, double any
@@ -177,5 +173,8 @@ namespace Windrose.Quartermaster.Core
         public int CsvRowsAppended;
         public int NameRowsAppended;
         public int DescriptionRowsAppended;
+        // Absolute on-disk path of the written CSV (per-profile, lives
+        // under <outDir>/R5/Content/Localization/Data/BuildingItems_<shortId>.csv).
+        public string CsvOutPath;
     }
 }

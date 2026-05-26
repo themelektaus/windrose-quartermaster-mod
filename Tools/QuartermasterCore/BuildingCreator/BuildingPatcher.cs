@@ -72,7 +72,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public BuildingPatchResult Patch(
             BuildingTemplate template,
             BuildingInputs inputs,
-            string stagingItemsDir)
+            string stagingItemsDir,
+            string profileId = null)
         {
             if (template == null)            throw new ArgumentNullException("template");
             if (inputs == null)              throw new ArgumentNullException("inputs");
@@ -156,11 +157,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             //
             // Patches each known FText key (template.VanillaNameKey,
             // template.VanillaDescriptionKey if set) to a same-byte-
-            // length per-Building key. The orchestrator pairs those
-            // new keys with the user-supplied display text by appending
-            // matching rows to the BuildingItems.csv string-table.
+            // length per-Building key. Also rewrites the FText.TableId
+            // FName from "BuildingItems" to "BuildingItems_<shortProfileId>"
+            // so each profile's pak ships a uniquely-named string-table
+            // CSV that can't be overridden by another profile's pak.
+            // The orchestrator pairs the new keys with the user-supplied
+            // display text by writing the per-profile CSV at
+            // R5/Content/Localization/Data/BuildingItems_<shortId>.csv.
             LogLine("=== [" + inputs.BuildingId + "] Step 7: rewrite inline FText keys ===");
-            RewriteInlineFTextKeys(template, inputs, stagingItemsDir, result);
+            RewriteInlineFTextKeys(template, inputs, stagingItemsDir, result, profileId);
 
             LogLine("[OK] Building '" + inputs.BuildingId + "' patched: "
                 + result.StagedFiles.Count + " files staged"
@@ -177,7 +182,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // need FTextKeyRewriter instead of a JsonObject edit.
         // -----------------------------------------------------------------
         void RewriteInlineFTextKeys(BuildingTemplate template, BuildingInputs inputs,
-                                    string stagingItemsDir, BuildingPatchResult result)
+                                    string stagingItemsDir, BuildingPatchResult result,
+                                    string profileId)
         {
             if (string.IsNullOrWhiteSpace(template.VanillaNameKey)
                 && string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
@@ -241,8 +247,22 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 return;
             }
 
+            // TableId rewrite: when a profileId is in scope, also redirect
+            // the FText.TableId FName from the vanilla "BuildingItems"
+            // string-table to a per-profile one ("BuildingItems_<shortId>").
+            // The CSV file pairing this TableId is written by
+            // BuildingItemsCsvPatcher under a matching pak-internal path so
+            // two profiles never collide on the shared CSV.
+            string oldTableId = null;
+            string newTableId = null;
+            if (!string.IsNullOrEmpty(profileId))
+            {
+                oldTableId = WindrosePaths.VanillaBuildingItemsTableId;
+                newTableId = WindrosePaths.BuildingItemsTableIdFor(profileId);
+            }
+
             var rewriter = new FTextKeyRewriter { Log = LogLine };
-            var pr = rewriter.Patch(outDaFile, UsmapPath, replacements);
+            var pr = rewriter.Patch(outDaFile, UsmapPath, replacements, oldTableId, newTableId);
 
             // Surface dead-letter keys (vanilla bytes not present in body)
             // as warnings. Worth knowing about: it means the template's
@@ -273,6 +293,21 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 && pr.PerKeyHits.TryGetValue(template.VanillaDescriptionKey, out var descHits) && descHits > 0)
             {
                 result.OutputDescriptionKey = newDescKey;
+            }
+
+            // Surface a per-building TableId-rewrite warning if the binary
+            // patcher couldn't bind to the new per-profile string-table.
+            // Building still ships, but its in-game name/description fall
+            // back to whatever vanilla "BuildingItems" carries (= literal
+            // template text, or <MISSING_STRING> when another profile's
+            // pak overrides the same shared CSV).
+            if (pr.TableIdRewriteAttempted && pr.TableIdRewriteHits == 0
+                && !string.IsNullOrEmpty(pr.TableIdRewriteSkippedReason))
+            {
+                result.Warnings.Add(
+                    "FText TableId rewrite skipped: " + pr.TableIdRewriteSkippedReason
+                    + " - in-game display text falls back to vanilla string-table "
+                    + "(may show <MISSING_STRING> when another profile's pak wins the load order).");
             }
         }
 
