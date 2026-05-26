@@ -7,8 +7,11 @@
 //   2. DllMain process-attach -> QmLogInit() + WriteInjectMarker() +
 //      ResolveSystemDxgi() to populate the pointer table from the system's
 //      real dxgi.dll (copied to %TEMP% so the loader treats it as a fresh
-//      PE identity instead of dedup'ing against our own handle).
-//      If resolve fails we return FALSE to abort process load cleanly.
+//      PE identity instead of dedup'ing against our own handle). Any export
+//      the host's dxgi.dll doesn't provide (Wine-builtin is missing PIX +
+//      D3D10-Layered + Compat shims) is routed to QmDxgiUnresolvedStub
+//      which returns E_NOTIMPL instead of crashing on a nullptr-jmp.
+//      Only an outright failure to load the system DLL aborts process load.
 //   3. Spawn WorkerThread. Installs crash diagnostics, brings up MinHook
 //      with a Sleep test hook (proof-of-life), then spawns the UE probe
 //      thread.
@@ -161,13 +164,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpRese
         WriteInjectMarker(hModule);
 
         // Populate the g_real_* pointer table from the system's real dxgi.dll
-        // BEFORE we let the game call any of our exports. If this fails the
-        // MASM trampolines would tail-jump through nullptr and crash on first
-        // invocation - return FALSE so the loader aborts process startup
-        // cleanly instead, the user sees the failure in our log.
+        // BEFORE we let the game call any of our exports. Stubs every missing
+        // export internally; the only path that returns false here is an
+        // outright failure to locate / load a system dxgi.dll at all - which
+        // means we'd tail-jump through a nullptr stub array, so abort cleanly.
         if (!ResolveSystemDxgi(hModule))
         {
-            QM_LOG_ERROR("[MinHook] aborting process load: system dxgi.dll unresolved");
+            QM_LOG_ERROR("[Passthrough] aborting process load: no system dxgi.dll loadable");
             return FALSE;
         }
 

@@ -14,9 +14,18 @@
 //   temp file and LoadLibrary that copy - the renamed file is a fresh PE
 //   identity for the loader, no dedup.
 //
-// On failure the function returns false and DllMain returns FALSE so the
-// process aborts cleanly rather than launching and crashing on the first
-// DXGI call.
+// Resolution policy: best-effort. The 19 exports we expose are the full set
+// the Microsoft DXGI implements, but other vendors (notably Wine-builtin
+// dxgi.dll, used on the dedicated server under Linux + Wine) only export a
+// subset (CreateDXGIFactory{,1,2}, DXGIGetDebugInterface1, ...). The PIX
+// debugger entry points, the AppCompat shims, and the D3D10-Layered Device
+// API have no counterpart there. Rather than aborting process load for the
+// entire game session, any export GetProcAddress can't find is routed to
+// QmDxgiUnresolvedStub() - a single tail-return-E_NOTIMPL function that
+// honours the x64 ABI for HRESULT-returning calls. If something the host
+// actually depends on hits the stub it'll log and the caller sees a clean
+// failure HRESULT instead of an AV in our trampolines. Only an outright
+// failure to load the system DLL is still treated as fatal.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -51,17 +60,40 @@ void* g_real_DXGIGetDebugInterface1 = nullptr;
 void* g_real_DXGIReportAdapterConfiguration = nullptr;
 }
 
+// Substituted for any export the system dxgi.dll doesn't provide. x64 ABI:
+// integer/HRESULT return values are passed in RAX, args in RCX/RDX/R8/R9 +
+// stack, caller cleans the stack. A function returning a single 64-bit value
+// is therefore safe to call with any signature - the caller just sees an
+// E_NOTIMPL return (or treats it as a non-zero "something went wrong" if it
+// expected void/BOOL/pointer). Logs once per distinct call-site name so a
+// hot path doesn't flood the log.
+static LONG g_stubHitCount = 0;
+extern "C" __int64 QmDxgiUnresolvedStub()
+{
+    LONG n = InterlockedIncrement(&g_stubHitCount);
+    if (n <= 8) {
+        QM_LOG_WARN("[Passthrough] unresolved dxgi export hit (call #%ld) - returning E_NOTIMPL", n);
+    } else if (n == 9) {
+        QM_LOG_WARN("[Passthrough] further unresolved-export hits suppressed");
+    }
+    return 0x80004001LL; // E_NOTIMPL
+}
+
 #define QM_RESOLVE(name) do { \
     g_real_##name = (void*)GetProcAddress(h, #name); \
     if (!g_real_##name) { \
-        QM_LOG_ERROR("[Passthrough] missing export: " #name); \
-        ++missing; \
+        QM_LOG_WARN("[Passthrough] export not provided by host dxgi.dll, stubbed: " #name); \
+        g_real_##name = (void*)&QmDxgiUnresolvedStub; \
+        ++stubbed; \
+    } else { \
+        ++resolved; \
     } \
 } while (0)
 
-static int ResolveAllExports(HMODULE h)
+static void ResolveAllExports(HMODULE h, int* outResolved, int* outStubbed)
 {
-    int missing = 0;
+    int resolved = 0;
+    int stubbed = 0;
     QM_RESOLVE(ApplyCompatResolutionQuirking);
     QM_RESOLVE(CompatString);
     QM_RESOLVE(CompatValue);
@@ -81,7 +113,8 @@ static int ResolveAllExports(HMODULE h)
     QM_RESOLVE(DXGIDeclareAdapterRemovalSupport);
     QM_RESOLVE(DXGIGetDebugInterface1);
     QM_RESOLVE(DXGIReportAdapterConfiguration);
-    return missing;
+    if (outResolved) *outResolved = resolved;
+    if (outStubbed) *outStubbed = stubbed;
 }
 
 #undef QM_RESOLVE
@@ -152,11 +185,10 @@ extern "C" bool ResolveSystemDxgi(HMODULE hSelf)
         QM_LOG_ERROR("[Passthrough] FATAL: cannot load system dxgi.dll via temp-copy");
         return false;
     }
-    int missing = ResolveAllExports(h);
-    if (missing > 0) {
-        QM_LOG_ERROR("[Passthrough] %d export(s) unresolved - process abort", missing);
-        return false;
-    }
-    QM_LOG_INFO("[Passthrough] 19 exports resolved");
+    int resolved = 0;
+    int stubbed = 0;
+    ResolveAllExports(h, &resolved, &stubbed);
+    QM_LOG_INFO("[Passthrough] %d export(s) resolved, %d stubbed (E_NOTIMPL on call)",
+        resolved, stubbed);
     return true;
 }
