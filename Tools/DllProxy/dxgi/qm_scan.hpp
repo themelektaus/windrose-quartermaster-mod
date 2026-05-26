@@ -14,12 +14,15 @@
 //                  index is stable across patches within the same engine
 //                  version.
 //
-//   AppendString - smoke-test the hardcoded offset (verify first bytes look
-//                  like an x64 function prologue + verify .text containment).
-//                  If smoke-test fails, return nullptr so caller knows to
-//                  warn the user. A full pattern-scan fallback can be added
-//                  later if Windrose updates start moving this symbol more
-//                  than ~0x1000 bytes per patch.
+//   AppendString - x64 instruction pattern scan over .text. The pattern is a
+//                  20-instruction window starting at FName::AppendString's
+//                  prologue, with rip-relative disp32 and rel32 displacements
+//                  wildcarded. The literal bytes (~57 of 77) encode the very
+//                  specific FName ComparisonIndex load + name pool chunk math
+//                  that uniquely identifies this function. The smoke-tested
+//                  hardcoded fallback is kept as a last-resort path for builds
+//                  where the pattern doesn't match (e.g. major UE upgrade that
+//                  changes the prologue or inlines AppendString away).
 //
 // All scans are SEH-guarded and lifecycle-safe (they never write, only read,
 // and always validate pointers before dereferencing).
@@ -102,6 +105,38 @@ namespace QmScan
         // entries indicate fewer than N near-misses were found.
         static constexpr int kNearMissCap = 4;
         NearMissCandidate nearMisses[kNearMissCap];
+
+        // Top "best matches" - candidates that passed ALL validation steps,
+        // ranked by quality score. Multiple structurally-valid candidates can
+        // exist (other UE containers like GUObjectAllocator that look like a
+        // TUObjectArray on first glance). The scanner picks the highest-score
+        // match as the live GObjects; the rest are logged for diagnostics.
+        struct MatchCandidate
+        {
+            uintptr_t address;          // candidate address
+            uint32_t  qualityScore;     // higher = more likely real GObjects
+            int32_t   maxElements;
+            int32_t   numElements;
+            int32_t   maxChunks;
+            int32_t   numChunks;
+            uintptr_t objectsPtr;
+            // Quality-score breakdown (visible in log):
+            uint32_t  uobjSlotsProbed;       // total slots walked across all probe chunks
+            uint32_t  uobjSlotsPopulated;    // slot.Object != null
+            uint32_t  uobjVtableInText;      // vtable[0] resolved to executable memory
+            uint32_t  uobjClassInData;       // class ptr resolved to writable .data
+            uint32_t  layoutBonus;           // structural plausibility bonus
+        };
+        static constexpr int kMatchCap = 8;
+        MatchCandidate matches[kMatchCap];
+        uint32_t       matchesFound;        // how many entries in matches[] are valid
+
+        // AppendString pattern-scan diagnostics. Populated by ResolveAll.
+        // appendStringPatternMatches > 1 is suspect - the pattern should be
+        // unique within the binary (verified offline against client + server).
+        uint32_t appendStringBytesScanned;   // .text bytes walked
+        uint32_t appendStringPatternMatches; // how many addresses matched the pattern
+        uint32_t appendStringScanMs;         // time spent on the pattern scan
     };
 
     // Resolve all three symbols. Always returns - on failure for any symbol,
@@ -126,6 +161,12 @@ namespace QmScan
     // retry loop when the initial scan ran before the engine populated the
     // array. Idempotent + cheap once a valid candidate is found.
     void* RescanGObjects(uintptr_t imageBase);
+
+    // Re-derive ProcessEvent from a now-live GObjects via vtable[slotIdx].
+    // Used by Init() once RescanGObjects produces a populated array - the
+    // ProcessEvent resolved during ResolveAll() was likely the fallback
+    // (or null) because GObjects wasn't populated at scan time.
+    void* RescanProcessEvent(void* validGObjects, int32_t vtblSlotIdx);
 
     // Validate that a given pointer looks like a TUObjectArray with valid
     // chunked layout and a populated Objects table. Used by the retry loop

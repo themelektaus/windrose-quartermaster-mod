@@ -776,10 +776,17 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     QM_LOG_DEBUG("[UE] expected AppendString @ 0x%p", (void*)((uintptr_t)exeMod + QmUE::OFFSET_AppendString));
 
     // Phase 1: wait until GObjects is allocated and reasonably populated.
-    // 100k threshold guarantees native class registration has finished.
-    const int kInitMaxAttempts = 300;     // 300 * 500ms = 2.5 min
+    // 100k threshold guarantees native class registration has finished on a
+    // client. On a dedicated server without connected players, NumElements
+    // stabilizes around ~95-100k (no per-player UObjects). Hypothesis:
+    // once a player connects, additional UObjects load and push us past
+    // the threshold. So we wait effectively forever (kInitMaxAttempts very
+    // high) instead of giving up - the probe-loop is one Sleep(500) thread,
+    // costs nothing while idle. If the server boots without any player ever
+    // connecting, nothing bad happens - we just never enter Phase 2.
+    const int kInitMaxAttempts = 14400; // 14400 * 500ms = 2 hours
     int lastReported = 0;
-    bool initOK = false;
+    bool initOK      = false;
     int initAttempts = 0;
     for (int attempt = 0; attempt < kInitMaxAttempts; ++attempt)
     {
@@ -793,16 +800,22 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
                     attempt + 1, n, arr->NumChunks);
                 lastReported = n;
             }
-            if (n > 100000) { initOK = true; initAttempts = attempt + 1; break; }
+            if (n > 100000)
+            {
+                initOK = true; initAttempts = attempt + 1;
+                break;
+            }
         }
         Sleep(500);
     }
 
     if (!initOK)
     {
-        QM_LOG_ERROR("[UE] init NEVER reached 100000 objects - aborting probe");
+        QM_LOG_ERROR("[UE] init NEVER reached threshold (>100k) within %d attempts - aborting probe",
+            kInitMaxAttempts);
         return 1;
     }
+    QM_LOG_INFO("[UE] init accepted on attempt#%d (>100k)", initAttempts);
 
     QmUE::TUObjectArray* arr = QmUE::GetGObjects();
     QM_LOG_INFO("[UE] init reached threshold on attempt#%d - GObjects.Num=%d", initAttempts, arr->Num());

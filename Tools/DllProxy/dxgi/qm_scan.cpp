@@ -99,6 +99,95 @@ namespace QmScan
         return (mbi.Protect & execMask) != 0;
     }
 
+    // ---- EXE-section cache (for pointer-region quality scoring) --------------
+    //
+    // The quality score for a GObjects candidate measures how "UObject-like" the
+    // pointers in its chunk are. A real UObject has its vtable somewhere in
+    // the EXE's image (specifically .rdata in MSVC builds; verified by live
+    // memory probe of WindroseServer-Win64-Shipping vtable @ 0x14c488db0 sits
+    // in .rdata not .text). Class pointers in turn live in .data. Other UE
+    // structures (allocator pools, internal caches) that share the
+    // FChunkedFixedUObjectArray shape don't have this property.
+    //
+    // We cache the section bounds once and use them as fast range checks. The
+    // "image RO" range is the full read-only image span (.text + .rdata) so
+    // we don't have to know section names - we just take the union of all
+    // non-writable mappings in the EXE.
+    struct SectionCache
+    {
+        uintptr_t textStart;
+        uintptr_t textEnd;
+        // RO span: union of all non-writable PE sections (includes .text + .rdata).
+        // vtables live in .rdata so checking just .text is too strict.
+        uintptr_t imgRoStart;
+        uintptr_t imgRoEnd;
+        uintptr_t dataStart;
+        uintptr_t dataEnd;
+        bool      ready;
+    };
+    static SectionCache g_secCache{};
+
+    static void RefreshSectionCache(uintptr_t imageBase)
+    {
+        g_secCache = {};
+        SectionInfo sections[32]{};
+        uint32_t n = EnumerateSections(imageBase, sections, 32);
+        for (uint32_t i = 0; i < n; ++i)
+        {
+            const SectionInfo& s = sections[i];
+            // .text: executable. There can be multiple but usually one big one.
+            if (s.executable && s.size > (g_secCache.textEnd - g_secCache.textStart))
+            {
+                g_secCache.textStart = s.start;
+                g_secCache.textEnd   = s.start + s.size;
+            }
+            // Image read-only span: every non-writable section (.text + .rdata).
+            // vtables sit in .rdata which is non-writable but also non-executable.
+            if (!s.writable)
+            {
+                if (g_secCache.imgRoStart == 0 || s.start < g_secCache.imgRoStart)
+                    g_secCache.imgRoStart = s.start;
+                uintptr_t e = s.start + s.size;
+                if (e > g_secCache.imgRoEnd) g_secCache.imgRoEnd = e;
+            }
+            // .data: writable + not executable. There can be multiple
+            // (.data, .bss-equivalent slot, /19 etc) - we take the union
+            // by tracking min start and max end.
+            if (s.writable && !s.executable)
+            {
+                if (g_secCache.dataStart == 0 || s.start < g_secCache.dataStart)
+                    g_secCache.dataStart = s.start;
+                uintptr_t e = s.start + s.size;
+                if (e > g_secCache.dataEnd) g_secCache.dataEnd = e;
+            }
+        }
+        g_secCache.ready = (g_secCache.textEnd > g_secCache.textStart)
+                        && (g_secCache.dataEnd > g_secCache.dataStart);
+    }
+
+    static bool IsInExeText(const void* p)
+    {
+        if (!g_secCache.ready || !p) return false;
+        uintptr_t v = reinterpret_cast<uintptr_t>(p);
+        return v >= g_secCache.textStart && v < g_secCache.textEnd;
+    }
+
+    // True if p points into any non-writable image region (.text or .rdata).
+    // Used for vtable-quality scoring - vtables can sit in either.
+    static bool IsInExeImageReadOnly(const void* p)
+    {
+        if (!g_secCache.ready || !p) return false;
+        uintptr_t v = reinterpret_cast<uintptr_t>(p);
+        return v >= g_secCache.imgRoStart && v < g_secCache.imgRoEnd;
+    }
+
+    static bool IsInExeData(const void* p)
+    {
+        if (!g_secCache.ready || !p) return false;
+        uintptr_t v = reinterpret_cast<uintptr_t>(p);
+        return v >= g_secCache.dataStart && v < g_secCache.dataEnd;
+    }
+
     // ---- GObjects validation --------------------------------------------------
     //
     // TUObjectArray layout we expect (qm_ue.hpp):
@@ -128,11 +217,23 @@ namespace QmScan
     static constexpr int32_t kMaxElemsFloor      = 0x2000;
     static constexpr int32_t kMaxElemsCeiling    = 0x600000;
     static constexpr int32_t kMaxChunksFloor     = 1;
-    static constexpr int32_t kMaxChunksCeiling   = 100;
-    static constexpr int32_t kElemsPerChunkFloor = 0x1000;
-    static constexpr int32_t kElemsPerChunkCeil  = 0x100000;
+    static constexpr int32_t kMaxChunksCeiling   = 200;
+    // UE5.6 always uses exactly 0x10000 elements per chunk. Probing live
+    // memory of a running dedicated server confirmed: among 1.06M tested
+    // .data slots, only ONE (the real GObjects) matched ElemsPerChunk==0x10000
+    // when also requiring NumElements>100. Loosening this range admits
+    // thousands of false positives (other TArray-shaped containers).
+    static constexpr int32_t kElemsPerChunk      = 0x10000;
     static constexpr int     kValidObjectsThresh = 1;
     static constexpr int     kChunkProbeSlots    = 64;
+    // GObjects is considered "live" once NumElements crosses this. Before
+    // that, the static struct in .data exists but has default-initialised
+    // values (NumElements==8 from the disregard-for-GC permanent pool, but
+    // Objects/PreAllocatedObjects=NULL because the chunk pool isn't yet
+    // allocated). Returning a candidate in that state would lock us onto
+    // either a stale match or a false-positive structural sibling. Scanner
+    // returns nullptr below this threshold so the caller retries.
+    static constexpr int32_t kPopulatedThresh    = 100;
 
     // Bit ids per reject reason - used both to populate RejectCounters and to
     // tag NearMissCandidate.rejectReasonBit so log messages can decode it.
@@ -179,6 +280,16 @@ namespace QmScan
         // are dynamically allocated.
         bool     preAllocBytesValid;
         uint8_t  preAllocBytes[128];
+        // Quality-score components - filled when passed==true and used to pick
+        // the best match among multiple structurally-valid candidates. Higher
+        // scores correlate with "real GObjects" rather than other UE5 containers
+        // that happen to share the FChunkedFixedUObjectArray shape.
+        uint32_t qualityScore;
+        uint32_t uobjSlotsProbed;
+        uint32_t uobjSlotsPopulated;
+        uint32_t uobjVtableInText;
+        uint32_t uobjClassInData;
+        uint32_t layoutBonus;
     };
 
     static ValidateDetail ValidateGObjectsDetailed(void* candidate)
@@ -235,8 +346,12 @@ namespace QmScan
             }
             d.passedChecks = 4;
 
+            // UE5.6: MaxElements / MaxChunks must equal exactly 0x10000 (the
+            // FChunkedFixedUObjectArray::NumElementsPerChunk constant). We
+            // also reject if maxElems doesn't divide cleanly into maxChunks
+            // chunks (sanity: catches near-misses that match by coincidence).
             const int32_t elemsPerChunk = maxElems / maxChunks;
-            if (elemsPerChunk < kElemsPerChunkFloor || elemsPerChunk > kElemsPerChunkCeil)
+            if (elemsPerChunk != kElemsPerChunk || maxElems % maxChunks != 0)
             {
                 d.rejectReason = REJ_ElemsPerChunkRange;
                 return d;
@@ -328,63 +443,131 @@ namespace QmScan
                 }
             }
 
-            // UObject probing - try firstChunk, then PreAllocatedObjects.
-            // Walk a generous window of slots in each looking for UObject-shaped
-            // entries.
+            // UObject probing - deep stats variant. Walks ALL slots in each
+            // probe chunk (no early-break) so we can score how UObject-like
+            // the candidate is. probeStats accumulates across firstChunk,
+            // PreAllocatedObjects and objects[1..3].
             //
-            // Note (2026-05-26): the vtable[0] check was previously
-            // IsExecutable() but that fails under Wine in headless WindowsServer
-            // builds. We relax to IsReadable() instead.
-            auto probeForUObjects = [&](void* chunk) -> int {
-                if (!chunk) return 0;
-                if (!IsReadable(chunk, kChunkProbeSlots * 0x18)) {
-                    // Try smaller probe window if full window not readable.
-                    if (!IsReadable(chunk, 0x18 * 8)) return 0;
-                }
+            // The score components track three orthogonal properties:
+            //   slotsPopulated  - how many slots have a non-null Object pointer
+            //   vtableInText    - how many of those vtables resolve to .text
+            //                     of the host EXE (strong UObject signal)
+            //   classInData     - how many class pointers resolve to .data
+            //                     of the host EXE (also strong UObject signal)
+            //
+            // Real GObjects in a booted server has hundreds of populated slots
+            // with vtables in .text; false positives (other UE containers)
+            // typically have few populated slots or vtables pointing into
+            // module .text of unrelated DLLs.
+            struct ProbeStats
+            {
+                uint32_t slotsProbed;
+                uint32_t slotsPopulated;
+                uint32_t vtableInText;
+                uint32_t classInData;
+            };
+
+            ProbeStats stats{};
+
+            auto probeForUObjects = [&](void* chunk) {
+                if (!chunk) return;
+                // Best-effort: probe what's readable, don't break early.
                 uint8_t* cb = static_cast<uint8_t*>(chunk);
-                int found = 0;
                 for (int i = 0; i < kChunkProbeSlots; ++i) {
                     if (!IsReadable(cb + i * 0x18, 0x18)) break;
+                    ++stats.slotsProbed;
+
                     void* obj = *reinterpret_cast<void**>(cb + i * 0x18);
                     if (!obj) continue;
                     if (!IsReadable(obj, 0x28)) continue;
 
+                    ++stats.slotsPopulated;
+
                     void* vtable = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x00);
                     void* cls    = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x10);
-                    if (!vtable) continue;
-                    if (!IsReadable(vtable, sizeof(void*))) continue;
-                    void* vfn0 = *reinterpret_cast<void**>(vtable);
-                    if (!vfn0) continue;
-                    if (!IsReadable(vfn0, 1)) continue;
-                    if (!cls) continue;
-                    ++found;
-                    if (found >= kValidObjectsThresh) break;
+
+                    // Two-part vtable check: vtable itself sits in .rdata of
+                    // the host EXE, AND vtable[0] (the first virtual function
+                    // address) points into .text. Either signal alone counts
+                    // - a UObject vtable from a DLL passes the .text check via
+                    // its first member function instead.
+                    if (vtable && IsInExeImageReadOnly(vtable)) {
+                        ++stats.vtableInText;
+                    } else if (vtable && IsReadable(vtable, sizeof(void*))) {
+                        void* vfn0 = *reinterpret_cast<void**>(vtable);
+                        if (vfn0 && IsInExeText(vfn0)) {
+                            ++stats.vtableInText;
+                        }
+                    }
+
+                    if (cls && IsInExeData(cls)) {
+                        ++stats.classInData;
+                    }
                 }
-                return found;
             };
 
-            int validObjects = probeForUObjects(firstChunk);
-            if (validObjects < kValidObjectsThresh)
-                validObjects += probeForUObjects(preAllocatedObjects);
-
-            // If still nothing, probe a few additional chunks (UE may allocate
-            // chunks out-of-order in rare configurations).
-            if (validObjects < kValidObjectsThresh) {
+            // Probe firstChunk, PreAllocatedObjects, and a few additional
+            // allocated chunks. Stop at chunk 4 to keep scan cost bounded.
+            probeForUObjects(firstChunk);
+            probeForUObjects(preAllocatedObjects);
+            {
                 int probeMax = numChunks < 4 ? numChunks : 4;
-                for (int ci = 1; ci < probeMax && validObjects < kValidObjectsThresh; ++ci) {
+                for (int ci = 1; ci < probeMax; ++ci) {
                     if (!IsReadable(objects + ci, sizeof(void*))) break;
                     void* otherChunk = objects[ci];
                     if (!otherChunk) continue;
-                    validObjects += probeForUObjects(otherChunk);
+                    probeForUObjects(otherChunk);
                 }
             }
 
-            if (validObjects < kValidObjectsThresh)
+            if (stats.slotsPopulated < static_cast<uint32_t>(kValidObjectsThresh))
             {
+                d.uobjSlotsProbed    = stats.slotsProbed;
+                d.uobjSlotsPopulated = stats.slotsPopulated;
+                d.uobjVtableInText   = stats.vtableInText;
+                d.uobjClassInData    = stats.classInData;
                 d.rejectReason = REJ_ValidObjectsTooFew;
                 return d;
             }
             d.passedChecks = 10;
+
+            // Compute quality score. Weights chosen so that:
+            //   - vtableInText is the dominant signal (real GObjects has
+            //     near 100% rate; false-positives much lower)
+            //   - classInData is the secondary confirmer
+            //   - slotsPopulated alone is weak (false-positives may have
+            //     a few populated slots; real GObjects has tens to hundreds)
+            //   - layout plausibility bonus rewards classical
+            //     MaxChunks * 0x10000 ~ MaxElements relationship
+            uint32_t score = 0;
+            score += stats.vtableInText * 8;
+            score += stats.classInData  * 4;
+            score += stats.slotsPopulated;
+
+            // Structural plausibility bonus: classical UE5 layout has
+            // MaxChunks * ElementsPerChunk (=0x10000) within a few % of
+            // MaxElements. A degenerate "1 chunk, 5M elements" candidate
+            // (likely a false-positive non-chunked container repurposing
+            // the same field layout) earns no bonus.
+            uint32_t layoutBonus = 0;
+            if (maxChunks > 0) {
+                const int64_t expectedElems = static_cast<int64_t>(maxChunks) * 0x10000;
+                const int64_t actualElems   = static_cast<int64_t>(maxElems);
+                // Within 5% slack to allow for ceiling-rounding.
+                int64_t diff = expectedElems - actualElems;
+                if (diff < 0) diff = -diff;
+                if (diff * 20 <= expectedElems) {
+                    layoutBonus = 32;
+                }
+            }
+            score += layoutBonus;
+
+            d.uobjSlotsProbed    = stats.slotsProbed;
+            d.uobjSlotsPopulated = stats.slotsPopulated;
+            d.uobjVtableInText   = stats.vtableInText;
+            d.uobjClassInData    = stats.classInData;
+            d.layoutBonus        = layoutBonus;
+            d.qualityScore       = score;
 
             d.passed = true;
             return d;
@@ -468,21 +651,67 @@ namespace QmScan
 
     // ---- GObjects scan --------------------------------------------------------
 
+    // Insert a passed candidate into the top-N match array sorted descending
+    // by quality score. Cap-bounded so the scan cost stays predictable even
+    // if hundreds of structurally-valid candidates exist.
+    static void InsertMatch(ScanResult::MatchCandidate* arr, int cap,
+                            uintptr_t addr, const ValidateDetail& d)
+    {
+        int slot = -1;
+        for (int i = 0; i < cap; ++i)
+        {
+            if (d.qualityScore > arr[i].qualityScore)
+            {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) return;
+
+        // Shift right.
+        for (int i = cap - 1; i > slot; --i) arr[i] = arr[i - 1];
+
+        arr[slot].address            = addr;
+        arr[slot].qualityScore       = d.qualityScore;
+        arr[slot].maxElements        = d.maxElements;
+        arr[slot].numElements        = d.numElements;
+        arr[slot].maxChunks          = d.maxChunks;
+        arr[slot].numChunks          = d.numChunks;
+        arr[slot].objectsPtr         = d.objectsPtr;
+        arr[slot].uobjSlotsProbed    = d.uobjSlotsProbed;
+        arr[slot].uobjSlotsPopulated = d.uobjSlotsPopulated;
+        arr[slot].uobjVtableInText   = d.uobjVtableInText;
+        arr[slot].uobjClassInData    = d.uobjClassInData;
+        arr[slot].layoutBonus        = d.layoutBonus;
+    }
+
     static void* ScanGObjectsImpl(uintptr_t imageBase,
                                   uint32_t* outTested, uint32_t* outFailed,
                                   RejectCounters* outRejects,
-                                  NearMissCandidate* outNearMisses, int nearMissCap)
+                                  NearMissCandidate* outNearMisses, int nearMissCap,
+                                  ScanResult::MatchCandidate* outMatches, int matchCap,
+                                  uint32_t* outMatchesFound)
     {
         if (outTested) *outTested = 0;
         if (outFailed) *outFailed = 0;
         if (outRejects) *outRejects = {};
         if (outNearMisses && nearMissCap > 0)
             for (int i = 0; i < nearMissCap; ++i) outNearMisses[i] = {};
+        if (outMatches && matchCap > 0)
+            for (int i = 0; i < matchCap; ++i) outMatches[i] = {};
+        if (outMatchesFound) *outMatchesFound = 0;
         if (!imageBase) return nullptr;
+
+        // Refresh the section cache - the EXE layout never changes at runtime
+        // but we re-read it on every scan to keep ScanGObjectsImpl stateless
+        // from the caller's perspective.
+        RefreshSectionCache(imageBase);
 
         SectionInfo sections[32]{};
         uint32_t secCount = EnumerateSections(imageBase, sections, 32);
         if (secCount == 0) return nullptr;
+
+        uint32_t matchesFound = 0;
 
         for (uint32_t s = 0; s < secCount; ++s)
         {
@@ -508,7 +737,16 @@ namespace QmScan
                 ValidateDetail d = ValidateGObjectsDetailed(reinterpret_cast<void*>(addr));
                 if (d.passed)
                 {
-                    return reinterpret_cast<void*>(addr);
+                    // Collect into match-candidates ranked by quality score
+                    // - DON'T return early. Multiple containers in .data
+                    // share the FChunkedFixedUObjectArray shape; we want
+                    // the best-scoring one.
+                    if (outMatches && matchCap > 0)
+                    {
+                        InsertMatch(outMatches, matchCap, addr, d);
+                    }
+                    ++matchesFound;
+                    continue;
                 }
 
                 if (outFailed) ++(*outFailed);
@@ -523,12 +761,33 @@ namespace QmScan
             }
         }
 
+        if (outMatchesFound) *outMatchesFound = matchesFound;
+
+        // Best-match wins, BUT we require NumElements > kPopulatedThresh.
+        // GObjects is a static struct in .data - its address is fixed across
+        // process lifetime. Before UE allocates the chunk pool, all matching
+        // candidates show NumElements==8 (the disregard-for-GC permanent pool
+        // size) with Objects==NULL. Returning any of those would lock us onto
+        // a structurally-identical but uninitialised sibling. By failing the
+        // scan here, the caller's retry loop gets another shot once UE
+        // allocates the pool (then exactly one candidate populates).
+        if (outMatches && matchCap > 0 && outMatches[0].address != 0
+            && outMatches[0].numElements > kPopulatedThresh)
+        {
+            return reinterpret_cast<void*>(outMatches[0].address);
+        }
         return nullptr;
     }
 
     void* RescanGObjects(uintptr_t imageBase)
     {
-        return ScanGObjectsImpl(imageBase, nullptr, nullptr, nullptr, nullptr, 0);
+        // Lightweight rescan: ignore match diagnostics, just return best.
+        // Caller is the retry loop that fires every 500ms - keep this cheap.
+        ScanResult::MatchCandidate matches[ScanResult::kMatchCap]{};
+        uint32_t matchesFound = 0;
+        return ScanGObjectsImpl(imageBase, nullptr, nullptr, nullptr,
+                                nullptr, 0, matches, ScanResult::kMatchCap,
+                                &matchesFound);
     }
 
     // ---- ProcessEvent via vtable ---------------------------------------------
@@ -578,12 +837,123 @@ namespace QmScan
         return nullptr;
     }
 
+    // ---- AppendString pattern scan --------------------------------------------
+    //
+    // The pattern below is a 20-instruction (77-byte) window starting at the
+    // prologue of FName::AppendString in UE 5.6 shipping builds. It was
+    // extracted offline from the CLIENT EXE at the Dumper-7-reported offset
+    // (+0x14E53F0) and verified to be unique within:
+    //   - Windrose-Win64-Shipping.exe        (client)     -> 1 hit  @ +0x14E53F0
+    //   - WindroseServer-Win64-Shipping.exe  (dedicated)  -> 1 hit  @ +0x14551C0
+    //
+    // Mask layout (kAppendStringMask): 1 = literal byte, 0 = wildcard. The
+    // wildcards cover the rel32 displacements of:
+    //   - cmp byte ptr [rip+rel32], 0       (static-init flag check, +0x10..+0x14)
+    //   - lea r8, [rip+rel32]               (debug "AppendString" string,  +0x22..+0x25)
+    //   - lea rcx, [rip+rel32]              (debug helper arg,             +0x2B..+0x2E)
+    //   - call rel32                        (debug helper,                 +0x30..+0x33)
+    //   - mov byte ptr [rip+rel32], 1       (set initialized flag,         +0x39..+0x3C)
+    // Everything else is the FName comparison-index load + chunk math, which
+    // is byte-identical across client/server (same UE source, same MSVC).
+
+    static constexpr uint8_t kAppendStringPattern[] = {
+        0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x80,
+        0x3D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x8B, 0xF2, 0x8B, 0x19, 0x48, 0x8B, 0xF9, 0x74, 0x09,
+        0x4C, 0x8D, 0x05, 0x00, 0x00, 0x00, 0x00, 0xEB, 0x16, 0x48, 0x8D, 0x0D, 0x00, 0x00, 0x00, 0x00,
+        0xE8, 0x00, 0x00, 0x00, 0x00, 0x4C, 0x8B, 0xC0, 0xC6, 0x05, 0x00, 0x00, 0x00, 0x00, 0x01, 0x8B,
+        0xCB, 0x0F, 0xB7, 0xC3, 0xC1, 0xE9, 0x10, 0x89, 0x4C, 0x24, 0x30, 0x8B, 0xD1
+    };
+    static constexpr uint8_t kAppendStringMask[] = {
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0,
+        1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+    };
+    static_assert(sizeof(kAppendStringPattern) == sizeof(kAppendStringMask),
+                  "AppendString pattern and mask must be the same length");
+    static constexpr size_t kAppendStringPatLen = sizeof(kAppendStringPattern);
+
+    // Pattern-scan .text for AppendString. Returns the address of the first
+    // hit, or nullptr if no candidate matches. outBytesScanned/outMatches are
+    // optional and populated for diagnostic logging.
+    //
+    // The scanner walks byte-by-byte (not 8-aligned) because function entries
+    // are not aligned beyond 16-byte CPU cache lines (and MSVC sometimes
+    // packs them tighter via nop padding). For a 195MB .text scan this is
+    // <50ms on commodity hardware.
+    static void* ScanAppendStringImpl(uintptr_t imageBase,
+                                      uint32_t* outBytesScanned,
+                                      uint32_t* outMatches)
+    {
+        if (outBytesScanned) *outBytesScanned = 0;
+        if (outMatches)      *outMatches      = 0;
+        if (!imageBase) return nullptr;
+
+        if (!g_secCache.ready) RefreshSectionCache(imageBase);
+        if (!g_secCache.ready) return nullptr;
+
+        const uint8_t* const textStart = reinterpret_cast<const uint8_t*>(g_secCache.textStart);
+        const uint8_t* const textEnd   = reinterpret_cast<const uint8_t*>(g_secCache.textEnd);
+        if (textEnd <= textStart) return nullptr;
+        if (static_cast<size_t>(textEnd - textStart) < kAppendStringPatLen) return nullptr;
+
+        const uint8_t* const lastPos = textEnd - kAppendStringPatLen;
+        void* firstHit = nullptr;
+        uint32_t hits = 0;
+
+        __try
+        {
+            for (const uint8_t* p = textStart; p <= lastPos; ++p)
+            {
+                // Fast first-byte gate. Pattern starts with 0x48 (REX.W) which
+                // is extremely common in x64 - but the second byte (0x89) and
+                // the 4th byte (0x24) make a 3-byte prefix that filters >99%.
+                if (p[0] != kAppendStringPattern[0]) continue;
+                if (p[1] != kAppendStringPattern[1]) continue;
+                if (p[3] != kAppendStringPattern[3]) continue;
+
+                bool match = true;
+                for (size_t j = 0; j < kAppendStringPatLen; ++j)
+                {
+                    if (kAppendStringMask[j] && p[j] != kAppendStringPattern[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match)
+                {
+                    if (!firstHit) firstHit = const_cast<uint8_t*>(p);
+                    ++hits;
+                    // Continue scanning to count duplicates (cheap once we know
+                    // hits are rare). Cap at 16 to avoid wasted work if the
+                    // pattern accidentally matches something repetitive.
+                    if (hits >= 16) break;
+                    // Skip past this hit to avoid matching nested overlaps.
+                    p += kAppendStringPatLen - 1;
+                }
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            // .text should always be readable - if we hit an AV here something
+            // is fundamentally wrong with our section bounds. Return nullptr
+            // so the caller falls back to the smoke-tested hardcoded offset.
+            firstHit = nullptr;
+        }
+
+        if (outBytesScanned) *outBytesScanned = static_cast<uint32_t>(textEnd - textStart);
+        if (outMatches)      *outMatches      = hits;
+        return firstHit;
+    }
+
     // ---- AppendString smoke-test ----------------------------------------------
     //
-    // We don't pattern-scan AppendString yet (would need disassembler or stable
-    // anchor strings). Instead we smoke-test the hardcoded offset: read the
-    // first few bytes, check they look like a plausible x64 function prologue,
-    // and that the address lies in a .text-style executable section.
+    // Last-resort path when ScanAppendStringImpl returns nullptr: smoke-test
+    // the hardcoded offset by reading the first few bytes, checking they look
+    // like a plausible x64 function prologue, and that the address lies in a
+    // .text-style executable section.
     //
     // Common x64 prologue first bytes:
     //   48 89 5C 24 ??     mov [rsp+x], rbx
@@ -647,7 +1017,9 @@ namespace QmScan
         void* scannedGObjects = ScanGObjectsImpl(imageBase,
                                                  &candidatesTested, &validationFails,
                                                  &r.rejects,
-                                                 r.nearMisses, ScanResult::kNearMissCap);
+                                                 r.nearMisses, ScanResult::kNearMissCap,
+                                                 r.matches, ScanResult::kMatchCap,
+                                                 &r.matchesFound);
         r.gobjectsCandidatesTested  = candidatesTested;
         r.gobjectsValidationFailures = validationFails;
 
@@ -684,16 +1056,42 @@ namespace QmScan
             r.processEventFromScan = false;
         }
 
-        // ----- AppendString: smoke-test hardcoded only (pattern-scan TBD).
-        if (fallbackAppendStringOff)
+        // ----- AppendString: pattern-scan first, then smoke-test fallback.
+        // The hardcoded fallback is the CLIENT offset; on the dedicated
+        // server it points to non-code bytes (garbage), so smoke-test will
+        // reject it. The pattern scan over .text is the reliable path.
         {
-            void* smoke = SmokeTestCodePointer(imageBase, fallbackAppendStringOff);
-            r.appendString         = smoke ? smoke : reinterpret_cast<void*>(imageBase + fallbackAppendStringOff);
-            r.appendStringFromScan = false;
+            const DWORD ts = GetTickCount();
+            uint32_t bytesScanned = 0, hits = 0;
+            void* scanned = ScanAppendStringImpl(imageBase, &bytesScanned, &hits);
+            r.appendStringBytesScanned   = bytesScanned;
+            r.appendStringPatternMatches = hits;
+            r.appendStringScanMs         = GetTickCount() - ts;
+
+            if (scanned)
+            {
+                r.appendString         = scanned;
+                r.appendStringFromScan = true;
+            }
+            else if (fallbackAppendStringOff)
+            {
+                void* smoke = SmokeTestCodePointer(imageBase, fallbackAppendStringOff);
+                // If the smoke-test rejects the fallback (server case where
+                // the bytes at the client offset are non-code), set to
+                // nullptr - the caller treats this as "AppendString not
+                // resolved" and avoids any call that would dereference it.
+                r.appendString         = smoke;
+                r.appendStringFromScan = false;
+            }
         }
 
         r.scanDurationMs = GetTickCount() - t0;
         return r;
+    }
+
+    void* RescanProcessEvent(void* validGObjects, int32_t vtblSlotIdx)
+    {
+        return ScanProcessEventViaVtable(validGObjects, vtblSlotIdx);
     }
 
 } // namespace QmScan

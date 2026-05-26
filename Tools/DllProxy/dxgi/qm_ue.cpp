@@ -45,19 +45,64 @@ namespace QmUE
     {
         char buf[768];
 
+        // Use "(null)" if either appendString or processEvent ended up nullptr
+        // (pattern scan + smoke-test both rejected the candidate). The
+        // resolved line stays compact; pattern-scan stats are logged below.
+        const auto offOrNull = [](void* p) -> unsigned long long {
+            return p ? (unsigned long long)((uintptr_t)p - g_imageBase) : 0ULL;
+        };
+
         _snprintf_s(buf, sizeof(buf), _TRUNCATE,
             "[Scan] resolved: GObjects=0x%llX (+0x%llX, %s) AppendString=0x%llX (+0x%llX, %s) ProcessEvent=0x%llX (+0x%llX, %s) tested=%u failed=%u in %ums",
             (unsigned long long)(uintptr_t)r.gobjects,
-            (unsigned long long)((uintptr_t)r.gobjects - g_imageBase),
+            offOrNull(r.gobjects),
             r.gobjectsFromScan ? "scan" : "fallback",
             (unsigned long long)(uintptr_t)r.appendString,
-            (unsigned long long)((uintptr_t)r.appendString - g_imageBase),
-            r.appendStringFromScan ? "scan" : "fallback",
+            offOrNull(r.appendString),
+            r.appendString ? (r.appendStringFromScan ? "scan" : "smoke") : "unresolved",
             (unsigned long long)(uintptr_t)r.processEvent,
-            (unsigned long long)((uintptr_t)r.processEvent - g_imageBase),
-            r.processEventFromScan ? "scan" : "fallback",
+            offOrNull(r.processEvent),
+            r.processEvent ? (r.processEventFromScan ? "scan" : "smoke") : "unresolved",
             r.gobjectsCandidatesTested, r.gobjectsValidationFailures, r.scanDurationMs);
         QmLogA(buf);
+
+        // AppendString pattern-scan diagnostics. matches > 1 is suspicious
+        // (the offline-verified pattern is unique in client + server), but
+        // we still pick the first hit - log it so we can investigate.
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+            "[Scan] AppendString pattern: textBytes=%u hits=%u in %ums (path=%s)",
+            r.appendStringBytesScanned, r.appendStringPatternMatches, r.appendStringScanMs,
+            r.appendString ? (r.appendStringFromScan ? "pattern" : "smoke-fallback") : "unresolved");
+        QmLogA(buf);
+
+        // When we found one or more structurally-valid candidates, dump the
+        // top-N by quality score. This is the diagnostic that distinguishes
+        // a real GObjects (high vtableInText + classInData rates) from a
+        // false-positive (other UE container sharing the same shape).
+        if (r.matchesFound > 0)
+        {
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "[Scan] matches found: %u (showing top %d by quality score)",
+                r.matchesFound,
+                static_cast<int>(QmScan::ScanResult::kMatchCap));
+            QmLogA(buf);
+
+            for (int i = 0; i < QmScan::ScanResult::kMatchCap; ++i)
+            {
+                const auto& m = r.matches[i];
+                if (m.address == 0) continue;
+                _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "[Scan] match[%d]: addr=0x%llX (+0x%llX) score=%u  MaxElems=%d NumElems=%d MaxChunks=%d NumChunks=%d  probed=%u populated=%u vtableInText=%u classInData=%u layoutBonus=%u",
+                    i,
+                    (unsigned long long)m.address,
+                    (unsigned long long)(m.address - g_imageBase),
+                    m.qualityScore,
+                    m.maxElements, m.numElements, m.maxChunks, m.numChunks,
+                    m.uobjSlotsProbed, m.uobjSlotsPopulated,
+                    m.uobjVtableInText, m.uobjClassInData, m.layoutBonus);
+                QmLogA(buf);
+            }
+        }
 
         // When the scan didn't return a candidate, dump diag detail so the
         // next trace tells us WHICH validation step is killing every slot.
@@ -205,35 +250,88 @@ namespace QmUE
             LogScanResult(r);
         }
 
-        if (!g_gobjects)            return false;
         if (!g_appendString)        return false;
 
-        // If we're on the hardcoded fallback for GObjects, try a rescan each
-        // tick - the hardcoded offset may be stale after a Steam patch, in
-        // which case our retry loop would otherwise spin forever.
-        if (!s_gobjectsFromScan)
+        // Decide if we need to (re)scan. Reasons:
+        //   1. g_gobjects is null (initial scan returned nullptr because
+        //      GObjects wasn't yet populated; fallback offset is also bad).
+        //   2. g_gobjects came from the hardcoded fallback (steam-patch
+        //      drift may have shifted the static struct).
+        //   3. g_gobjects looks unpopulated (NumElements < kPopulatedThresh).
+        //      The scanner's strict-mode normally prevents picking those,
+        //      but this is a belt-and-braces check for the case where a
+        //      stale pointer survived from a previous tick.
+        // SEH-guard the Num() read because g_gobjects may point into
+        // unmapped memory if the hardcoded fallback offset is out of range
+        // (which it IS on the dedicated server: CLIENT's offset 0x10A570D0
+        // falls beyond the server's .data section).
+        bool gobjectsLooksDead = !g_gobjects;
+        if (!gobjectsLooksDead)
         {
-            if (!g_gobjects->Objects || g_gobjects->Num() <= 0)
+            __try
             {
-                void* rescan = QmScan::RescanGObjects(g_imageBase);
-                if (rescan && rescan != g_gobjects)
-                {
-                    char buf[256];
-                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
-                        "[Scan] rescan: GObjects relocated from +0x%llX to +0x%llX (hardcoded stale, scan now valid)",
-                        (unsigned long long)((uintptr_t)g_gobjects - g_imageBase),
-                        (unsigned long long)((uintptr_t)rescan - g_imageBase));
-                    QmLogA(buf);
-                    g_gobjects        = reinterpret_cast<TUObjectArray*>(rescan);
-                    s_gobjectsFromScan = true;
-                }
+                if (!g_gobjects->Objects) gobjectsLooksDead = true;
+                else if (g_gobjects->Num() < 100) gobjectsLooksDead = true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                gobjectsLooksDead = true;
             }
         }
 
+        if (gobjectsLooksDead)
+        {
+            void* rescan = QmScan::RescanGObjects(g_imageBase);
+            if (rescan && rescan != g_gobjects)
+            {
+                char buf[256];
+                _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "[Scan] rescan: GObjects %s -> +0x%llX (Num=%d MaxElements=%d NumChunks=%d)",
+                    g_gobjects ? "relocated" : "found",
+                    (unsigned long long)((uintptr_t)rescan - g_imageBase),
+                    reinterpret_cast<TUObjectArray*>(rescan)->NumElements,
+                    reinterpret_cast<TUObjectArray*>(rescan)->MaxElements,
+                    reinterpret_cast<TUObjectArray*>(rescan)->NumChunks);
+                QmLogA(buf);
+                g_gobjects         = reinterpret_cast<TUObjectArray*>(rescan);
+                s_gobjectsFromScan = true;
+            }
+            else
+            {
+                // Rescan didn't find anything (yet). If we still have a
+                // candidate that AV-crashes when read (e.g. CLIENT's
+                // fallback offset that points beyond the server's .data),
+                // null it out so this Init() returns false cleanly and the
+                // probe-loop retries on the next tick.
+                __try
+                {
+                    if (g_gobjects && !g_gobjects->Objects)
+                        g_gobjects = nullptr;
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER)
+                {
+                    g_gobjects = nullptr;
+                }
+                return false;
+            }
+        }
+
+        if (!g_gobjects)            return false;
+
         // GObjects may be allocated lazily during early engine init. If Num()
-        // is 0 or Objects is null, caller should retry.
-        if (!g_gobjects->Objects || g_gobjects->Num() <= 0)
-            return false;
+        // is 0 or Objects is null, caller should retry. SEH-guarded because
+        // an in-flight GC walk could observe a torn pointer (extremely rare
+        // but cheap to guard against).
+        bool ready = false;
+        __try
+        {
+            ready = (g_gobjects->Objects != nullptr) && (g_gobjects->Num() > 0);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            ready = false;
+        }
+        if (!ready) return false;
 
         // First time we observe a live, populated GObjects: log the live
         // characteristics so post-update issues are obvious from the log.
@@ -247,6 +345,30 @@ namespace QmUE
                 g_gobjects->NumElements, g_gobjects->MaxElements, g_gobjects->NumChunks,
                 s_gobjectsFromScan ? "scan" : "hardcoded");
             QmLogA(buf);
+        }
+
+        // Now that GObjects is populated we can re-derive ProcessEvent via
+        // vtable[slot]. The initial scan during ResolveAll() ran before the
+        // engine populated GObjects, so ProcessEvent stayed on the fallback
+        // (smoke-tested or null). On the dedicated server the fallback is
+        // the CLIENT offset which points to non-code bytes - calling it
+        // would crash the wineserver. Rescan once, only when not already
+        // resolved via the live vtable.
+        if (!s_processFromScan)
+        {
+            void* pe = QmScan::RescanProcessEvent(g_gobjects, PROCESS_EVENT_VTBL_IDX);
+            if (pe && pe != reinterpret_cast<void*>(g_processEvent))
+            {
+                char buf[256];
+                _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "[Scan] ProcessEvent rescan: %s -> 0x%llX (+0x%llX)",
+                    g_processEvent ? "relocated" : "found",
+                    (unsigned long long)(uintptr_t)pe,
+                    (unsigned long long)((uintptr_t)pe - g_imageBase));
+                QmLogA(buf);
+                g_processEvent    = reinterpret_cast<ProcessEventFn>(pe);
+                s_processFromScan = true;
+            }
         }
 
         return true;
