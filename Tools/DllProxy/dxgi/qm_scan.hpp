@@ -30,6 +30,55 @@
 
 namespace QmScan
 {
+    // Per-reason reject counters. When the scanner returns no match we want to
+    // know which validation check eliminated the most candidates - if 99% fail
+    // at "objects pointer null" the issue is different from 99% failing at
+    // "validObjects < threshold". Mirrored in ScanResult so the caller logs them.
+    struct RejectCounters
+    {
+        uint32_t notReadable;          // candidate's first 0x20 bytes not in committed/readable pages
+        uint32_t objectsNull;          // Objects pointer (chunk table) is null
+        uint32_t maxElemsRange;        // MaxElements outside accepted range
+        uint32_t numElemsRange;        // NumElements outside [0, MaxElements]
+        uint32_t chunksRange;          // MaxChunks/NumChunks outside accepted ranges
+        uint32_t elemsPerChunkRange;   // MaxElements/MaxChunks outside accepted range
+        uint32_t objectsUnreadable;    // Objects chunk-table itself unreadable
+        uint32_t firstChunkNull;       // Objects[0] is null
+        uint32_t firstChunkUnreadable; // Objects[0] points to unreadable memory
+        uint32_t validObjectsTooFew;   // Walked chunk slots, didn't find enough UObject-shaped entries
+        uint32_t sehFault;             // __except caught an AV during validation
+    };
+
+    // A "near-miss" candidate that passed enough checks to be interesting.
+    // We keep the most promising N entries so the trace can show what GObjects
+    // ACTUALLY looks like in the failing process when no candidate passes.
+    struct NearMissCandidate
+    {
+        uintptr_t address;             // candidate address
+        uint32_t  passedChecks;        // how many validation steps passed before reject
+        uint32_t  rejectReasonBit;     // bit from RejectReasonBit enum (which step failed)
+        int32_t   maxElements;         // raw values for the first few fields
+        int32_t   numElements;
+        int32_t   maxChunks;
+        int32_t   numChunks;
+        uintptr_t objectsPtr;
+        // When passedChecks >= 8 we have a readable firstChunk - we dump the
+        // first 128 bytes so the diagnostic log can show the FUObjectItem
+        // layout in the actual target binary. This is how we identify whether
+        // UE 5.6 changed the FUObjectItem stride or UObject member offsets.
+        // firstChunkBytesValid==true iff bytes were actually captured.
+        bool     firstChunkBytesValid;
+        uint8_t  firstChunkBytes[128];
+        // The 32-byte TUObjectArray header from the candidate address itself.
+        // Reveals the +0x08 field (PreAllocatedObjects in UE5.4+) which we
+        // probe as a fallback when Objects[0] is null/empty.
+        bool     headerBytesValid;
+        uint8_t  headerBytes[32];
+        // First 128 bytes of PreAllocatedObjects buffer (+0x08 field).
+        bool     preAllocBytesValid;
+        uint8_t  preAllocBytes[128];
+    };
+
     struct ScanResult
     {
         void*    gobjects;             // TUObjectArray*  (nullptr on failure)
@@ -44,6 +93,15 @@ namespace QmScan
         uint32_t gobjectsCandidatesTested;
         uint32_t gobjectsValidationFailures;
         uint32_t scanDurationMs;
+
+        // Per-reason reject breakdown (sums to gobjectsValidationFailures).
+        RejectCounters rejects;
+
+        // Top "best near-misses" - up to 4 candidates that passed the most
+        // validation steps before being rejected. Empty (passedChecks==0)
+        // entries indicate fewer than N near-misses were found.
+        static constexpr int kNearMissCap = 4;
+        NearMissCandidate nearMisses[kNearMissCap];
     };
 
     // Resolve all three symbols. Always returns - on failure for any symbol,

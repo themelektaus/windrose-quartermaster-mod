@@ -113,10 +113,89 @@ namespace QmScan
     //
     // ElementsPerChunk is hard-coded to 0x10000 in our runtime helpers.
 
-    bool ValidateGObjectsCandidate(void* candidate)
+    // Tunable validation ranges - exposed as constants so the diag detail
+    // line in the log uses the same values the check enforces. Lowered floors
+    // on 2026-05-26 to widen the dedicated-server compatibility window:
+    //   - MaxElements floor 0x10000 -> 0x2000 (a fresh server starts with
+    //     fewer UObjects; 0x2000 is still safely above stack/heap garbage
+    //     that happens to land in the int32 readable range).
+    //   - validObjects threshold 3 -> 1 (Wine's IsExecutable check on vtable
+    //     entries reports differently than native Windows in headless mode;
+    //     finding even one valid-looking UObject is strong evidence already
+    //     given the prior chunked-layout checks all passed).
+    //   - Probe more chunk slots (16 -> 64) since the first 16 might all be
+    //     null padding in some configurations.
+    static constexpr int32_t kMaxElemsFloor      = 0x2000;
+    static constexpr int32_t kMaxElemsCeiling    = 0x600000;
+    static constexpr int32_t kMaxChunksFloor     = 1;
+    static constexpr int32_t kMaxChunksCeiling   = 100;
+    static constexpr int32_t kElemsPerChunkFloor = 0x1000;
+    static constexpr int32_t kElemsPerChunkCeil  = 0x100000;
+    static constexpr int     kValidObjectsThresh = 1;
+    static constexpr int     kChunkProbeSlots    = 64;
+
+    // Bit ids per reject reason - used both to populate RejectCounters and to
+    // tag NearMissCandidate.rejectReasonBit so log messages can decode it.
+    enum RejectReasonBit : uint32_t {
+        REJ_NotReadable          = 1u << 0,
+        REJ_ObjectsNull          = 1u << 1,
+        REJ_MaxElemsRange        = 1u << 2,
+        REJ_NumElemsRange        = 1u << 3,
+        REJ_ChunksRange          = 1u << 4,
+        REJ_ElemsPerChunkRange   = 1u << 5,
+        REJ_ObjectsUnreadable    = 1u << 6,
+        REJ_FirstChunkNull       = 1u << 7,
+        REJ_FirstChunkUnreadable = 1u << 8,
+        REJ_ValidObjectsTooFew   = 1u << 9,
+        REJ_SehFault             = 1u << 10,
+    };
+
+    // Detailed validation that reports WHY a candidate was rejected. Used by
+    // the scanner's diag-mode pass; the public ValidateGObjectsCandidate is a
+    // simple bool wrapper. PassedChecks counts validation steps the candidate
+    // SUCCEEDED at - the higher this count, the closer the candidate came to
+    // being a real GObjects. Used to rank "near-miss" entries.
+    struct ValidateDetail
     {
-        if (!candidate) return false;
-        if (!IsReadable(candidate, 0x20)) return false;
+        bool     passed;
+        uint32_t rejectReason;    // 0 if passed
+        uint32_t passedChecks;    // monotonically increasing across the check sequence
+        // Field snapshots (raw values for the diag log)
+        int32_t  maxElements;
+        int32_t  numElements;
+        int32_t  maxChunks;
+        int32_t  numChunks;
+        uintptr_t objectsPtr;
+        // Captured when passedChecks >= 8 (firstChunk readable). Used by
+        // the near-miss diag log to dump the raw FUObjectItem layout.
+        bool     firstChunkBytesValid;
+        uint8_t  firstChunkBytes[128];
+        // The 32 bytes of the TUObjectArray header itself - reveals the
+        // PreAllocatedObjects pointer at +0x08 (UE5.4+ FChunkedFixedUObjectArray).
+        bool     headerBytesValid;
+        uint8_t  headerBytes[32];
+        // First 128 bytes of PreAllocatedObjects buffer (the +0x08 field).
+        // This is where UE5.6 stores the initial UObjects before any chunks
+        // are dynamically allocated.
+        bool     preAllocBytesValid;
+        uint8_t  preAllocBytes[128];
+    };
+
+    static ValidateDetail ValidateGObjectsDetailed(void* candidate)
+    {
+        ValidateDetail d{};
+
+        if (!candidate)
+        {
+            d.rejectReason = REJ_NotReadable;
+            return d;
+        }
+        if (!IsReadable(candidate, 0x20))
+        {
+            d.rejectReason = REJ_NotReadable;
+            return d;
+        }
+        d.passedChecks = 1;
 
         __try
         {
@@ -128,63 +207,277 @@ namespace QmScan
             int32_t maxChunks  = *reinterpret_cast<int32_t*>(p + 0x18);
             int32_t numChunks  = *reinterpret_cast<int32_t*>(p + 0x1C);
 
-            // Range checks - tuned for typical UE5 builds.
-            if (maxElems < 0x10000 || maxElems > 0x600000) return false;
-            if (numElems < 0 || numElems > maxElems) return false;
-            if (maxChunks < 1 || maxChunks > 100) return false;
-            if (numChunks < 1 || numChunks > maxChunks) return false;
+            d.maxElements = maxElems;
+            d.numElements = numElems;
+            d.maxChunks   = maxChunks;
+            d.numChunks   = numChunks;
+            d.objectsPtr  = reinterpret_cast<uintptr_t>(objects);
 
-            // ElementsPerChunk = MaxElements / MaxChunks - should be 0x10000.
-            const int32_t elemsPerChunk = maxElems / maxChunks;
-            if (elemsPerChunk < 0x4000 || elemsPerChunk > 0x100000) return false;
-
-            // Objects table itself must be readable - 8 bytes per chunk pointer.
-            if (!objects) return false;
-            if (!IsReadable(objects, static_cast<size_t>(numChunks) * sizeof(void*))) return false;
-
-            // Probe first chunk pointer - must point to readable memory.
-            void* firstChunk = objects[0];
-            if (!firstChunk) return false;
-            if (!IsReadable(firstChunk, sizeof(void*) * 4)) return false;
-
-            // First FUObjectItem.Object - should be a UObject pointer (or null
-            // if the very first slot is unused). Probe a few slots to find a
-            // valid UObject and sanity-check its layout.
-            uint8_t* chunkBytes = static_cast<uint8_t*>(firstChunk);
-            int validObjects = 0;
-            for (int i = 0; i < 16; ++i)
+            if (maxElems < kMaxElemsFloor || maxElems > kMaxElemsCeiling)
             {
-                void* obj = *reinterpret_cast<void**>(chunkBytes + i * 0x18);
-                if (!obj) continue;
-                if (!IsReadable(obj, 0x28)) continue;
+                d.rejectReason = REJ_MaxElemsRange;
+                return d;
+            }
+            d.passedChecks = 2;
 
-                // UObject layout: vtable @ 0, class @ +0x10, name @ +0x18.
-                void* vtable = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x00);
-                void* cls    = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x10);
-                if (!vtable || !IsExecutable(*reinterpret_cast<void**>(vtable))) continue;
-                if (!cls) continue;
-                ++validObjects;
-                if (validObjects >= 3) break;
+            if (numElems < 0 || numElems > maxElems)
+            {
+                d.rejectReason = REJ_NumElemsRange;
+                return d;
+            }
+            d.passedChecks = 3;
+
+            if (maxChunks < kMaxChunksFloor || maxChunks > kMaxChunksCeiling
+             || numChunks < 1 || numChunks > maxChunks)
+            {
+                d.rejectReason = REJ_ChunksRange;
+                return d;
+            }
+            d.passedChecks = 4;
+
+            const int32_t elemsPerChunk = maxElems / maxChunks;
+            if (elemsPerChunk < kElemsPerChunkFloor || elemsPerChunk > kElemsPerChunkCeil)
+            {
+                d.rejectReason = REJ_ElemsPerChunkRange;
+                return d;
+            }
+            d.passedChecks = 5;
+
+            if (!objects)
+            {
+                d.rejectReason = REJ_ObjectsNull;
+                return d;
+            }
+            d.passedChecks = 6;
+
+            if (!IsReadable(objects, static_cast<size_t>(numChunks) * sizeof(void*)))
+            {
+                d.rejectReason = REJ_ObjectsUnreadable;
+                return d;
+            }
+            d.passedChecks = 7;
+
+            // Capture the TUObjectArray header bytes (32 bytes) for diag.
+            // This shows us the +0x08 field (PreAllocatedObjects in UE5.4+)
+            // which we'll probe as a fallback below.
+            memcpy(d.headerBytes, p, sizeof(d.headerBytes));
+            d.headerBytesValid = true;
+
+            // UE5.4+ FChunkedFixedUObjectArray has a PreAllocatedObjects buffer
+            // at +0x08. Before any dynamic chunk is allocated, the first
+            // NumElementsPerChunk UObjects live in this buffer. The dedicated
+            // server on UE5.6 starts with NumElems=8 but Objects[0]==NULL -
+            // the 8 UObjects are in PreAllocatedObjects, not in Objects[0].
+            void* preAllocatedObjects = *reinterpret_cast<void**>(p + 0x08);
+
+            void* firstChunk = objects[0];
+
+            // The "chunks" array we'll probe in order: firstChunk (if non-null
+            // and readable), then PreAllocatedObjects, then objects[1..N-1].
+            // Stop as soon as we find >= kValidObjectsThresh UObjects.
+            //
+            // We allow firstChunk==null as long as PreAllocatedObjects yields
+            // valid objects. This is the UE5.6 dedicated-server case.
+
+            d.passedChecks = 8; // (kept for log-format compatibility)
+
+            // Capture the first 128 bytes of firstChunk for the diag log.
+            // We only copy as much as is readable - if only the first 32
+            // bytes are mapped we don't want to AV here. If firstChunk is
+            // null, leave the dump empty (caller logs all zeros) and we'll
+            // capture PreAllocatedObjects bytes into preAllocBytes instead.
+            if (firstChunk && IsReadable(firstChunk, sizeof(void*) * 4))
+            {
+                size_t copyBytes = sizeof(d.firstChunkBytes);
+                uint8_t* src = static_cast<uint8_t*>(firstChunk);
+                size_t actuallyReadable = 0;
+                while (actuallyReadable < copyBytes
+                       && IsReadable(src + actuallyReadable, 8))
+                {
+                    actuallyReadable += 8;
+                }
+                if (actuallyReadable > 0)
+                {
+                    memcpy(d.firstChunkBytes, src, actuallyReadable);
+                    if (actuallyReadable < copyBytes)
+                        memset(d.firstChunkBytes + actuallyReadable, 0,
+                               copyBytes - actuallyReadable);
+                    d.firstChunkBytesValid = true;
+                }
+                d.passedChecks = 9;
             }
 
-            // Need at least 3 plausible UObject entries to call this a real
-            // TUObjectArray. Less than that is likely a fluke alignment.
-            if (validObjects < 3) return false;
+            // Capture the first 128 bytes of PreAllocatedObjects too.
+            if (preAllocatedObjects && IsReadable(preAllocatedObjects, sizeof(void*) * 4))
+            {
+                size_t copyBytes = sizeof(d.preAllocBytes);
+                uint8_t* src = static_cast<uint8_t*>(preAllocatedObjects);
+                size_t actuallyReadable = 0;
+                while (actuallyReadable < copyBytes
+                       && IsReadable(src + actuallyReadable, 8))
+                {
+                    actuallyReadable += 8;
+                }
+                if (actuallyReadable > 0)
+                {
+                    memcpy(d.preAllocBytes, src, actuallyReadable);
+                    if (actuallyReadable < copyBytes)
+                        memset(d.preAllocBytes + actuallyReadable, 0,
+                               copyBytes - actuallyReadable);
+                    d.preAllocBytesValid = true;
+                }
+            }
 
-            return true;
+            // UObject probing - try firstChunk, then PreAllocatedObjects.
+            // Walk a generous window of slots in each looking for UObject-shaped
+            // entries.
+            //
+            // Note (2026-05-26): the vtable[0] check was previously
+            // IsExecutable() but that fails under Wine in headless WindowsServer
+            // builds. We relax to IsReadable() instead.
+            auto probeForUObjects = [&](void* chunk) -> int {
+                if (!chunk) return 0;
+                if (!IsReadable(chunk, kChunkProbeSlots * 0x18)) {
+                    // Try smaller probe window if full window not readable.
+                    if (!IsReadable(chunk, 0x18 * 8)) return 0;
+                }
+                uint8_t* cb = static_cast<uint8_t*>(chunk);
+                int found = 0;
+                for (int i = 0; i < kChunkProbeSlots; ++i) {
+                    if (!IsReadable(cb + i * 0x18, 0x18)) break;
+                    void* obj = *reinterpret_cast<void**>(cb + i * 0x18);
+                    if (!obj) continue;
+                    if (!IsReadable(obj, 0x28)) continue;
+
+                    void* vtable = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x00);
+                    void* cls    = *reinterpret_cast<void**>(static_cast<uint8_t*>(obj) + 0x10);
+                    if (!vtable) continue;
+                    if (!IsReadable(vtable, sizeof(void*))) continue;
+                    void* vfn0 = *reinterpret_cast<void**>(vtable);
+                    if (!vfn0) continue;
+                    if (!IsReadable(vfn0, 1)) continue;
+                    if (!cls) continue;
+                    ++found;
+                    if (found >= kValidObjectsThresh) break;
+                }
+                return found;
+            };
+
+            int validObjects = probeForUObjects(firstChunk);
+            if (validObjects < kValidObjectsThresh)
+                validObjects += probeForUObjects(preAllocatedObjects);
+
+            // If still nothing, probe a few additional chunks (UE may allocate
+            // chunks out-of-order in rare configurations).
+            if (validObjects < kValidObjectsThresh) {
+                int probeMax = numChunks < 4 ? numChunks : 4;
+                for (int ci = 1; ci < probeMax && validObjects < kValidObjectsThresh; ++ci) {
+                    if (!IsReadable(objects + ci, sizeof(void*))) break;
+                    void* otherChunk = objects[ci];
+                    if (!otherChunk) continue;
+                    validObjects += probeForUObjects(otherChunk);
+                }
+            }
+
+            if (validObjects < kValidObjectsThresh)
+            {
+                d.rejectReason = REJ_ValidObjectsTooFew;
+                return d;
+            }
+            d.passedChecks = 10;
+
+            d.passed = true;
+            return d;
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            return false;
+            d.rejectReason = REJ_SehFault;
+            return d;
         }
+    }
+
+    bool ValidateGObjectsCandidate(void* candidate)
+    {
+        return ValidateGObjectsDetailed(candidate).passed;
+    }
+
+    // Accumulate one reject reason into the counters.
+    static void TallyReject(RejectCounters& c, uint32_t reason)
+    {
+        if (reason & REJ_NotReadable)          ++c.notReadable;
+        if (reason & REJ_ObjectsNull)          ++c.objectsNull;
+        if (reason & REJ_MaxElemsRange)        ++c.maxElemsRange;
+        if (reason & REJ_NumElemsRange)        ++c.numElemsRange;
+        if (reason & REJ_ChunksRange)          ++c.chunksRange;
+        if (reason & REJ_ElemsPerChunkRange)   ++c.elemsPerChunkRange;
+        if (reason & REJ_ObjectsUnreadable)    ++c.objectsUnreadable;
+        if (reason & REJ_FirstChunkNull)       ++c.firstChunkNull;
+        if (reason & REJ_FirstChunkUnreadable) ++c.firstChunkUnreadable;
+        if (reason & REJ_ValidObjectsTooFew)   ++c.validObjectsTooFew;
+        if (reason & REJ_SehFault)             ++c.sehFault;
+    }
+
+    // Insert a candidate into the "top near-miss" array if it passed more
+    // checks than any current entry. Keeps the array sorted descending by
+    // passedChecks. O(N) per insert, but N=4 so negligible.
+    static void InsertNearMiss(NearMissCandidate* arr, int cap,
+                               uintptr_t addr, const ValidateDetail& d)
+    {
+        // Find insertion slot (entries with lower passedChecks shift right).
+        int slot = -1;
+        for (int i = 0; i < cap; ++i)
+        {
+            if (d.passedChecks > arr[i].passedChecks)
+            {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) return;
+
+        // Shift right.
+        for (int i = cap - 1; i > slot; --i) arr[i] = arr[i - 1];
+
+        // Write.
+        arr[slot].address              = addr;
+        arr[slot].passedChecks         = d.passedChecks;
+        arr[slot].rejectReasonBit      = d.rejectReason;
+        arr[slot].maxElements          = d.maxElements;
+        arr[slot].numElements          = d.numElements;
+        arr[slot].maxChunks            = d.maxChunks;
+        arr[slot].numChunks            = d.numChunks;
+        arr[slot].objectsPtr           = d.objectsPtr;
+        arr[slot].firstChunkBytesValid = d.firstChunkBytesValid;
+        if (d.firstChunkBytesValid)
+            memcpy(arr[slot].firstChunkBytes, d.firstChunkBytes, sizeof(arr[slot].firstChunkBytes));
+        else
+            memset(arr[slot].firstChunkBytes, 0, sizeof(arr[slot].firstChunkBytes));
+
+        arr[slot].headerBytesValid = d.headerBytesValid;
+        if (d.headerBytesValid)
+            memcpy(arr[slot].headerBytes, d.headerBytes, sizeof(arr[slot].headerBytes));
+        else
+            memset(arr[slot].headerBytes, 0, sizeof(arr[slot].headerBytes));
+
+        arr[slot].preAllocBytesValid = d.preAllocBytesValid;
+        if (d.preAllocBytesValid)
+            memcpy(arr[slot].preAllocBytes, d.preAllocBytes, sizeof(arr[slot].preAllocBytes));
+        else
+            memset(arr[slot].preAllocBytes, 0, sizeof(arr[slot].preAllocBytes));
     }
 
     // ---- GObjects scan --------------------------------------------------------
 
-    static void* ScanGObjectsImpl(uintptr_t imageBase, uint32_t* outTested, uint32_t* outFailed)
+    static void* ScanGObjectsImpl(uintptr_t imageBase,
+                                  uint32_t* outTested, uint32_t* outFailed,
+                                  RejectCounters* outRejects,
+                                  NearMissCandidate* outNearMisses, int nearMissCap)
     {
         if (outTested) *outTested = 0;
         if (outFailed) *outFailed = 0;
+        if (outRejects) *outRejects = {};
+        if (outNearMisses && nearMissCap > 0)
+            for (int i = 0; i < nearMissCap; ++i) outNearMisses[i] = {};
         if (!imageBase) return nullptr;
 
         SectionInfo sections[32]{};
@@ -212,13 +505,20 @@ namespace QmScan
             {
                 if (outTested) ++(*outTested);
 
-                if (ValidateGObjectsCandidate(reinterpret_cast<void*>(addr)))
+                ValidateDetail d = ValidateGObjectsDetailed(reinterpret_cast<void*>(addr));
+                if (d.passed)
                 {
                     return reinterpret_cast<void*>(addr);
                 }
-                else
+
+                if (outFailed) ++(*outFailed);
+                if (outRejects) TallyReject(*outRejects, d.rejectReason);
+                if (outNearMisses && nearMissCap > 0 && d.passedChecks >= 2)
                 {
-                    if (outFailed) ++(*outFailed);
+                    // Only consider candidates that passed at least the first
+                    // readability check - the universe of "interesting"
+                    // candidates is small (Wine reports most slots as unreadable).
+                    InsertNearMiss(outNearMisses, nearMissCap, addr, d);
                 }
             }
         }
@@ -228,7 +528,7 @@ namespace QmScan
 
     void* RescanGObjects(uintptr_t imageBase)
     {
-        return ScanGObjectsImpl(imageBase, nullptr, nullptr);
+        return ScanGObjectsImpl(imageBase, nullptr, nullptr, nullptr, nullptr, 0);
     }
 
     // ---- ProcessEvent via vtable ---------------------------------------------
@@ -261,7 +561,11 @@ namespace QmScan
 
                 void* peCandidate = vtable[slotIdx];
                 if (!peCandidate) continue;
-                if (!IsExecutable(peCandidate)) continue;
+                // Wine-compat: IsExecutable() can falsely reject PE-mapped .text
+                // pages in headless server builds. IsReadable() is a sufficient
+                // safety check given the candidate was reached via a real
+                // UObject's vtable.
+                if (!IsReadable(peCandidate, 1)) continue;
 
                 return peCandidate;
             }
@@ -340,7 +644,10 @@ namespace QmScan
         // returns something but it's not yet populated.
         uint32_t candidatesTested = 0;
         uint32_t validationFails  = 0;
-        void* scannedGObjects = ScanGObjectsImpl(imageBase, &candidatesTested, &validationFails);
+        void* scannedGObjects = ScanGObjectsImpl(imageBase,
+                                                 &candidatesTested, &validationFails,
+                                                 &r.rejects,
+                                                 r.nearMisses, ScanResult::kNearMissCap);
         r.gobjectsCandidatesTested  = candidatesTested;
         r.gobjectsValidationFailures = validationFails;
 

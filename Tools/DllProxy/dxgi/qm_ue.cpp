@@ -43,7 +43,7 @@ namespace QmUE
 
     static void LogScanResult(const QmScan::ScanResult& r)
     {
-        char buf[512];
+        char buf[768];
 
         _snprintf_s(buf, sizeof(buf), _TRUNCATE,
             "[Scan] resolved: GObjects=0x%llX (+0x%llX, %s) AppendString=0x%llX (+0x%llX, %s) ProcessEvent=0x%llX (+0x%llX, %s) tested=%u failed=%u in %ums",
@@ -58,6 +58,120 @@ namespace QmUE
             r.processEventFromScan ? "scan" : "fallback",
             r.gobjectsCandidatesTested, r.gobjectsValidationFailures, r.scanDurationMs);
         QmLogA(buf);
+
+        // When the scan didn't return a candidate, dump diag detail so the
+        // next trace tells us WHICH validation step is killing every slot.
+        // The most-frequent reject reason is the candidate fix target.
+        if (!r.gobjectsFromScan && r.gobjectsCandidatesTested > 0)
+        {
+            const auto& c = r.rejects;
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                "[Scan] rejects: notReadable=%u maxElemsRange=%u numElemsRange=%u chunksRange=%u elemsPerChunk=%u objectsNull=%u objectsUnreadable=%u firstChunkNull=%u firstChunkUnreadable=%u validObjectsTooFew=%u sehFault=%u",
+                c.notReadable, c.maxElemsRange, c.numElemsRange, c.chunksRange,
+                c.elemsPerChunkRange, c.objectsNull, c.objectsUnreadable,
+                c.firstChunkNull, c.firstChunkUnreadable, c.validObjectsTooFew, c.sehFault);
+            QmLogA(buf);
+
+            // Top near-miss candidates - these are the slots that passed the
+            // most checks before being rejected. If we see something with
+            // passedChecks==8 or 9, the candidate IS GObjects (just one check
+            // away from passing) and we know exactly which check to relax.
+            for (int i = 0; i < QmScan::ScanResult::kNearMissCap; ++i)
+            {
+                const auto& nm = r.nearMisses[i];
+                if (nm.passedChecks == 0) continue;
+                const char* reasonName = "?";
+                switch (nm.rejectReasonBit)
+                {
+                    case (1u << 0): reasonName = "notReadable"; break;
+                    case (1u << 1): reasonName = "objectsNull"; break;
+                    case (1u << 2): reasonName = "maxElemsRange"; break;
+                    case (1u << 3): reasonName = "numElemsRange"; break;
+                    case (1u << 4): reasonName = "chunksRange"; break;
+                    case (1u << 5): reasonName = "elemsPerChunkRange"; break;
+                    case (1u << 6): reasonName = "objectsUnreadable"; break;
+                    case (1u << 7): reasonName = "firstChunkNull"; break;
+                    case (1u << 8): reasonName = "firstChunkUnreadable"; break;
+                    case (1u << 9): reasonName = "validObjectsTooFew"; break;
+                    case (1u << 10): reasonName = "sehFault"; break;
+                }
+                _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "[Scan] near-miss[%d]: addr=0x%llX (+0x%llX) passed=%u failedAt=%s  MaxElems=%d NumElems=%d MaxChunks=%d NumChunks=%d Objects=0x%llX",
+                    i,
+                    (unsigned long long)nm.address,
+                    (unsigned long long)(nm.address - g_imageBase),
+                    nm.passedChecks, reasonName,
+                    nm.maxElements, nm.numElements, nm.maxChunks, nm.numChunks,
+                    (unsigned long long)nm.objectsPtr);
+                QmLogA(buf);
+
+                // If we captured firstChunk bytes (passedChecks >= 8), dump
+                // them as 16 qwords so we can see the actual FUObjectItem
+                // layout. We expect UObject pointers (0x14xxxxxxxx for the
+                // running server) at a regular stride - that stride IS the
+                // FUObjectItem size in this UE build.
+                if (nm.firstChunkBytesValid)
+                {
+                    const uint64_t* qw = reinterpret_cast<const uint64_t*>(nm.firstChunkBytes);
+                    // 16 qwords = 128 bytes, in two lines of 8 qwords each
+                    // to fit within reasonable log line length.
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[Scan] near-miss[%d]: chunk[0x00..0x40]: %016llX %016llX %016llX %016llX %016llX %016llX %016llX %016llX",
+                        i,
+                        (unsigned long long)qw[0], (unsigned long long)qw[1],
+                        (unsigned long long)qw[2], (unsigned long long)qw[3],
+                        (unsigned long long)qw[4], (unsigned long long)qw[5],
+                        (unsigned long long)qw[6], (unsigned long long)qw[7]);
+                    QmLogA(buf);
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[Scan] near-miss[%d]: chunk[0x40..0x80]: %016llX %016llX %016llX %016llX %016llX %016llX %016llX %016llX",
+                        i,
+                        (unsigned long long)qw[8],  (unsigned long long)qw[9],
+                        (unsigned long long)qw[10], (unsigned long long)qw[11],
+                        (unsigned long long)qw[12], (unsigned long long)qw[13],
+                        (unsigned long long)qw[14], (unsigned long long)qw[15]);
+                    QmLogA(buf);
+                }
+
+                // Dump the 32-byte TUObjectArray header itself - reveals the
+                // +0x08 PreAllocatedObjects pointer (UE5.4+ layout).
+                if (nm.headerBytesValid)
+                {
+                    const uint64_t* hq = reinterpret_cast<const uint64_t*>(nm.headerBytes);
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[Scan] near-miss[%d]: header[0x00..0x20]: %016llX %016llX %016llX %016llX",
+                        i,
+                        (unsigned long long)hq[0], (unsigned long long)hq[1],
+                        (unsigned long long)hq[2], (unsigned long long)hq[3]);
+                    QmLogA(buf);
+                }
+
+                // Dump PreAllocatedObjects bytes - this is where UE5.6
+                // dedicated-server stores initial UObjects before chunk[0]
+                // is allocated. If chunk[0] dumped all zeros and these qwords
+                // show 0x14xxxxxxxx pointers, we proved the layout.
+                if (nm.preAllocBytesValid)
+                {
+                    const uint64_t* pq = reinterpret_cast<const uint64_t*>(nm.preAllocBytes);
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[Scan] near-miss[%d]: preAlloc[0x00..0x40]: %016llX %016llX %016llX %016llX %016llX %016llX %016llX %016llX",
+                        i,
+                        (unsigned long long)pq[0], (unsigned long long)pq[1],
+                        (unsigned long long)pq[2], (unsigned long long)pq[3],
+                        (unsigned long long)pq[4], (unsigned long long)pq[5],
+                        (unsigned long long)pq[6], (unsigned long long)pq[7]);
+                    QmLogA(buf);
+                    _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[Scan] near-miss[%d]: preAlloc[0x40..0x80]: %016llX %016llX %016llX %016llX %016llX %016llX %016llX %016llX",
+                        i,
+                        (unsigned long long)pq[8],  (unsigned long long)pq[9],
+                        (unsigned long long)pq[10], (unsigned long long)pq[11],
+                        (unsigned long long)pq[12], (unsigned long long)pq[13],
+                        (unsigned long long)pq[14], (unsigned long long)pq[15]);
+                    QmLogA(buf);
+                }
+            }
+        }
     }
 
     bool Init()
