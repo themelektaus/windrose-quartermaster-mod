@@ -252,6 +252,14 @@ function syncCustomItemsIntoCatalog() {
         state.items.push(entry);
         state.itemsById.set(c.id, entry);
         state.itemPathsByItemId.set(c.id, path);
+        // Seed the building-recipe display cache so recipe rows referencing
+        // this custom item render with the user-chosen name on profile
+        // reload (before the user ever opens the recipe picker). The cache
+        // lives in tabs/buildings.js but classic-script `const` at module
+        // top-level is shared across the realm's global lexical record.
+        if (typeof _resourceDisplayCache !== 'undefined') {
+            _resourceDisplayCache.set(path, trimmedName || c.id);
+        }
     }
 }
 
@@ -801,6 +809,34 @@ function populatePicker(query) {
                 '</li>');
         }
     } else if (state.picker.source === 'recipeResource') {
+        // Custom items from the Item Creator first - same package-path
+        // shape as vanilla resources (/R5BusinessRules/InventoryItems/
+        // Custom/<id>.<id>), so the recipe patcher writes them verbatim
+        // and the engine resolves them against the cooked DA in the
+        // mod pak. Rendered with a "Custom" badge so they're visually
+        // distinct from the vanilla resource catalog.
+        for (const item of state.items || []) {
+            if (!item || !item.isCustom) continue;
+            const name = (item.meta && item.meta.name) || item.id;
+            const id   = item.id || '';
+            const path = item.path || '';
+            if (!path) continue;
+            if (q
+                && !name.toLowerCase().includes(q)
+                && !id.toLowerCase().includes(q)
+                && !path.toLowerCase().includes(q)) continue;
+            const iconHtml = item.icon
+                ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
+                : '<div class="placeholder-icon">?</div>';
+            rows.push(
+                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
+                    iconHtml +
+                    '<div class="info">' +
+                        '<b>' + esc(name) + ' <span class="picker-badge custom">Custom</span></b>' +
+                        '<small>' + esc(id) + '</small>' +
+                    '</div>' +
+                '</li>');
+        }
         for (const r of state.vanillaResources || []) {
             const name = r.displayName || r.stem || '';
             const stem = r.stem || '';

@@ -895,6 +895,25 @@ footer.collapsed .footer-body {
   text-overflow: ellipsis;
 }
 
+.picker-badge {
+  display: inline-block;
+  font-size: var(--font-size-small);
+  font-weight: normal;
+  padding: 0 .4em;
+  margin-left: .4em;
+  border-radius: 3px;
+  vertical-align: middle;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--elev), #000 0%);
+}
+
+.picker-badge.custom {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), transparent 60%);
+  background: color-mix(in srgb, var(--accent), transparent 85%);
+}
+
 .picker-empty {
   padding: .5em;
   color: var(--text-dim);
