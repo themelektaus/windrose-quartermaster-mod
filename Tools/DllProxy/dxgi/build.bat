@@ -65,7 +65,5 @@ echo.
 echo [build] Success (%CONFIG_LABEL%): %SCRIPT_DIR%dxgi.dll
 dir dxgi.dll | findstr dxgi.dll
 
-copy /Y dxgi.dll P:\root\r5-test\server-files\R5\Binaries\Win64\dxgi.dll
-
 popd
 endlocal
