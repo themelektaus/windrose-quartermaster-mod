@@ -108,6 +108,31 @@
     </EmbeddedResource>
   </ItemGroup>
   <!--
+    Embed the shipped template assets (UE-cooked .uasset/.uexp/.ubulk
+    triplets) so a deployed EXE can stage them into the per-build pak
+    without the user having to ship Tools/Templates/ along. Two flavours:
+      1. Top-level Templates/ (SoundWave_BinkInline.uasset/.uexp for the
+         ship-music patcher's USoundWave ForceInline splice target).
+      2. Templates/DefaultTextures/ (T_White/T_NormalFlat/T_MTRM* VT
+         default-texture triplets the Building Creator's MI clones
+         reference when the user doesn't pick a custom texture per slot).
+    On first launch we extract them into <DataRoot>/Tools/Templates/...
+    (= <exe-dir>/QuartermasterData/Tools/Templates/... for deployed
+    runs); dev re-edits of the source files still win because the
+    seed step is gated on the deployed run AND skip-if-exists, matching
+    the *.usmap / dxgi.dll seed pattern. LogicalName uses a forward-
+    slash hierarchy so the seeder can reconstruct subdirectories
+    without parsing dot-separated filenames ambiguously.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Tools\Templates\*.uasset;..\..\Tools\Templates\*.uexp;..\..\Tools\Templates\*.ubulk">
+      <LogicalName>Template/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\Tools\Templates\DefaultTextures\*.uasset;..\..\Tools\Templates\DefaultTextures\*.uexp;..\..\Tools\Templates\DefaultTextures\*.ubulk">
+      <LogicalName>Template/DefaultTextures/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
     Pickup-radius is no longer shipped pre-baked: the build pipeline
     invokes retoc + UAssetAPI per build to extract the live game's
     GA_Loot_AutoPickup, patch MagnetRadius to (400 * multiplier), and

@@ -156,6 +156,7 @@ public static class Program
         {
             SeedUsmapIfMissing(resolvedRoot);
             SeedDxgiDllIfMissing(resolvedRoot);
+            SeedTemplatesIfMissing(resolvedRoot);
         }
 
         // Static files: prefer the on-disk wwwroot if it sits next to the
@@ -380,5 +381,62 @@ public static class Program
         if (src == null) return;
         using var dst = File.Create(targetPath);
         src.CopyTo(dst);
+    }
+
+    /// <summary>
+    /// Writes the embedded <c>Tools/Templates/**</c> assets (UE-cooked
+    /// .uasset/.uexp/.ubulk triplets for the ship-music SoundWave
+    /// template and the default VT textures used by the Building Creator)
+    /// into <paramref name="dataRoot"/>/Tools/Templates/, but only when
+    /// a target file isn't already there. Per-file skip-if-exists so a
+    /// user-supplied newer triplet (drop-in upgrade or local edit after
+    /// the EXE was published) wins.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this seed step a deployed EXE's per-build pipeline emits
+    /// "default-textures folder missing: ...QuartermasterData/Tools/
+    /// Templates/DefaultTextures - buildings that reference T_White /
+    /// T_NormalFlat / T_MTRMDefault may render broken textures" because
+    /// <see cref="Windrose.Quartermaster.Core.BuildingCreator.DefaultTextureProvider"/>
+    /// reads from <see cref="Windrose.Quartermaster.Core.WindrosePaths.BuildingDefaultTexturesDir"/>
+    /// (= <c>&lt;ModRoot&gt;/Tools/Templates/DefaultTextures</c>), and that
+    /// folder doesn't ship with <c>dotnet publish</c>.
+    /// </para>
+    /// <para>
+    /// Resource-name shape (encoded by the csproj): <c>Template/&lt;rel&gt;</c>
+    /// where <c>&lt;rel&gt;</c> is the path under <c>Tools/Templates/</c>
+    /// with forward slashes (e.g. <c>Template/DefaultTextures/T_White.uasset</c>).
+    /// The forward-slash hierarchy lets us reconstruct subdirectories
+    /// unambiguously instead of having to parse dot-separated filenames.
+    /// </para>
+    /// </remarks>
+    static void SeedTemplatesIfMissing(string dataRoot)
+    {
+        var asm = typeof(Program).Assembly;
+        const string prefix = "Template/";
+        var templatesRoot = Path.Combine(dataRoot, "Tools", "Templates");
+
+        foreach (var resourceName in asm.GetManifestResourceNames())
+        {
+            if (!resourceName.StartsWith(prefix, StringComparison.Ordinal))
+                continue;
+
+            // Strip prefix and re-hydrate platform-native separators.
+            // Resource format: "Template/<sub>/<file>.<ext>"
+            var rel = resourceName.Substring(prefix.Length)
+                .Replace('/', Path.DirectorySeparatorChar);
+            var targetPath = Path.Combine(templatesRoot, rel);
+            if (File.Exists(targetPath)) continue;
+
+            var targetDir = Path.GetDirectoryName(targetPath);
+            if (!string.IsNullOrEmpty(targetDir))
+                Directory.CreateDirectory(targetDir);
+
+            using var src = asm.GetManifestResourceStream(resourceName);
+            if (src == null) continue;
+            using var dst = File.Create(targetPath);
+            src.CopyTo(dst);
+        }
     }
 }
