@@ -326,8 +326,8 @@ bool LocateConfigDir(char* out, size_t outSz)
     if (!out || outSz == 0) return false;
 
     // Use the address of QmConfigLoad to locate our own module - more robust
-    // than GetModuleHandleA("dxgi.dll") which also matches dxgi_original.dll on
-    // some host process layouts.
+    // than GetModuleHandleA("dxgi.dll") which could match any DLL with that
+    // basename if the loader ever has two of them registered.
     HMODULE self = nullptr;
     if (!GetModuleHandleExA(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,

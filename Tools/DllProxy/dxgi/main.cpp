@@ -1,25 +1,34 @@
 // Quartermaster dxgi.dll Proxy + MinHook Bootstrap
 // =================================================
 // Lifecycle:
-//   1. PE forwarders make us a drop-in dxgi.dll (real DXGI = dxgi_original.dll).
-//   2. DllMain process-attach -> QmLogInit() + WriteInjectMarker() + spawn
-//      WorkerThread.
-//   3. WorkerThread installs crash diagnostics, brings up MinHook with a
-//      Sleep test hook (proof-of-life), then spawns the UE probe thread.
+//   1. Game maps our dxgi.dll. The 19 dxgi exports we declare (see
+//      passthrough.def + passthrough_asm.asm) are 1-instruction MASM
+//      trampolines that tail-jump through a g_real_* pointer table.
+//   2. DllMain process-attach -> QmLogInit() + WriteInjectMarker() +
+//      ResolveSystemDxgi() to populate the pointer table from the system's
+//      real dxgi.dll (copied to %TEMP% so the loader treats it as a fresh
+//      PE identity instead of dedup'ing against our own handle).
+//      If resolve fails we return FALSE to abort process load cleanly.
+//   3. Spawn WorkerThread. Installs crash diagnostics, brings up MinHook
+//      with a Sleep test hook (proof-of-life), then spawns the UE probe
+//      thread.
 //   4. UE probe (qm_hook) waits for GObjects, finds R5HFSM_BuildingPanel +
 //      GetBuildingGroupsByCategoryTag, installs the detour. Detour runs the
 //      inject pipeline (qm_inject) on every build-menu open.
 //
 // File layout (post-refactor):
-//   main.cpp     - this file. DLL plumbing, marker, Sleep test, worker thread.
-//   qm_log.*     - file-backed logger + level macros (QM_LOG_INFO/...).
-//   qm_state.hpp - ItemDataLayout, kBuildingItemsOffset, tiny SEH helpers.
-//   qm_ue.*      - hand-rolled UE5 reflection (FName, UObject, UFunction).
-//   qm_scan.*    - runtime offset auto-discovery (validation-based scan).
-//   qm_crash.*   - VEH + UEF crash snapshot + Quartermaster-state dump.
-//   qm_inject.*  - capture donor + per-inject fresh-widget pipeline.
-//   qm_diag.*    - read-only inspectors (compiled out in production).
-//   qm_hook.*    - UFunction detour install + UE probe loop.
+//   main.cpp           - this file. DLL plumbing, marker, Sleep test, worker.
+//   passthrough.cpp    - g_real_* pointer table + ResolveSystemDxgi().
+//   passthrough_asm.asm- MASM jmp-trampolines, one per dxgi export.
+//   passthrough.def    - PE export table (19 names, ordinals 1-19).
+//   qm_log.*           - file-backed logger + level macros (QM_LOG_INFO/...).
+//   qm_state.hpp       - ItemDataLayout, kBuildingItemsOffset, SEH helpers.
+//   qm_ue.*            - hand-rolled UE5 reflection (FName, UObject, ...).
+//   qm_scan.*          - runtime offset auto-discovery.
+//   qm_crash.*         - VEH + UEF crash snapshot + state dump.
+//   qm_inject.*        - capture donor + per-inject fresh-widget pipeline.
+//   qm_diag.*          - read-only inspectors (compiled out in production).
+//   qm_hook.*          - UFunction detour install + UE probe loop.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -31,28 +40,9 @@
 #include "qm_hook.hpp"
 #include "qm_config.hpp"
 
-// ============================================================================
-// 1. PE export forwarders - dxgi_original.dll is the real DXGI; we tunnel through.
-// ============================================================================
-#pragma comment(linker, "/EXPORT:ApplyCompatResolutionQuirking=dxgi_original.ApplyCompatResolutionQuirking,@1")
-#pragma comment(linker, "/EXPORT:CompatString=dxgi_original.CompatString,@2")
-#pragma comment(linker, "/EXPORT:CompatValue=dxgi_original.CompatValue,@3")
-#pragma comment(linker, "/EXPORT:DXGIDumpJournal=dxgi_original.DXGIDumpJournal,@4")
-#pragma comment(linker, "/EXPORT:PIXBeginCapture=dxgi_original.PIXBeginCapture,@5")
-#pragma comment(linker, "/EXPORT:PIXEndCapture=dxgi_original.PIXEndCapture,@6")
-#pragma comment(linker, "/EXPORT:PIXGetCaptureState=dxgi_original.PIXGetCaptureState,@7")
-#pragma comment(linker, "/EXPORT:SetAppCompatStringPointer=dxgi_original.SetAppCompatStringPointer,@8")
-#pragma comment(linker, "/EXPORT:UpdateHMDEmulationStatus=dxgi_original.UpdateHMDEmulationStatus,@9")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory=dxgi_original.CreateDXGIFactory,@10")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory1=dxgi_original.CreateDXGIFactory1,@11")
-#pragma comment(linker, "/EXPORT:CreateDXGIFactory2=dxgi_original.CreateDXGIFactory2,@12")
-#pragma comment(linker, "/EXPORT:DXGID3D10CreateDevice=dxgi_original.DXGID3D10CreateDevice,@13")
-#pragma comment(linker, "/EXPORT:DXGID3D10CreateLayeredDevice=dxgi_original.DXGID3D10CreateLayeredDevice,@14")
-#pragma comment(linker, "/EXPORT:DXGID3D10GetLayeredDeviceSize=dxgi_original.DXGID3D10GetLayeredDeviceSize,@15")
-#pragma comment(linker, "/EXPORT:DXGID3D10RegisterLayers=dxgi_original.DXGID3D10RegisterLayers,@16")
-#pragma comment(linker, "/EXPORT:DXGIDeclareAdapterRemovalSupport=dxgi_original.DXGIDeclareAdapterRemovalSupport,@17")
-#pragma comment(linker, "/EXPORT:DXGIGetDebugInterface1=dxgi_original.DXGIGetDebugInterface1,@18")
-#pragma comment(linker, "/EXPORT:DXGIReportAdapterConfiguration=dxgi_original.DXGIReportAdapterConfiguration,@19")
+// Implemented in passthrough.cpp - resolves real dxgi.dll into the g_real_*
+// table that the MASM trampolines in passthrough_asm.asm jmp through.
+extern "C" bool ResolveSystemDxgi(HMODULE hSelf);
 
 // ============================================================================
 // 2. Inject marker - first log lines so the user knows the proxy attached.
@@ -169,6 +159,17 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpRese
 
         QmLogInit();
         WriteInjectMarker(hModule);
+
+        // Populate the g_real_* pointer table from the system's real dxgi.dll
+        // BEFORE we let the game call any of our exports. If this fails the
+        // MASM trampolines would tail-jump through nullptr and crash on first
+        // invocation - return FALSE so the loader aborts process startup
+        // cleanly instead, the user sees the failure in our log.
+        if (!ResolveSystemDxgi(hModule))
+        {
+            QM_LOG_ERROR("[MinHook] aborting process load: system dxgi.dll unresolved");
+            return FALSE;
+        }
 
         HANDLE hThread = CreateThread(NULL, 0, WorkerThread, NULL, 0, NULL);
         if (hThread) CloseHandle(hThread);

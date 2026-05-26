@@ -343,13 +343,13 @@ public static class ModsEndpoint
         }
     }
 
-    // Best-effort removal of dxgi.dll + dxgi_original.dll when no
-    // qm_items_*.json profiles remain in Win64 (= no deployed
-    // Quartermaster pak wants the inject anymore). Routes through the
-    // trash for symmetry with the pak/JSON delete, so the user can
-    // recover the whole set from the recycle bin if they undo the
-    // deletion. No-op when other profile JSONs still exist or when
-    // the DLL pair was never deployed by us (safety guard inside
+    // Best-effort removal of dxgi.dll + dxgi.dll.qm marker when no
+    // qm_items_*.json profiles remain in Win64 (= no deployed Quartermaster
+    // pak wants the inject anymore).
+    // Routes through the trash for symmetry with the pak/JSON delete, so
+    // the user can recover the whole set from the recycle bin if they
+    // undo the deletion. No-op when other profile JSONs still exist or
+    // when the DLL was never deployed by us (safety guard inside
     // GameDeployer.RemoveDllIfNoProfilesLeft).
     static void TryRemoveDeployedDllIfIdle(string repoRoot, List<string> recycled)
     {

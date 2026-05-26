@@ -10,9 +10,15 @@ namespace Windrose.Quartermaster.Core.Deploy
 {
     // Owns writes into the live game's <R5>/Binaries/Win64 folder:
     //
-    //   1) dxgi.dll                  - the inject-proxy our DLL hook lives in
-    //   2) dxgi_original.dll         - the renamed copy of C:\Windows\System32\dxgi.dll
-    //                                  we PE-forward to (required for the proxy to work)
+    //   1) dxgi.dll                  - the inject-proxy our DLL hook lives in.
+    //                                  Self-loading: at DllMain time it copies
+    //                                  the system dxgi.dll to %TEMP% and
+    //                                  routes the 19 dxgi exports through it,
+    //                                  so no companion DLL is needed alongside.
+    //   2) dxgi.dll.qm               - empty marker file written next to the
+    //                                  DLL on install. Proves the dxgi.dll
+    //                                  belongs to us so we can safely
+    //                                  overwrite it later.
     //   3) qm_items_<profile>.json   - per-profile runtime config the DLL reads at startup.
     //                                  Filename matches the pak basename's profile slot:
     //                                  Quartermaster_<profile>_P.pak <-> qm_items_<profile>.json.
@@ -34,11 +40,10 @@ namespace Windrose.Quartermaster.Core.Deploy
     //     deletes the matching qm_items_<profile>.json alongside.
     //   - CleanupGame() is the explicit one-shot uninstall path (user
     //     opt-in, not auto-triggered by 'all buildings removed'). Removes
-    //     ALL qm_items_*.json files and the DLL pair.
+    //     ALL qm_items_*.json files plus the DLL + marker.
     //
     // Guard against clobbering: we never overwrite a pre-existing dxgi.dll
-    // unless we can prove it's our proxy (dxgi_original.dll alongside). This
-    // matches the deploy.bat guard.
+    // unless the dxgi.dll.qm marker proves it's our proxy.
     public sealed class GameDeployer
     {
         public Action<string> Log;
@@ -85,7 +90,17 @@ namespace Windrose.Quartermaster.Core.Deploy
         public string GameWin64Dir  => _gameWin64Dir;
 
         public string TargetDllPath()      => Path.Combine(_gameWin64Dir, "dxgi.dll");
-        public string TargetDllOriginalPath()   => Path.Combine(_gameWin64Dir, "dxgi_original.dll");
+        // Marker file written next to dxgi.dll on install to prove ownership.
+        // Existence => safe to overwrite. Plain text, contents informational
+        // (build stamp). We never inspect contents - presence alone is the signal.
+        public string TargetDllMarkerPath() => Path.Combine(_gameWin64Dir, "dxgi.dll.qm");
+
+        // Returns true if the dxgi.dll at TargetDllPath() was put there by us.
+        // The dxgi.dll.qm marker alongside is the single proof-of-ownership.
+        bool IsOurProxyAtTarget()
+        {
+            return File.Exists(TargetDllMarkerPath());
+        }
 
         // Per-profile items JSON path. profileSafeName is the same string
         // BuildPipeline.SanitizeForFileName produced for the pak basename,
@@ -109,27 +124,29 @@ namespace Windrose.Quartermaster.Core.Deploy
             return Directory.GetFiles(_gameWin64Dir, "qm_items_*.json", SearchOption.TopDirectoryOnly);
         }
 
-        // Idempotent install of dxgi.dll + dxgi_original.dll. Returns true on
+        // Idempotent install of dxgi.dll + dxgi.dll.qm marker. Returns true on
         // success, false when the platform doesn't support the inject (Linux
         // / Steam Deck - see below), throws InvalidOperationException if the
         // guard refuses (= an unknown dxgi.dll is already there without our
-        // renamer alongside). The latter never recovers automatically: user
+        // marker alongside). The latter never recovers automatically: user
         // has to investigate / remove the foreign file manually.
         //
         // Always re-copies our dxgi.dll over an existing proxy to ensure
         // the deployed binary matches the current build - we don't want
         // the game running against a stale DLL if the user rebuilt but
-        // didn't redeploy.
+        // didn't redeploy. The marker is rewritten on every install with
+        // the current build stamp.
         public bool EnsureDllInstalled()
         {
             // Platform gate: the dxgi-proxy inject is a Windows-only PE
-            // mechanism. Under Proton/Wine the renamer DLL would have to
-            // come from a Wine-provided dxgi.dll (compatdata prefix or
-            // Proton install) - not implemented yet. Build still produces
-            // the pak (Stack/Loot/Recipes/Trade work via the pak alone);
-            // only the inject-driven features (Custom Items + Buildings
-            // into Vorgefertigte Strukturen tab) are skipped. Loud log
-            // so the user understands why their painting doesn't appear.
+            // mechanism. Under Proton/Wine the deploy step is skipped because
+            // we'd have to find a Wine prefix's Win64 dir (compatdata) and we
+            // don't locate that here. The DLL itself works under Wine when
+            // staged there manually - it self-loads the system dxgi via the
+            // %TEMP%-copy strategy in passthrough.cpp.
+            // Build still produces the pak (Stack/Loot/Recipes/Trade work via
+            // the pak alone). Loud log so the user understands why their
+            // custom building doesn't appear.
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 LogLine("DLL inject SKIPPED: dxgi-proxy is Windows-only "
@@ -151,41 +168,34 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
 
             var targetDll = TargetDllPath();
-            var targetOriginal = TargetDllOriginalPath();
+            var targetMarker = TargetDllMarkerPath();
 
             // Guard: refuse to overwrite an unknown dxgi.dll (could be the
-            // game's own shipped DLL, or another mod's proxy). Only our
-            // own deploys leave a dxgi_original.dll alongside.
-            if (File.Exists(targetDll) && !File.Exists(targetOriginal))
+            // game's own shipped DLL, or another mod's proxy). Marker
+            // alongside is the single proof of ownership.
+            if (File.Exists(targetDll) && !IsOurProxyAtTarget())
             {
                 throw new InvalidOperationException(
                     "Refusing to overwrite existing dxgi.dll at " + targetDll
-                    + " - no dxgi_original.dll alongside, so it's probably not our proxy. "
+                    + " - no dxgi.dll.qm marker alongside, "
+                    + "so it's probably not our proxy. "
                     + "Investigate or remove it manually, then retry.");
-            }
-
-            // Renamer: copy the Windows system dxgi.dll to dxgi_original.dll
-            // (only if not present yet - we never replace it once it's
-            // there, the system DLL never changes meaningfully).
-            if (!File.Exists(targetOriginal))
-            {
-                var sysDxgi = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.System),
-                    "dxgi.dll");
-                if (!File.Exists(sysDxgi))
-                {
-                    throw new InvalidOperationException(
-                        "System dxgi.dll not found at " + sysDxgi
-                        + " - cannot create the renamer.");
-                }
-                LogLine("Copying " + sysDxgi + " -> " + targetOriginal);
-                File.Copy(sysDxgi, targetOriginal, overwrite: false);
             }
 
             // Proxy: always overwrite so users running an older deployed
             // build pick up the latest after a rebuild + click Build.
             LogLine("Copying " + dllSourcePath + " -> " + targetDll);
             File.Copy(dllSourcePath, targetDll, overwrite: true);
+
+            // Marker: write/refresh next to the DLL so the next install can
+            // recognise this as our proxy. Contents are informational only -
+            // presence is what matters to the guard.
+            var markerBody =
+                "Quartermaster dxgi.dll proxy marker\n"
+                + "Installed: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ssZ") + "\n"
+                + "Source:    " + dllSourcePath + "\n";
+            LogLine("Writing marker -> " + targetMarker);
+            File.WriteAllText(targetMarker, markerBody, new UTF8Encoding(false));
 
             return true;
         }
@@ -249,20 +259,18 @@ namespace Windrose.Quartermaster.Core.Deploy
             return true;
         }
 
-        // Removes the dxgi.dll + dxgi_original.dll pair if there are no
-        // qm_items_*.json profiles left in Win64. Safe no-op when there
-        // are still profile JSONs around (at least one deployed pak
-        // wants the inject). Triggered by:
+        // Removes dxgi.dll + dxgi.dll.qm if there are no qm_items_*.json
+        // profiles left in Win64. Safe no-op when there are still profile
+        // JSONs around (at least one deployed pak wants the inject).
+        // Triggered by:
         //   - BuildPipeline after a profile is built with 0 buildings
         //     AND no other profile JSONs exist anymore (i.e. the user's
         //     last buildings profile just emptied out).
         //   - ModsEndpoint after the user trashes a Quartermaster pak
         //     and the matching qm_items_<name>.json was removed too.
         //
-        // Safety guard: only treats the dxgi.dll as ours when
-        // dxgi_original.dll is alongside (same proof as EnsureDllInstalled
-        // uses to reject foreign proxies). Without the pair we leave the
-        // unknown file alone.
+        // Safety guard: only treats the dxgi.dll as ours when the marker
+        // is alongside. Without that proof we leave the unknown file alone.
         //
         // `deleter` is called once per file we decide to remove - the
         // BuildPipeline path uses File.Delete, the ModsEndpoint path
@@ -279,20 +287,19 @@ namespace Windrose.Quartermaster.Core.Deploy
             if (EnumerateProfileItemsJsonPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
-            var targetOriginal = TargetDllOriginalPath();
+            var targetMarker = TargetDllMarkerPath();
 
             bool dllExists = File.Exists(targetDll);
-            bool originalExists = File.Exists(targetOriginal);
+            bool markerExists = File.Exists(targetMarker);
 
-            if (!dllExists && !originalExists) return false; // already clean
+            if (!dllExists && !markerExists) return false; // already clean
 
             // Same guard as EnsureDllInstalled: an existing dxgi.dll
-            // without dxgi_original.dll alongside is not our proxy.
-            // Refuse to touch it.
-            if (dllExists && !originalExists)
+            // without marker is not our proxy. Refuse to touch it.
+            if (dllExists && !markerExists)
             {
                 LogLine("Skipping DLL cleanup: dxgi.dll exists at " + targetDll
-                    + " but no dxgi_original.dll alongside (not our proxy).");
+                    + " but no dxgi.dll.qm marker alongside (not our proxy).");
                 return false;
             }
 
@@ -305,10 +312,10 @@ namespace Windrose.Quartermaster.Core.Deploy
                 deleter(targetDll);
                 removedAny = true;
             }
-            if (originalExists)
+            if (markerExists)
             {
-                LogLine("Removing dxgi_original.dll (no profile JSONs left) -> " + targetOriginal);
-                deleter(targetOriginal);
+                LogLine("Removing dxgi.dll.qm marker -> " + targetMarker);
+                deleter(targetMarker);
                 removedAny = true;
             }
             return removedAny;
@@ -358,12 +365,12 @@ namespace Windrose.Quartermaster.Core.Deploy
             return sb.ToString();
         }
 
-        // Full uninstall: remove dxgi.dll, dxgi_original.dll, every
+        // Full uninstall: remove dxgi.dll, dxgi.dll.qm marker, every
         // qm_items_*.json, and (optionally) the pak triple. Idempotent -
         // missing files are silently skipped so the caller can run this
         // safely on a partial install. The pak triple removal is opt-in
-        // because the pak might be shared with other Quartermaster
-        // features (loot, items, etc.).
+        // because the pak might be shared with other Quartermaster features
+        // (loot, items, etc.).
         public CleanupResult CleanupGame(string pakBasename = null)
         {
             var result = new CleanupResult();
@@ -372,7 +379,7 @@ namespace Windrose.Quartermaster.Core.Deploy
                 TryDelete(jsonPath, result);
             }
             TryDelete(TargetDllPath(),       result);
-            TryDelete(TargetDllOriginalPath(),    result);
+            TryDelete(TargetDllMarkerPath(), result);
             if (!string.IsNullOrEmpty(pakBasename))
             {
                 string modsDir;
