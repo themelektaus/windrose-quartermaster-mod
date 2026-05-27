@@ -28,59 +28,19 @@ namespace Windrose.Quartermaster.Core
         // which the deployer regenerates per build.
         public const string ModItemsPackagePath = "/Game/Quartermaster/";
 
-        // Vanilla string-table identifiers (= filename stem of the CSV under
-        // R5/Content/Localization/Data/). The Windrose game registers each
-        // CSV at boot under a StringTable whose TableId equals the stem -
-        // any FText property with HistoryType=StringTableEntry referencing
-        // that TableId then resolves its Key against the CSV at runtime.
-        public const string VanillaInventoryItemsTableId = "InventoryItems";
-        public const string VanillaBuildingItemsTableId  = "BuildingItems";
-
-        // Per-profile StringTable scheme. Each profile gets its own CSV
-        // file inside the pak (= its own StringTable registration at boot)
-        // so that two profiles with custom items / buildings never collide
-        // on the shared "InventoryItems"/"BuildingItems" path. Without this
-        // the alphabetically-later pak's CSV overrides the earlier one and
-        // the loser's buildings/items resolve to <MISSING_STRING>.
-        //
-        // Short-id form: first 8 hex chars of the profile GUID after
-        // dash-stripping (e.g. profile "6895e2b9-c2d2-..." -> "6895e2b9").
-        // Matches the existing QmBldg_<8hex> id scheme so the suffix stays
-        // short enough that the cloned building DA's FName NameMap entry
-        // for the rewritten TableId fits the byte budget of a UAssetAPI
-        // re-serialize round-trip without ballooning the export header.
-        public static string ShortProfileId(string profileId)
-        {
-            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
-            var stripped = profileId.Replace("-", "");
-            return stripped.Length >= 8 ? stripped.Substring(0, 8) : stripped;
-        }
-
-        // TableId for the per-profile InventoryItems string-table. Used as
-        // the FText.TableId on every custom item's UI JSON AND as the
-        // filename stem of the per-profile CSV in the legacy pak.
-        public static string InventoryItemsTableIdFor(string profileId)
-        {
-            return VanillaInventoryItemsTableId + "_" + ShortProfileId(profileId);
-        }
-        public static string BuildingItemsTableIdFor(string profileId)
-        {
-            return VanillaBuildingItemsTableId + "_" + ShortProfileId(profileId);
-        }
-
-        // Pak-internal path the per-profile CSV lands at. Folder is the same
-        // R5/Content/Localization/Data/ tree as the vanilla CSVs - the
-        // Windrose loader scans that folder at boot, so dropping a new file
-        // there is enough for the registration to fire. Filename stem must
-        // equal the TableId.
-        public static string InventoryItemsCsvPakPathFor(string profileId)
-        {
-            return "R5/Content/Localization/Data/" + InventoryItemsTableIdFor(profileId) + ".csv";
-        }
-        public static string BuildingItemsCsvPakPathFor(string profileId)
-        {
-            return "R5/Content/Localization/Data/" + BuildingItemsTableIdFor(profileId) + ".csv";
-        }
+        // Custom items + buildings ship their display text inline as
+        // plain-string FText (HistoryType=Base SourceString=user text)
+        // rather than going through a per-profile CSV. The Windrose CSV
+        // loader only registers the two vanilla CSVs by hardcoded name -
+        // any per-profile CSV in the pak would land on disk but never
+        // be mounted as a StringTable, so every FText lookup against it
+        // would resolve to <MISSING_STRING>. The per-profile-string-table
+        // helpers (InventoryItemsTableIdFor / BuildingItemsTableIdFor /
+        // *CsvPakPathFor) were removed when the FText.Base refactor
+        // landed; the vanilla CSV paths still live under
+        // VanillaInventoryItemsCsv / VanillaBuildingItemsCsv below for
+        // pipeline staging (the patcher copies them through so vanilla
+        // lookups still resolve).
 
         public string ModRoot;
         public string Sources;

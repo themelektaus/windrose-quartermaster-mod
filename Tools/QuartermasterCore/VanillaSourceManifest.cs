@@ -133,7 +133,7 @@ namespace Windrose.Quartermaster.Core
             {
                 Key = "inventoryItemsCsv",
                 Label = "Item localization (CSV string-table)",
-                Description = "R5/Content/Localization/Data/InventoryItems.csv - baseline string-table that the Item Creator extends.",
+                Description = "R5/Content/Localization/Data/InventoryItems.csv - vanilla string-table reference. Kept available for diagnostics and template inspection (custom items now emit plain-string FText inline, no CSV synthesis).",
                 PakIncludePath = WindroseGameSecrets.InventoryItemsCsvPath,
                 DiskPath = p => p.VanillaInventoryItemsCsv,
                 ProbeKind = VanillaSourceProbeKind.SingleFile,
@@ -142,7 +142,7 @@ namespace Windrose.Quartermaster.Core
             {
                 Key = "buildingItemsCsv",
                 Label = "Building localization (CSV string-table)",
-                Description = "R5/Content/Localization/Data/BuildingItems.csv - baseline string-table that the Building Creator extends so custom buildings get user-supplied display names / tooltips in-game.",
+                Description = "R5/Content/Localization/Data/BuildingItems.csv - vanilla string-table reference. Kept available for diagnostics (custom buildings now emit plain-string FText inline via the binary FText.Base rewrite, no CSV synthesis).",
                 PakIncludePath = WindroseGameSecrets.BuildingItemsCsvPath,
                 DiskPath = p => p.VanillaBuildingItemsCsv,
                 ProbeKind = VanillaSourceProbeKind.SingleFile,

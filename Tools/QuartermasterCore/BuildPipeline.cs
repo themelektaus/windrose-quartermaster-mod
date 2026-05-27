@@ -80,7 +80,6 @@ namespace Windrose.Quartermaster.Core
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
-        readonly BuildingItemsCsvPatcher _buildingItemsCsvPatcher;
         readonly RecipePatcher _recipePatcher;
         readonly BlueprintPatcher _blueprintPatcher;
 
@@ -150,7 +149,6 @@ namespace Windrose.Quartermaster.Core
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
-            _buildingItemsCsvPatcher = new BuildingItemsCsvPatcher();
             _recipePatcher = new RecipePatcher();
             _blueprintPatcher = new BlueprintPatcher();
         }
@@ -385,8 +383,7 @@ namespace Windrose.Quartermaster.Core
                         _paths.VanillaInventoryItems, _paths.VanillaInventoryItemsCsv,
                         tmpDir, profile, bakeableItemIds);
                     LogLine("Custom items: " + itemCreatorResult.ItemsWritten
-                            + " written, " + itemCreatorResult.CsvRowsAppended
-                            + " CSV rows appended");
+                            + " JSON(s) written (display text ships inline as plain-string FText)");
                     foreach (var w in itemCreatorResult.Warnings) LogLine("  warn: " + w);
                 }
 
@@ -428,7 +425,7 @@ namespace Windrose.Quartermaster.Core
                         ? sellerResult.RecipesEdited + sellerResult.RecipesAdded + sellerResult.ListsWritten
                         : 0)
                     + (itemCreatorResult != null
-                        ? itemCreatorResult.ItemsWritten + (itemCreatorResult.CsvWritten ? 1 : 0)
+                        ? itemCreatorResult.ItemsWritten
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
                     + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
@@ -1406,7 +1403,9 @@ namespace Windrose.Quartermaster.Core
                                         vanillaRecipeAbs,
                                         recipesOutDir,
                                         b.Id,
-                                        costList);
+                                        costList,
+                                        b.Name,
+                                        b.Description);
                                     result.OutputRecipeJsonPath = rp.OutputJsonPath;
                                     result.OutputRecipeStem     = rp.OutputStem;
                                     result.NewRecipeTag         = rp.NewRecipeTag;
@@ -1431,47 +1430,17 @@ namespace Windrose.Quartermaster.Core
                         }
                         LogLine("Patched buildings: " + buildingResults.Count + " written");
 
-                        // Per-profile BuildingItems CSV: pairs with the
-                        // FText.TableId rewrite committed by FTextKey-
-                        // Rewriter (in BuildingPatcher.Step 7) so each
-                        // profile ships its own uniquely-named string-table
-                        // under R5/Content/Localization/Data/BuildingItems_
-                        // <shortProfileId>.csv. Two profiles' paks can
-                        // both add custom buildings without overriding
-                        // each other's CSV - no more pak-load-order
-                        // shadowing the loser's display text to
-                        // <MISSING_STRING>. The CSV ships in the legacy
-                        // main pak (NOT in the IoStore composite) -
-                        // Windrose's localization loader reads CSVs as
-                        // runtime data, not as cooked assets. The legacy-
-                        // pak staging tree lives at <BuildTmp>/<profile.Id>/
-                        // (see the outer Build() method's tmpDir;
-                        // reconstructed here instead of plumbed through
-                        // BuildIoStoreComposite's signature to keep that
-                        // signature stable).
-                        try
-                        {
-                            _buildingItemsCsvPatcher.Log = Log;
-                            var legacyPakStagingDir = Path.Combine(_paths.BuildTmp, profile.Id);
-                            var csvRes = _buildingItemsCsvPatcher.PatchToDirectory(
-                                legacyPakStagingDir,
-                                profile.Id,
-                                buildingResults);
-                            if (csvRes.CsvWritten)
-                            {
-                                LogLine("Per-profile BuildingItems CSV: "
-                                        + csvRes.NameRowsAppended + " name row(s) + "
-                                        + csvRes.DescriptionRowsAppended + " description row(s)");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // Non-fatal: building still ships, just with
-                            // the vanilla in-game text (or <MISSING_STRING>
-                            // when another profile's pak wins). Surface as
-                            // warning so the user knows the CSV is missing.
-                            LogLine("  warn: per-profile BuildingItems CSV synthesis skipped: " + ex.Message);
-                        }
+                        // No per-profile BuildingItems CSV anymore. Display
+                        // name + description ship inline in the building DA
+                        // as plain-string FText (HistoryType=Base). The
+                        // Windrose CSV loader only registers the two
+                        // vanilla CSVs by hardcoded name - any per-profile
+                        // CSV in the pak would land on disk but never be
+                        // mounted as a StringTable, so every FText.String-
+                        // TableEntry lookup against it would resolve to
+                        // <MISSING_STRING>. Plain-string FText sidesteps
+                        // the loader entirely (see FTextKeyRewriter
+                        // PatchInlineDisplayText for the binary rewrite).
                     },
                 });
             }

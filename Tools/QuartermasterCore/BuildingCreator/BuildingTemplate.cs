@@ -43,13 +43,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // pointing at the BuildingItems CSV string-table; the literal
         // key string sits inline in the DA's export body (RawExport.Data),
         // NOT in the NameMap, so the DataAssetPatcher's NameMap rewrite
-        // can't reach it. Instead, BuildingPatcher does a binary in-place
-        // rewrite of these bytes after the NameMap-level patch, swapping
-        // the vanilla key for a per-Building synthesized key while keeping
-        // the byte length identical (padded with underscores). The
-        // BuildingItemsCsvPatcher then appends a matching row to the
-        // extended BuildingItems.csv so the engine resolves the new key
-        // at runtime to the user-supplied display name.
+        // can't reach it. Instead, FTextKeyRewriter binary-patches the
+        // FText record on disk, converting it from StringTableEntry to
+        // HistoryType=Base and inlining the user-supplied display text as
+        // the Base SourceString. This sidesteps the Windrose CSV loader
+        // (which only mounts the two vanilla CSVs by hardcoded name).
         public string VanillaNameKey;
 
         // Sister field to VanillaNameKey for the tooltip / description

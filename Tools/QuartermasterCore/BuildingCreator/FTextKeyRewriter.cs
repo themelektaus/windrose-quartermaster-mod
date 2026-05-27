@@ -9,140 +9,122 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Rewrites FText.StringTableEntry key strings inside a Legacy
-    // .uasset+.uexp pair in-place at the byte level.
+    // Rewrites FText records inside a Legacy .uasset+.uexp pair so the
+    // displayed text becomes the user-supplied string. Handles both
+    // FText.StringTableEntry (HistoryType=11) and FText.Base
+    // (HistoryType=0) input shapes:
+    //
+    //   - StringTableEntry input: rewritten to FText.Base with Namespace=""
+    //     and SourceString=<user text>. Drops the TableId reference so the
+    //     text travels inline in the asset (no string-table lookup).
+    //
+    //   - Base input: only the SourceString FString is spliced; Flags,
+    //     HistoryType, Namespace and Key stay verbatim. Sufficient because
+    //     FText.Base already renders by SourceString when no localization
+    //     override is registered for the (Namespace,Key) pair.
     //
     // Motivation:
-    //   Windrose's BuildingItem DAs (R5BuildingItem class) carry their
-    //   display name + tooltip as FText properties with HistoryType
-    //   StringTableEntry. The TableId is an FName referring to the
-    //   "BuildingItems" string-table; the literal Key string sits
-    //   serialized inline in the export body as a length-prefixed FString
-    //   (4-byte little-endian byte count + UTF-8 bytes + null terminator).
+    //   Custom building DAs (R5BuildingItem class) start life as a clone
+    //   of a vanilla building DA. Vanilla DAs carry their display name
+    //   + tooltip as either StringTableEntry (most decoration DAs point
+    //   at the shared "BuildingItems" string-table) or Base (some POI /
+    //   debug DAs ship inline text with auto-generated GUID keys).
     //
-    //   These Key strings are NOT in the asset's NameMap, so the standard
-    //   DataAssetPatcher (which only renames NameMap entries) cannot
-    //   reach them. The R5BuildingItem class also isn't in the engine's
-    //   usmap, which is why UAssetAPI loads its export as RawExport (raw
-    //   byte blob) rather than a property tree we could walk.
+    //   A per-profile CSV is not an option: the Windrose CSV loader only
+    //   registers the two vanilla CSVs (InventoryItems.csv +
+    //   BuildingItems.csv) at boot by hardcoded name. Any
+    //   BuildingItems_<short>.csv shipped in our pak would land on disk
+    //   but never be mounted as a StringTable, so every lookup against
+    //   it would resolve to <MISSING_STRING>.
     //
-    //   To give each cloned building its own unique localization key
-    //   (so the BuildingItems.csv synthesis can map it to user-supplied
-    //   display text instead of inheriting the vanilla translation), we
-    //   need to find those key bytes and rewrite them.
+    //   Solution: inline the user text in the asset itself - either by
+    //   converting StringTableEntry to Base (one-time rewrite) or by
+    //   updating the existing Base's SourceString. Vanilla itself ships
+    //   items that do this (e.g. DA_DID_Misc_EliaShell_T04's ItemName is
+    //   a plain literal FText.Base), so it is a normal first-class FText
+    //   shape, not a hack.
     //
     // Strategy:
     //   - Open the asset via UAssetAPI (gives us NameMap + RawExport.Data)
-    //   - For each RawExport.Data byte array, scan for FString-encoded
-    //     instances of the vanilla key, identified by:
-    //       * 4-byte little-endian length prefix matching byteCount+1
-    //         (the null terminator counts towards the on-disk length)
-    //       * UTF-8 bytes equal to the vanilla key
-    //       * trailing null terminator
-    //   - Replace the bytes in place with a new key of the SAME byte
-    //     length (padded with underscores). Same length is critical:
-    //     it lets us avoid recomputing SerialSize, ScriptSerializationEnd
-    //     offsets, downstream-export offsets, or anything else the asset
-    //     header tracks. Pure byte-for-byte swap.
+    //   - For each RawExport.Data byte array, scan for the vanilla Key as
+    //     an on-disk FString (4-byte little-endian length prefix matching
+    //     key+1, then UTF-8 bytes, then null term).
+    //   - Disambiguate StringTableEntry vs Base by checking the bytes
+    //     immediately preceding the Key:
+    //         * StringTableEntry: HistoryType=11 at i-9, then 8 bytes
+    //           TableId FName (NameIndex+Number) right before the Key.
+    //         * Base (empty namespace, length=0): HistoryType=0 at i-5,
+    //           then 4 bytes Namespace length=0.
+    //         * Base (empty namespace, length=1): HistoryType=0 at i-6,
+    //           then 4 bytes Namespace length=1, then 1 null byte.
+    //         (Non-empty Base namespaces are not yet handled - we have
+    //          not seen one on a vanilla building DA. Fallback: skip and
+    //          warn so the user knows the in-game text stays as cloned.)
+    //   - StringTableEntry match: splice [HistoryType .. end-of-Key] with
+    //     a fresh FText.Base body (HistoryType=0 + Namespace="" + Key=
+    //     vanillaKey + SourceString=<user text>).
+    //   - Base match: only splice the SourceString FString that follows
+    //     the Key. Flags / HistoryType / Namespace / Key stay verbatim.
+    //   - The byte-array length changes per splice - UAssetAPI's
+    //     asset.Write() recomputes Export.SerialSize and downstream
+    //     offsets automatically, so we only need to mutate
+    //     RawExport.Data.
     //
     // Limits:
-    //   - The new core key + suffix must fit inside the vanilla key's
-    //     byte budget. For the painting DA the budget is 39 bytes for
-    //     Name and 36 bytes for Description; "QmBldg_<8charId>_Name" is
-    //     20 bytes (plenty of room, padding fills the rest). User-chosen
-    //     longer Building Ids could in theory overflow - the rewriter
-    //     throws a clear error if the new key won't fit.
-    //   - Only ASCII keys are supported (vanilla uses ASCII; building
-    //     keys never contain non-ASCII characters).
-    //   - Only positive-length FString encoding (UTF-8). UE supports
-    //     negative-length FString for UTF-16 but vanilla building DAs
-    //     don't use it for these keys.
+    //   - Only ASCII vanilla keys (vanilla building DAs use only ASCII
+    //     for FText keys, including the auto-generated GUID hex strings).
+    //   - Only positive-length FString encoding on the vanilla key (UTF-8).
+    //     UE supports negative-length for UTF-16 but vanilla building DAs
+    //     do not use it for keys. The NEW SourceString we emit picks UTF-8
+    //     vs UTF-16 automatically based on whether the user text is ASCII
+    //     (umlauts / non-Latin glyphs trigger UTF-16).
+    //   - FText.Base with a non-empty namespace currently surfaces as a
+    //     "key not found" miss. Extend BaseHistoryTypeOffset() if a real
+    //     template needs it.
     public sealed class FTextKeyRewriter
     {
         public Action<string> Log;
 
-        // Process one asset. For each (vanillaKey -> newKey) entry in
-        // replacements, scans every RawExport.Data array and rewrites
-        // all matching FString-encoded occurrences in place.
+        // Process one asset. For each vanilla FText.StringTableEntry whose
+        // Key matches one in displayTextByVanillaKey, rewrite the binary
+        // FText record into HistoryType=Base with Namespace="",
+        // Key="<vanillaKey>" and SourceString=<user-display-text>.
         //
-        // Optionally also rewrites the FText.TableId FName preceding each
-        // matched Key (oldTableId -> newTableId). When both are non-null,
-        // the new TableId is added to the asset's NameMap (UAssetAPI
-        // assigns the next free index), and every raw-export byte position
-        // where an 8-byte FName matching the old TableId's index appears
-        // immediately before a matched Key gets its NameIndex spliced to
-        // the new entry's index. Used to give each profile its own
-        // StringTable (BuildingItems_<shortProfileId>) so two profiles
-        // shipping at the same R5/Content/Localization/Data/<stem>.csv
-        // path never collide via pak load-order.
+        // The Key in the rewritten FText.Base record is preserved verbatim
+        // from the vanilla key - it's just used as a cache-identity hint
+        // by UE's text cache, has no runtime semantics here because the
+        // SourceString is what renders.
         //
-        // Returns per-key hit counts so callers can warn on dead-letter
-        // replacements (vanilla key not found at all = template / cooked-
-        // DA mismatch, worth surfacing). Missing keys are NOT a hard error
-        // here - the building still renders, just with the vanilla locale.
+        // Returns per-vanilla-key occurrence counts. Missing keys are NOT
+        // a hard error - the building still renders, just with whatever
+        // the cloned DA already carried for that field.
         public FTextKeyRewriteResult Patch(
             string assetPath,
             string usmapPath,
-            IReadOnlyDictionary<string, string> replacements,
-            string oldTableId = null,
-            string newTableId = null)
+            IReadOnlyDictionary<string, string> displayTextByVanillaKey)
         {
             if (string.IsNullOrEmpty(assetPath))
                 throw new ArgumentNullException("assetPath");
-            if (replacements == null || replacements.Count == 0)
-                throw new ArgumentException("replacements must not be empty");
+            if (displayTextByVanillaKey == null || displayTextByVanillaKey.Count == 0)
+                throw new ArgumentException("displayTextByVanillaKey must not be empty");
             if (!File.Exists(assetPath))
                 throw new FileNotFoundException("uasset not found: " + assetPath);
             if (!File.Exists(usmapPath))
                 throw new FileNotFoundException("usmap not found: " + usmapPath);
 
-            // Build the binary search patterns up-front. Each vanilla key
-            // becomes the FString-on-disk byte sequence the scanner will
-            // look for; each new key becomes the byte sequence we'll
-            // splice in (padded to identical length).
-            var rewrites = new List<KeyRewrite>(replacements.Count);
-            foreach (var kv in replacements)
+            // Build the per-key plan once - vanillaKey -> (search pattern,
+            // pre-encoded replacement body bytes).
+            var rewrites = new List<RewritePlan>(displayTextByVanillaKey.Count);
+            foreach (var kv in displayTextByVanillaKey)
             {
                 if (string.IsNullOrEmpty(kv.Key)) continue;
-                if (kv.Value == null)
-                    throw new ArgumentException("replacement value for '" + kv.Key + "' is null");
-                rewrites.Add(KeyRewrite.Create(kv.Key, kv.Value));
+                rewrites.Add(RewritePlan.Create(kv.Key, kv.Value ?? string.Empty));
             }
             if (rewrites.Count == 0)
                 return new FTextKeyRewriteResult { PerKeyHits = new Dictionary<string, int>() };
 
             var mappings = new Usmap(usmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
-
-            // Resolve TableId rewrite. We add the new TableId to the
-            // NameMap up-front (UAssetAPI keeps existing indices stable so
-            // any byte-pattern scans for old indices remain valid) and look
-            // up the old TableId's index. If either lookup misses, we run
-            // the Key rewrite without the TableId touch and surface the
-            // skip in the result.
-            bool wantTableIdRewrite = !string.IsNullOrEmpty(oldTableId) && !string.IsNullOrEmpty(newTableId);
-            int oldTableIdIndex = -1;
-            int newTableIdIndex = -1;
-            int tableIdRewriteHits = 0;
-            string tableIdRewriteSkippedReason = null;
-            byte[] oldTableIdLE = null;
-            byte[] newTableIdLE = null;
-            if (wantTableIdRewrite)
-            {
-                var oldFName = asset.SearchNameReference(new FString(oldTableId));
-                if (oldFName < 0)
-                {
-                    tableIdRewriteSkippedReason =
-                        "old TableId '" + oldTableId + "' not in asset NameMap";
-                }
-                else
-                {
-                    oldTableIdIndex = oldFName;
-                    newTableIdIndex = asset.AddNameReference(new FString(newTableId));
-                    oldTableIdLE = Int32LE(oldTableIdIndex);
-                    newTableIdLE = Int32LE(newTableIdIndex);
-                }
-            }
 
             var perKeyHits = new Dictionary<string, int>(rewrites.Count, StringComparer.Ordinal);
             foreach (var r in rewrites) perKeyHits[r.VanillaKey] = 0;
@@ -154,44 +136,34 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 if (raw.Data == null || raw.Data.Length == 0) continue;
 
                 bool touched = false;
+                // After every successful splice the byte array changes
+                // length, so we walk via a method that returns the new
+                // buffer + per-key hit count.
                 foreach (var r in rewrites)
                 {
-                    int hits = RewriteAllOccurrences(raw.Data, r, oldTableIdLE, newTableIdLE, out int tableIdHits);
+                    var (newData, hits) = RewriteOccurrences(raw.Data, r);
                     if (hits > 0)
                     {
+                        raw.Data = newData;
                         perKeyHits[r.VanillaKey] = perKeyHits[r.VanillaKey] + hits;
                         touched = true;
-                        LogLine("  FText[" + i + "] '" + r.VanillaKey + "' -> '" + r.NewKey + "' (" + hits + " occurrence" + (hits == 1 ? "" : "s") + ")");
-                    }
-                    if (tableIdHits > 0)
-                    {
-                        tableIdRewriteHits += tableIdHits;
-                        touched = true;
+                        LogLine("  FText[" + i + "] '" + r.VanillaKey
+                                + "' -> FText.Base SourceString='" + Truncate(r.DisplayText, 60)
+                                + "' (" + hits + " occurrence"
+                                + (hits == 1 ? "" : "s") + ")");
                     }
                 }
                 if (touched) rawExportsTouched++;
             }
 
-            if (wantTableIdRewrite && oldTableIdIndex >= 0)
-            {
-                LogLine("  FText TableId '" + oldTableId + "' -> '" + newTableId
-                        + "' (NameMap idx " + oldTableIdIndex + " -> " + newTableIdIndex
-                        + ", " + tableIdRewriteHits + " FName occurrence(s) patched)");
-            }
-            else if (wantTableIdRewrite)
-            {
-                LogLine("  warn: FText TableId rewrite skipped (" + tableIdRewriteSkippedReason
-                        + "); cloned DA stays bound to the vanilla TableId.");
-            }
-
             if (rawExportsTouched > 0)
             {
-                LogLine("  Writing FText-key-patched asset: " + assetPath);
+                LogLine("  Writing FText-base-patched asset: " + assetPath);
                 asset.Write(assetPath);
             }
             else
             {
-                LogLine("  (no FText keys touched - asset bytes unchanged)");
+                LogLine("  (no FText keys matched - asset bytes unchanged)");
             }
 
             var missed = new List<string>();
@@ -205,10 +177,332 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 PerKeyHits = perKeyHits,
                 Missed = missed,
                 RawExportsTouched = rawExportsTouched,
-                TableIdRewriteAttempted = wantTableIdRewrite,
-                TableIdRewriteHits = tableIdRewriteHits,
-                TableIdRewriteSkippedReason = tableIdRewriteSkippedReason,
             };
+        }
+
+        // Scans `data` for every FText whose Key matches the planned
+        // vanilla key, and splices each match to inline the user-supplied
+        // display text. Returns the (possibly resized) buffer + hit count.
+        //
+        // Supports two FText shapes:
+        //   - StringTableEntry (HistoryType=11): splice [HistoryType ..
+        //     end-of-Key] with a fresh FText.Base body.
+        //   - Base (HistoryType=0, empty namespace): splice only the
+        //     SourceString FString that follows the Key. Flags, HistoryType,
+        //     Namespace and Key stay verbatim.
+        //
+        // The match anchor is the Key's FString-on-disk encoding (length
+        // prefix + UTF-8 bytes + null term). Disambiguation between the
+        // two shapes happens by walking back from the Key length prefix
+        // and checking the HistoryType byte at the expected offset (see
+        // class doc comment for the layout sketches).
+        static (byte[] newData, int hits) RewriteOccurrences(byte[] data, RewritePlan plan)
+        {
+            int hits = 0;
+            int prefixLen = 4;                              // FString length prefix bytes
+            int keyTotalLen = prefixLen + plan.KeyOnDiskLength;  // length prefix + body + null
+
+            // Each splice resizes the buffer. To keep the scan simple, we
+            // build the output incrementally into a list-of-segments and
+            // glue it at the end (one allocation, no shift cost per match).
+            var segments = new List<byte[]>();
+            int cursor = 0;
+
+            int i = 0;
+            while (i <= data.Length - keyTotalLen)
+            {
+                // Match length prefix (signed little-endian int32, positive).
+                if (data[i]     != plan.KeyLenLE[0]
+                 || data[i + 1] != plan.KeyLenLE[1]
+                 || data[i + 2] != plan.KeyLenLE[2]
+                 || data[i + 3] != plan.KeyLenLE[3])
+                {
+                    i++;
+                    continue;
+                }
+
+                // Match key body (UTF-8 + null terminator).
+                bool match = true;
+                for (int j = 0; j < plan.KeyBytes.Length; j++)
+                {
+                    if (data[i + prefixLen + j] != plan.KeyBytes[j]) { match = false; break; }
+                }
+                if (!match) { i++; continue; }
+                if (data[i + prefixLen + plan.KeyBytes.Length] != 0) { i++; continue; }
+
+                // Try StringTableEntry layout first. The 9 bytes preceding
+                // the Key form [HistoryType=11(1) TableId(8)]. The Flags
+                // int32 sits at [i-13..i-9] but is preserved verbatim, so
+                // we only need to validate the HistoryType byte at i-9.
+                if (i >= 9 && data[i - 9] == 11)
+                {
+                    int matchStart = i - 9;                  // HistoryType byte
+                    int matchEnd   = i + keyTotalLen;        // exclusive: past Key's null term
+
+                    int preLen = matchStart - cursor;
+                    if (preLen > 0)
+                    {
+                        var pre = new byte[preLen];
+                        Buffer.BlockCopy(data, cursor, pre, 0, preLen);
+                        segments.Add(pre);
+                    }
+                    segments.Add(plan.ReplacementBody);
+
+                    hits++;
+                    cursor = matchEnd;
+                    i = matchEnd;
+                    continue;
+                }
+
+                // Try FText.Base layout (empty namespace). Two encodings of
+                // an empty namespace are possible (length=0 with no body, or
+                // length=1 with a single null byte) - probe both. If found,
+                // splice only the SourceString FString that follows the Key.
+                int baseHistOffset = TryDetectBaseEmptyNamespace(data, i);
+                if (baseHistOffset >= 0)
+                {
+                    // SourceString FString starts immediately after the Key.
+                    int sourceStringOffset = i + keyTotalLen;
+                    int sourceStringTotal = FStringOnDiskBytes(data, sourceStringOffset);
+                    if (sourceStringTotal < 0)
+                    {
+                        // SourceString is truncated or malformed - skip the
+                        // splice rather than corrupt the asset.
+                        i++;
+                        continue;
+                    }
+
+                    int matchStart = sourceStringOffset;
+                    int matchEnd   = sourceStringOffset + sourceStringTotal;
+
+                    // Preserved-prefix segment: everything up to (but not
+                    // including) the existing SourceString. Includes the
+                    // Flags / HistoryType / Namespace / Key bytes verbatim.
+                    int preLen = matchStart - cursor;
+                    if (preLen > 0)
+                    {
+                        var pre = new byte[preLen];
+                        Buffer.BlockCopy(data, cursor, pre, 0, preLen);
+                        segments.Add(pre);
+                    }
+                    segments.Add(plan.SourceStringFString);
+
+                    hits++;
+                    cursor = matchEnd;
+                    i = matchEnd;
+                    continue;
+                }
+
+                // Not a recognised FText layout - could be the same byte
+                // sequence appearing elsewhere (NameMap entry, raw string
+                // literal, etc.). Don't splice.
+                i++;
+            }
+
+            if (hits == 0) return (data, 0);
+
+            // Tail segment: everything after the last match.
+            if (cursor < data.Length)
+            {
+                var tail = new byte[data.Length - cursor];
+                Buffer.BlockCopy(data, cursor, tail, 0, tail.Length);
+                segments.Add(tail);
+            }
+
+            // Concat into a single buffer.
+            int total = 0;
+            for (int s = 0; s < segments.Count; s++) total += segments[s].Length;
+            var output = new byte[total];
+            int p = 0;
+            for (int s = 0; s < segments.Count; s++)
+            {
+                Buffer.BlockCopy(segments[s], 0, output, p, segments[s].Length);
+                p += segments[s].Length;
+            }
+            return (output, hits);
+        }
+
+        // Probes for FText.Base with an empty namespace immediately before
+        // the Key length prefix at offset `keyOffset`. Returns the byte
+        // offset of the HistoryType byte (= 0) on match, or -1 if neither
+        // encoding fits. Empty namespace has two on-disk forms:
+        //   (a) length=0, no body bytes      -> namespace block is 4 bytes
+        //   (b) length=1, single null byte   -> namespace block is 5 bytes
+        // The HistoryType byte sits one byte before the namespace block.
+        static int TryDetectBaseEmptyNamespace(byte[] data, int keyOffset)
+        {
+            // Case (a): HistoryType at keyOffset-5, namespace length=0.
+            if (keyOffset >= 5
+                && data[keyOffset - 5] == 0
+                && data[keyOffset - 4] == 0
+                && data[keyOffset - 3] == 0
+                && data[keyOffset - 2] == 0
+                && data[keyOffset - 1] == 0)
+            {
+                return keyOffset - 5;
+            }
+
+            // Case (b): HistoryType at keyOffset-6, namespace length=1,
+            // namespace body null byte at keyOffset-1.
+            if (keyOffset >= 6
+                && data[keyOffset - 6] == 0
+                && data[keyOffset - 5] == 1
+                && data[keyOffset - 4] == 0
+                && data[keyOffset - 3] == 0
+                && data[keyOffset - 2] == 0
+                && data[keyOffset - 1] == 0)
+            {
+                return keyOffset - 6;
+            }
+
+            return -1;
+        }
+
+        // Reads an FString's total on-disk byte count (length prefix +
+        // body) starting at `offset`. Returns -1 if the buffer is too
+        // short to contain a complete FString.
+        //
+        // FString length-prefix encoding (FArchive::operator<<):
+        //   length == 0      : empty string, 4 prefix bytes only
+        //   length  > 0      : ANSI, 4 prefix + length body bytes (incl. null)
+        //   length  < 0      : UTF-16, 4 prefix + |length| * 2 body bytes
+        static int FStringOnDiskBytes(byte[] data, int offset)
+        {
+            if (offset + 4 > data.Length) return -1;
+            int len = data[offset]
+                    | (data[offset + 1] << 8)
+                    | (data[offset + 2] << 16)
+                    | (data[offset + 3] << 24);
+            if (len == 0) return 4;
+            int body = len > 0 ? len : -len * 2;
+            if (offset + 4 + body > data.Length) return -1;
+            return 4 + body;
+        }
+
+        static string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            return s.Length <= max ? s : s.Substring(0, max - 1) + "...";
+        }
+
+        void LogLine(string msg) { if (Log != null) Log(msg); }
+
+        // Per-vanilla-key plan: vanilla key byte pattern (for matching) +
+        // pre-encoded splice payloads. Two payloads are pre-built because
+        // the two FText shapes we handle need different splice content:
+        //
+        //   ReplacementBody (for StringTableEntry input):
+        //     [HistoryType: int8 = 0]                       1 byte
+        //     [Namespace FString = ""]                      4 bytes (length 0)
+        //     [Key FString = vanillaKey]                    4 + N + 1 bytes
+        //     [SourceString FString = displayText]          4 + M + {1,2} bytes
+        //
+        //   SourceStringFString (for Base input):
+        //     [SourceString FString = displayText]          4 + M + {1,2} bytes
+        //   (Just the FString on its own - the rest of the FText body is
+        //    preserved verbatim around this splice.)
+        readonly struct RewritePlan
+        {
+            public readonly string VanillaKey;
+            public readonly string DisplayText;
+            // UTF-8 bytes of the vanilla key WITHOUT null terminator.
+            public readonly byte[] KeyBytes;
+            // OnDiskLength = KeyBytes.Length + 1 (FString includes null
+            // in its positive-length prefix).
+            public readonly int    KeyOnDiskLength;
+            // Little-endian 4-byte encoding of KeyOnDiskLength.
+            public readonly byte[] KeyLenLE;
+            // Full FText.Base body bytes ready to splice in (used when the
+            // input FText is StringTableEntry and we're converting shape).
+            public readonly byte[] ReplacementBody;
+            // Just the SourceString FString bytes (used when the input
+            // FText is already Base and we're only updating its source).
+            public readonly byte[] SourceStringFString;
+
+            RewritePlan(string vanillaKey, string displayText,
+                        byte[] keyBytes, int keyLen, byte[] keyLenLE,
+                        byte[] replacementBody, byte[] sourceStringFString)
+            {
+                VanillaKey          = vanillaKey;
+                DisplayText         = displayText;
+                KeyBytes            = keyBytes;
+                KeyOnDiskLength     = keyLen;
+                KeyLenLE            = keyLenLE;
+                ReplacementBody     = replacementBody;
+                SourceStringFString = sourceStringFString;
+            }
+
+            public static RewritePlan Create(string vanillaKey, string displayText)
+            {
+                if (string.IsNullOrEmpty(vanillaKey))
+                    throw new ArgumentException("vanillaKey must not be empty");
+                if (displayText == null) displayText = string.Empty;
+
+                var keyBytes = Encoding.UTF8.GetBytes(vanillaKey);
+                int keyOnDisk = keyBytes.Length + 1;        // includes null term
+                var keyLenLE  = Int32LE(keyOnDisk);
+
+                // Pre-encode the SourceString FString once - shared by both
+                // splice payloads.
+                using var srcMs = new MemoryStream();
+                WriteFString(srcMs, displayText);
+                var sourceStringFString = srcMs.ToArray();
+
+                // Pre-encode the full FText.Base body for the StringTable-
+                // Entry -> Base conversion path.
+                using var ms = new MemoryStream();
+                ms.WriteByte(0);                            // HistoryType = Base
+                WriteFString(ms, string.Empty);             // Namespace = ""
+                WriteFString(ms, vanillaKey);               // Key = preserved
+                ms.Write(sourceStringFString, 0, sourceStringFString.Length);
+                var body = ms.ToArray();
+
+                return new RewritePlan(vanillaKey, displayText,
+                                       keyBytes, keyOnDisk, keyLenLE,
+                                       body, sourceStringFString);
+            }
+        }
+
+        // FString on-disk encoding per UE's FArchive::operator<<:
+        //   - Empty string  : write int32 length = 0, no bytes.
+        //   - ANSI-safe     : write int32 length = chars+1 (positive,
+        //                     includes null term), then ASCII bytes, then
+        //                     1 null byte.
+        //   - Contains non-ANSI: write int32 length = -(chars+1) (negative,
+        //                     UCS-2 sized), then UTF-16-LE bytes, then 2
+        //                     null bytes.
+        static void WriteFString(MemoryStream ms, string s)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                ms.Write(Int32LE(0), 0, 4);
+                return;
+            }
+
+            bool isAnsi = true;
+            for (int c = 0; c < s.Length; c++)
+            {
+                if (s[c] > 127) { isAnsi = false; break; }
+            }
+
+            if (isAnsi)
+            {
+                var bytes = Encoding.UTF8.GetBytes(s);      // ANSI subset of UTF-8
+                ms.Write(Int32LE(bytes.Length + 1), 0, 4);
+                ms.Write(bytes, 0, bytes.Length);
+                ms.WriteByte(0);
+            }
+            else
+            {
+                // Negative length = UCS-2/UTF-16 character count including
+                // the null terminator. UE serializes UTF-16-LE on disk.
+                var utf16 = Encoding.Unicode.GetBytes(s);   // little-endian
+                int charCount = s.Length + 1;               // +1 for null term
+                ms.Write(Int32LE(-charCount), 0, 4);
+                ms.Write(utf16, 0, utf16.Length);
+                ms.WriteByte(0);                            // null term low byte
+                ms.WriteByte(0);                            // null term high byte
+            }
         }
 
         static byte[] Int32LE(int v)
@@ -220,286 +514,19 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             b[3] = (byte)((v >> 24) & 0xFF);
             return b;
         }
-
-        // Walk one byte array and replace every FString-encoded
-        // instance of vanillaBytes with newBytes. Returns hit count.
-        // Same-length splice keeps the byte array size identical; the
-        // 4-byte length prefix gets re-written too (a no-op since old
-        // and new have the same length, but explicit so future variable-
-        // length code paths can hang off the same scaffolding).
-        //
-        // When oldTableIdLE / newTableIdLE are non-null AND the 8 bytes
-        // immediately preceding the matched Key encode an FName whose
-        // NameIndex equals oldTableIdLE (Number, the trailing 4 bytes,
-        // is left untouched), the NameIndex is spliced to newTableIdLE.
-        // This is the same-length splice for the FText.TableId, paired
-        // with the Key rewrite so a single pass updates the entire FText
-        // StringTableEntry record. tableIdHits is the count of FName
-        // splices actually committed (0 when the FName preceding the Key
-        // didn't match the expected old index - logged at call site).
-        //
-        // FText StringTableEntry wire layout (UE 5.6 binary serializer):
-        //   [Flags: int32]
-        //   [HistoryType: int8 = 11]
-        //   [FName TableId: int32 NameIndex + int32 Number]   <- 8 bytes
-        //   [FString Key: int32 length + UTF-8 bytes + 1 null]
-        // We anchor on the Key's length prefix, then look back 8 bytes
-        // for the FName NameIndex. The HistoryType byte at offset -9 is
-        // not validated explicitly - the NameIndex match is sufficient
-        // because the NameMap only contains "BuildingItems"/"InventoryItems"
-        // for FText TableId use in these DAs (any other use would put
-        // the FName at a different byte offset relative to the Key).
-        static int RewriteAllOccurrences(byte[] data, KeyRewrite r,
-                                         byte[] oldTableIdLE, byte[] newTableIdLE,
-                                         out int tableIdHits)
-        {
-            int hits = 0;
-            tableIdHits = 0;
-            int prefixLen = 4;                       // FString length prefix bytes
-            int totalLen  = prefixLen + r.OnDiskLength;
-
-            for (int i = 0; i <= data.Length - totalLen; i++)
-            {
-                // Match length prefix (signed little-endian int32).
-                if (data[i]     != r.LenLE[0]) continue;
-                if (data[i + 1] != r.LenLE[1]) continue;
-                if (data[i + 2] != r.LenLE[2]) continue;
-                if (data[i + 3] != r.LenLE[3]) continue;
-
-                // Match string body (UTF-8 + null terminator).
-                bool match = true;
-                for (int j = 0; j < r.VanillaBytes.Length; j++)
-                {
-                    if (data[i + prefixLen + j] != r.VanillaBytes[j]) { match = false; break; }
-                }
-                if (!match) continue;
-                if (data[i + prefixLen + r.VanillaBytes.Length] != 0) continue;
-
-                // TableId rewrite: look 8 bytes back for the FName whose
-                // NameIndex (first 4 bytes LE) matches the old TableId
-                // index. Only splice if it does. The Number (last 4
-                // bytes of the FName) stays untouched.
-                if (oldTableIdLE != null && newTableIdLE != null && i >= 8)
-                {
-                    int fnameIdx = i - 8;
-                    if (data[fnameIdx]     == oldTableIdLE[0]
-                     && data[fnameIdx + 1] == oldTableIdLE[1]
-                     && data[fnameIdx + 2] == oldTableIdLE[2]
-                     && data[fnameIdx + 3] == oldTableIdLE[3])
-                    {
-                        data[fnameIdx]     = newTableIdLE[0];
-                        data[fnameIdx + 1] = newTableIdLE[1];
-                        data[fnameIdx + 2] = newTableIdLE[2];
-                        data[fnameIdx + 3] = newTableIdLE[3];
-                        tableIdHits++;
-                    }
-                }
-
-                // Splice in new key. Same length means no shift.
-                Buffer.BlockCopy(r.NewBytes, 0, data, i + prefixLen, r.NewBytes.Length);
-                // Null terminator stays in place at i + prefixLen + length - 1
-                // (we never wrote past it - new key is same length).
-                hits++;
-
-                // Skip past the patched bytes to avoid re-matching inside
-                // (defensive; doesn't happen because new key differs from
-                // vanilla, but cheap to be explicit).
-                i += totalLen - 1;
-            }
-            return hits;
-        }
-
-        void LogLine(string msg) { if (Log != null) Log(msg); }
-
-        // Pre-computed byte-level patterns for one (vanilla -> new) pair.
-        // Caching the byte arrays + length prefix lets the inner scanner
-        // do a flat memcmp-style match without per-byte UTF-8 encoding.
-        readonly struct KeyRewrite
-        {
-            public readonly string VanillaKey;
-            public readonly string NewKey;
-            // UTF-8 bytes of the vanilla key WITHOUT null terminator
-            // (we match the null separately so we can fail-fast on the
-            // length prefix first).
-            public readonly byte[] VanillaBytes;
-            // UTF-8 bytes of the new key, padded with '_' to match
-            // VanillaBytes.Length exactly. WITHOUT null terminator
-            // (we don't overwrite the existing null terminator byte).
-            public readonly byte[] NewBytes;
-            // OnDiskLength = VanillaBytes.Length + 1 (the null
-            // terminator counts in the FString length prefix per UE
-            // serialization rules for positive-length encoding).
-            public readonly int OnDiskLength;
-            // Little-endian 4-byte encoding of OnDiskLength.
-            public readonly byte[] LenLE;
-
-            KeyRewrite(string vanillaKey, string newKey,
-                       byte[] vBytes, byte[] nBytes, int onDiskLen, byte[] lenLE)
-            {
-                VanillaKey = vanillaKey;
-                NewKey = newKey;
-                VanillaBytes = vBytes;
-                NewBytes = nBytes;
-                OnDiskLength = onDiskLen;
-                LenLE = lenLE;
-            }
-
-            public static KeyRewrite Create(string vanillaKey, string newKey)
-            {
-                if (string.IsNullOrEmpty(vanillaKey))
-                    throw new ArgumentException("vanillaKey must not be empty");
-                if (newKey == null)
-                    throw new ArgumentException("newKey must not be null");
-
-                var vBytes = Encoding.UTF8.GetBytes(vanillaKey);
-                var nBytesRaw = Encoding.UTF8.GetBytes(newKey);
-                if (nBytesRaw.Length > vBytes.Length)
-                {
-                    throw new InvalidOperationException(
-                        "FText key rewrite: new key '" + newKey + "' (" + nBytesRaw.Length
-                        + " bytes) is longer than vanilla key '" + vanillaKey + "' ("
-                        + vBytes.Length + " bytes). Same-length-in-place rewrite is not "
-                        + "possible. Shorten the new key (e.g. fewer characters in the "
-                        + "BuildingId) or extend FTextKeyRewriter to support length-changing "
-                        + "splices (would require SerialSize / export-offset fixups).");
-                }
-                // Pad nBytes with '_' (0x5F) to match vBytes length.
-                var nBytes = new byte[vBytes.Length];
-                Buffer.BlockCopy(nBytesRaw, 0, nBytes, 0, nBytesRaw.Length);
-                for (int j = nBytesRaw.Length; j < nBytes.Length; j++) nBytes[j] = 0x5F; // '_'
-
-                int onDiskLen = vBytes.Length + 1; // includes null terminator
-                var lenLE = new byte[4];
-                lenLE[0] = (byte)(onDiskLen & 0xFF);
-                lenLE[1] = (byte)((onDiskLen >> 8) & 0xFF);
-                lenLE[2] = (byte)((onDiskLen >> 16) & 0xFF);
-                lenLE[3] = (byte)((onDiskLen >> 24) & 0xFF);
-
-                return new KeyRewrite(vanillaKey, newKey, vBytes, nBytes, onDiskLen, lenLE);
-            }
-        }
     }
 
     public sealed class FTextKeyRewriteResult
     {
-        // Per-vanilla-key occurrence counts (>= 0).
+        // Per-vanilla-key occurrence counts (>= 0). One match = one binary
+        // FText record rewritten from StringTableEntry to Base.
         public Dictionary<string, int> PerKeyHits;
-        // Subset of replacement keys with 0 hits - vanilla bytes weren't
-        // found. Empty list = all keys hit at least once.
+        // Subset of keys with 0 hits - vanilla bytes weren't found. Empty
+        // list = all keys hit at least once. Caller can surface as a
+        // warning (template / extracted DA mismatch).
         public List<string> Missed = new List<string>();
         // Number of RawExports that had at least one rewrite. Used to
         // decide whether to re-write the file (0 = skip the I/O).
         public int RawExportsTouched;
-
-        // True when Patch() was invoked with non-empty oldTableId/newTableId.
-        public bool TableIdRewriteAttempted;
-        // Count of FName splices actually committed across all RawExports
-        // (one per (Name|Description) Key found, since each FText with
-        // StringTableEntry HistoryType carries one TableId FName). Zero
-        // when the FName preceding the Key didn't match the expected old
-        // index - the asset stays bound to the vanilla TableId in that
-        // case and the caller should warn.
-        public int TableIdRewriteHits;
-        // Non-null when the rewrite was attempted but couldn't proceed
-        // (e.g. old TableId not in the asset's NameMap). Caller can
-        // surface this as a warning - the building still renders with
-        // whatever the cloned DA's TableId already pointed at, which means
-        // it'll fall back to vanilla in-game text.
-        public string TableIdRewriteSkippedReason;
-    }
-
-    // Shared utility for constructing the per-building FText keys that
-    // both BuildingPatcher (for the binary rewrite) and
-    // BuildingItemsCsvPatcher (for the CSV row synthesis) use. Single
-    // source of truth so the two sides cannot drift.
-    //
-    // Shape: "<BuildingId>" core (the GUI-generated id already carries
-    // the QmBldg_ prefix), then padding '_' to fill the vanilla key's
-    // byte count, then the suffix "_Name" / "_Description". Same-byte-
-    // length is required so the binary in-place rewrite in
-    // FTextKeyRewriter works without offset recomputation.
-    //
-    // The padding lives BETWEEN the core and the suffix so the key
-    // still has a recognisable shape ("<id>_______Name") for anyone
-    // debugging a raw CSV row or asset hex dump.
-    //
-    // Adaptive shortening: some vanilla building DAs use very short
-    // FText keys (e.g. Building_POI_Floor at 18 chars) that cannot hold
-    // the full QmBldg_<8hex>_<suffix> form (20 chars for "_Name"). When
-    // that happens, Build() strips the "QmBldg_" prefix and tries again
-    // with just the 8-hex part. Both BuildingPatcher and CSV synthesis
-    // call through this same helper, so the shortened form is mirrored
-    // on both sides without drift. TryBuild() returns null when even the
-    // short form does not fit - callers can degrade gracefully (warn,
-    // skip the rewrite, keep the vanilla text).
-    public static class BuildingFTextKey
-    {
-        // Prefix the GUI generates for every BuildingId. When the full
-        // form doesn't fit the vanilla key budget, we strip this prefix
-        // and try again with just the 8-hex suffix.
-        const string BuildingIdPrefix = "QmBldg_";
-
-        // Produces a per-building key of EXACTLY vanillaKey.Length bytes.
-        // Throws if neither the full BuildingId nor the prefix-stripped
-        // 8-hex form fits the vanilla key budget. Use TryBuild() if you
-        // want a non-throwing variant.
-        public static string Build(string vanillaKey, string buildingId, string suffix)
-        {
-            var key = TryBuild(vanillaKey, buildingId, suffix);
-            if (key == null)
-            {
-                int needed = buildingId.Length + suffix.Length;
-                int needShort = buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal)
-                    ? buildingId.Length - BuildingIdPrefix.Length + suffix.Length
-                    : needed;
-                throw new InvalidOperationException(
-                    "Building '" + buildingId + "' cannot fit a same-length FText key: "
-                    + "vanilla key '" + vanillaKey + "' (" + vanillaKey.Length
-                    + " chars) is shorter than even the prefix-stripped form '"
-                    + (buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal)
-                        ? buildingId.Substring(BuildingIdPrefix.Length)
-                        : buildingId)
-                    + suffix + "' (" + needShort + " chars). "
-                    + "This template has unusually short FText keys; the building "
-                    + "will need to keep the vanilla display text.");
-            }
-            return key;
-        }
-
-        // Non-throwing variant. Returns:
-        //   - "<buildingId><padding><suffix>" if the full form fits, OR
-        //   - "<8hex><padding><suffix>" if only the prefix-stripped form
-        //     fits (when buildingId starts with QmBldg_), OR
-        //   - null if neither fits (caller should skip the rewrite and
-        //     surface a warning).
-        public static string TryBuild(string vanillaKey, string buildingId, string suffix)
-        {
-            if (string.IsNullOrEmpty(vanillaKey))
-                throw new ArgumentException("vanillaKey is required");
-            if (string.IsNullOrEmpty(buildingId))
-                throw new ArgumentException("buildingId is required");
-            if (string.IsNullOrEmpty(suffix))
-                throw new ArgumentException("suffix is required");
-
-            // Attempt 1: full BuildingId (e.g. "QmBldg_5b32d7f7_Name" = 20 chars).
-            int padLen = vanillaKey.Length - buildingId.Length - suffix.Length;
-            if (padLen >= 0)
-                return buildingId + new string('_', padLen) + suffix;
-
-            // Attempt 2: drop the "QmBldg_" prefix and use just the 8-hex
-            // tail (e.g. "5b32d7f7_Name" = 13 chars). Still unique per
-            // building (the hex is GUI-generated and never collides
-            // within one profile), and the cloned DA file is itself per-
-            // building so cross-DA collisions don't matter.
-            if (buildingId.StartsWith(BuildingIdPrefix, StringComparison.Ordinal))
-            {
-                var shortId = buildingId.Substring(BuildingIdPrefix.Length);
-                int shortPadLen = vanillaKey.Length - shortId.Length - suffix.Length;
-                if (shortPadLen >= 0)
-                    return shortId + new string('_', shortPadLen) + suffix;
-            }
-
-            return null;
-        }
     }
 }

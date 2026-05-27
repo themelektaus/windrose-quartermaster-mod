@@ -34,7 +34,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             string vanillaRecipeJsonPath,
             string outputDir,
             string buildingId,
-            IList<(string ItemPath, int Count)> userRecipeCost)
+            IList<(string ItemPath, int Count)> userRecipeCost,
+            string displayName = null,
+            string description = null)
         {
             if (string.IsNullOrEmpty(vanillaRecipeJsonPath))
                 throw new ArgumentNullException("vanillaRecipeJsonPath");
@@ -125,9 +127,24 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                             writer.WriteEndObject();
                             break;
 
+                        case "UIData":
+                            // Override Name (and Description-shaped fields,
+                            // if the template uses one) with plain-string
+                            // FText carrying the user-supplied display text.
+                            // The vanilla UIData.Name is an FText.String-
+                            // TableEntry into "InventoryItems" using the
+                            // template's vanilla key - if we kept it
+                            // verbatim the build menu would show the
+                            // template's name (e.g. "Cups and Plates") for
+                            // every clone, regardless of what the user
+                            // typed. Plain string = FText.Base inline.
+                            writer.WritePropertyName("UIData");
+                            WriteUiDataWithUserText(writer, prop.Value, displayName, description);
+                            break;
+
                         default:
                             // Verbatim clone of every other top-level
-                            // field (CraftRequirement, UIData, etc).
+                            // field (CraftRequirement, etc).
                             prop.WriteTo(writer);
                             break;
                     }
@@ -197,6 +214,47 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (!tagEl.TryGetProperty("TagName", out var name)) return "";
             if (name.ValueKind != JsonValueKind.String) return "";
             return name.GetString() ?? "";
+        }
+
+        // Rewrites the UIData block, swapping any FText.StringTableEntry
+        // shape (= JSON object with TableId+Key) on the Name / Description
+        // fields with a plain string literal carrying user-supplied text.
+        // Plain strings are deserialized by UE as FText.Base (Namespace=""
+        // SourceString=value) - same shape vanilla items like DA_DID_Misc_
+        // EliaShell_T04 use for their ItemName. Other UIData fields
+        // (Image, RecipeType, LootTableUIData, ...) pass through verbatim.
+        //
+        // Empty user input keeps the vanilla field untouched (= template's
+        // name shows in the menu). This matches the per-field "leave blank
+        // = inherit from template" semantics the Item Creator follows.
+        static void WriteUiDataWithUserText(Utf8JsonWriter writer, JsonElement uiData,
+                                            string displayName, string description)
+        {
+            if (uiData.ValueKind != JsonValueKind.Object)
+            {
+                // Defensive: malformed UIData passes through unchanged.
+                uiData.WriteTo(writer);
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var p in uiData.EnumerateObject())
+            {
+                if (p.NameEquals("Name") && !string.IsNullOrEmpty(displayName))
+                {
+                    writer.WriteString("Name", displayName);
+                }
+                else if ((p.NameEquals("Description") || p.NameEquals("RecipeDescription"))
+                         && !string.IsNullOrEmpty(description))
+                {
+                    writer.WriteString(p.Name, description);
+                }
+                else
+                {
+                    p.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
         }
 
         void LogLine(string msg) { if (Log != null) Log(msg); }

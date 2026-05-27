@@ -175,16 +175,25 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         }
 
         // -----------------------------------------------------------------
-        // Step 7: same-byte-length in-place rewrite of inline FText
-        // StringTableEntry keys in the cloned DA's export body. Mirrors
-        // the ItemCreator's CSV synthesis pattern, except the per-item key
-        // for buildings lives in raw bytes (not in a JSON field) so we
-        // need FTextKeyRewriter instead of a JsonObject edit.
+        // Step 7: rewrite the cloned DA's inline FText records from
+        // HistoryType=StringTableEntry to HistoryType=Base, inlining the
+        // user-supplied display text as the Base SourceString. Sidesteps
+        // the per-profile-CSV problem (Windrose's CSV loader only mounts
+        // the two vanilla CSVs by hardcoded name - any extra CSV in the
+        // pak would never become a StringTable, so every lookup against
+        // it resolves to <MISSING_STRING>). Plain-string-FText ships the
+        // text in the DA itself, no string-table indirection.
+        //
+        // profileId is unused now but kept on the signature for caller
+        // compatibility (could be useful later for namespacing the
+        // Key field on the rewritten FText.Base record for diagnostics).
         // -----------------------------------------------------------------
         void RewriteInlineFTextKeys(BuildingTemplate template, BuildingInputs inputs,
                                     string stagingItemsDir, BuildingPatchResult result,
                                     string profileId)
         {
+            _ = profileId; // currently unused, see method comment
+
             if (string.IsNullOrWhiteSpace(template.VanillaNameKey)
                 && string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
             {
@@ -202,112 +211,44 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 return;
             }
 
-            var replacements = new Dictionary<string, string>(StringComparer.Ordinal);
-            string newNameKey = null;
-            string newDescKey = null;
+            // Build the vanilla-key -> user-display-text map. Empty values
+            // are intentional - an empty Description shows as an empty
+            // tooltip line (not <MISSING_STRING>) because the FText.Base
+            // record has an explicit SourceString="".
+            var displayMap = new Dictionary<string, string>(StringComparer.Ordinal);
             if (!string.IsNullOrWhiteSpace(template.VanillaNameKey))
             {
-                // TryBuild: returns null when even the prefix-stripped 8-hex
-                // form doesn't fit the vanilla key budget. Degrade gracefully:
-                // skip the rewrite + warn, building keeps vanilla display text.
-                newNameKey = BuildingFTextKey.TryBuild(template.VanillaNameKey, inputs.BuildingId, "_Name");
-                if (newNameKey != null)
-                {
-                    replacements[template.VanillaNameKey] = newNameKey;
-                }
-                else
-                {
-                    result.Warnings.Add(
-                        "FText Name key: vanilla key '" + template.VanillaNameKey + "' ("
-                        + template.VanillaNameKey.Length + " chars) is too short to hold "
-                        + "the building id + '_Name' suffix. Skipping rewrite - this "
-                        + "building will show the vanilla display text in-game.");
-                }
+                displayMap[template.VanillaNameKey] = inputs.DisplayName ?? string.Empty;
             }
             if (!string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
             {
-                newDescKey = BuildingFTextKey.TryBuild(template.VanillaDescriptionKey, inputs.BuildingId, "_Description");
-                if (newDescKey != null)
-                {
-                    replacements[template.VanillaDescriptionKey] = newDescKey;
-                }
-                else
-                {
-                    result.Warnings.Add(
-                        "FText Description key: vanilla key '" + template.VanillaDescriptionKey + "' ("
-                        + template.VanillaDescriptionKey.Length + " chars) is too short to hold "
-                        + "the building id + '_Description' suffix. Skipping rewrite - this "
-                        + "building will show the vanilla description in-game.");
-                }
+                displayMap[template.VanillaDescriptionKey] = inputs.Description ?? string.Empty;
             }
 
-            if (replacements.Count == 0)
+            if (displayMap.Count == 0)
             {
-                LogLine("  (no FText keys fit the same-length budget - skipping rewrite)");
+                LogLine("  (no FText keys to rewrite)");
                 return;
             }
 
-            // TableId rewrite: when a profileId is in scope, also redirect
-            // the FText.TableId FName from the vanilla "BuildingItems"
-            // string-table to a per-profile one ("BuildingItems_<shortId>").
-            // The CSV file pairing this TableId is written by
-            // BuildingItemsCsvPatcher under a matching pak-internal path so
-            // two profiles never collide on the shared CSV.
-            string oldTableId = null;
-            string newTableId = null;
-            if (!string.IsNullOrEmpty(profileId))
-            {
-                oldTableId = WindrosePaths.VanillaBuildingItemsTableId;
-                newTableId = WindrosePaths.BuildingItemsTableIdFor(profileId);
-            }
-
             var rewriter = new FTextKeyRewriter { Log = LogLine };
-            var pr = rewriter.Patch(outDaFile, UsmapPath, replacements, oldTableId, newTableId);
+            var pr = rewriter.Patch(outDaFile, UsmapPath, displayMap);
 
             // Surface dead-letter keys (vanilla bytes not present in body)
-            // as warnings. Worth knowing about: it means the template's
-            // declared key doesn't actually appear in the extracted DA,
-            // so the in-game text will keep using whatever the cloned
-            // DA had (and the BuildingItems.csv row we synthesise will
-            // be orphaned).
+            // as warnings. Means the template declared an FText key the
+            // extracted DA doesn't actually carry - in-game text stays
+            // vanilla (= cloned-template's stale string-table lookup, may
+            // render as <MISSING_STRING> if vanilla also lacks the row).
             if (pr.Missed != null && pr.Missed.Count > 0)
             {
                 foreach (var m in pr.Missed)
                 {
                     result.Warnings.Add(
                         "FText key '" + m + "' not found in DA body (template "
-                        + template.Id + "). In-game text may keep the vanilla "
-                        + "value; check that the template declaration matches "
-                        + "what the vanilla DA actually carries.");
+                        + template.Id + "). In-game text falls back to whatever "
+                        + "the cloned DA already carried; check that the template "
+                        + "declaration matches what the vanilla DA actually has.");
                 }
-            }
-
-            // Stash the keys + display text on the result so the orchestrator's
-            // CSV-synthesis step pairs them automatically.
-            if (newNameKey != null && pr.PerKeyHits != null
-                && pr.PerKeyHits.TryGetValue(template.VanillaNameKey, out var nameHits) && nameHits > 0)
-            {
-                result.OutputNameKey = newNameKey;
-            }
-            if (newDescKey != null && pr.PerKeyHits != null
-                && pr.PerKeyHits.TryGetValue(template.VanillaDescriptionKey, out var descHits) && descHits > 0)
-            {
-                result.OutputDescriptionKey = newDescKey;
-            }
-
-            // Surface a per-building TableId-rewrite warning if the binary
-            // patcher couldn't bind to the new per-profile string-table.
-            // Building still ships, but its in-game name/description fall
-            // back to whatever vanilla "BuildingItems" carries (= literal
-            // template text, or <MISSING_STRING> when another profile's
-            // pak overrides the same shared CSV).
-            if (pr.TableIdRewriteAttempted && pr.TableIdRewriteHits == 0
-                && !string.IsNullOrEmpty(pr.TableIdRewriteSkippedReason))
-            {
-                result.Warnings.Add(
-                    "FText TableId rewrite skipped: " + pr.TableIdRewriteSkippedReason
-                    + " - in-game display text falls back to vanilla string-table "
-                    + "(may show <MISSING_STRING> when another profile's pak wins the load order).");
             }
         }
 
@@ -1365,21 +1306,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // when writing qm_items_<profile>.json so the DLL knows what to inject.
         public string OutputDaStem;
         public string OutputDaPath;
-        // FText StringTableEntry keys the binary rewriter actually
-        // committed to the cloned DA's RawExport body. Null when the
-        // vanilla key wasn't found in the body (template + extracted
-        // DA mismatch) - the orchestrator skips the CSV-row synthesis
-        // for the unset slot so the engine keeps using whatever the
-        // cloned DA already carried for that field.
-        public string OutputNameKey;
-        public string OutputDescriptionKey;
 
-        // User-supplied display strings echoed back from BuildingInputs
-        // so the BuildingItems.csv synthesizer can pair them with the
-        // OutputNameKey / OutputDescriptionKey without a second profile
-        // lookup. Stored verbatim - empty / null is treated as
-        // "user didn't fill the field, emit an empty CSV row" (mirrors
-        // ItemCreator behaviour for the InventoryItems table).
+        // User-supplied display strings echoed back from BuildingInputs.
+        // Stored verbatim - empty / null means the field was not filled
+        // and the in-game FText.Base record was written with SourceString=""
+        // (= blank tooltip line, not <MISSING_STRING>).
         public string DisplayName;
         public string Description;
 
