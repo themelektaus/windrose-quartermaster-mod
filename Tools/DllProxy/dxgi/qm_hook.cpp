@@ -357,23 +357,32 @@ static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
 // via MinHook, which means the body runs ON THE GAME THREAD (ProcessEvent
 // dispatches in-thread) and CAN'T overlap with GC (GC also runs in the game
 // thread - the two are mutually exclusive by construction). Inside the
-// handler we run QmInject_PreWarmBuildingPackages() once per gameplay-map
-// activation (see latching below), then forward to the original.
+// handler we run QmInject_PreWarmBuildingPackages() periodically (see gating
+// below), then forward to the original.
 //
-// Map-filter gating (Stufe 1 fix). An earlier iteration of this code naively
-// latched on the FIRST hit of any kind - which always landed in the Lobby
-// (R5ClientEntranceHall, ~17s after DLL load) and consumed the latch long
-// before the player loaded their actual save 60+ seconds later. The fix is
-// a two-stage gate:
-//   1. ResolveContextMapPackage walks Context->Outer chain up to the UWorld's
+// Two-stage gating:
+//   1. TIME THROTTLE (first gate, cheap). The ExecFunction of any Blueprint
+//      implementable event is a SHARED bytecode dispatcher - hooking it
+//      intercepts every BP event in the whole game (~525 Hz). The throttle
+//      compares GetTickCount() against the last fire and rejects 99.998% of
+//      hits in ~30ns. PreWarm runs at most once every QM_PREWARM_MIN_INTERVAL_MS.
+//   2. GAMEPLAY-MAP GATE (second gate, after the throttle window expires).
+//      ResolveContextMapPackage walks Context->Outer up to the UWorld's
 //      package (e.g. "/Game/Maps/GenlandiaMulty"). If the package name is
 //      blacklisted (Lobby / Entrance / Transition / MainMenu / FrontEnd /
-//      TitleScreen), the hit is forwarded without touching the latch.
-//   2. On world-change (different UWorld* than last fire) the latch is
-//      cleared, so quit-to-menu + load-other-save runs pre-warm again for
-//      the new map.
-// Combined: per-Tick UFunctions become safe fallbacks; pre-warm fires once
-// per gameplay-map activation regardless of which UFunction we hooked.
+//      TitleScreen), the hit is forwarded without firing PreWarm; the
+//      throttle stays set so we naturally re-check after another window.
+//
+// History note: an earlier revision used a Context.Class filter
+// (R5GameMode-or-derived) as the first gate. That fixed the 525 Hz spam but
+// broke savegame pop-in: R5GameMode::BeginPlay fires exactly once per
+// persistent-level activation and World-Partition sublevel mounts bring in
+// actors whose Context.Class != R5GameMode. The class filter rejected every
+// sublevel-mount opportunity to re-prime the PackageStore cache, so placed
+// buildings stayed invisible until the player ran a build action. The
+// time-throttle approach naturally heartbeats every 5s as long as ANY BP
+// event keeps firing in a gameplay map, covering sublevel mounts and
+// save/load events with no class-specific tuning.
 //
 // The target. We don't know up-front which UFunction is the most reliable
 // fire-once-after-savegame-load anchor in this specific game build, so we
@@ -383,43 +392,47 @@ static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
 // them well-behaved).
 // ============================================================================
 static QmUE::FNativeFuncPtr g_origLifecycleFunc      = nullptr;
-// Expected base class name of Context. Set during InstallLifecyclePreWarmHook
-// from the kLifecycleTargets entry's className field. The hook's first action
-// is to verify Context->Class (or any SuperStruct in its chain) matches this
-// name; mismatches forward immediately without resolving Outer or running
-// pre-warm. This is the critical guard because the ExecFunction for
-// BlueprintImplementableEvents (ReceiveBeginPlay etc.) is a SHARED bytecode
-// dispatcher - hooking it would otherwise intercept every BP-event call in
-// the whole game (we saw 525 hits/sec spam in production logs without this
-// filter). With the filter the hook only does real work on actual GameMode
-// instances, dropping overhead from ~25-100 ms/sec to effectively zero.
-static char                 g_lifecycleHookExpectedClass[64] = {0};
-// Counters for forwarded-without-work hits, sampled into the diagnostic log
-// every QM_LIFECYCLE_FOREIGN_LOG_PERIOD invocations. Pure observability -
-// nothing depends on this value.
-static volatile LONG        g_lifecycleForeignHits   = 0;
-static const LONG           QM_LIFECYCLE_FOREIGN_LOG_PERIOD = 100000;
-// Count of pre-warm runs already executed for the current world. We allow up
-// to QM_PREWARM_MAX_PER_WORLD fires per world (not just 1) because:
-//   * The TSoftObjectPtr resolution that we want to "kick" can happen at
-//     several points after BeginPlay (actor spawn, sublevel mount, streaming
-//     proxy-resolve). A single LoadAsset_Blocking call in the BeginPlay hit
-//     is sometimes too early - the saved actor's resolve attempt happens a
-//     few ticks later and may have missed the cache window.
-//   * Empirically: ~8 fires per gameplay-map activation made placed buildings
-//     pop in correctly at savegame load; 1 fire per world did not.
-//   * LoadAsset_Blocking on an already-resident package is a PackageStore
-//     hashtable lookup - cheap. 8 cache hits/world is well under a millisecond
-//     of overhead.
-// Counter is reset to 0 on world change so each sublevel/main-map gets its
-// own quota.
-static const LONG QM_PREWARM_MAX_PER_WORLD = 8;
-static volatile LONG        g_lifecycleFiresInWorld  = 0;
-static const char*          g_lifecycleHookTargetDesc = nullptr;
+// Pre-warm gating via TIME THROTTLE rather than class filter.
+//
+// History: an earlier iteration used a Context.Class filter ("must be R5GameMode
+// or derived") as the first gate. That fixed the 525 Hz dispatcher spam but
+// broke the savegame pop-in: R5GameMode::BeginPlay fires exactly once per
+// persistent-level activation, and World-Partition sublevel mounts (e.g.
+// LS_Genlandia) bring in actors whose Context.Class != R5GameMode - so the
+// class filter rejected every sublevel-mount opportunity to re-prime the
+// PackageStore cache and placed buildings stayed invisible.
+//
+// Couldn't fix via a periodic worker thread either: LoadAsset_Blocking from
+// any non-game-thread crashes UE5 with `Illegal call to StaticFindObjectFast()
+// while garbage collecting!` on map-load GC (see qm_inject.cpp's long
+// disabled-pre-warm-thread comment block).
+//
+// The fix: time throttle as FIRST gate. The hook still fires ~525 Hz across
+// all BlueprintEvents (shared bytecode dispatcher) but the time check rejects
+// 99.998% of hits in ~30ns - no Outer walk, no allocation, no class resolve.
+// Real PreWarm work runs at most once every QM_PREWARM_MIN_INTERVAL_MS, from
+// the game thread (same GC-safety as before). Heartbeat naturally catches
+// sublevel mounts and save/load events because SOME BP event always fires
+// shortly after they happen, and the next throttle-window-expiry triggers
+// PreWarm.
+//
+// Threading: g_lastPreWarmTickMs is updated via InterlockedCompareExchange so
+// concurrent hits across worker threads (rare but possible during streaming)
+// don't double-fire within a single window.
+static const DWORD          QM_PREWARM_MIN_INTERVAL_MS = 5000;
+static volatile LONG        g_lastPreWarmTickMs       = 0;
+// Total hits where the throttle gate let us through (= called PreWarm or
+// at least tried to). Diagnostic only.
 static volatile LONG        g_lifecycleHookHits      = 0;
-// Tracks the World UObject of the most recent fire. When this changes we
-// reset the per-world fire counter so a quit-to-menu + load-other-save
-// (and World-Partition sublevel mounts) get their own quota.
+// Throttled-fast-path counter - rough indication that the hook is alive even
+// when no PreWarm is firing. Read-only diagnostic, no flow control depends
+// on it. Atomic increment cost: ~10ns @ 525 Hz = 5us/sec total - negligible.
+static volatile LONG        g_lifecycleThrottledHits = 0;
+static const char*          g_lifecycleHookTargetDesc = nullptr;
+// Tracks the World UObject of the most recent PreWarm fire. Diagnostic only;
+// logs a "world changed" line when a fire lands on a different world than the
+// previous one (e.g. sublevel mount on different UWorld pointer in World-
+// Partition titles).
 static QmUE::UObject* volatile g_lifecycleLastWorld  = nullptr;
 
 // ----- Map-name gate ---------------------------------------------------------
@@ -505,60 +518,19 @@ static bool ResolveContextMapPackage(QmUE::UObject* ctx, char* outBuf, int outCa
     return false;
 }
 
-// True if the UObject's Class (or any class up its SuperStruct chain) has a
-// short name equal to expectedName. SEH-guarded throughout - any null/garbage
-// in the chain returns false (= treat as foreign, skip).
-//
-// Why walk the SuperStruct chain: the installed UFunction can come from a
-// base class (e.g. R5GameMode::ReceiveBeginPlay) but the actual Context at
-// dispatch time may be a BP-derived class (BP_R5GameMode_C). UE dispatches
-// the inherited UFunction on the derived instance, so we must accept any
-// class whose ancestor chain includes the expected base.
-static bool IsContextClassOrDerived(QmUE::UObject* ctx, const char* expectedName)
-{
-    if (!ctx || !expectedName || !expectedName[0]) return false;
-    __try
-    {
-        QmUE::UStruct* cur = reinterpret_cast<QmUE::UStruct*>(ctx->Class);
-        for (int hop = 0; cur && hop < 8; ++hop)
-        {
-            char clsName[64] = {0};
-            // UStruct.Name lives at the inherited UObject.Name offset.
-            if (QmUE::ResolveFNameNarrow(cur->Name, clsName, sizeof(clsName)))
-            {
-                if (strcmp(clsName, expectedName) == 0) return true;
-            }
-            cur = cur->SuperStruct;
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-    return false;
-}
-
 static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* Result)
 {
-    // FIRST ACTION: drop foreign hits before incrementing any global counter
-    // or walking Outer chains. The ExecFunction we hook is a shared bytecode
-    // dispatcher (see g_lifecycleHookExpectedClass comment) so this filter
-    // rejects ~99% of fires that target non-GameMode UObjects. Forwarding
-    // immediately keeps the original behavior intact for every non-matching
-    // call without paying ResolveContextMapPackage's Outer-walk + AppendString
-    // alloc cost.
-    if (g_lifecycleHookExpectedClass[0] &&
-        !IsContextClassOrDerived(reinterpret_cast<QmUE::UObject*>(Context),
-                                 g_lifecycleHookExpectedClass))
+    // ---- FIRST GATE: time throttle ----------------------------------------
+    // The ExecFunction we hook is a shared bytecode dispatcher (every Blueprint
+    // implementable event routes through it), so this detour fires ~525 Hz in
+    // a busy gameplay map. We reject 99.998% of hits in ~30ns - just a tick
+    // read and an unsigned diff. No Outer walk, no class resolve, no alloc.
+    // Real PreWarm work runs at most every QM_PREWARM_MIN_INTERVAL_MS (5s).
+    DWORD now  = GetTickCount();
+    DWORD last = (DWORD)g_lastPreWarmTickMs;
+    if (last != 0 && (DWORD)(now - last) < QM_PREWARM_MIN_INTERVAL_MS)
     {
-        LONG f = InterlockedIncrement(&g_lifecycleForeignHits);
-        if (f == 1 || (f % QM_LIFECYCLE_FOREIGN_LOG_PERIOD) == 0)
-        {
-            char foreignCls[64] = {0};
-            TryResolveContextClassName(reinterpret_cast<QmUE::UObject*>(Context),
-                                       foreignCls, sizeof(foreignCls));
-            QM_LOG_TRACE("[PreWarm] dropped foreign-class hit#%ld Context.Class='%s' (expected '%s' or derived) "
-                         "- forwarding original",
-                f, foreignCls[0] ? foreignCls : "<unresolved>",
-                g_lifecycleHookExpectedClass);
-        }
+        InterlockedIncrement(&g_lifecycleThrottledHits);
         if (g_origLifecycleFunc)
         {
             __try { g_origLifecycleFunc(Context, Stack, Result); }
@@ -567,75 +539,82 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
         return;
     }
 
-    LONG nHits = InterlockedIncrement(&g_lifecycleHookHits);
+    // Throttle window expired. Atomically claim the next fire slot so that if
+    // two threads race past the read above only one proceeds with the work.
+    LONG observed = InterlockedCompareExchange(&g_lastPreWarmTickMs,
+                                               (LONG)now, (LONG)last);
+    if ((DWORD)observed != last)
+    {
+        // Lost race - some other thread fired first within nanoseconds.
+        InterlockedIncrement(&g_lifecycleThrottledHits);
+        if (g_origLifecycleFunc)
+        {
+            __try { g_origLifecycleFunc(Context, Stack, Result); }
+            __except (EXCEPTION_EXECUTE_HANDLER) { /* swallow */ }
+        }
+        return;
+    }
 
-    // Resolve the current map package + world. Used both for the gameplay-map
-    // gate and for re-arming the latch when the player switches saves.
+    LONG nHits     = InterlockedIncrement(&g_lifecycleHookHits);
+    LONG throttled = InterlockedExchange(&g_lifecycleThrottledHits, 0);
+
+    // ---- SECOND GATE: gameplay map check ----------------------------------
+    // Now safe to do the expensive Outer walk (rate-limited by the throttle to
+    // ~12 calls/min). Resolve the current map package and World pointer.
     char mapPkg[256] = {0};
     QmUE::UObject* world = nullptr;
     bool gotMap = ResolveContextMapPackage(reinterpret_cast<QmUE::UObject*>(Context),
                                            mapPkg, sizeof(mapPkg), &world);
 
-    // World-change reset. If the World UObject pointer differs from the one
-    // we last fired in, reset the per-world fire counter so the next gameplay-
-    // map fire starts a fresh quota for the new map.
-    // World==nullptr is common (Outer chain didn't reach a UWorld in 5 hops
-    // - typical for /Engine/Transient routed BeginPlay events). We treat
-    // null as "same world as before" so the counter still bounds per-tick
-    // pre-warm spam in that case.
+    // World-change diagnostic. The pointer comparison is informational - the
+    // time throttle subsumes the per-world fire-count gating that earlier
+    // revisions used. Useful for understanding sublevel mount timing in logs.
     if (world)
     {
         QmUE::UObject* prev = reinterpret_cast<QmUE::UObject*>(
             InterlockedExchangePointer(reinterpret_cast<void* volatile*>(&g_lifecycleLastWorld), world));
         if (prev && prev != world)
         {
-            LONG prevCount = InterlockedExchange(&g_lifecycleFiresInWorld, 0);
-            QM_LOG_INFO("[PreWarm] world changed (prev=0x%p new=0x%p map='%s') - reset fire counter (was=%ld, new quota=%ld)",
-                prev, world, gotMap ? mapPkg : "<unknown>", prevCount, QM_PREWARM_MAX_PER_WORLD);
+            QM_LOG_INFO("[PreWarm] world changed since last fire (prev=0x%p new=0x%p map='%s')",
+                prev, world, gotMap ? mapPkg : "<unknown>");
         }
     }
 
     const bool nonGameplay = IsNonGameplayMap(gotMap ? mapPkg : "");
     if (nonGameplay)
     {
-        // Lobby/Entrance/Transition/MainMenu/FrontEnd/TitleScreen: skip without
-        // touching the counter. These maps don't host saved actors with
-        // TSoftObjectPtr<UR5BuildingItem>, so pre-warm there is pointless.
-        if (nHits <= 10 || (nHits % 10000) == 0)
-            QM_LOG_TRACE("[PreWarm] hit#%ld map='%s' is non-gameplay - skip pre-warm, forwarding original",
-                nHits, gotMap ? mapPkg : "<unresolved>");
+        // Lobby/Entrance/Transition/MainMenu/FrontEnd/TitleScreen: skip
+        // PreWarm. The lastPreWarmTickMs is already set so we'll naturally
+        // re-check in another QM_PREWARM_MIN_INTERVAL_MS - good behavior for
+        // when the player transitions Lobby -> gameplay map (next 5s window
+        // catches the first gameplay-map BP event).
+        if (nHits <= 10 || (nHits % 100) == 0)
+            QM_LOG_TRACE("[PreWarm] hit#%ld map='%s' is non-gameplay - skip pre-warm, forwarding "
+                         "(throttled %ld hits since previous fire)",
+                nHits, gotMap ? mapPkg : "<unresolved>", throttled);
     }
     else
     {
-        // Gameplay map (or empty/Transient): try to acquire one of the
-        // per-world fire slots. Multiple fires per world are intentional:
-        // a single LoadAsset_Blocking at BeginPlay is sometimes too early
-        // and the actor's saved TSoftObjectPtr resolve attempt happens a
-        // few ticks later. Spreading 8 pre-warm calls across the first
-        // ~8 hook hits in a world catches every realistic resolve window.
-        // LoadAsset_Blocking on an already-resident package is a cheap
-        // PackageStore hashtable hit, so the cost is negligible.
-        LONG slot = InterlockedIncrement(&g_lifecycleFiresInWorld);
-        if (slot <= QM_PREWARM_MAX_PER_WORLD)
-        {
-            QM_LOG_INFO("[PreWarm] *** GAMEPLAY-MAP FIRE %ld/%ld *** via %s (hit#%ld TID=%lu map='%s' world=0x%p) - "
-                        "running building DA pre-warm now",
-                slot, QM_PREWARM_MAX_PER_WORLD,
-                g_lifecycleHookTargetDesc ? g_lifecycleHookTargetDesc : "<unknown>",
-                nHits, GetCurrentThreadId(),
-                gotMap ? mapPkg : "<unresolved>", world);
+        // Gameplay map (or empty/Transient): fire PreWarm. Heartbeat mode -
+        // this runs every QM_PREWARM_MIN_INTERVAL_MS as long as BP events
+        // are happening in a gameplay map, which naturally covers initial
+        // map load, sublevel mounts, and save/load events.
+        char ctxCls[64] = {0};
+        TryResolveContextClassName(reinterpret_cast<QmUE::UObject*>(Context),
+                                   ctxCls, sizeof(ctxCls));
+        QM_LOG_INFO("[PreWarm] *** FIRE #%ld *** via %s (TID=%lu ctxCls='%s' map='%s' world=0x%p "
+                    "throttled=%ld since last fire) - running building DA pre-warm now",
+            nHits,
+            g_lifecycleHookTargetDesc ? g_lifecycleHookTargetDesc : "<unknown>",
+            GetCurrentThreadId(),
+            ctxCls[0] ? ctxCls : "<?>",
+            gotMap ? mapPkg : "<unresolved>", world, throttled);
 
-            __try { QmInject_PreWarmBuildingPackages(); }
-            __except (EXCEPTION_EXECUTE_HANDLER)
-            {
-                QM_LOG_ERROR("[PreWarm] *** EXCEPTION inside pre-warm sweep - lifecycle hook caught fault, "
-                             "forwarding original anyway");
-            }
-        }
-        else if (nHits <= 5 || (nHits % 10000) == 0)
+        __try { QmInject_PreWarmBuildingPackages(); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            QM_LOG_TRACE("[PreWarm] hit#%ld gameplay map '%s' (fire quota %ld already spent in this world, forwarding)",
-                nHits, gotMap ? mapPkg : "<unresolved>", QM_PREWARM_MAX_PER_WORLD);
+            QM_LOG_ERROR("[PreWarm] *** EXCEPTION inside pre-warm sweep - lifecycle hook caught fault, "
+                         "forwarding original anyway");
         }
     }
 
@@ -651,17 +630,12 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
 }
 
 static bool g_lifecycleHookInstalled = false;
-static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* className, const char* desc)
+static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* desc)
 {
     if (g_lifecycleHookInstalled) return true;
     if (!target || !target->ExecFunction)
     {
         QM_LOG_ERROR("[PreWarm] cannot install lifecycle hook - target or ExecFunction is null");
-        return false;
-    }
-    if (!className || !className[0])
-    {
-        QM_LOG_ERROR("[PreWarm] cannot install lifecycle hook - className is null/empty (foreign-context filter would degenerate)");
         return false;
     }
 
@@ -682,18 +656,12 @@ static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* cla
             desc, execAddr, MH_StatusToString(st));
         return false;
     }
-    // Stash the expected base class name BEFORE flipping g_lifecycleHookInstalled,
-    // because the hook can fire on another thread the moment MH_EnableHook
-    // returns. Buffer is static so its lifetime extends beyond this call.
-    strncpy(g_lifecycleHookExpectedClass, className,
-            sizeof(g_lifecycleHookExpectedClass) - 1);
-    g_lifecycleHookExpectedClass[sizeof(g_lifecycleHookExpectedClass) - 1] = '\0';
     g_lifecycleHookInstalled = true;
     g_lifecycleHookTargetDesc = desc;
     QM_LOG_INFO("[PreWarm] *** INSTALLED *** lifecycle hook %s ExecFn=0x%p detour=0x%p trampoline=0x%p "
-                "(filter: Context class must be '%s' or derived; foreign hits forwarded immediately)",
+                "(gate: time throttle at %lu ms between fires; gameplay-map filter on each fire)",
         desc, execAddr, (void*)&Hook_LifecyclePreWarm, (void*)g_origLifecycleFunc,
-        g_lifecycleHookExpectedClass);
+        (unsigned long)QM_PREWARM_MIN_INTERVAL_MS);
     return true;
 }
 
@@ -749,7 +717,7 @@ static bool TryProbeLifecycleHook(int passNumber)
         QM_LOG_INFO("[PreWarm] probe#%d candidate %d/%d HIT: %s class=0x%p fn=0x%p ExecFn=0x%p Flags=0x%08X",
             passNumber, i + 1, kLifecycleTargetCount, t.desc, cls, fn,
             (void*)fn->ExecFunction, fn->FunctionFlags);
-        if (InstallLifecyclePreWarmHook(fn, t.className, t.desc))
+        if (InstallLifecyclePreWarmHook(fn, t.desc))
             return true;
     }
     if (passNumber <= 3 || (passNumber % 30) == 0)
