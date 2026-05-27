@@ -235,15 +235,31 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Mutates Export[0] (the SoundCue) so that:
-        //   - FirstNode points to a SoundNodeWavePlayer whose
-        //     SoundWaveAssetPtr resolves to the newly-renamed SWAV (the
-        //     user track). Searches the export table for the first
-        //     WavePlayer matching that asset name.
-        //   - Duration is set to the user audio's playback length plus a
-        //     small pad so the engine treats the cue as fully consumed
-        //     ~immediately after the wave finishes.
-        //   - bHasDelayNode is cleared (no delay nodes in our subtree).
+        // Reduces the vanilla cue graph IN-PLACE so the user's audio plays
+        // back-to-back without the vanilla 15-way Random / ShipsChatter
+        // overlay / inter-shanty Delays. We deliberately KEEP the canonical
+        // routing stack (Random -> Mixer -> Delay -> WavePlayer) intact -
+        // an earlier version of this method bypassed FirstNode directly to
+        // a leaf SoundNodeWavePlayer, which produced silence ingame. The
+        // engine seems to require the full Cue node hierarchy (or at least
+        // a Mixer/Random/Attenuation wrap) for the SoundClass /
+        // AttenuationSettings routing to kick in; a raw WavePlayer-as-root
+        // gets loaded but never reaches the Music submix.
+        //
+        // The reduction shrinks all branching arrays to a single element
+        // (Random.ChildNodes 15 -> 1, Random.Weights 15 -> 1, first
+        // Mixer.ChildNodes 2 -> 1 dropping the ShipsChatter overlay,
+        // first Mixer.InputVolume 2 -> 1), zeros the first Delay's
+        // DelayMin/DelayMax so the user track starts immediately, and
+        // shrinks SoundCue.Duration to (audioDurationSec + 0.5s pad) so
+        // UR5ShipAudioComponent picks the next shanty right after the
+        // user audio finishes instead of after the vanilla 163s timeout.
+        //
+        // Orphaned exports (14 unused Mixers, 14 unused Delays, all
+        // ShipsChatter WavePlayers, all but one MaggieMay WavePlayer)
+        // stay in the file - removing them would require renumbering
+        // every FPackageIndex in the asset, which UAssetAPI can't do
+        // cheaply, and the cost in disk space is < 5 KB per cue.
         void ReshapeToMinimal(UAsset asset, string newSwavStem, float audioDurationSec)
         {
             if (asset.Exports.Count == 0)
@@ -264,42 +280,6 @@ namespace Windrose.Quartermaster.Core
                     + "the vanilla cue template layout drifted, the minimal-cue surgery "
                     + "needs the SoundCue at Export[0].");
 
-            // Locate the WavePlayer leaf to redirect FirstNode to. We search
-            // by SoundWaveAssetPtr -> AssetName match against the renamed
-            // SWAV. Any of the (post-rename) MaggieMay WavePlayers will do,
-            // but pick the first match for determinism.
-            int? wpIdx = null;
-            for (int i = 1; i < asset.Exports.Count; i++)
-            {
-                var e = asset.Exports[i] as NormalExport;
-                if (e == null) continue;
-                var eci = e.ClassIndex;
-                string eClassName = eci.IsImport()
-                    ? asset.Imports[eci.Index * -1 - 1].ObjectName.Value.Value
-                    : "?";
-                if (eClassName != "SoundNodeWavePlayer") continue;
-                foreach (var p in e.Data)
-                {
-                    if (p is SoftObjectPropertyData so
-                        && so.Name?.Value?.Value == "SoundWaveAssetPtr"
-                        && so.Value != null
-                        && so.Value.AssetPath.AssetName?.Value?.Value == newSwavStem)
-                    {
-                        wpIdx = i;
-                        break;
-                    }
-                }
-                if (wpIdx.HasValue) break;
-            }
-            if (!wpIdx.HasValue)
-                throw new InvalidOperationException(
-                    "No SoundNodeWavePlayer with SoundWaveAssetPtr -> '"
-                    + newSwavStem + "' found - did the NameMap rewrite "
-                    + "miss the SWAV reference, or does the template lack "
-                    + "the expected MaggieMay leaf?");
-
-            var targetPkgIdx = FPackageIndex.FromExport(wpIdx.Value);
-
             // Pad the duration a little so the audio fade-out has room
             // before the engine considers the cue spent. 0.5s matches the
             // typical SoundConcurrency release time and is short enough
@@ -307,41 +287,175 @@ namespace Windrose.Quartermaster.Core
             const float DurationPadSec = 0.5f;
             float newDuration = audioDurationSec + DurationPadSec;
 
-            int touched = 0;
-            for (int i = 0; i < cueExp.Data.Count; i++)
+            // Step 1: SoundCue.Duration + bHasDelayNode (we leave FirstNode
+            // unchanged - it still points at the Random root).
+            FloatPropertyData durProp = null;
+            ObjectPropertyData firstNodeProp = null;
+            BoolPropertyData delayFlagProp = null;
+            foreach (var p in cueExp.Data)
             {
-                var p = cueExp.Data[i];
-                var name = p?.Name?.Value?.Value;
-                if (name == "FirstNode" && p is ObjectPropertyData op)
+                var n = p?.Name?.Value?.Value;
+                if (n == "Duration" && p is FloatPropertyData fp) durProp = fp;
+                else if (n == "FirstNode" && p is ObjectPropertyData fop) firstNodeProp = fop;
+                else if (n == "bHasDelayNode" && p is BoolPropertyData bp) delayFlagProp = bp;
+            }
+            if (firstNodeProp == null || firstNodeProp.Value == null || !firstNodeProp.Value.IsExport())
+                throw new InvalidOperationException(
+                    "SoundCue.FirstNode missing or not an export reference - vanilla cue "
+                    + "template layout may have drifted.");
+            if (durProp == null)
+                throw new InvalidOperationException(
+                    "SoundCue.Duration property missing - vanilla cue template layout "
+                    + "may have drifted.");
+
+            LogLine("  Duration: " + durProp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " -> " + newDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " (user audio " + audioDurationSec.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "s + " + DurationPadSec.ToString(System.Globalization.CultureInfo.InvariantCulture) + "s pad)");
+            durProp.Value = newDuration;
+            // bHasDelayNode stays true - we keep one (zero-length) Delay
+            // node in the subtree, so the flag still matches reality.
+            if (delayFlagProp != null)
+                LogLine("  bHasDelayNode: " + delayFlagProp.Value + " (unchanged, zero-length Delay still present)");
+
+            // Step 2: Random -> reduce ChildNodes + Weights to 1 entry.
+            int randomIdx0 = firstNodeProp.Value.Index - 1;
+            var randomExp = asset.Exports[randomIdx0] as NormalExport;
+            string randomClass = ImportClassName(asset, randomExp);
+            if (randomClass != "SoundNodeRandom")
+                throw new InvalidOperationException(
+                    "FirstNode -> Export[" + randomIdx0 + "] class is '" + randomClass
+                    + "', expected 'SoundNodeRandom' - vanilla cue template layout drifted.");
+
+            int firstMixerExportIdx0 = ReduceArrayToFirst(randomExp, "ChildNodes", out var firstChildPi);
+            ReduceArrayToFirst(randomExp, "Weights", out _);
+            LogLine("  Random[" + randomIdx0 + "].ChildNodes -> 1, .Weights -> 1");
+            if (firstChildPi == null || !firstChildPi.IsExport())
+                throw new InvalidOperationException(
+                    "Random.ChildNodes[0] is not an export ref - vanilla cue layout drifted.");
+
+            // Step 3: Mixer -> reduce ChildNodes + InputVolume to 1 entry
+            // (drops the ShipsChatter overlay sibling).
+            int mixerIdx0 = firstChildPi.Index - 1;
+            var mixerExp = asset.Exports[mixerIdx0] as NormalExport;
+            string mixerClass = ImportClassName(asset, mixerExp);
+            if (mixerClass != "SoundNodeMixer")
+                throw new InvalidOperationException(
+                    "Random.ChildNodes[0] -> Export[" + mixerIdx0 + "] class is '" + mixerClass
+                    + "', expected 'SoundNodeMixer' - vanilla cue template layout drifted.");
+
+            int firstMixerChildIdx0 = ReduceArrayToFirst(mixerExp, "ChildNodes", out var firstMixerChildPi);
+            ReduceArrayToFirst(mixerExp, "InputVolume", out _);
+            LogLine("  Mixer[" + mixerIdx0 + "].ChildNodes -> 1 (dropped ShipsChatter sibling), .InputVolume -> 1");
+            if (firstMixerChildPi == null || !firstMixerChildPi.IsExport())
+                throw new InvalidOperationException(
+                    "Mixer.ChildNodes[0] is not an export ref - vanilla cue layout drifted.");
+
+            // Step 4: Delay -> zero DelayMin/DelayMax so the audio starts
+            // right when the cue plays.
+            int delayIdx0 = firstMixerChildPi.Index - 1;
+            var delayExp = asset.Exports[delayIdx0] as NormalExport;
+            string delayClass = ImportClassName(asset, delayExp);
+            if (delayClass != "SoundNodeDelay")
+                throw new InvalidOperationException(
+                    "Mixer.ChildNodes[0] -> Export[" + delayIdx0 + "] class is '" + delayClass
+                    + "', expected 'SoundNodeDelay' - vanilla cue template layout drifted.");
+
+            int delayTouched = 0;
+            foreach (var p in delayExp.Data)
+            {
+                var n = p?.Name?.Value?.Value;
+                if ((n == "DelayMin" || n == "DelayMax") && p is FloatPropertyData fp)
                 {
-                    var oldIdx = op.Value?.Index ?? 0;
-                    op.Value = targetPkgIdx;
-                    LogLine("  FirstNode: +" + oldIdx + " -> +" + targetPkgIdx.Index
-                        + " (WavePlayer Export[" + wpIdx + "])");
-                    touched++;
-                }
-                else if (name == "Duration" && p is FloatPropertyData fp)
-                {
-                    LogLine("  Duration: " + fp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + " -> " + newDuration.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + " (user audio " + audioDurationSec.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + "s + " + DurationPadSec.ToString(System.Globalization.CultureInfo.InvariantCulture) + "s pad)");
-                    fp.Value = newDuration;
-                    touched++;
-                }
-                else if (name == "bHasDelayNode" && p is BoolPropertyData bp)
-                {
-                    LogLine("  bHasDelayNode: " + bp.Value + " -> false");
-                    bp.Value = false;
-                    touched++;
+                    LogLine("  Delay[" + delayIdx0 + "]." + n + ": "
+                        + fp.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) + " -> 0");
+                    fp.Value = 0f;
+                    delayTouched++;
                 }
             }
-
-            if (touched != 3)
+            if (delayTouched != 2)
                 throw new InvalidOperationException(
-                    "Minimal-cue surgery touched " + touched + "/3 expected SoundCue "
-                    + "properties (FirstNode, Duration, bHasDelayNode) - vanilla cue "
-                    + "template layout may have drifted.");
+                    "Delay surgery touched " + delayTouched + "/2 expected properties "
+                    + "(DelayMin, DelayMax) - vanilla cue template layout drifted.");
+
+            // Step 5: Sanity that the surviving WavePlayer (Delay.ChildNodes[0])
+            // really targets our renamed SWAV. If the NameMap rewrite missed,
+            // we'd hear vanilla MaggieMay or silence; fail loud here.
+            FPackageIndex wavePi = null;
+            foreach (var p in delayExp.Data)
+            {
+                if (p?.Name?.Value?.Value == "ChildNodes" && p is ArrayPropertyData ap
+                    && ap.Value.Length > 0 && ap.Value[0] is ObjectPropertyData op2)
+                {
+                    wavePi = op2.Value;
+                    break;
+                }
+            }
+            if (wavePi == null || !wavePi.IsExport())
+                throw new InvalidOperationException(
+                    "Delay.ChildNodes[0] is missing or not an export ref - vanilla cue layout drifted.");
+            int waveIdx0 = wavePi.Index - 1;
+            var waveExp = asset.Exports[waveIdx0] as NormalExport;
+            string waveClass = ImportClassName(asset, waveExp);
+            if (waveClass != "SoundNodeWavePlayer")
+                throw new InvalidOperationException(
+                    "Delay.ChildNodes[0] -> Export[" + waveIdx0 + "] class is '" + waveClass
+                    + "', expected 'SoundNodeWavePlayer' - vanilla cue template layout drifted.");
+            string boundAsset = "<none>";
+            foreach (var p in waveExp.Data)
+            {
+                if (p is SoftObjectPropertyData so
+                    && so.Name?.Value?.Value == "SoundWaveAssetPtr")
+                {
+                    boundAsset = so.Value.AssetPath.AssetName?.Value?.Value ?? "<null>";
+                    break;
+                }
+            }
+            if (boundAsset != newSwavStem)
+                throw new InvalidOperationException(
+                    "Surviving WavePlayer Export[" + waveIdx0 + "] is bound to '"
+                    + boundAsset + "' but the cue was supposed to target '" + newSwavStem
+                    + "' - the NameMap rewrite missed a SoundWaveAssetPtr, or the vanilla "
+                    + "graph's first Random branch points at ShipsChatter instead of Shanti.");
+            LogLine("  WavePlayer[" + waveIdx0 + "].SoundWaveAssetPtr -> '" + boundAsset + "' (matches)");
+        }
+
+        // Looks up the class name (FName from Imports) for a NormalExport.
+        // Returns "?" when the class is itself an export (rare in cues).
+        static string ImportClassName(UAsset asset, NormalExport e)
+        {
+            if (e == null) return "?";
+            var ci = e.ClassIndex;
+            if (ci == null || ci.Index == 0) return "?";
+            if (ci.IsImport())
+                return asset.Imports[ci.Index * -1 - 1].ObjectName.Value.Value;
+            return "?";
+        }
+
+        // Shrinks the named ArrayProperty on the export to a single entry
+        // (the first one). Returns the original first-element index for the
+        // caller's benefit, plus the first child's FPackageIndex (when the
+        // array carries object references).
+        int ReduceArrayToFirst(NormalExport exp, string arrayPropName, out FPackageIndex firstObjPi)
+        {
+            firstObjPi = null;
+            foreach (var p in exp.Data)
+            {
+                if (p?.Name?.Value?.Value == arrayPropName && p is ArrayPropertyData ap)
+                {
+                    if (ap.Value.Length == 0)
+                        throw new InvalidOperationException(
+                            "Array property '" + arrayPropName + "' on export '"
+                            + exp.ObjectName.Value.Value + "' is empty - cannot reduce.");
+                    if (ap.Value[0] is ObjectPropertyData op)
+                        firstObjPi = op.Value;
+                    ap.Value = new[] { ap.Value[0] };
+                    return 0;
+                }
+            }
+            throw new InvalidOperationException(
+                "Array property '" + arrayPropName + "' not found on export '"
+                + exp.ObjectName.Value.Value + "' - vanilla cue layout drifted.");
         }
 
         int ApplyRules(UAsset asset, Dictionary<string, string> rules)
