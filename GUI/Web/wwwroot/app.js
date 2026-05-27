@@ -1265,6 +1265,9 @@ function setBuildLog(lines) {
     out.innerHTML = lines.map(l =>
         '<span class="' + l.kind + '">[' + l.kind.toUpperCase() + ']</span> ' + esc(l.msg)
     ).join('\n');
+    // Auto-scroll to bottom so the last (most relevant) status line is visible
+    // when the build finishes - mirrors the SSE-style append used in mods.js.
+    out.scrollTop = out.scrollHeight;
 }
 
 function assetPathToId(assetPath) {

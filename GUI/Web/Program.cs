@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
@@ -155,7 +156,7 @@ public static class Program
         if (isDeployed)
         {
             SeedUsmapIfMissing(resolvedRoot);
-            SeedDxgiDllIfMissing(resolvedRoot);
+            SyncDxgiDllFromEmbedded(resolvedRoot);
             SeedTemplatesIfMissing(resolvedRoot);
         }
 
@@ -349,9 +350,8 @@ public static class Program
 
     /// <summary>
     /// Writes the embedded dxgi-proxy DLL (<c>DllProxy.dxgi.dll</c> resource)
-    /// into <paramref name="dataRoot"/> as <c>dxgi.dll</c>, but only if no
-    /// such file is already there. A user-supplied newer DLL (drop-in
-    /// upgrade after the EXE was published) wins.
+    /// into <paramref name="dataRoot"/> as <c>dxgi.dll</c>, replacing any
+    /// previously seeded copy whenever the embedded version differs.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -369,18 +369,45 @@ public static class Program
     /// Tools path wins so devs always deploy whatever they just built
     /// without having to manually re-copy.
     /// </para>
+    /// <para>
+    /// <b>Update behaviour:</b> the historical seed-if-missing logic meant
+    /// that publishing a newer EXE never replaced the previously-extracted
+    /// <c>dxgi.dll</c> - users were stuck on the version that happened to be
+    /// there on first launch. We now compare the embedded resource's
+    /// SHA-256 against a sidecar stamp (<c>dxgi.dll.embedded-sha256</c>) and
+    /// rewrite both files when the hash differs. The stamp doubles as
+    /// proof-of-ownership: if a user dropped in a custom DLL of their own
+    /// they should keep the stamp pointing at that DLL's hash (we never
+    /// recompute the on-disk hash, so any pre-existing custom DLL keeps
+    /// winning as long as the user updates the stamp to match).
+    /// </para>
     /// </remarks>
-    static void SeedDxgiDllIfMissing(string dataRoot)
+    static void SyncDxgiDllFromEmbedded(string dataRoot)
     {
         var targetPath = Path.Combine(dataRoot, "dxgi.dll");
-        if (File.Exists(targetPath)) return;
+        var stampPath  = targetPath + ".embedded-sha256";
 
         var asm = typeof(Program).Assembly;
         const string resourceName = "DllProxy.dxgi.dll";
         using var src = asm.GetManifestResourceStream(resourceName);
         if (src == null) return;
-        using var dst = File.Create(targetPath);
-        src.CopyTo(dst);
+
+        // Buffer the embedded bytes once so we can hash and (potentially)
+        // write them without a second decompression pass.
+        using var ms = new MemoryStream();
+        src.CopyTo(ms);
+        var embeddedBytes = ms.ToArray();
+        var embeddedHash = Convert.ToHexString(SHA256.HashData(embeddedBytes));
+
+        if (File.Exists(targetPath) && File.Exists(stampPath))
+        {
+            var existingStamp = File.ReadAllText(stampPath).Trim();
+            if (string.Equals(existingStamp, embeddedHash, StringComparison.OrdinalIgnoreCase))
+                return; // on-disk copy is in sync with the embedded resource
+        }
+
+        File.WriteAllBytes(targetPath, embeddedBytes);
+        File.WriteAllText(stampPath, embeddedHash);
     }
 
     /// <summary>
