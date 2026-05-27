@@ -14,7 +14,15 @@ A profile bundles tweaks across multiple domains:
 - **Building stability** - structures hold longer cantilevers / taller towers
 - **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
 - **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider
+- **Light radius** - per-light AttenuationRadius multipliers for candles,
+  lanterns, wall lamps + signal fires, torches + chandeliers, building-
+  center fires and the belt lantern, 0.1-10x sliders
 - **No smoke** - hide smoke / flame Niagara FX on campfires, furnaces, kilns
+- **Ship Music** - replace any of the 10 vanilla shanties per ship type
+  with your own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio)
+- **Ship Music+** - add your own shanties alongside the 10 vanilla tracks
+  (per-track key, optional title, auto-cloned cue + DA patch on all 4
+  ship-type asset packs)
 - **Mods tab** - inspect `~mods/`, recycle-bin old Quartermaster builds
 
 Vanilla values are extracted directly from the game's main pak file
@@ -130,9 +138,14 @@ icon to clone an existing one. For each profile you can:
 - **Loot Tables tab** - per-category Min/Max multipliers applied to
   every entry in matching tables.
 - **Misc tab** - cards for pickup radius, fast-travel bell caps,
-  building stability, minimap range, bonfire radius and no-smoke FX.
-  Each card has its own toggle / slider; nothing is bundled into the
-  pak unless the corresponding card is enabled.
+  building stability, minimap range, bonfire radius, light radius
+  and no-smoke FX. Each card has its own toggle / slider; nothing is
+  bundled into the pak unless the corresponding card is enabled.
+- **Lighting tab** - per-light AttenuationRadius overrides (overrides
+  the overall multiplier from the Misc Light Radius card on a per-light
+  basis).
+- **Ship Music / Ship Music+ tabs** - upload your own audio to replace
+  vanilla shanties or add new ones; per-ship-type slot management.
 - **Mods tab** - lists every `.pak` currently in your `~mods` folder,
   marks Quartermaster builds, and recycles old ones with one click.
   Also exposes a button that re-opens the first-run setup dialog so
