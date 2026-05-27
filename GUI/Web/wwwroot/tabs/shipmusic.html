@@ -3,17 +3,32 @@
 
     <section class="card shipmusic-help-card" style="height: unset; ">
       <div class="card-content">
-        <h2>Custom Ship Shanties</h2>
+        <h2>Custom Sea Shanties</h2>
         <p class="hint">
-          Replace any of the 10 vanilla sea-shanties the crew sings on
-          board (Cutter, Brig, Ketch, Frigate; player or crew-only).
-          A replacement applies to all ship sizes automatically.
+          Configure the sea-shanties the crew sings on board. Three things
+          live here:
         </p>
+        <ul class="hint shipmusic-help-list">
+          <li>
+            <b>Replace</b> any of the 10 vanilla shanties with your own
+            audio. A replacement applies to all ship sizes automatically.
+          </li>
+          <li>
+            <b>Exclude</b> a vanilla shanty from the rotation so the crew
+            stops picking it. Excluding does not delete your replacement -
+            re-including restores it instantly.
+          </li>
+          <li>
+            <b>Add</b> entirely new shanties beyond the vanilla 10. Added
+            tracks are appended to every ship-type DataAsset (Cutter, Brig,
+            Ketch, Frigate), so the crew picks from the bigger pool on any
+            vessel.
+          </li>
+        </ul>
         <p class="hint">
-          Drop an audio file per slot - Quartermaster transcodes it to
-          a 44.1 kHz stereo WAV (if needed), encodes it to Bink Audio
-          and splices the result into a SoundWave template at build
-          time. No UE5 Editor cook needed.
+          Drop an audio file - Quartermaster transcodes it to a 44.1 kHz
+          stereo WAV (if needed), encodes it to Bink Audio and packs the
+          result into a SoundWave at build time. No UE5 Editor cook needed.
         </p>
         <p class="hint">
           <b>Accepted formats:</b> <code>.wav</code>, <code>.mp3</code>,
@@ -32,10 +47,53 @@
         <p class="hint">
           Click <b>Browse...</b> to pick an audio file for a shanty slot.
           Click <b>Reset</b> to drop the override and fall back to vanilla.
+          Click <b>Exclude</b> to remove the slot from the rotation
+          (toggleable via <b>Include</b>).
         </p>
         <div id="shipmusic-slot-list" class="shipmusic-slot-list">
           <p class="hint" id="shipmusic-empty-note">Loading slot list...</p>
         </div>
+      </div>
+    </section>
+
+    <section class="card shipmusic-added-card" style="height: unset; ">
+      <div class="card-content">
+        <h2>Added Tracks</h2>
+        <p class="hint">
+          List position determines the slot index (first added track
+          becomes slot 11, second slot 12, and so on).
+        </p>
+        <div id="shipmusic-added-list" class="shipmusic-added-list">
+          <p class="hint" id="shipmusic-added-empty-note">No added tracks yet. Use the form below to add your first.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card shipmusic-add-card" style="height: unset; ">
+      <div class="card-content">
+        <h2>Add Track</h2>
+        <form id="shipmusic-add-form" class="shipmusic-add-form">
+          <label>
+            <span>Track Key</span>
+            <input id="shipmusic-add-trackkey" type="text" required
+                   pattern="[A-Za-z0-9_]+" maxlength="48"
+                   placeholder="e.g. WhiskeyBottle" />
+          </label>
+          <label>
+            <span>Title (optional)</span>
+            <input id="shipmusic-add-title" type="text" maxlength="80"
+                   placeholder="e.g. The Whiskey Bottle" />
+          </label>
+          <label>
+            <span>Audio file</span>
+            <input id="shipmusic-add-audio" type="file" required
+                   accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus,audio/*" />
+          </label>
+          <div class="shipmusic-add-controls">
+            <button id="shipmusic-add-btn" type="submit" class="btn">Add Track</button>
+            <span id="shipmusic-add-status" class="hint"></span>
+          </div>
+        </form>
       </div>
     </section>
 

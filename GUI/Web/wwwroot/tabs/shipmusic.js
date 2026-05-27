@@ -1,22 +1,28 @@
 'use strict';
 
-// Ship-music tab. Renders one card per vanilla shanty slot; each card
-// hosts a file picker for a single audio file (wav/mp3/ogg/flac/m4a/
-// aac/opus, validated + transcoded server-side via ffmpeg.exe) plus
-// per-slot upload status. The slot catalog comes from GET
-// /api/profiles/{id}/ship-music so backend and frontend always agree
-// on what's available.
+// Sea Shanties tab (merged from former Ship Music + Ship Music+).
+// Owns three cards in one pane:
+//   1. Vanilla Shanty Slots - 10 vanilla shanties, per row:
+//      - Browse...: upload an audio override (SWAV replace)
+//      - Reset:     drop the override, fall back to vanilla
+//      - Exclude:   toggle slot off the rotation (Include re-adds)
+//   2. Added Tracks - user-supplied shanties beyond vanilla 10
+//   3. Add Track    - form to upload a new track
+//
+// Backend endpoints used:
+//   GET    /api/profiles/{id}/ship-music                       slot list (incl. excluded flag)
+//   POST   /api/profiles/{id}/ship-music/{slotStem}            upload override audio
+//   DELETE /api/profiles/{id}/ship-music/{slotStem}            drop override
+//   POST   /api/profiles/{id}/ship-music/{slotStem}/exclude    exclude slot from rotation
+//   DELETE /api/profiles/{id}/ship-music/{slotStem}/exclude    re-include slot
+//   GET    /api/profiles/{id}/ship-music-add                   added-track list
+//   POST   /api/profiles/{id}/ship-music-add                   add/replace track audio
+//   DELETE /api/profiles/{id}/ship-music-add/{trackKey}        remove track
 
-// File extensions the backend's AudioPreprocessor accepts. Keep in
-// sync with AudioPreprocessor.SupportedExtensions on the C# side - the
-// server validates the same list, this is just so the OS file picker
-// pre-filters out obviously-wrong files.
+// File extensions the backend's AudioPreprocessor accepts.
 const SHIPMUSIC_AUDIO_EXTS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac', '.opus'];
 
 function shipmusicAcceptList() {
-    // Comma-separated for the file picker's accept attribute. Include
-    // generic audio/* so phones / tablets still show their audio picker
-    // when the browser doesn't know our extension list.
     return SHIPMUSIC_AUDIO_EXTS.join(',') + ',audio/*';
 }
 
@@ -33,47 +39,85 @@ function shipmusicProfileId() {
     return state.current && state.current.id ? state.current.id : null;
 }
 
-function formatBytes(n) {
+function shipmusicFormatBytes(n) {
     if (!n || n <= 0) return '0 B';
     if (n < 1024) return n + ' B';
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// Renders the slot list inside the host card. Called from
-// applyShipMusicToUI() on profile load and after every successful
-// upload / delete to keep on-disk truth + UI in sync.
-async function refreshShipMusicSlots() {
-    const host = document.getElementById('shipmusic-slot-list');
-    if (!host) return;
+// Cache of the last GET response so cross-card guards (e.g. "exclude
+// would leave zero active tracks") can read both slot and added-track
+// counts without a refetch.
+let shipmusicCache = { slots: [], added: [] };
+
+// Refresh both cards. Called from applyShipMusicToUI() on profile load
+// and after every state-mutating action (upload, reset, exclude, add,
+// remove) to keep on-disk truth + UI in sync.
+async function refreshShipMusicAll() {
     const id = shipmusicProfileId();
     if (!id) {
-        host.innerHTML = '<p class="hint">No profile loaded.</p>';
-        return;
-    }
-    let data;
-    try {
-        data = await api('GET', '/api/profiles/' + encodeURIComponent(id) + '/ship-music');
-    } catch (ex) {
-        host.innerHTML = '<p class="hint" style="color: var(--accent);">'
-            + 'Failed to load shanty slots: ' + (ex && ex.message ? ex.message : ex)
-            + '</p>';
-        return;
-    }
-    if (!data || !Array.isArray(data.slots) || data.slots.length === 0) {
-        host.innerHTML = '<p class="hint">No shanty slots returned by the server.</p>';
+        const host = document.getElementById('shipmusic-slot-list');
+        if (host) host.innerHTML = '<p class="hint">No profile loaded.</p>';
+        const host2 = document.getElementById('shipmusic-added-list');
+        if (host2) host2.innerHTML = '<p class="hint">No profile loaded.</p>';
+        shipmusicCache = { slots: [], added: [] };
         return;
     }
 
+    // Run both fetches in parallel - they hit different endpoints and
+    // we want both rendered as soon as possible.
+    let slotData, addedData;
+    try {
+        [slotData, addedData] = await Promise.all([
+            api('GET', '/api/profiles/' + encodeURIComponent(id) + '/ship-music'),
+            api('GET', '/api/profiles/' + encodeURIComponent(id) + '/ship-music-add'),
+        ]);
+    } catch (ex) {
+        const host = document.getElementById('shipmusic-slot-list');
+        if (host) {
+            host.innerHTML = '<p class="hint" style="color: var(--accent);">'
+                + 'Failed to load shanty data: ' + (ex && ex.message ? ex.message : ex)
+                + '</p>';
+        }
+        return;
+    }
+
+    shipmusicCache = {
+        slots: Array.isArray(slotData?.slots) ? slotData.slots : [],
+        added: Array.isArray(addedData?.tracks) ? addedData.tracks : [],
+    };
+    renderShipMusicSlots();
+    renderShipMusicAdded();
+}
+
+// Computes whether ONE more vanilla exclude would leave zero active
+// tracks (active vanilla + added). If true, the Exclude button on
+// every still-active slot is disabled with a tooltip - we never want
+// the user to ship a DA with an empty Cues array (engine crashes).
+function shipmusicCanExcludeMore() {
+    const activeVanilla = shipmusicCache.slots.filter(s => !s.excluded).length;
+    const added = shipmusicCache.added.length;
+    // After ONE more exclude, would we still have >= 1 playable track?
+    return (activeVanilla - 1) + added >= 1;
+}
+
+function renderShipMusicSlots() {
+    const host = document.getElementById('shipmusic-slot-list');
+    if (!host) return;
+    if (shipmusicCache.slots.length === 0) {
+        host.innerHTML = '<p class="hint">No shanty slots returned by the server.</p>';
+        return;
+    }
     host.innerHTML = '';
-    for (const slot of data.slots) {
+    for (const slot of shipmusicCache.slots) {
         host.appendChild(renderShipMusicSlot(slot));
     }
 }
 
 function renderShipMusicSlot(slot) {
     const row = document.createElement('div');
-    row.className = 'shipmusic-slot';
+    row.className = 'shipmusic-slot' + (slot.excluded ? ' excluded' : '');
     row.dataset.stem = slot.stem;
 
     const titleLine = document.createElement('div');
@@ -83,13 +127,18 @@ function renderShipMusicSlot(slot) {
     titleLine.appendChild(titleSpan);
 
     const stateBadge = document.createElement('span');
-    stateBadge.className = 'shipmusic-state shipmusic-state-' + slot.state;
-    if (slot.state === 'custom') {
-        stateBadge.textContent = 'Custom';
-    } else if (slot.state === 'broken') {
-        stateBadge.textContent = 'WAV missing';
+    if (slot.excluded) {
+        stateBadge.className = 'shipmusic-state shipmusic-state-excluded';
+        stateBadge.textContent = 'Excluded';
     } else {
-        stateBadge.textContent = 'Vanilla';
+        stateBadge.className = 'shipmusic-state shipmusic-state-' + slot.state;
+        if (slot.state === 'custom') {
+            stateBadge.textContent = 'Custom';
+        } else if (slot.state === 'broken') {
+            stateBadge.textContent = 'WAV missing';
+        } else {
+            stateBadge.textContent = 'Vanilla';
+        }
     }
     titleLine.appendChild(stateBadge);
     row.appendChild(titleLine);
@@ -100,7 +149,8 @@ function renderShipMusicSlot(slot) {
         meta.className = 'shipmusic-slot-meta hint';
         const parts = [];
         if (slot.originalFilename) parts.push(slot.originalFilename);
-        if (slot.wavBytes) parts.push('(' + formatBytes(slot.wavBytes) + ' wav)');
+        if (slot.wavBytes) parts.push('(' + shipmusicFormatBytes(slot.wavBytes) + ' wav)');
+        if (slot.excluded) parts.push('(override kept, will resume on Include)');
         meta.textContent = parts.join(' ');
         row.appendChild(meta);
     }
@@ -108,9 +158,7 @@ function renderShipMusicSlot(slot) {
     const controls = document.createElement('div');
     controls.className = 'shipmusic-slot-controls';
 
-    // Hidden file input (we trigger it programmatically from the
-    // visible "Browse..." button so we can dress the button up like
-    // other buttons instead of using the ugly browser default).
+    // Hidden file input + visible "Browse..." button.
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = shipmusicAcceptList();
@@ -119,6 +167,8 @@ function renderShipMusicSlot(slot) {
     browseBtn.type = 'button';
     browseBtn.className = 'btn';
     browseBtn.textContent = 'Browse...';
+    browseBtn.disabled = !!slot.excluded;
+    if (slot.excluded) browseBtn.title = 'Slot is excluded. Click Include first to upload an override.';
 
     fileInput.addEventListener('change', () => {
         const originalText = browseBtn.textContent;
@@ -128,7 +178,7 @@ function renderShipMusicSlot(slot) {
             alert('Upload failed: ' + (ex && ex.message ? ex.message : ex));
         }).finally(() => {
             fileInput.value = '';
-            browseBtn.disabled = false;
+            browseBtn.disabled = !!slot.excluded;
             browseBtn.textContent = originalText;
         });
     });
@@ -142,6 +192,8 @@ function renderShipMusicSlot(slot) {
         resetBtn.type = 'button';
         resetBtn.className = 'btn btn-secondary';
         resetBtn.textContent = 'Reset';
+        resetBtn.disabled = !!slot.excluded;
+        if (slot.excluded) resetBtn.title = 'Slot is excluded. Click Include first to manage the override.';
         resetBtn.addEventListener('click', () => {
             resetShipMusicSlot(slot).catch(ex => {
                 alert('Reset failed: ' + (ex && ex.message ? ex.message : ex));
@@ -149,6 +201,34 @@ function renderShipMusicSlot(slot) {
         });
         controls.appendChild(resetBtn);
     }
+
+    // Exclude / Include toggle. The Include button is always enabled
+    // (re-enabling never violates the min-one-active safety); the
+    // Exclude button is disabled when one more exclude would leave us
+    // at zero active tracks.
+    const excludeBtn = document.createElement('button');
+    excludeBtn.type = 'button';
+    excludeBtn.className = 'btn btn-secondary';
+    if (slot.excluded) {
+        excludeBtn.textContent = 'Include';
+        excludeBtn.addEventListener('click', () => {
+            includeShipMusicSlot(slot).catch(ex => {
+                alert('Include failed: ' + (ex && ex.message ? ex.message : ex));
+            });
+        });
+    } else {
+        excludeBtn.textContent = 'Exclude';
+        if (!shipmusicCanExcludeMore()) {
+            excludeBtn.disabled = true;
+            excludeBtn.title = 'Cannot exclude all - at least one track (vanilla or added) must stay in the rotation.';
+        }
+        excludeBtn.addEventListener('click', () => {
+            excludeShipMusicSlot(slot).catch(ex => {
+                alert('Exclude failed: ' + (ex && ex.message ? ex.message : ex));
+            });
+        });
+    }
+    controls.appendChild(excludeBtn);
 
     row.appendChild(controls);
     return row;
@@ -162,9 +242,6 @@ async function uploadShipMusicSlot(slot, fileList) {
     }
     if (!fileList || fileList.length === 0) return;
 
-    // Find the first supported audio file in the picked list. The
-    // input is single-select but we guard defensively for users who
-    // drag multiple files in via a future drag-drop handler.
     let audio = null;
     for (const f of fileList) {
         if (shipmusicIsSupportedFile(f.name)) { audio = f; break; }
@@ -176,8 +253,6 @@ async function uploadShipMusicSlot(slot, fileList) {
     }
 
     const form = new FormData();
-    // Send under "audio" (new key) - the endpoint also accepts the
-    // legacy "wav" key for back-compat.
     form.append('audio', audio, audio.name);
     form.append('filename', audio.name);
 
@@ -185,9 +260,6 @@ async function uploadShipMusicSlot(slot, fileList) {
               + '/ship-music/' + encodeURIComponent(slot.stem);
     const res = await fetch(url, { method: 'POST', body: form });
     if (!res.ok) {
-        // The endpoint returns clean JSON errors with the failure
-        // reason verbatim (ffmpeg stderr, format mismatch, oversize,
-        // ...); show those instead of the raw HTTP status when we can.
         let msg = 'HTTP ' + res.status;
         try {
             const j = await res.json();
@@ -200,10 +272,7 @@ async function uploadShipMusicSlot(slot, fileList) {
         }
         throw new Error(msg);
     }
-    await refreshShipMusicSlots();
-    // Reload profile to pull the new Songs entry into state.current so
-    // the BUILD button + summary reflects it immediately, mirroring how
-    // the icon upload endpoint re-reads after writing.
+    await refreshShipMusicAll();
     await loadProfile(id);
 }
 
@@ -217,24 +286,239 @@ async function resetShipMusicSlot(slot) {
         const txt = await res.text().catch(() => '');
         throw new Error('HTTP ' + res.status + ' ' + txt);
     }
-    await refreshShipMusicSlots();
+    await refreshShipMusicAll();
     await loadProfile(id);
 }
 
-// Called from applyProfileToUI() during profile load. Triggers a slot
-// list refresh from the backend - the local profile already carries
-// the Songs metadata, but the on-disk audio-file state (whether a
-// slot's .wav actually exists) lives on the server and needs an HTTP
-// roundtrip to surface.
+async function excludeShipMusicSlot(slot) {
+    const id = shipmusicProfileId();
+    if (!id) return;
+    const url = '/api/profiles/' + encodeURIComponent(id)
+              + '/ship-music/' + encodeURIComponent(slot.stem) + '/exclude';
+    const res = await fetch(url, { method: 'POST' });
+    if (!res.ok && res.status !== 204) {
+        let msg = 'HTTP ' + res.status;
+        try {
+            const j = await res.json();
+            if (j && j.error) msg = j.error;
+        } catch (_) { /* fall through */ }
+        throw new Error(msg);
+    }
+    await refreshShipMusicAll();
+    await loadProfile(id);
+}
+
+async function includeShipMusicSlot(slot) {
+    const id = shipmusicProfileId();
+    if (!id) return;
+    const url = '/api/profiles/' + encodeURIComponent(id)
+              + '/ship-music/' + encodeURIComponent(slot.stem) + '/exclude';
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) {
+        const txt = await res.text().catch(() => '');
+        throw new Error('HTTP ' + res.status + ' ' + txt);
+    }
+    await refreshShipMusicAll();
+    await loadProfile(id);
+}
+
+// ---- Added Tracks ----
+
+function renderShipMusicAdded() {
+    const host = document.getElementById('shipmusic-added-list');
+    if (!host) return;
+    if (shipmusicCache.added.length === 0) {
+        host.innerHTML = '<p class="hint">No added tracks yet. Use the form below to add your first.</p>';
+        return;
+    }
+    host.innerHTML = '';
+    for (const t of shipmusicCache.added) {
+        host.appendChild(renderShipMusicAddedTrack(t));
+    }
+}
+
+function renderShipMusicAddedTrack(track) {
+    const row = document.createElement('div');
+    row.className = 'shipmusic-added';
+    row.dataset.trackKey = track.trackKey;
+
+    const titleLine = document.createElement('div');
+    titleLine.className = 'shipmusic-added-title';
+
+    const idxBadge = document.createElement('span');
+    idxBadge.className = 'shipmusic-added-index';
+    idxBadge.textContent = '#' + (track.newIndex || '?');
+    titleLine.appendChild(idxBadge);
+
+    const titleSpan = document.createElement('strong');
+    titleSpan.textContent = track.title || track.trackKey;
+    titleLine.appendChild(titleSpan);
+
+    if (track.title && track.title !== track.trackKey) {
+        const keySpan = document.createElement('span');
+        keySpan.className = 'shipmusic-added-meta';
+        keySpan.textContent = '(' + track.trackKey + ')';
+        titleLine.appendChild(keySpan);
+    }
+
+    const stateBadge = document.createElement('span');
+    stateBadge.className = 'shipmusic-added-state shipmusic-added-state-' + track.state;
+    stateBadge.textContent = track.state === 'ready' ? 'Ready' : 'WAV missing';
+    titleLine.appendChild(stateBadge);
+    row.appendChild(titleLine);
+
+    const meta = document.createElement('div');
+    meta.className = 'shipmusic-added-meta';
+    const parts = [];
+    if (track.originalFilename) parts.push(track.originalFilename);
+    if (track.wavBytes) parts.push('(' + shipmusicFormatBytes(track.wavBytes) + ' wav)');
+    if (parts.length > 0) {
+        meta.textContent = parts.join(' ');
+        row.appendChild(meta);
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'shipmusic-added-controls';
+
+    const replaceInput = document.createElement('input');
+    replaceInput.type = 'file';
+    replaceInput.accept = SHIPMUSIC_AUDIO_EXTS.join(',') + ',audio/*';
+    replaceInput.style.display = 'none';
+    const replaceBtn = document.createElement('button');
+    replaceBtn.type = 'button';
+    replaceBtn.className = 'btn';
+    replaceBtn.textContent = 'Replace audio';
+
+    replaceInput.addEventListener('change', () => {
+        const original = replaceBtn.textContent;
+        replaceBtn.disabled = true;
+        replaceBtn.textContent = 'Uploading...';
+        uploadShipMusicAddedTrack(track.trackKey, track.title || '', replaceInput.files).catch(ex => {
+            alert('Upload failed: ' + (ex && ex.message ? ex.message : ex));
+        }).finally(() => {
+            replaceInput.value = '';
+            replaceBtn.disabled = false;
+            replaceBtn.textContent = original;
+        });
+    });
+    row.appendChild(replaceInput);
+    replaceBtn.addEventListener('click', () => replaceInput.click());
+    controls.appendChild(replaceBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-secondary';
+    delBtn.textContent = 'Remove';
+    delBtn.addEventListener('click', () => {
+        if (!confirm('Remove track "' + (track.title || track.trackKey) + '"?')) return;
+        deleteShipMusicAddedTrack(track.trackKey).catch(ex => {
+            alert('Delete failed: ' + (ex && ex.message ? ex.message : ex));
+        });
+    });
+    controls.appendChild(delBtn);
+
+    row.appendChild(controls);
+    return row;
+}
+
+async function uploadShipMusicAddedTrack(trackKey, title, fileList) {
+    const id = shipmusicProfileId();
+    if (!id) { alert('No profile is loaded.'); return; }
+    if (!trackKey) { alert('TrackKey is required.'); return; }
+    if (!fileList || fileList.length === 0) return;
+
+    let audio = null;
+    for (const f of fileList) {
+        if (shipmusicIsSupportedFile(f.name)) { audio = f; break; }
+    }
+    if (!audio) {
+        alert('Pick an audio file. Supported formats: '
+            + SHIPMUSIC_AUDIO_EXTS.join(', ') + '.');
+        return;
+    }
+
+    const form = new FormData();
+    form.append('trackKey', trackKey);
+    if (title) form.append('title', title);
+    form.append('audio', audio, audio.name);
+    form.append('filename', audio.name);
+
+    const url = '/api/profiles/' + encodeURIComponent(id) + '/ship-music-add';
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+        let msg = 'HTTP ' + res.status;
+        try {
+            const j = await res.json();
+            if (j && j.error) msg = j.error;
+        } catch (_) { /* fall through */ }
+        throw new Error(msg);
+    }
+    await refreshShipMusicAll();
+    await loadProfile(id);
+}
+
+async function deleteShipMusicAddedTrack(trackKey) {
+    const id = shipmusicProfileId();
+    if (!id) return;
+    const url = '/api/profiles/' + encodeURIComponent(id)
+              + '/ship-music-add/' + encodeURIComponent(trackKey);
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) {
+        const txt = await res.text().catch(() => '');
+        throw new Error('HTTP ' + res.status + ' ' + txt);
+    }
+    await refreshShipMusicAll();
+    await loadProfile(id);
+}
+
+// ---- Lifecycle hooks ----
+
+// Called from applyProfileToUI() during profile load. Triggers a
+// fetch+rerender of both vanilla slots and added tracks - on-disk
+// audio-file state lives on the server and needs an HTTP roundtrip.
 function applyShipMusicToUI() {
-    refreshShipMusicSlots().catch(ex => {
-        console.warn('refreshShipMusicSlots failed:', ex);
+    refreshShipMusicAll().catch(ex => {
+        console.warn('refreshShipMusicAll failed:', ex);
     });
 }
 
-// Tab has no inline event-driven setters (uploads are async via the
-// per-slot Browse button), so bindShipMusicHandlers is a no-op kept
-// for symmetry with the other tabs' bind pattern.
+// Bind the Add Track form's submit handler. Idempotent (re-runs of
+// app-startup don't double-bind).
 function bindShipMusicHandlers() {
-    // Slot cards rebind their own handlers each refresh.
+    const form = document.getElementById('shipmusic-add-form');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+    form.addEventListener('submit', ev => {
+        ev.preventDefault();
+        const keyEl = document.getElementById('shipmusic-add-trackkey');
+        const titleEl = document.getElementById('shipmusic-add-title');
+        const audioEl = document.getElementById('shipmusic-add-audio');
+        const statusEl = document.getElementById('shipmusic-add-status');
+        const btn = document.getElementById('shipmusic-add-btn');
+        const trackKey = (keyEl?.value || '').trim();
+        const title = (titleEl?.value || '').trim();
+        if (!trackKey) { alert('Track Key is required.'); return; }
+        if (!/^[A-Za-z0-9_]+$/.test(trackKey)) {
+            alert('Track Key may only contain letters, digits and underscore.');
+            return;
+        }
+        const files = audioEl?.files;
+        if (!files || files.length === 0) {
+            alert('Pick an audio file.');
+            return;
+        }
+        btn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Uploading...';
+        uploadShipMusicAddedTrack(trackKey, title, files).then(() => {
+            keyEl.value = '';
+            titleEl.value = '';
+            audioEl.value = '';
+            if (statusEl) statusEl.textContent = 'Added.';
+        }).catch(ex => {
+            if (statusEl) statusEl.textContent = '';
+            alert('Add failed: ' + (ex && ex.message ? ex.message : ex));
+        }).finally(() => {
+            btn.disabled = false;
+        });
+    });
 }

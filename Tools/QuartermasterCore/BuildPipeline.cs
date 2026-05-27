@@ -456,13 +456,22 @@ namespace Windrose.Quartermaster.Core
                 bool shipMusicActive = shipMusicJobs.Count > 0;
                 var shipMusicAddJobs = ResolveShipMusicAddJobs(profile);
                 bool shipMusicAddActive = shipMusicAddJobs.Count > 0;
+                // Exclusions of vanilla shanty slots (Profile.Globals.ShipMusic
+                // .ExcludedSlots). Resolved to 0-based indices into the
+                // DA's Shanty.Cues array via ShipMusicSlots.All position.
+                var shipMusicExcludedIndices = ResolveShipMusicExcludedIndices(profile);
+                bool shipMusicExcludesActive = shipMusicExcludedIndices.Count > 0;
+                // Combined DA-patch activity: any time we need to rewrite
+                // the four DA_<ShipType>_AudioParams DataAssets - either to
+                // append new slots or to remove vanilla ones.
+                bool shipMusicDaActive = shipMusicAddActive || shipMusicExcludesActive;
                 var lightingJobs = ResolveLightingJobs(profile);
                 bool lightingActive = lightingJobs.Count > 0;
                 // iconBakeJobs was resolved earlier (before ItemCreator);
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicAddActive || lightingActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // If the profile carries CustomBuildings that all got
@@ -507,7 +516,7 @@ namespace Windrose.Quartermaster.Core
                 ShipMusicAddResult shipMusicAddResult = null;
                 LightingResult lightingResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicAddActive || lightingActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || lightingActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -518,6 +527,7 @@ namespace Windrose.Quartermaster.Core
                         cooldownJobs,
                         shipMusicJobs,
                         shipMusicAddJobs,
+                        shipMusicExcludedIndices,
                         lightingJobs,
                         iconBakeJobs,
                         buildingsActive,
@@ -746,6 +756,7 @@ namespace Windrose.Quartermaster.Core
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
             List<ShipMusicAddJob> shipMusicAddJobs,
+            IReadOnlyCollection<int> shipMusicExcludedIndices,
             List<LightingJob> lightingJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
@@ -1047,37 +1058,56 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Ship-music ADD: extends the shanty roster beyond the vanilla
-            // 10 slots. One pre-staged SWAV source per added track (re-uses
-            // ShipMusicPatcher's WAV->Bink+template-splice for the
-            // SoundWave asset), plus one shared source that extracts the
-            // 4 vanilla DAs + 4 vanilla cue templates in a single retoc
-            // to-legacy call and then runs ShipMusicAddCueCloner +
-            // ShipMusicAddDaPatcher inside AfterExtract.
+            // Ship-music DA rewrite: covers two distinct features that
+            // touch the same four DA_<ShipType>_AudioParams DataAssets and
+            // therefore share one composite source (last-write-wins-style
+            // collisions would otherwise be a footgun):
+            //
+            //   * ADD: extends Shanty.Cues with N user tracks (slots 11..)
+            //   * EXCLUDE: removes a subset of the 10 vanilla slots from
+            //     the rotation by dropping their Cues entries.
+            //
+            // The combined patch runs even with exclude-only profiles
+            // (no SWAV / cue-clone sources, only the DA rewrite). The
+            // SWAV pre-staging + cue-clone steps only fire when there are
+            // user tracks to add.
             var shipMusicAddTrackResults = new List<ShipMusicAddTrackResult>();
-            if (shipMusicAddJobs != null && shipMusicAddJobs.Count > 0)
+            bool hasShipMusicAdd = shipMusicAddJobs != null && shipMusicAddJobs.Count > 0;
+            bool hasShipMusicExcludes = shipMusicExcludedIndices != null && shipMusicExcludedIndices.Count > 0;
+            if (hasShipMusicAdd || hasShipMusicExcludes)
             {
                 var usmapPath = UsmapLocator.Find(_paths.ModRoot);
                 var encoderPath = _paths.BinkAudioEncoderPath;
                 var templateUassetPath = _paths.ShipMusicTemplateUasset;
                 var templateUexpPath = _paths.ShipMusicTemplateUexp;
-                if (!File.Exists(encoderPath))
+                if (hasShipMusicAdd && !File.Exists(encoderPath))
                     throw new FileNotFoundException(
                         "Bink Audio encoder not found at " + encoderPath
                         + " - ship-music-add tracks cannot be built without it.");
-                if (!File.Exists(templateUassetPath) || !File.Exists(templateUexpPath))
+                if (hasShipMusicAdd && (!File.Exists(templateUassetPath) || !File.Exists(templateUexpPath)))
                     throw new FileNotFoundException(
                         "Ship-music template missing under " + Path.GetDirectoryName(templateUassetPath)
                         + " - expected SoundWave_BinkInline.uasset + .uexp.");
 
-                LogLine("ShipMusicAdd source: " + shipMusicAddJobs.Count + " added track"
-                        + (shipMusicAddJobs.Count == 1 ? "" : "s")
-                        + " (slot indices "
-                        + string.Join(", ", shipMusicAddJobs.Select(j => j.NewIndex)) + ")");
+                if (hasShipMusicAdd)
+                {
+                    LogLine("ShipMusicAdd source: " + shipMusicAddJobs.Count + " added track"
+                            + (shipMusicAddJobs.Count == 1 ? "" : "s")
+                            + " (slot indices "
+                            + string.Join(", ", shipMusicAddJobs.Select(j => j.NewIndex)) + ")");
+                }
+                if (hasShipMusicExcludes)
+                {
+                    LogLine("ShipMusicAdd source: " + shipMusicExcludedIndices.Count
+                            + " vanilla shanty slot"
+                            + (shipMusicExcludedIndices.Count == 1 ? "" : "s")
+                            + " excluded (0-based indices: "
+                            + string.Join(", ", shipMusicExcludedIndices.OrderBy(i => i)) + ")");
+                }
 
                 // Per-track placeholder result (we mutate it as the
                 // SWAV-build + cue-clone + DA-patch steps run).
-                foreach (var job in shipMusicAddJobs)
+                if (hasShipMusicAdd) foreach (var job in shipMusicAddJobs)
                 {
                     shipMusicAddTrackResults.Add(new ShipMusicAddTrackResult
                     {
@@ -1093,7 +1123,7 @@ namespace Windrose.Quartermaster.Core
                 // SWAV stem and virtual path so PatchFromWav drops the
                 // SoundWave triplet at the correct /Game/Audio/Game/Music/
                 // Shanti/SWAV/SWAV_Shanti_<TrackKey>(.uasset/.uexp).
-                for (int i = 0; i < shipMusicAddJobs.Count; i++)
+                if (hasShipMusicAdd) for (int i = 0; i < shipMusicAddJobs.Count; i++)
                 {
                     var localJob = shipMusicAddJobs[i];
                     var localTrackResult = shipMusicAddTrackResults[i];
@@ -1138,20 +1168,30 @@ namespace Windrose.Quartermaster.Core
                 //   2. deletes the 4 vanilla cue templates (we don't want
                 //      our mod-pak to ship them back unchanged)
                 //   3. patches each DA with the slot refs for all tracks
+                // Capture the local activation flags + indices into closure
+                // copies so the AfterExtract callback (which fires later
+                // during composite execution) doesn't accidentally read
+                // mutated outer state.
+                bool hasAddLocal = hasShipMusicAdd;
+                bool hasExclLocal = hasShipMusicExcludes;
+                var excludedSet = hasExclLocal
+                    ? new HashSet<int>(shipMusicExcludedIndices)
+                    : new HashSet<int>();
                 sources.Add(new IoStoreCompositeSource
                 {
                     Name = "ship-music-add-cues-das",
                     InputDir = gamePaksDir,
-                    Filters = ShipMusicAddPipelineHelper.AllFilters().ToList(),
+                    Filters = ShipMusicAddPipelineHelper.Filters(includeCueTemplates: hasAddLocal).ToList(),
                     AfterExtract = stagingDir =>
                     {
                         var cueCloner = new ShipMusicAddCueCloner { Log = Log };
                         var daPatcher = new ShipMusicAddDaPatcher { Log = Log };
 
                         // Per-flavor vanilla template absolute paths in
-                        // the staging tree.
+                        // the staging tree. Only populated for add-builds -
+                        // exclude-only builds don't filter cue templates.
                         var vanillaCues = new Dictionary<string, string>();
-                        foreach (var f in ShipMusicAddPipelineHelper.Flavors)
+                        if (hasAddLocal) foreach (var f in ShipMusicAddPipelineHelper.Flavors)
                         {
                             var rel = ShipMusicAddPipelineHelper.VanillaCueRelPath(f)
                                         .Replace('/', Path.DirectorySeparatorChar);
@@ -1185,7 +1225,7 @@ namespace Windrose.Quartermaster.Core
                         // trackRes.DurationSeconds, but composite sources
                         // may run out of order, so we read the WAV directly
                         // (cheap - WavInfo is a header parse, not a decode).
-                        for (int i = 0; i < shipMusicAddJobs.Count; i++)
+                        if (hasAddLocal) for (int i = 0; i < shipMusicAddJobs.Count; i++)
                         {
                             var job = shipMusicAddJobs[i];
                             var trackRes = shipMusicAddTrackResults[i];
@@ -1227,7 +1267,8 @@ namespace Windrose.Quartermaster.Core
                         }
 
                         // Delete vanilla cue templates from staging so they
-                        // don't ship in the mod-pak.
+                        // don't ship in the mod-pak. (No-op for exclude-only
+                        // builds since vanillaCues is empty.)
                         foreach (var kv in vanillaCues)
                         {
                             var uassetAbs = kv.Value;
@@ -1236,17 +1277,21 @@ namespace Windrose.Quartermaster.Core
                             if (File.Exists(uexpAbs))   File.Delete(uexpAbs);
                         }
 
-                        // Patch each DA with the full slot-ref list. The
-                        // voice-flavor differs per DA (Large/Medium/Small);
-                        // NoPlayer is shared. SlotRef[i] for a given DA
-                        // mirrors the new cue stems we just created above.
+                        // Patch each DA with the combined exclude+append
+                        // operation. The voice-flavor differs per DA
+                        // (Large/Medium/Small); NoPlayer is shared.
+                        // SlotRef[i] for a given DA mirrors the new cue
+                        // stems we just created above. Empty slot-ref list
+                        // is fine (exclude-only path).
                         foreach (var da in ShipMusicAddPipelineHelper.DaStems)
                         {
                             var voiceFlavor = ShipMusicAddPipelineHelper.VoiceFlavorForDa(da);
-                            var slotRefs = shipMusicAddJobs
-                                .Select(j => ShipMusicAddPipelineHelper.BuildSlotRef(voiceFlavor, j.NewIndex))
-                                .ToList();
-                            daPatcher.Patch(daAbs[da], daAbs[da], usmapPath, slotRefs);
+                            var slotRefs = hasAddLocal
+                                ? shipMusicAddJobs
+                                    .Select(j => ShipMusicAddPipelineHelper.BuildSlotRef(voiceFlavor, j.NewIndex))
+                                    .ToList()
+                                : new List<ShipMusicAddSlotRef>();
+                            daPatcher.Patch(daAbs[da], daAbs[da], usmapPath, excludedSet, slotRefs);
                         }
                     },
                 });
@@ -1813,12 +1858,19 @@ namespace Windrose.Quartermaster.Core
             }
 
             ShipMusicAddResult shipMusicAddOut = null;
-            if (shipMusicAddTrackResults.Count > 0)
+            // Report whenever the DA-rewrite ran - either because tracks were
+            // added or vanilla slots were excluded.
+            bool hasShipMusicAddOut = shipMusicAddTrackResults.Count > 0
+                                   || (shipMusicExcludedIndices != null && shipMusicExcludedIndices.Count > 0);
+            if (hasShipMusicAddOut)
             {
                 shipMusicAddOut = new ShipMusicAddResult
                 {
                     Enabled = true,
                     TrackResults = shipMusicAddTrackResults,
+                    ExcludedSlotIndices = shipMusicExcludedIndices == null
+                        ? new List<int>()
+                        : shipMusicExcludedIndices.OrderBy(i => i).ToList(),
                     UcasPath = finalUcas,
                     UtocPath = finalUtoc,
                     PakPath = mainPakWillBeBuilt ? null : finalPak,
@@ -2604,6 +2656,42 @@ namespace Windrose.Quartermaster.Core
                 nextIndex++;
             }
             return jobs;
+        }
+
+        // Resolves the user-excluded vanilla shanty slots into 0-based
+        // positions in the DA's Shanty.Cues array. Order of the
+        // ShipMusicSlots.All registry is the authoritative slot index
+        // mapping (see ShipMusicSlots.cs: All[0] = CUE_Shanti_01 vanilla,
+        // [1] = CUE_Shanti_02, ..., [9] = CUE_Shanti_10).
+        //
+        // Unknown stems in the profile (e.g. a typo or a leftover from an
+        // older mod registry) get skipped with a log line - we don't want
+        // to crash a build over a stale-config string.
+        HashSet<int> ResolveShipMusicExcludedIndices(Profile profile)
+        {
+            var result = new HashSet<int>();
+            var sm = profile.Globals != null ? profile.Globals.ShipMusic : null;
+            var excluded = sm != null ? sm.ExcludedSlots : null;
+            if (excluded == null || excluded.Count == 0) return result;
+
+            // Build a stem->index map from ShipMusicSlots.All. Case-insensitive
+            // mirrors how Songs is keyed too.
+            var stemToIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < ShipMusicSlots.All.Count; i++)
+                stemToIndex[ShipMusicSlots.All[i].Stem] = i;
+
+            foreach (var stem in excluded)
+            {
+                if (string.IsNullOrEmpty(stem)) continue;
+                if (!stemToIndex.TryGetValue(stem, out int idx))
+                {
+                    LogLine("ShipMusic: skipping unknown excluded slot stem '" + stem
+                            + "' (not in ShipMusicSlots.All registry)");
+                    continue;
+                }
+                result.Add(idx);
+            }
+            return result;
         }
 
         static bool IsSafeTrackKey(string key)

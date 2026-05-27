@@ -460,6 +460,19 @@ namespace Windrose.Quartermaster.Core
     public sealed class ShipMusicGlobal
     {
         public Dictionary<string, ShipMusicSlotOverride> Songs;
+
+        // SWAV stems the user excluded from the shanty rotation. An
+        // excluded slot is removed from the DA's Shanty.Cues array at
+        // build time so the engine never picks it (instead of just
+        // silencing it, which would still occupy a rotation slot).
+        // Indices used by the build pipeline come from the position in
+        // ShipMusicSlots.All - storing stems keeps the config robust
+        // against future slot reordering.
+        //
+        // null OR empty list = nothing excluded. An override (Songs
+        // entry) on the same stem stays on disk but does not play while
+        // the slot is excluded - re-including restores it instantly.
+        public List<string> ExcludedSlots;
     }
 
     // One replaced shanty slot. The audio bytes themselves live on

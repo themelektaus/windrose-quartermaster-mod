@@ -45,24 +45,38 @@ namespace Windrose.Quartermaster.Core
             "R5/Content/Gameplay/Water/Character/Params/Audio";
 
         // Inputs:
-        //   inputDaPath   - vanilla DA_<Name>_AudioParams.uasset (sibling
-        //                   .uexp implicit, both must exist).
-        //   outputDaPath  - target path; can equal input for in-place.
-        //   usmapPath     - shared UE5 unversioned-properties mapping.
-        //   slots         - new slots to append. Indices start at the first
-        //                   free index (typically 11 if vanilla has 10).
-        //                   Each slot has voice + noplayer cue stem to
-        //                   reference (must match the cue clones produced
-        //                   by ShipMusicAddCueCloner).
+        //   inputDaPath        - vanilla DA_<Name>_AudioParams.uasset (sibling
+        //                        .uexp implicit, both must exist).
+        //   outputDaPath       - target path; can equal input for in-place.
+        //   usmapPath          - shared UE5 unversioned-properties mapping.
+        //   excludedIndices    - 0-based indices into the vanilla Shanty.Cues
+        //                        array to drop (e.g. {2,7} removes CUE_03 and
+        //                        CUE_08). Can be null/empty. Indices are
+        //                        applied BEFORE the new slots are appended,
+        //                        so they always refer to vanilla positions.
+        //   slots              - new slots to append after exclusion. Each
+        //                        slot has voice + noplayer cue stem to
+        //                        reference (must match the cue clones
+        //                        produced by ShipMusicAddCueCloner). May be
+        //                        empty (exclude-only patches are allowed).
+        //
+        // At least one of excludedIndices or slots must be non-empty -
+        // calling this with both empty is a programmer error (and a
+        // pointless rewrite of vanilla bytes).
         public ShipMusicAddDaPatchResult Patch(
             string inputDaPath, string outputDaPath, string usmapPath,
+            IReadOnlyCollection<int> excludedIndices,
             IReadOnlyList<ShipMusicAddSlotRef> slots)
         {
             if (string.IsNullOrEmpty(inputDaPath))  throw new ArgumentNullException("inputDaPath");
             if (string.IsNullOrEmpty(outputDaPath)) throw new ArgumentNullException("outputDaPath");
             if (string.IsNullOrEmpty(usmapPath))    throw new ArgumentNullException("usmapPath");
-            if (slots == null || slots.Count == 0)
-                throw new ArgumentException("At least one slot is required");
+            bool hasExcludes = excludedIndices != null && excludedIndices.Count > 0;
+            bool hasSlots = slots != null && slots.Count > 0;
+            if (!hasExcludes && !hasSlots)
+                throw new ArgumentException(
+                    "Patch needs at least one excluded index or one new slot - "
+                    + "calling with both empty would just rewrite vanilla bytes.");
             if (!File.Exists(inputDaPath))
                 throw new FileNotFoundException("Vanilla DA not found: " + inputDaPath);
             if (!File.Exists(usmapPath))
@@ -88,17 +102,43 @@ namespace Windrose.Quartermaster.Core
             int beforeCues = cues.Value.Length;
             LogLine("Before: NameMap=" + beforeNameMap + " Imports=" + beforeImports + " Cues=" + beforeCues);
 
+            // Build the surviving vanilla list (in original order) by
+            // skipping every position the caller wants excluded.
+            var excludeSet = hasExcludes
+                ? new HashSet<int>(excludedIndices)
+                : new HashSet<int>();
+            var keptVanilla = new List<PropertyData>(cues.Value.Length);
+            int droppedCount = 0;
+            for (int i = 0; i < cues.Value.Length; i++)
+            {
+                if (excludeSet.Contains(i))
+                {
+                    droppedCount++;
+                    LogLine("  -slot vanilla index " + i + " excluded (removed from Cues)");
+                    continue;
+                }
+                keptVanilla.Add(cues.Value[i]);
+            }
+            int slotsCount = hasSlots ? slots.Count : 0;
+            if (keptVanilla.Count == 0 && slotsCount == 0)
+                throw new InvalidOperationException(
+                    "Exclusion would leave " + Path.GetFileName(inputDaPath)
+                    + " with an empty Cues array and no replacements - "
+                    + "the engine would crash. Refuse to write.");
+
             // Clone the last vanilla entry to inherit its element-name
             // (StructProperty array elements share the array's Name).
+            // We need the template even if we drop the last entry, so use
+            // the original tail rather than the post-exclude tail.
             var template = cues.Value[cues.Value.Length - 1] as StructPropertyData
                 ?? throw new InvalidOperationException("Last existing cue is not StructProperty");
 
-            var perSlotResults = new List<ShipMusicAddSlotApplied>(slots.Count);
-            var newCues = new PropertyData[cues.Value.Length + slots.Count];
-            cues.Value.CopyTo(newCues, 0);
+            var perSlotResults = new List<ShipMusicAddSlotApplied>(slotsCount);
+            var newCues = new PropertyData[keptVanilla.Count + slotsCount];
+            for (int i = 0; i < keptVanilla.Count; i++) newCues[i] = keptVanilla[i];
 
-            int writeIdx = cues.Value.Length;
-            foreach (var slot in slots)
+            int writeIdx = keptVanilla.Count;
+            if (hasSlots) foreach (var slot in slots)
             {
                 if (slot == null) throw new ArgumentException("Null slot in list");
                 if (string.IsNullOrEmpty(slot.VoiceCueStem))
@@ -160,6 +200,7 @@ namespace Windrose.Quartermaster.Core
             {
                 BeforeCues = beforeCues,
                 AfterCues = cues.Value.Length,
+                Excluded = droppedCount,
                 BeforeImports = beforeImports,
                 AfterImports = afterImports,
                 BeforeNameMap = beforeNameMap,
@@ -215,6 +256,8 @@ namespace Windrose.Quartermaster.Core
     {
         public int BeforeCues;
         public int AfterCues;
+        // Number of vanilla cue entries removed (from excludedIndices).
+        public int Excluded;
         public int BeforeImports;
         public int AfterImports;
         public int BeforeNameMap;

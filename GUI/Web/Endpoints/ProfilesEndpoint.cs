@@ -634,6 +634,10 @@ public static class ProfilesEndpoint
             if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
 
             var songs = profile.Globals?.ShipMusic?.Songs;
+            var excluded = profile.Globals?.ShipMusic?.ExcludedSlots;
+            var excludedSet = excluded == null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(excluded, StringComparer.OrdinalIgnoreCase);
             var rows = ShipMusicSlots.All.Select(slot =>
             {
                 ShipMusicSlotOverride ov = null;
@@ -659,9 +663,85 @@ public static class ProfilesEndpoint
                           : "broken",
                     originalFilename = ov?.OriginalFilename,
                     wavBytes,
+                    // True when the user excluded this slot from the
+                    // shanty rotation - the build pipeline drops it from
+                    // the DA Cues array so the engine never picks it.
+                    // Any configured override (Songs entry) stays on disk
+                    // and re-activates on include.
+                    excluded = excludedSet.Contains(slot.Stem),
                 };
             }).ToArray();
             return Results.Json(new { slots = rows });
+        });
+
+        // POST /api/profiles/{id}/ship-music/{slotStem}/exclude
+        //   Marks the vanilla shanty slot as excluded from the rotation.
+        //   Idempotent (re-posting the same slot is a no-op). Returns
+        //   400 if the resulting active-track count would drop below 1
+        //   (i.e. would exclude the last remaining vanilla slot and the
+        //   user has no added tracks to fall back on).
+        //
+        // DELETE /api/profiles/{id}/ship-music/{slotStem}/exclude
+        //   Removes the exclusion; the slot re-enters the rotation
+        //   with whatever override (if any) was configured before. Idempotent.
+        app.MapPost("/api/profiles/{id}/ship-music/{slotStem}/exclude",
+            (string id, string slotStem) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (!ShipMusicSlots.IsKnown(slotStem))
+                return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
+
+            if (profile.Globals == null) profile.Globals = new ProfileGlobals();
+            if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
+            if (profile.Globals.ShipMusic.ExcludedSlots == null)
+                profile.Globals.ShipMusic.ExcludedSlots = new List<string>();
+
+            var already = profile.Globals.ShipMusic.ExcludedSlots
+                .Any(s => string.Equals(s, slotStem, StringComparison.OrdinalIgnoreCase));
+            if (!already)
+            {
+                // Safety: refuse to exclude the last remaining playable
+                // track (active vanilla + added). The engine would crash
+                // on an empty Shanty.Cues array.
+                int excludedAfter = profile.Globals.ShipMusic.ExcludedSlots.Count + 1;
+                int activeVanillaAfter = ShipMusicSlots.All.Count - excludedAfter;
+                int addedCount = profile.Globals?.ShipMusicAdd?.Tracks == null
+                    ? 0
+                    : profile.Globals.ShipMusicAdd.Tracks.Count(t => t != null && !string.IsNullOrEmpty(t.TrackKey));
+                if (activeVanillaAfter + addedCount < 1)
+                {
+                    return Results.BadRequest(new {
+                        error = "Cannot exclude the last remaining shanty - at least one track "
+                              + "(vanilla or added) must stay in the rotation, otherwise the engine "
+                              + "crashes on an empty Shanty.Cues array."
+                    });
+                }
+                profile.Globals.ShipMusic.ExcludedSlots.Add(slotStem);
+            }
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+            return Results.NoContent();
+        });
+
+        app.MapDelete("/api/profiles/{id}/ship-music/{slotStem}/exclude",
+            (string id, string slotStem) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (!ShipMusicSlots.IsKnown(slotStem))
+                return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
+
+            if (profile.Globals?.ShipMusic?.ExcludedSlots != null)
+            {
+                profile.Globals.ShipMusic.ExcludedSlots.RemoveAll(s =>
+                    string.Equals(s, slotStem, StringComparison.OrdinalIgnoreCase));
+            }
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+            return Results.NoContent();
         });
 
         app.MapPost("/api/profiles/{id}/ship-music/{slotStem}",
@@ -1179,6 +1259,25 @@ public static class ProfilesEndpoint
                                 {
                                     OriginalFilename = kvp.Value.OriginalFilename,
                                 }),
+                    ExcludedSlots = g.ShipMusic.ExcludedSlots == null
+                        ? null
+                        : new List<string>(g.ShipMusic.ExcludedSlots),
+                },
+            ShipMusicAdd = g.ShipMusicAdd == null
+                ? null
+                : new ShipMusicAddGlobal
+                {
+                    Tracks = g.ShipMusicAdd.Tracks == null
+                        ? null
+                        : g.ShipMusicAdd.Tracks
+                            .Where(t => t != null)
+                            .Select(t => new ShipMusicAddedTrack
+                            {
+                                TrackKey = t.TrackKey,
+                                Title = t.Title,
+                                OriginalFilename = t.OriginalFilename,
+                            })
+                            .ToList(),
                 },
         };
     }

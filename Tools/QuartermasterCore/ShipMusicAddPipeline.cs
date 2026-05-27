@@ -113,6 +113,15 @@ namespace Windrose.Quartermaster.Core
             foreach (var da in DaStems) yield return da;
             foreach (var f in Flavors) yield return ShipMusicAddCueCloner.VanillaCueStem(f);
         }
+
+        // Variant for exclude-only builds: only pulls the 4 DAs (we don't
+        // need cue templates if no new tracks are being cloned).
+        public static IEnumerable<string> Filters(bool includeCueTemplates)
+        {
+            foreach (var da in DaStems) yield return da;
+            if (includeCueTemplates)
+                foreach (var f in Flavors) yield return ShipMusicAddCueCloner.VanillaCueStem(f);
+        }
     }
 
     // One scheduled added track (positional index = list order; first
@@ -141,6 +150,10 @@ namespace Windrose.Quartermaster.Core
     {
         public bool Enabled;
         public List<ShipMusicAddTrackResult> TrackResults;
+        // 0-based positions into ShipMusicSlots.All that the user excluded
+        // from the vanilla shanty rotation. Empty when no exclusions were
+        // configured (or the exclude-only DA path was a no-op).
+        public List<int> ExcludedSlotIndices;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

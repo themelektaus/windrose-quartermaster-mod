@@ -354,20 +354,38 @@ public static class BuildEndpoint
                         }).ToArray(),
                     };
                 }
-                // Ship music ADD: extends the shanty roster (slots 11+).
-                // One row per added track with title + slot index + the
-                // SWAV stem we baked + the 4 cue stems we cloned.
+                // Ship music ADD: extends the shanty roster (slots 11+)
+                // and/or excludes vanilla slots from the rotation. The
+                // info object is populated whenever EITHER the tracks
+                // list is non-empty OR the excludedSlots list is - the
+                // pipeline runs the DA rewrite in both cases.
                 object shipMusicAddInfo = null;
-                if (result.ShipMusicAddResult != null
+                bool hasAddTracks = result.ShipMusicAddResult != null
                     && result.ShipMusicAddResult.TrackResults != null
-                    && result.ShipMusicAddResult.TrackResults.Count > 0)
+                    && result.ShipMusicAddResult.TrackResults.Count > 0;
+                bool hasExcludes = result.ShipMusicAddResult != null
+                    && result.ShipMusicAddResult.ExcludedSlotIndices != null
+                    && result.ShipMusicAddResult.ExcludedSlotIndices.Count > 0;
+                if (hasAddTracks || hasExcludes)
                 {
                     var sma = result.ShipMusicAddResult;
+                    // Translate the 0-based positions in ShipMusicSlots.All
+                    // back to (stem, title) for the build-log so the user
+                    // sees "Excluded: Whiskey Johnny" instead of "Excluded: #9".
+                    var excludedSlots = (sma.ExcludedSlotIndices ?? new List<int>())
+                        .Where(idx => idx >= 0 && idx < ShipMusicSlots.All.Count)
+                        .Select(idx => new
+                        {
+                            index = idx,
+                            stem = ShipMusicSlots.All[idx].Stem,
+                            title = ShipMusicSlots.All[idx].Title,
+                        })
+                        .ToArray();
                     shipMusicAddInfo = new
                     {
                         ucasPath = sma.UcasPath,
                         utocPath = sma.UtocPath,
-                        tracks = sma.TrackResults.Select(t => new
+                        tracks = (sma.TrackResults ?? new List<ShipMusicAddTrackResult>()).Select(t => new
                         {
                             trackKey = t.TrackKey,
                             newIndex = t.NewIndex,
@@ -381,6 +399,7 @@ public static class BuildEndpoint
                             channels = t.Channels,
                             cueStems = t.CueStemsCreated == null ? null : t.CueStemsCreated.ToArray(),
                         }).ToArray(),
+                        excludedSlots,
                     };
                 }
                 // Crop growth: when active, scales every DA_Crop_*.json

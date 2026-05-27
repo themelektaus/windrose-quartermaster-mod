@@ -36,6 +36,15 @@
   }
 }
 
+.shipmusic-help-list {
+  margin: 0 0 0 1.5em;
+  padding: 0;
+
+  li {
+    margin-bottom: .35em;
+  }
+}
+
 .shipmusic-howto {
   background-color: var(--bg-sunk);
   border-radius: var(--border-radius);
@@ -64,13 +73,17 @@
   }
 }
 
-.shipmusic-slot-list {
+/* ---- Vanilla slots ---- */
+
+.shipmusic-slot-list,
+.shipmusic-added-list {
   display: flex;
   flex-direction: column;
   gap: .5em;
 }
 
-.shipmusic-slot {
+.shipmusic-slot,
+.shipmusic-added {
   display: flex;
   flex-direction: column;
   gap: .5em;
@@ -79,7 +92,25 @@
   border-radius: var(--border-radius);
 }
 
-.shipmusic-slot-title {
+/* Excluded vanilla slot: dimmed row, strikethrough title.
+   We dim the whole row (opacity) but the Include button stays
+   fully readable so the user can re-enable. */
+.shipmusic-slot.excluded {
+  opacity: .55;
+
+  .shipmusic-slot-title strong {
+    text-decoration: line-through;
+  }
+
+  /* Re-enable full opacity for the controls so the Include button
+     stays readable even though the rest of the row is dimmed. */
+  .shipmusic-slot-controls {
+    opacity: calc(1 / .55);
+  }
+}
+
+.shipmusic-slot-title,
+.shipmusic-added-title {
   display: flex;
   align-items: center;
   gap: .75em;
@@ -90,7 +121,8 @@
   }
 }
 
-.shipmusic-state {
+.shipmusic-state,
+.shipmusic-added-state {
   font-size: var(--font-size-small);
   padding: 0 .5em;
   border-radius: var(--border-radius);
@@ -112,15 +144,73 @@
   color: var(--bg);
 }
 
-.shipmusic-slot-meta {
+.shipmusic-state-excluded {
+  background-color: var(--text-dim);
+  color: var(--bg);
+}
+
+.shipmusic-added-state-ready {
+  background-color: var(--success);
+  color: var(--bg);
+}
+
+.shipmusic-added-state-missing-wav {
+  background-color: var(--accent);
+  color: var(--bg);
+}
+
+.shipmusic-slot-meta,
+.shipmusic-added-meta {
   margin: 0;
   color: var(--text-dim);
   font-size: var(--font-size-small);
 }
 
-.shipmusic-slot-controls {
+.shipmusic-slot-controls,
+.shipmusic-added-controls {
   display: flex;
   flex-wrap: wrap;
   gap: .5em;
   align-items: center;
+}
+
+.shipmusic-added-index {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+  padding: 0 .4em;
+  border-radius: var(--border-radius);
+  background-color: var(--bg);
+}
+
+/* ---- Add Track form ---- */
+
+.shipmusic-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: .75em;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: .25em;
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+
+    span {
+      font-weight: bold;
+      color: var(--text);
+    }
+
+    input[type="text"], input[type="file"] {
+      padding: .4em .6em;
+      font-size: 1em;
+    }
+  }
+}
+
+.shipmusic-add-controls {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  margin-top: .25em;
 }
