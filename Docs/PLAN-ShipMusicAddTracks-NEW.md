@@ -1,6 +1,6 @@
 # Plan: Ship Music - Add Tracks (statt nur Override)
 
-Status: **Plan-Doc, noch nicht implementiert.** Engineering startet bewusst erst nach Freigabe.
+Status: **Implementiert in commits `2e93f8b` (M2+M3) und `b29a390` (M4+M5).** M6 (ingame-Test + Doc-Polish) offen. Siehe "Implementation Notes" am Ende.
 
 ## Ziel
 
@@ -188,11 +188,124 @@ Wenn die Engineering-Session startet:
 3. Mit M1.2 (Roundtrip-Test) beginnen, weil das die groesste Unbekannte ist
 4. Falls M1.2 negativ ist: Plagiat-Fallback ueberlegen statt M2 zu starten
 
+## Wiedereinstieg-Checkliste (post-implementation)
+
+Beim Debugging eines neuen Bugs:
+
+1. Repro mit minimal-Profile: 1 added track, kurzes WAV, in `~mods` deployen, ingame Schiff besteigen, Shanty starten
+2. Logs:
+   - Build-Log in der GUI (zeigt `DONE - ship music extended (N added track(s))` + slot stems)
+   - Server-Log fuer `[PreWarm]` / `[Crash]` Lines
+   - R5 log unter `%LOCALAPPDATA%\R5\Saved\Logs\`
+3. Falls Engine-Crash:
+   - retoc-Roundtrip nochmal verifizieren: `.uexp` von gepatchtem DA gegen vanilla mit Probe-Tool dumpen, Cues.Count sollte 10+N sein
+   - Save-Game-Format anschauen ob "last played track index" persistiert wird
+4. Falls Tracks nie drankommen:
+   - DA ingame inspizieren via UE5SS Live Editor falls verfuegbar
+   - Crew-Shanty-Picker-Code suchen (R5 sources via dumpsxact oder fmodel)
+
 ## Referenz-Artefakte
 
 | Pfad | Was |
 |---|---|
 | `References/Extra Sea Shanties/ExtraSeaShanties_P.utoc` | Source der Referenz-Mod (28 Assets, 11.5 MB) |
-| `.build-tmp/shanties-recon/` | Vollstaendig unpacked (per `retoc unpack`) als Read-Reference |
+| `.build-tmp/shanties-recon/` | Vollstaendig unpacked (per `retoc unpack`) als Read-Reference - bei Bedarf neu erzeugen, der Ordner ist gitignored und wird in jeder Recon-Session aufgeraeumt |
 | `tools/ar_writer/ar_parser.py` | Architektur-Vorbild fuer NameMap-Extension-Logik |
 | `BinkAudioEncoder.cs` | WAV -> Bink-Codec (bereits in unserer Override-Pipeline aktiv) |
+
+## Implementation Notes (post-recon)
+
+Die ausgefuehrte Implementierung weicht in mehreren Punkten von den ursprueng-
+lichen Annahmen ab. Die folgenden Befunde gelten als die Wahrheit auf disk.
+
+### Tatsaechliche DA-Property-Struktur
+
+Nicht `Tracks_VoicePlayer` / `Tracks_VoiceNoPlayer` (das war geraten), sondern:
+
+```
+DA_<ShipType>_AudioParams (R5ShipAudioParams)
+  Shanty : R5ShipShantySoundData {
+    Cues : Array<R5ShantyCuData>[10] {
+      [i] {
+        AutonomousShantySound : ObjectProperty -> Import(SoundCue: CUE_Shanti_<i+1>_<Variant>_VoicePlayer)
+        SimulatedShantySound  : ObjectProperty -> Import(SoundCue: CUE_Shanti_<i+1>_VoiceNoPlayer)
+      }
+    }
+    ShantyFadeIn : Float<0.1>
+    TechSoundMix : Object<MIX_Shanti>
+    AttachSocketName : Name<SoundCrue>
+  }
+  ...
+}
+```
+
+Wichtige Konsequenzen:
+- Cue-Refs sind **`ObjectProperty` mit hard ImportMap-Refs**, nicht `FSoftObjectPath`. Daher braucht jeder neue Cue 2 ImportMap-Eintraege (Package + SoundCue).
+- Jeder DA referenziert eine **andere VoicePlayer-Variante**:
+  - `DA_Brig_AudioParams`         -> CUE_Shanti_N_**Medium**_VoicePlayer
+  - `DA_Frigate_AudioParams`      -> CUE_Shanti_N_**Large**_VoicePlayer
+  - `DA_FrigateNoCrue_AudioParams`-> CUE_Shanti_N_**Large**_VoicePlayer
+  - `DA_Ketch_AudioParams`        -> CUE_Shanti_N_**Small**_VoicePlayer
+  - `_VoiceNoPlayer` ist shared in allen 4 DAs.
+
+### Cue-Cloning ist trivial
+
+Vanilla `CUE_Shanti_10_<flavor>` ist ein 62-Export-Soundcue mit Layering (14
+SWAV-Refs: ShipsChatter calls + ein "SWAV_Shanti_MaggieMay"-Lead). Refmod
+`Extra Sea Shanties` clont diesen Cue **byte-equivalent** und renamt nur
+vier FName-Strings via NameMap-Replace:
+- Self-stem (CUE_Shanti_10_* -> CUE_Shanti_N_*)
+- Self-path (analog mit `/Game/`-Praefix)
+- SWAV-stem (SWAV_Shanti_MaggieMay -> SWAV_Shanti_<UserStem>)
+- SWAV-path (analog)
+
+Das bedeutet: **kein Cue-Aufbau from scratch noetig** - `UAssetAPI.SetNameReference`
+auf die 4 NameMap-Indices reicht. Export[0].ObjectName wird automatisch updated
+weil sie ueber den NameMap-Index referenziert.
+
+### retoc to-zen Roundtrip
+
+`.uexp` ist nach `retoc to-legacy -> UAssetAPI patch -> retoc to-zen ->
+retoc to-legacy` byte-identisch (verifiziert im M1.2-Recon). `.uasset` ist
+strukturell gleich aber Bytes drifted (Hash/UUID-Felder, NameMap-Order) -
+das ist normal weil retoc das Legacy-Format als View auf Zen-internes
+generiert. Ingame ist die Asset semantisch identisch.
+
+### Aufwand-Realitaet vs. Schaetzung
+
+| Phase | Schaetzung | Tatsaechlich |
+|---|---|---|
+| M1 Recon                | ~2h      | ~1.5h |
+| M2 DA-Patcher           | ~6-8h    | ~30min Probe + 1h Production (UAssetAPI macht 95%) |
+| M3 Cue-Cloner           | ~2-3h    | ~30min Probe + 30min Production (NameMap-Replace) |
+| M4 Pipeline+Backend     | ~3-4h    | ~2h |
+| M5 Frontend             | ~2h      | ~1h |
+| **Gesamt (ohne M6)**    | ~15-19h  | **~6.5h** |
+
+Die Schaetzung hat den UAssetAPI-Hebel und die Cue-Clone-Trivialitaet (die
+Refmod-Reverse-Engineering offengelegt hat) deutlich unterschaetzt. Ein
+Plan-B (statische Refmod-DA-Templates) wurde damit unnoetig.
+
+### Implementation Layout
+
+| Layer | Datei | Kommentar |
+|---|---|---|
+| Patcher M2 | `Tools/QuartermasterCore/ShipMusicAddDaPatcher.cs` | Extended Shanty.Cues + 2*N Imports |
+| Patcher M3 | `Tools/QuartermasterCore/ShipMusicAddCueCloner.cs` | 4 NameMap-Replacements pro Cue-Variante |
+| Pipeline   | `Tools/QuartermasterCore/ShipMusicAddPipeline.cs` | Helper + Job/Result-Types |
+| Build      | `Tools/QuartermasterCore/BuildPipeline.cs` | `ResolveShipMusicAddJobs` + IoStoreCompositeSource-Setup |
+| Profile    | `Tools/QuartermasterCore/Profile.cs` | `ShipMusicAddGlobal { Tracks: List<ShipMusicAddedTrack> }` |
+| Storage    | `Tools/QuartermasterCore/WindrosePaths.cs` | `ProfileShipMusicAddTrackDir(id, trackKey)` |
+| Build API  | `GUI/Web/Endpoints/BuildEndpoint.cs` | `shipMusicAdd: {ucasPath, utocPath, tracks: [...]}` |
+| Profile API| `GUI/Web/Endpoints/ProfilesEndpoint.cs` | `GET/POST/DELETE /api/profiles/{id}/ship-music-add` |
+| Tab        | `GUI/Web/wwwroot/tabs/shipmusicadd.{html,css,js}` | "Ship Music+" tab with Add form + Track list |
+| Glue       | `GUI/Web/wwwroot/app.js`, `index.html` | TAB_NAMES, lifecycle, build-log renderer |
+
+### Offene Risiken fuer M6 (ingame-Test)
+
+| Risiko | Was passieren koennte | Mitigation |
+|---|---|---|
+| Save-Game speichert "last played track index" mit fixem cap | Spieler joint, save versucht index 12 zu laden, OOB-crash | Vanilla mit 10 Slots testen ob save-game ueberhaupt einen index speichert. Falls ja: monkey-patch im Engine-Hook |
+| Crew-Shanty-Picker bias | Engine waehlt Cues[0..9] nur (hardcoded count) | Reverse-engineer den Picker (vermutlich `randInt(0, Cues.Num())`); falls hardcoded 10 = Fix-Plan B |
+| Konflikt mit anderen Mods die DA_*_AudioParams anfassen | Last-pak-wins; ein anderer Mod ueberschreibt unsere DA | Frontend warnt explizit. Architektur-bedingt. |
+| ImportMap-Drift in retoc to-zen | retoc re-orderet Imports und zerstoert die ObjectProperty-Refs | M1.2 hat zwar .uexp byte-equal nachgewiesen, aber das war ohne Import-Adds. Falls Bug: importmap-Order-stabilisierung in UAssetAPI-Write erzwingen |
