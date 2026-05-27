@@ -19,12 +19,9 @@ namespace Windrose.Quartermaster.Core
     //     MiniMapShowDistance       (vanilla 250 for foot/ShallowBoat,
     //                                vanilla 750 for the four ship classes)
     //
-    // Both classes scale by the SAME multiplier: that's the linear
-    // scaling the BetterMinimapRange_2x_2x_P reference mod ships, just
-    // tunable instead of hardcoded to 2x. MaxMapResolution stays at the
-    // vanilla 2048 (the reference mod doesn't change it either despite
-    // the "_2x_2x_" filename - the second 2x refers to MiniMapShowDistance,
-    // not resolution).
+    // Both classes scale by the SAME multiplier - one linear factor across
+    // foot + ship reveal ranges, tunable rather than hardcoded.
+    // MaxMapResolution stays at the vanilla 2048 (unscaled).
     //
     // The patch is applied as four targeted regex replacements rather
     // than parsing the whole config grammar: the file ships as a flat
@@ -94,7 +91,6 @@ namespace Windrose.Quartermaster.Core
             // ways that defeat the patch. Inserting the directive right
             // after the section header guarantees the vanilla array is
             // dropped before our patched +MapsConfig=(...) is applied.
-            // The reference mod BetterMinimapRange_2x_2x_P does the same.
             const string sectionHeader = "[/Script/R5.R5MapSettings]";
             const string clearArray = "!MapsConfig=ClearArray";
             int sectionIdx = raw.IndexOf(sectionHeader, StringComparison.Ordinal);

@@ -263,7 +263,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'mods'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -680,6 +680,7 @@ function applyProfileToUI() {
     applyCooldownsToUI();
     applyStationsToUI();
     applyShipMusicToUI();
+    applyLightingToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -1190,6 +1191,23 @@ async function onBuild() {
                         + ' -> ' + name + diag });
                 }
             }
+            if (data.lighting) {
+                const lg = data.lighting;
+                const overall = (lg.overallMultiplier != null ? lg.overallMultiplier : 1.0).toFixed(2);
+                const lights = lg.lights || [];
+                lines.push({ kind: 'ok', msg:
+                    'DONE - lighting patched (' + lights.length + ' light'
+                    + (lights.length === 1 ? '' : 's')
+                    + '; overall ' + overall + 'x)' });
+                for (const light of lights) {
+                    const mul = (light.multiplier || 1.0).toFixed(2);
+                    const vanM = (light.vanilla / 100.0).toFixed(1);
+                    const effM = (light.effective / 100.0).toFixed(1);
+                    lines.push({ kind: 'ok', msg:
+                        '  ' + light.stem + ' (' + mul + 'x): '
+                        + vanM + 'm -> ' + effM + 'm' });
+                }
+            }
             if (data.cropGrowth) {
                 const cg = data.cropGrowth;
                 const mul = (cg.multiplier || 1.0).toFixed(2);
@@ -1241,7 +1259,7 @@ async function onBuild() {
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
-                && !data.shipMusic
+                && !data.shipMusic && !data.lighting
                 && !data.cropGrowth && !data.cookingDuration
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
@@ -1626,6 +1644,7 @@ function bindHandlers() {
     bindCooldownsHandlers();
     bindStationsHandlers();
     bindShipMusicHandlers();
+    bindLightingHandlers();
 }
 
 // Window-level drag-and-drop import for profile JSONs. A single JSON file

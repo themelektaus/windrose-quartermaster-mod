@@ -454,11 +454,13 @@ namespace Windrose.Quartermaster.Core
                 bool cooldownsActive = cooldownJobs.Count > 0;
                 var shipMusicJobs = ResolveShipMusicJobs(profile);
                 bool shipMusicActive = shipMusicJobs.Count > 0;
+                var lightingJobs = ResolveLightingJobs(profile);
+                bool lightingActive = lightingJobs.Count > 0;
                 // iconBakeJobs was resolved earlier (before ItemCreator);
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // If the profile carries CustomBuildings that all got
@@ -500,8 +502,9 @@ namespace Windrose.Quartermaster.Core
                 PickaxeRangeResult pickaxeResult = null;
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
+                LightingResult lightingResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -511,6 +514,7 @@ namespace Windrose.Quartermaster.Core
                         pickaxeMultiplier, pickaxeActive,
                         cooldownJobs,
                         shipMusicJobs,
+                        lightingJobs,
                         iconBakeJobs,
                         buildingsActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
@@ -520,6 +524,7 @@ namespace Windrose.Quartermaster.Core
                     pickaxeResult = compositeResult.PickaxeRange;
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
+                    lightingResult = compositeResult.Lighting;
                     iconBakeResults = compositeResult.Icons;
                     buildingResults = compositeResult.Buildings;
                 }
@@ -674,6 +679,7 @@ namespace Windrose.Quartermaster.Core
                     PickaxeRangeResult = pickaxeResult,
                     CooldownsResult = cooldownsResult,
                     ShipMusicResult = shipMusicResult,
+                    LightingResult = lightingResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
                     BuildingResults = buildingResults,
@@ -733,6 +739,7 @@ namespace Windrose.Quartermaster.Core
             double pickaxeMultiplier, bool pickaxeActive,
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
+            List<LightingJob> lightingJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
@@ -893,6 +900,48 @@ namespace Windrose.Quartermaster.Core
                             var r = patcher.Patch(
                                 legacyAssetPath, legacyAssetPath, usmapPath, pickaxeMultiplier);
                             pickaxePatchResults.Add(r);
+                        },
+                    });
+                }
+            }
+
+            // Lighting: one IoStoreCompositeSource per light source whose
+            // effective multiplier resolves to != 1.0 (see ResolveLightingJobs).
+            // Each light's AttenuationRadius FloatProperty is rewritten via
+            // UAssetAPI - same pattern as PickaxeRange, just iterating the
+            // light registry instead of pickaxe tiers.
+            var lightingPatchResults = new List<LightingPatchResult>();
+            if (lightingJobs != null && lightingJobs.Count > 0)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Lighting source: " + lightingJobs.Count + " light"
+                        + (lightingJobs.Count == 1 ? "" : "s")
+                        + " (vanilla AttenuationRadius scaled per-light)");
+                foreach (var job in lightingJobs)
+                {
+                    var localJob = job;
+                    sources.Add(new IoStoreCompositeSource
+                    {
+                        Name = "lighting:" + localJob.Info.Stem,
+                        InputDir = gamePaksDir,
+                        Filter = localJob.Info.Stem,
+                        AfterExtract = stagingDir =>
+                        {
+                            var legacyAssetPath = Path.Combine(stagingDir,
+                                localJob.Info.VirtualPath.Replace('/', Path.DirectorySeparatorChar));
+                            if (!File.Exists(legacyAssetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    "retoc to-legacy did not produce the expected lighting asset at "
+                                    + legacyAssetPath
+                                    + " - the game container may have moved the asset, or "
+                                    + "the filter '" + localJob.Info.Stem + "' is wrong.");
+                            }
+                            var patcher = new LightingPatcher { Log = Log };
+                            var r = patcher.Patch(
+                                legacyAssetPath, legacyAssetPath, usmapPath,
+                                localJob.Multiplier, localJob.Info);
+                            lightingPatchResults.Add(r);
                         },
                     });
                 }
@@ -1551,6 +1600,21 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            LightingResult lightingOut = null;
+            if (lightingPatchResults.Count > 0)
+            {
+                double overall = ResolveLightingOverallMultiplier(profile);
+                lightingOut = new LightingResult
+                {
+                    Enabled = true,
+                    OverallMultiplier = overall,
+                    AssetResults = lightingPatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
@@ -1559,6 +1623,7 @@ namespace Windrose.Quartermaster.Core
                 PickaxeRange = pickaxeOut,
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
+                Lighting = lightingOut,
                 Icons = iconResults,
                 Buildings = buildingResults,
             };
@@ -1574,6 +1639,7 @@ namespace Windrose.Quartermaster.Core
             public PickaxeRangeResult PickaxeRange;
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;
+            public LightingResult Lighting;
             public List<IconBakerPatcher.BakeResult> Icons;
             public List<BuildingPatchResult> Buildings;
         }
@@ -2044,6 +2110,66 @@ namespace Windrose.Quartermaster.Core
             var pr = profile.Globals.PickaxeRange;
             if (pr.Multiplier.HasValue) return pr.Multiplier.Value;
             return 1.0;
+        }
+
+        // Resolves the OverallMultiplier the Lighting global is configured
+        // with. 1.0 = vanilla baseline. Used by ResolveLightingJobs to fill
+        // in any per-light slot whose override is null or 1.0, and surfaced
+        // in the build result for the response log.
+        static double ResolveLightingOverallMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.Lighting == null) return 1.0;
+            var lg = profile.Globals.Lighting;
+            if (lg.OverallMultiplier.HasValue) return lg.OverallMultiplier.Value;
+            return 1.0;
+        }
+
+        // Resolves the per-light multiplier the build should use for `stem`,
+        // applying the precedence rule documented on LightingGlobal:
+        //   - override != null AND != 1.0 -> override
+        //   - otherwise -> OverallMultiplier
+        // 1.0 means "skip this light" - the caller filters those out before
+        // adding a source.
+        static double ResolveLightingMultiplierFor(Profile profile, string stem)
+        {
+            if (profile.Globals == null || profile.Globals.Lighting == null) return 1.0;
+            var lg = profile.Globals.Lighting;
+            double overall = lg.OverallMultiplier.HasValue ? lg.OverallMultiplier.Value : 1.0;
+            if (lg.Overrides != null && stem != null)
+            {
+                foreach (var kv in lg.Overrides)
+                {
+                    if (string.Equals(kv.Key, stem, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // 1.0 override collapses to "no override" so the
+                        // overall still applies. This is how the GUI signals
+                        // "this light follows the overall slider".
+                        if (Math.Abs(kv.Value - 1.0) > 1e-9) return kv.Value;
+                        break;
+                    }
+                }
+            }
+            return overall;
+        }
+
+        // Walks LightingPatcher.Lights and yields one LightingJob per
+        // entry whose effective multiplier resolves to != 1.0 (vanilla).
+        // The build pipeline turns each job into a separate
+        // IoStoreCompositeSource so the build log stays self-explanatory
+        // (one line per patched light).
+        static List<LightingJob> ResolveLightingJobs(Profile profile)
+        {
+            var jobs = new List<LightingJob>();
+            if (profile == null || profile.Globals == null || profile.Globals.Lighting == null)
+                return jobs;
+            foreach (var info in LightingPatcher.Lights)
+            {
+                double m = ResolveLightingMultiplierFor(profile, info.Stem);
+                if (Math.Abs(m - 1.0) < 1e-9) continue;
+                if (m < LightingPatcher.MinMultiplier || m > LightingPatcher.MaxMultiplier) continue;
+                jobs.Add(new LightingJob { Info = info, Multiplier = m });
+            }
+            return jobs;
         }
 
         // Resolves the effective crop-growth multiplier (applied to every
@@ -2755,6 +2881,12 @@ namespace Windrose.Quartermaster.Core
         // ShipMusicPatchResult per replaced slot plus the shared triplet
         // paths.
         public ShipMusicResult ShipMusicResult;
+        // Light-radius (AttenuationRadius) patch inclusion result. null
+        // when no light source has an effective multiplier != 1.0. When
+        // non-null, carries one LightingPatchResult per patched light
+        // blueprint plus the shared triplet paths and the OverallMultiplier
+        // value the build was using as fallback for unset per-light overrides.
+        public LightingResult LightingResult;
         // Crop-growth patch inclusion result. null when the profile didn't
         // configure a CropGrowthMultiplier or set it to 1.0 (vanilla). When
         // non-null, carries the per-crop ticks before/after for the build
@@ -2870,6 +3002,37 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public List<PickaxeRangePatchResult> AssetResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    // One light source whose AttenuationRadius should be rewritten in this
+    // build. The pipeline produces these by walking LightingPatcher.Lights
+    // and resolving each light's effective multiplier from the profile's
+    // Lighting global (overall * per-light override).
+    public sealed class LightingJob
+    {
+        public LightingPatcher.LightInfo Info;
+        public double Multiplier;
+    }
+
+    // Standalone summary of "lighting patches got included in this build".
+    // Mirrors PickaxeRangeResult structurally - the patched DataAssets ride
+    // inside the SAME IoStore triplet as Pickup / Bonfire / Pickaxe, so
+    // PakPath is null when a main Pak1 is also being built and points to
+    // the stub .pak otherwise.
+    //
+    // OverallMultiplier carries the GUI's "Lighting" slider state at build
+    // time (the value the per-light fallback used). AssetResults holds
+    // one entry per patched light with vanilla + effective values, so the
+    // build response can render "Lantern: 5.5m -> 16.5m, Torch: 8.0m -> ..."
+    // style lines.
+    public sealed class LightingResult
+    {
+        public bool Enabled;
+        public double OverallMultiplier;
+        public List<LightingPatchResult> AssetResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

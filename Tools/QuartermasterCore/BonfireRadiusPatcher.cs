@@ -17,9 +17,8 @@ namespace Windrose.Quartermaster.Core
     //     InfluenceRadius = 5000  (cm; ~50 m placement radius around the center)
     //     InfluenceHeight = 3000  (cm; ~30 m vertical extent)
     //
-    // Both scale by the SAME user-supplied multiplier; the reference mod
-    // ExtendedBonfireRadius_3x_P matches multiplier=3.0 (15000/9000). An
-    // empirical ingame probe with multiplier=3.0 confirmed the build zone
+    // Both scale by the SAME user-supplied multiplier. An empirical ingame
+    // probe with multiplier=3.0 (15000/9000) confirmed the build zone
     // around a placed building-center grows ~3x, so these two floats ARE
     // the gameplay trigger (the BP_BuildingBlock's ScenarioOverlapSphere
     // radius was a red herring - patching it alone did nothing).
@@ -88,9 +87,9 @@ namespace Windrose.Quartermaster.Core
         public const int InfluenceHeightOffset = 121;
 
         // Allowed multiplier range. 1.0 == vanilla (no-op), upper bound
-        // chosen to be slightly above the reference mod's 3.0 baseline -
-        // anything past 5x would let a single bonfire cover most of a
-        // small island, which trivialises base placement entirely.
+        // chosen to be slightly above a 3.0 baseline - anything past 5x
+        // would let a single bonfire cover most of a small island, which
+        // trivialises base placement entirely.
         public const double MinMultiplier = 1.0;
         public const double MaxMultiplier = 5.0;
 

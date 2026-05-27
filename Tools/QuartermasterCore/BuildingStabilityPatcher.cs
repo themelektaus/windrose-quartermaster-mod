@@ -45,8 +45,8 @@ namespace Windrose.Quartermaster.Core
     //     -> retoc pack-raw        output IoStore triplet (.pak/.ucas/.utoc)
     //
     // Byte layout of an unversioned IntegritySettings struct in this asset
-    // family (verified across the full 787-asset set the BetterStructureSupport
-    // reference mod ships - same layout, all 787 patched cleanly):
+    // family (verified across the full 787-asset supported set - same layout,
+    // all 787 patched cleanly):
     //
     //     +0   2 bytes   inner FUnversionedHeader (single fragment, all 4 floats present)
     //     +2   4 bytes   BlockWeight                  (float, LE)
@@ -76,9 +76,9 @@ namespace Windrose.Quartermaster.Core
         //
         // BACKGROUND: an early self-bake attempt patched all 862 DA_BI*
         // DataAssets indiscriminately and the resulting mod crashed the game
-        // on startup. The BetterStructureSupport reference mod's author had
-        // empirically settled on a 787-asset subset; the 75 they omitted
-        // turned out to be the trigger. The omitted set is a mix of:
+        // on startup. Empirical bisection settled on a 787-asset subset; the
+        // 75 omitted assets turned out to be the trigger. The omitted set is
+        // a mix of:
         //   - non-placeable trader/NPC catalogue DataAssets in POI/TradePost
         //     and POI/Tortuga (they're DA_BI by filename, but they're trade
         //     inventories not building blocks)
@@ -118,8 +118,7 @@ namespace Windrose.Quartermaster.Core
             }
 
             // Single named exclusion in BuildingUtilities: the foundation
-            // center asset is special-cased by the engine and the reference
-            // mod omits it.
+            // center asset is special-cased by the engine and must be omitted.
             if (p.EndsWith("/BuildingUtilities/DA_BI_Utilities_BuildingCenterT01.uasset",
                     StringComparison.OrdinalIgnoreCase))
                 return false;
@@ -141,12 +140,10 @@ namespace Windrose.Quartermaster.Core
             return true;
         }
 
-        // Target values applied to every IntegritySettings struct. These
-        // match the BetterStructureSupport reference mod 1:1, so the
-        // user-facing behaviour is identical to the previous reference-
-        // adoption build path: BlockWeight=0 (gravity-less), Max*Load=1e7
-        // (effectively unbreakable for any realistic stack), and
-        // MinIntersectionExtent=0 (no overlap requirement).
+        // Target values applied to every IntegritySettings struct:
+        // BlockWeight=0 (gravity-less), Max*Load=1e7 (effectively unbreakable
+        // for any realistic stack), and MinIntersectionExtent=0 (no overlap
+        // requirement).
         public const float TargetBlockWeight = 0.0f;
         public const float TargetBlockMaxHorizontalLoad = 10_000_000.0f;
         public const float TargetBlockMaxVerticalLoad = 10_000_000.0f;
@@ -174,8 +171,8 @@ namespace Windrose.Quartermaster.Core
         //   4. For excluded assets, drops their chunk file from chunksDir
         //      AND removes the chunk_paths entry from the manifest, so the
         //      subsequent retoc pack-raw produces a triplet with only the
-        //      787 supported assets - exactly the set the reference mod
-        //      ships and that we know is game-compatible.
+        //      787 supported assets - the empirically verified
+        //      game-compatible subset.
         //   5. Writes the filtered manifest back to manifestPath.
         //
         // Returns one BuildingStabilityAssetResult per asset (patched +
@@ -348,8 +345,7 @@ namespace Windrose.Quartermaster.Core
             {
                 // Asset legitimately lacks IntegritySettings. Keep its
                 // chunk in the output (unpatched) so we don't perturb the
-                // package graph - the reference mod also ships these
-                // asset chunks unchanged.
+                // package graph.
                 return new BuildingStabilityAssetResult
                 {
                     AssetPath = assetPath,

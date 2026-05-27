@@ -106,6 +106,7 @@ namespace Windrose.Quartermaster.Core
         public CooldownsGlobal Cooldowns;
         public ProductionTimesGlobal ProductionTimes;
         public ShipMusicGlobal ShipMusic;
+        public LightingGlobal Lighting;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
     }
@@ -196,9 +197,9 @@ namespace Windrose.Quartermaster.Core
     // bIsEnabled = false on the corresponding NiagaraSystem export.
     //
     // Self-baked from vanilla via UAssetAPI (Niagara assets parse cleanly
-    // unlike DA_BI), so no reference mod is shipped - the build pipeline
-    // extracts the live game's Niagara assets via retoc to-legacy, runs
-    // NoSmokePatcher on them, and re-packs into the IoStore composite.
+    // unlike DA_BI): the build pipeline extracts the live game's Niagara
+    // assets via retoc to-legacy, runs NoSmokePatcher on them, and re-packs
+    // into the IoStore composite.
     //
     // Three independent toggles map to three asset groups:
     //   Campfire = FX_Bonefire_Center, FX_Campfire_smoldering, FX_Campfire_stylized_small
@@ -228,9 +229,7 @@ namespace Windrose.Quartermaster.Core
     //   ship-class RevealBrushSize        vanilla 290  -> 290 * Multiplier
     //   ship-class MiniMapShowDistance    vanilla 750  -> 750 * Multiplier
     //
-    // The reference mod BetterMinimapRange_2x_2x_P matches Multiplier=2.0
-    // exactly (the second 2x in its name refers to MiniMapShowDistance,
-    // NOT MaxMapResolution which stays at the vanilla 2048).
+    // MaxMapResolution stays at the vanilla 2048 (unscaled).
     //
     // null OR Multiplier == 1.0 -> no minimap pak is built for this
     // profile. Same "no key in JSON" semantics as the other globals.
@@ -249,10 +248,9 @@ namespace Windrose.Quartermaster.Core
     //   InfluenceHeight   vanilla 3000 cm -> 3000 * Multiplier  (~30 m base)
     //
     // These define the cylindrical "you can build here" zone around a
-    // placed building-center / bonfire. The reference mod
-    // ExtendedBonfireRadius_3x_P matches Multiplier=3.0 (15000/9000); an
-    // ingame probe confirmed these are the gameplay-relevant fields (the
-    // BP_BuildingBlock's ScenarioOverlapSphere radius alone had no
+    // placed building-center / bonfire. An ingame probe (multiplier=3.0
+    // ?  15000/9000) confirmed these are the gameplay-relevant fields
+    // (the BP_BuildingBlock's ScenarioOverlapSphere radius alone had no
     // visible effect when tuned in isolation).
     //
     // The patch ships in the IoStore composite triplet (same .ucas/.utoc
@@ -275,11 +273,11 @@ namespace Windrose.Quartermaster.Core
     // Pickaxe range / reach patch. Multiplies the TraceScaleModifier on each
     // pickaxe tier's InstanceParams DataAsset so the melee trace shapes grow
     // proportionally - in practice that means the player can chop nodes from
-    // slightly further away. Mirrors the UE4SS reference mod "Pickaxe Range"
-    // but only its TraceScaleModifier axis (variant A): the shared trace
-    // DataAssets and the deeply nested SectionsData/FoliagePrediction trace
-    // entries are left at vanilla, since the engine multiplies them by the
-    // top-level TraceScaleModifier at hit-resolution time anyway.
+    // slightly further away. Only the TraceScaleModifier axis is touched
+    // (variant A): the shared trace DataAssets and the deeply nested
+    // SectionsData/FoliagePrediction trace entries are left at vanilla, since
+    // the engine multiplies them by the top-level TraceScaleModifier at
+    // hit-resolution time anyway.
     //
     // Four assets are patched in one shot (one per tier):
     //   T00 Stone   - DA_MeleeWpn_Pickaxe_T00_Stone_InstanceParams
@@ -306,11 +304,10 @@ namespace Windrose.Quartermaster.Core
     //   0.1 = ten times faster
     //
     // Eight independent axes, each null-collapses individually so the
-    // build only ships assets the user actually wants modified. Mirrors
-    // the "Faster Player Consumable Cooldown" + "Faster Ship Consumable
-    // Cooldown" reference mods (first five fields), plus four additional
-    // cooldown families found in vanilla that the reference mods skip
-    // (boar whistle, ship summon, ranged reload, ship cannons).
+    // build only ships assets the user actually wants modified. Covers
+    // the player + ship consumable cooldowns (first five fields) plus four
+    // additional cooldown families found in vanilla (boar whistle, ship
+    // summon, ranged reload, ship cannons).
     //
     // Patch shapes per field:
     //   * Elixir, ShipRepairKit, BoarWhistle, ShipSummon - scale a
@@ -371,9 +368,8 @@ namespace Windrose.Quartermaster.Core
     // the crop-growth axis for the farming side.
     //
     // Crop growth patches R5BLCropParams.GrowthDuration (FTimespan ticks)
-    // on every DA_Crop_*.json under Farming/Crops/. The reference mod
-    // "Faster crop growth" sets every duration to 9_000_000_000 ticks
-    // (~15 min) - we scale the vanilla value by the user multiplier.
+    // on every DA_Crop_*.json under Farming/Crops/. The vanilla value is
+    // scaled by the user multiplier.
     //
     // Cooking-duration multipliers all patch R5BLRecipeData.
     // CookingProcessDuration (seconds, top-level integer/float field) on
@@ -474,6 +470,39 @@ namespace Windrose.Quartermaster.Core
         // Original filename the user picked, e.g. "MyAwesomeShanty.uasset".
         // Display-only - the patcher reads the renamed copy from disk.
         public string OriginalFilename;
+    }
+
+    // Lighting-radius patch. Multiplies the AttenuationRadius FloatProperty
+    // on every supported PointLight Blueprint (see LightingPatcher.Lights
+    // for the registry). Exposes one slider per light source so users can
+    // tune them independently - "all torches twice as bright but candles
+    // vanilla" is expressable.
+    //
+    // Resolution rule per light source:
+    //   1. If Overrides[stem] is set AND != 1.0 -> that's the effective
+    //      multiplier for the light.
+    //   2. Otherwise the OverallMultiplier applies (default 1.0).
+    //
+    // A light contributes to the build only when its effective multiplier
+    // is != 1.0. If the resolved set is empty (overall == 1.0 and no
+    // per-light override is != 1.0), no lighting source is added to the
+    // IoStore composite.
+    //
+    // null = no lighting config for this profile (vanilla baseline).
+    public sealed class LightingGlobal
+    {
+        // Overall multiplier applied to every light whose per-light
+        // override is null or 1.0. Range [0.1, 10.0]; the GUI clamps to
+        // these bounds. null is treated as 1.0.
+        public double? OverallMultiplier;
+
+        // Per-light override map. Key = light stem (matches
+        // LightingPatcher.Lights[].Stem, e.g. "BP_PointLight_WildFire").
+        // Value = multiplier that fully replaces the overall for THIS
+        // light (i.e. it does NOT compound with OverallMultiplier).
+        // 1.0 collapses to "no override" semantically; the resolver
+        // re-applies the overall.
+        public Dictionary<string, double> Overrides;
     }
 
     public sealed class ItemOverride

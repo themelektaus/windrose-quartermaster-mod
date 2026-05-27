@@ -267,6 +267,31 @@ public static class BuildEndpoint
                             }).ToArray(),
                     };
                 }
+                // Lighting: when active, ships N patched PointLight
+                // Blueprints inside the shared IoStore triplet. Carries
+                // per-light vanilla + effective AttenuationRadius for the
+                // build-log line. null = every light was at the overall
+                // multiplier of 1.0 (vanilla).
+                object lightingInfo = null;
+                if (result.LightingResult != null)
+                {
+                    var lr = result.LightingResult;
+                    lightingInfo = new
+                    {
+                        overallMultiplier = lr.OverallMultiplier,
+                        ucasPath = lr.UcasPath,
+                        utocPath = lr.UtocPath,
+                        lights = lr.AssetResults == null
+                            ? null
+                            : lr.AssetResults.Select(ar => new
+                            {
+                                stem = ar.Stem,
+                                multiplier = ar.Multiplier,
+                                vanilla = ar.VanillaAttenuationRadius,
+                                effective = ar.EffectiveAttenuationRadius,
+                            }).ToArray(),
+                    };
+                }
                 // Cooldowns: groups per-asset results by family so the
                 // build log can render one line per active family
                 // (Elixir, Medicine, ShipRepairKit, ...) with per-family
@@ -458,6 +483,7 @@ public static class BuildEndpoint
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,
                     shipMusic = shipMusicInfo,
+                    lighting = lightingInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,
                     customBuildings = customBuildingsInfo,

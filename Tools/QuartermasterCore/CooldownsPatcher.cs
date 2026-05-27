@@ -13,9 +13,8 @@ using UAssetAPI.Unversioned;
 namespace Windrose.Quartermaster.Core
 {
     // Patches GameplayEffect / BP_Calc DataAssets to shorten consumable
-    // cooldowns. Mirrors the "Faster Player Consumable Cooldown" + "Faster
-    // Ship Consumable Cooldown" reference mods (5 assets) plus two additional
-    // cooldowns the reference mods do not touch (boar whistle, ship summon).
+    // cooldowns. Covers the player + ship consumable cooldown families
+    // (5 assets) plus two additional cooldowns (boar whistle, ship summon).
     //
     // Two distinct property shapes:
     //

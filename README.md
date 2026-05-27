@@ -18,9 +18,9 @@ A profile bundles tweaks across multiple domains:
 - **Mods tab** - inspect `~mods/`, recycle-bin old Quartermaster builds
 
 Vanilla values are extracted directly from the game's main pak file
-(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`) - no external
-reference mod needed. The resulting pak is pure data, so no UE4SS / SML
-dependency, works in singleplayer / dedicated server / co-op alike.
+(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`). The resulting
+pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
+dedicated server / co-op alike.
 
 ---
 

@@ -17,8 +17,7 @@ namespace Windrose.Quartermaster.Core
     // shape (cylinder radius, box extents, location offset) by this single
     // top-level scalar at hit-resolution time, so growing it is enough to
     // give the player extra reach when chopping nodes - no need to touch
-    // the deeply nested per-section trace entries (variant A of the
-    // UE4SS "Pickaxe Range" reference mod).
+    // the deeply nested per-section trace entries (variant A).
     //
     // Workflow context (mirrors PickupBlueprintPatcher):
     //   game IoStore (.ucas)
