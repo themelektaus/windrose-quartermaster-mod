@@ -1178,11 +1178,35 @@ namespace Windrose.Quartermaster.Core
                             daAbs[da] = abs;
                         }
 
-                        // Per track: clone the 4 cue variants.
+                        // Per track: clone the 4 cue variants. The cloner
+                        // needs the user audio's playback length to write
+                        // SoundCue.Duration in the minimal-cue surgery.
+                        // The SWAV source above already populated
+                        // trackRes.DurationSeconds, but composite sources
+                        // may run out of order, so we read the WAV directly
+                        // (cheap - WavInfo is a header parse, not a decode).
                         for (int i = 0; i < shipMusicAddJobs.Count; i++)
                         {
                             var job = shipMusicAddJobs[i];
                             var trackRes = shipMusicAddTrackResults[i];
+
+                            // Resolve audio duration. Prefer the value the
+                            // SWAV source already wrote (it post-Bink-encode
+                            // already, so an authoritative figure); fall
+                            // back to a fresh WavInfo read.
+                            float audioDur = trackRes.DurationSeconds;
+                            if (audioDur <= 0f)
+                            {
+                                var info = WavInfo.Read(job.UserWavPath);
+                                audioDur = info.DurationSeconds;
+                            }
+                            if (audioDur <= 0f)
+                                throw new InvalidOperationException(
+                                    "ship-music-add: could not determine audio duration "
+                                    + "for track '" + job.TrackKey + "' (path: "
+                                    + job.UserWavPath + ") - cue cloner needs a positive "
+                                    + "duration to write SoundCue.Duration.");
+
                             var createdCues = new List<string>(4);
                             foreach (var flavor in ShipMusicAddPipelineHelper.Flavors)
                             {
@@ -1195,7 +1219,8 @@ namespace Windrose.Quartermaster.Core
                                     usmapPath:        usmapPath,
                                     flavor:           flavor,
                                     newIndex:         job.NewIndex,
-                                    newSwavStem:      job.TrackKey);
+                                    newSwavStem:      job.TrackKey,
+                                    audioDurationSec: audioDur);
                                 createdCues.Add(cr.NewCueStem);
                             }
                             trackRes.CueStemsCreated = createdCues;
