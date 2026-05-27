@@ -354,6 +354,35 @@ public static class BuildEndpoint
                         }).ToArray(),
                     };
                 }
+                // Ship music ADD: extends the shanty roster (slots 11+).
+                // One row per added track with title + slot index + the
+                // SWAV stem we baked + the 4 cue stems we cloned.
+                object shipMusicAddInfo = null;
+                if (result.ShipMusicAddResult != null
+                    && result.ShipMusicAddResult.TrackResults != null
+                    && result.ShipMusicAddResult.TrackResults.Count > 0)
+                {
+                    var sma = result.ShipMusicAddResult;
+                    shipMusicAddInfo = new
+                    {
+                        ucasPath = sma.UcasPath,
+                        utocPath = sma.UtocPath,
+                        tracks = sma.TrackResults.Select(t => new
+                        {
+                            trackKey = t.TrackKey,
+                            newIndex = t.NewIndex,
+                            title = t.Title,
+                            originalFilename = t.OriginalFilename,
+                            swavStem = t.SwavStem,
+                            swavVirtualPath = t.SwavVirtualPath,
+                            binkBytes = t.BinkBytes,
+                            durationSeconds = t.DurationSeconds,
+                            sampleRate = t.SampleRate,
+                            channels = t.Channels,
+                            cueStems = t.CueStemsCreated == null ? null : t.CueStemsCreated.ToArray(),
+                        }).ToArray(),
+                    };
+                }
                 // Crop growth: when active, scales every DA_Crop_*.json
                 // GrowthDuration by the user multiplier. Carries the
                 // count of patched crops + a representative vanilla -> effective
@@ -483,6 +512,7 @@ public static class BuildEndpoint
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,
                     shipMusic = shipMusicInfo,
+                    shipMusicAdd = shipMusicAddInfo,
                     lighting = lightingInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,

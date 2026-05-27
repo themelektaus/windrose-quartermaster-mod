@@ -112,6 +112,20 @@ namespace Windrose.Quartermaster.Core
             return Path.Combine(Profiles, profileId, "ShipMusic", slotStem);
         }
 
+        // Per-profile per-added-track folder for user-uploaded WAVs that
+        // EXTEND the shanty roster (slot index > 10) instead of overriding
+        // one of the vanilla 10. trackKey is the stable filesystem-safe
+        // identifier from ShipMusicAddedTrack.TrackKey; it doubles as the
+        // SWAV stem suffix (audio is packed as SWAV_Shanti_<trackKey>).
+        // Stored layout:
+        //   <Profiles>/<id>/ShipMusicAdd/<trackKey>/audio.wav
+        public string ProfileShipMusicAddTrackDir(string profileId, string trackKey)
+        {
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
+            if (string.IsNullOrEmpty(trackKey))  throw new ArgumentNullException("trackKey");
+            return Path.Combine(Profiles, profileId, "ShipMusicAdd", trackKey);
+        }
+
         // Resolves a user-supplied folder string (e.g. CustomBuilding.Cooked-
         // FolderPath = "MyPainting") to an absolute filesystem path,
         // preferring a profile-relative location.

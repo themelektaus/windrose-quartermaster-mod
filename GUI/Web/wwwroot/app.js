@@ -263,7 +263,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'shipmusicadd', 'lighting', 'mods'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -680,6 +680,7 @@ function applyProfileToUI() {
     applyCooldownsToUI();
     applyStationsToUI();
     applyShipMusicToUI();
+    applyShipMusicAddToUI();
     applyLightingToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
@@ -1191,6 +1192,23 @@ async function onBuild() {
                         + ' -> ' + name + diag });
                 }
             }
+            if (data.shipMusicAdd) {
+                const sma = data.shipMusicAdd;
+                const tracks = sma.tracks || [];
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship music extended (' + tracks.length + ' added track'
+                    + (tracks.length === 1 ? '' : 's') + ')' });
+                for (const t of tracks) {
+                    const dispTitle = t.title || t.trackKey;
+                    const dur = t.durationSeconds ? t.durationSeconds.toFixed(1) + 's' : '?';
+                    const bink = t.binkBytes ? (t.binkBytes / 1024).toFixed(0) + ' KB bink' : '';
+                    const parts = [dur];
+                    if (bink) parts.push(bink);
+                    lines.push({ kind: 'ok', msg:
+                        '  slot #' + (t.newIndex || '?') + ' ' + dispTitle
+                        + ' (' + parts.join(', ') + ')' });
+                }
+            }
             if (data.lighting) {
                 const lg = data.lighting;
                 const overall = (lg.overallMultiplier != null ? lg.overallMultiplier : 1.0).toFixed(2);
@@ -1259,7 +1277,7 @@ async function onBuild() {
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
-                && !data.shipMusic && !data.lighting
+                && !data.shipMusic && !data.shipMusicAdd && !data.lighting
                 && !data.cropGrowth && !data.cookingDuration
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
@@ -1644,6 +1662,7 @@ function bindHandlers() {
     bindCooldownsHandlers();
     bindStationsHandlers();
     bindShipMusicHandlers();
+    bindShipMusicAddHandlers();
     bindLightingHandlers();
 }
 

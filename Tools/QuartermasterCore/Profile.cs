@@ -106,6 +106,7 @@ namespace Windrose.Quartermaster.Core
         public CooldownsGlobal Cooldowns;
         public ProductionTimesGlobal ProductionTimes;
         public ShipMusicGlobal ShipMusic;
+        public ShipMusicAddGlobal ShipMusicAdd;
         public LightingGlobal Lighting;
         // future: WeightGlobal Weight;
         // future: RarityGlobal Rarity;
@@ -469,6 +470,55 @@ namespace Windrose.Quartermaster.Core
     {
         // Original filename the user picked, e.g. "MyAwesomeShanty.uasset".
         // Display-only - the patcher reads the renamed copy from disk.
+        public string OriginalFilename;
+    }
+
+    // Ship-music ADD feature (distinct from the Override above): user-supplied
+    // sea-shanty tracks added BEYOND the 10 vanilla slots. The game's four
+    // DA_<ShipType>_AudioParams DataAssets get their Shanty.Cues array extended
+    // by ShipMusicAddDaPatcher, and four new SoundCue assets per track plus one
+    // new SoundWave per track get packed into the mod IoStore composite
+    // (ShipMusicAddCueCloner + Bink-encoded SWAV via ShipMusicPatcher's
+    // template pipeline).
+    //
+    // Storage per added track (on disk under the profile):
+    //   Profiles/<id>/ShipMusicAdd/<trackKey>/
+    //     audio.wav                  source WAV the user uploaded
+    //     meta.json (optional)       OriginalFilename + title for the GUI
+    //
+    // trackKey is a stable, filesystem-safe identifier (typically the SWAV
+    // stem suffix, e.g. "MyTune" -> SWAV stem becomes SWAV_Shanti_MyTune
+    // and Cue stems become CUE_Shanti_<index>_<flavor>(_VoicePlayer)).
+    //
+    // Index assignment is positional: trackKey order in Tracks decides which
+    // vanilla DA index slot each one occupies (vanilla 1..10 reserved for
+    // overrides). Track at index 0 in the list becomes slot 11; index 1
+    // becomes slot 12; etc.
+    //
+    // null = no added tracks for this profile (vanilla shanty count = 10).
+    public sealed class ShipMusicAddGlobal
+    {
+        // Ordered list of added tracks. Position in list -> slot index
+        // assignment (Tracks[0] -> slot 11, Tracks[1] -> slot 12, ...).
+        // Empty list or null = no ship-music-add source contributes.
+        public List<ShipMusicAddedTrack> Tracks;
+    }
+
+    public sealed class ShipMusicAddedTrack
+    {
+        // Stable filesystem-safe key. Forms the SWAV stem suffix
+        // (SWAV_Shanti_<TrackKey>) and is the on-disk subdirectory under
+        // Profiles/<id>/ShipMusicAdd/<TrackKey>/. Constrained to
+        // [A-Za-z0-9_] by the GUI/validation; tampered profiles with
+        // unsafe characters get rejected in ResolveShipMusicAddJobs.
+        public string TrackKey;
+
+        // Human-friendly display title for the GUI card. Not used in any
+        // baked asset name. Optional.
+        public string Title;
+
+        // Original filename the user picked, e.g. "MyTrack.wav".
+        // Display-only - the patcher reads audio.wav from the per-track dir.
         public string OriginalFilename;
     }
 

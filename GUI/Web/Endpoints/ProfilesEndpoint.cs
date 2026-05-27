@@ -851,6 +851,218 @@ public static class ProfilesEndpoint
 
             return Results.NoContent();
         });
+
+        // ---- Ship-music ADD (extra tracks beyond the vanilla 10) ----
+        //
+        // GET    /api/profiles/{id}/ship-music-add
+        //   Lists every added track from profile.Globals.ShipMusicAdd.Tracks
+        //   with on-disk status (wav present, size, title, etc.).
+        //
+        // POST   /api/profiles/{id}/ship-music-add
+        //   multipart form: trackKey (form field, [A-Za-z0-9_]), title
+        //   (optional), audio (file). Re-uses the same audio preprocessor
+        //   as the ship-music override endpoint. Creates the track entry
+        //   in Tracks list if missing, replaces audio.wav otherwise.
+        //
+        // DELETE /api/profiles/{id}/ship-music-add/{trackKey}
+        //   Removes the per-track dir + drops the entry from the Tracks list.
+        app.MapGet("/api/profiles/{id}/ship-music-add", (string id) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            var tracks = profile.Globals?.ShipMusicAdd?.Tracks;
+            var rows = (tracks ?? new List<ShipMusicAddedTrack>())
+                .Select((t, idx) =>
+                {
+                    if (t == null) return null;
+                    var trackDir = paths.ProfileShipMusicAddTrackDir(id, t.TrackKey ?? "");
+                    var wavPath = Path.Combine(trackDir, "audio.wav");
+                    bool wavPresent = !string.IsNullOrEmpty(t.TrackKey) && File.Exists(wavPath);
+                    long wavBytes = 0;
+                    if (wavPresent)
+                    {
+                        try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                    }
+                    return new
+                    {
+                        trackKey = t.TrackKey,
+                        title = t.Title,
+                        originalFilename = t.OriginalFilename,
+                        // Display index (matches what the build pipeline will
+                        // assign at build time: position+11 because the
+                        // vanilla 10 cues stay).
+                        newIndex = (idx + 11).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        state = wavPresent ? "ready" : "missing-wav",
+                        wavBytes,
+                    };
+                })
+                .Where(r => r != null)
+                .ToArray();
+            return Results.Json(new { tracks = rows });
+        });
+
+        app.MapPost("/api/profiles/{id}/ship-music-add", async (string id, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data" });
+
+            IFormFileCollection files;
+            string trackKey, title, originalFilename;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                files = form.Files;
+                trackKey = (form["trackKey"].ToString() ?? "").Trim();
+                title = form["title"].ToString();
+                originalFilename = form["filename"].ToString();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+
+            if (string.IsNullOrEmpty(trackKey))
+                return Results.BadRequest(new { error = "trackKey is required (filesystem-safe identifier)" });
+            // Mirror the build-pipeline IsSafeTrackKey gate.
+            foreach (var c in trackKey)
+            {
+                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                      || (c >= '0' && c <= '9') || c == '_'))
+                {
+                    return Results.BadRequest(new { error = "trackKey contains characters outside [A-Za-z0-9_]" });
+                }
+            }
+
+            IFormFile audioFile = files.GetFile("audio")
+                ?? files.GetFile("wav")
+                ?? files.FirstOrDefault(f => f.FileName != null
+                    && AudioPreprocessor.IsSupportedExtension(f.FileName));
+            if (audioFile == null)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Need a single audio file (" + AudioPreprocessor.SupportedExtensionsList()
+                          + ")."
+                });
+            }
+            if (!AudioPreprocessor.IsSupportedExtension(audioFile.FileName))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Unsupported audio format: " + audioFile.FileName
+                          + ". Allowed: " + AudioPreprocessor.SupportedExtensionsList() + "."
+                });
+            }
+            const long maxBytes = 150L * 1024 * 1024;
+            if (audioFile.Length > maxBytes)
+                return Results.BadRequest(new
+                {
+                    error = "File too large: " + audioFile.FileName
+                          + " (" + audioFile.Length + " bytes, cap " + maxBytes + ")"
+                });
+
+            var srcExt = Path.GetExtension(audioFile.FileName);
+            if (string.IsNullOrEmpty(srcExt)) srcExt = ".bin";
+            var stagedSrc = Path.Combine(Path.GetTempPath(),
+                "qm_audio_" + Guid.NewGuid().ToString("N") + srcExt);
+            await SaveFormFile(audioFile, stagedSrc);
+
+            var trackDir = paths.ProfileShipMusicAddTrackDir(id, trackKey);
+            Directory.CreateDirectory(trackDir);
+            var wavOut = Path.Combine(trackDir, "audio.wav");
+
+            AudioPreprocessor.Result prep;
+            try
+            {
+                prep = await AudioPreprocessor.PreprocessAsync(paths, stagedSrc, wavOut, log: null);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            finally
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+            }
+
+            WavInfo.Info wavInfo;
+            try { wavInfo = WavInfo.Read(wavOut); }
+            catch (Exception ex)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = "Preprocessed WAV failed validation: " + ex.Message });
+            }
+            if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new
+                {
+                    error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
+                          + wavInfo.Describe() + ")."
+                });
+            }
+
+            if (string.IsNullOrEmpty(originalFilename))
+                originalFilename = audioFile.FileName ?? (trackKey + srcExt);
+
+            if (profile.Globals == null) profile.Globals = new ProfileGlobals();
+            if (profile.Globals.ShipMusicAdd == null) profile.Globals.ShipMusicAdd = new ShipMusicAddGlobal();
+            if (profile.Globals.ShipMusicAdd.Tracks == null)
+                profile.Globals.ShipMusicAdd.Tracks = new List<ShipMusicAddedTrack>();
+
+            var existing = profile.Globals.ShipMusicAdd.Tracks
+                .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
+            var entry = new ShipMusicAddedTrack
+            {
+                TrackKey = trackKey,
+                Title = string.IsNullOrEmpty(title) ? null : title,
+                OriginalFilename = originalFilename,
+            };
+            if (existing >= 0) profile.Globals.ShipMusicAdd.Tracks[existing] = entry;
+            else profile.Globals.ShipMusicAdd.Tracks.Add(entry);
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new
+            {
+                trackKey,
+                title = entry.Title,
+                originalFilename,
+                wavBytes = new FileInfo(wavOut).Length,
+                durationSeconds = wavInfo.DurationSeconds,
+                transcoded = prep.WasTranscoded,
+                sourceFormat = prep.SourceFormat,
+            });
+        });
+
+        app.MapDelete("/api/profiles/{id}/ship-music-add/{trackKey}",
+            (string id, string trackKey) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (string.IsNullOrEmpty(trackKey))
+                return Results.BadRequest(new { error = "trackKey is required" });
+
+            var trackDir = paths.ProfileShipMusicAddTrackDir(id, trackKey);
+            if (Directory.Exists(trackDir))
+            {
+                try { Directory.Delete(trackDir, recursive: true); } catch { /* best-effort */ }
+            }
+            if (profile.Globals?.ShipMusicAdd?.Tracks != null)
+            {
+                profile.Globals.ShipMusicAdd.Tracks.RemoveAll(t =>
+                    t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
+            }
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.NoContent();
+        });
     }
 
     static async Task SaveFormFile(IFormFile file, string diskPath)
