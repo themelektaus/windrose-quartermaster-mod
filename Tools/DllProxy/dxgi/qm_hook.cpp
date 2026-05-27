@@ -383,6 +383,22 @@ static bool InstallCreateTabsDataHook(QmUE::UFunction* target)
 // them well-behaved).
 // ============================================================================
 static QmUE::FNativeFuncPtr g_origLifecycleFunc      = nullptr;
+// Expected base class name of Context. Set during InstallLifecyclePreWarmHook
+// from the kLifecycleTargets entry's className field. The hook's first action
+// is to verify Context->Class (or any SuperStruct in its chain) matches this
+// name; mismatches forward immediately without resolving Outer or running
+// pre-warm. This is the critical guard because the ExecFunction for
+// BlueprintImplementableEvents (ReceiveBeginPlay etc.) is a SHARED bytecode
+// dispatcher - hooking it would otherwise intercept every BP-event call in
+// the whole game (we saw 525 hits/sec spam in production logs without this
+// filter). With the filter the hook only does real work on actual GameMode
+// instances, dropping overhead from ~25-100 ms/sec to effectively zero.
+static char                 g_lifecycleHookExpectedClass[64] = {0};
+// Counters for forwarded-without-work hits, sampled into the diagnostic log
+// every QM_LIFECYCLE_FOREIGN_LOG_PERIOD invocations. Pure observability -
+// nothing depends on this value.
+static volatile LONG        g_lifecycleForeignHits   = 0;
+static const LONG           QM_LIFECYCLE_FOREIGN_LOG_PERIOD = 100000;
 // Count of pre-warm runs already executed for the current world. We allow up
 // to QM_PREWARM_MAX_PER_WORLD fires per world (not just 1) because:
 //   * The TSoftObjectPtr resolution that we want to "kick" can happen at
@@ -489,8 +505,68 @@ static bool ResolveContextMapPackage(QmUE::UObject* ctx, char* outBuf, int outCa
     return false;
 }
 
+// True if the UObject's Class (or any class up its SuperStruct chain) has a
+// short name equal to expectedName. SEH-guarded throughout - any null/garbage
+// in the chain returns false (= treat as foreign, skip).
+//
+// Why walk the SuperStruct chain: the installed UFunction can come from a
+// base class (e.g. R5GameMode::ReceiveBeginPlay) but the actual Context at
+// dispatch time may be a BP-derived class (BP_R5GameMode_C). UE dispatches
+// the inherited UFunction on the derived instance, so we must accept any
+// class whose ancestor chain includes the expected base.
+static bool IsContextClassOrDerived(QmUE::UObject* ctx, const char* expectedName)
+{
+    if (!ctx || !expectedName || !expectedName[0]) return false;
+    __try
+    {
+        QmUE::UStruct* cur = reinterpret_cast<QmUE::UStruct*>(ctx->Class);
+        for (int hop = 0; cur && hop < 8; ++hop)
+        {
+            char clsName[64] = {0};
+            // UStruct.Name lives at the inherited UObject.Name offset.
+            if (QmUE::ResolveFNameNarrow(cur->Name, clsName, sizeof(clsName)))
+            {
+                if (strcmp(clsName, expectedName) == 0) return true;
+            }
+            cur = cur->SuperStruct;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    return false;
+}
+
 static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* Result)
 {
+    // FIRST ACTION: drop foreign hits before incrementing any global counter
+    // or walking Outer chains. The ExecFunction we hook is a shared bytecode
+    // dispatcher (see g_lifecycleHookExpectedClass comment) so this filter
+    // rejects ~99% of fires that target non-GameMode UObjects. Forwarding
+    // immediately keeps the original behavior intact for every non-matching
+    // call without paying ResolveContextMapPackage's Outer-walk + AppendString
+    // alloc cost.
+    if (g_lifecycleHookExpectedClass[0] &&
+        !IsContextClassOrDerived(reinterpret_cast<QmUE::UObject*>(Context),
+                                 g_lifecycleHookExpectedClass))
+    {
+        LONG f = InterlockedIncrement(&g_lifecycleForeignHits);
+        if (f == 1 || (f % QM_LIFECYCLE_FOREIGN_LOG_PERIOD) == 0)
+        {
+            char foreignCls[64] = {0};
+            TryResolveContextClassName(reinterpret_cast<QmUE::UObject*>(Context),
+                                       foreignCls, sizeof(foreignCls));
+            QM_LOG_TRACE("[PreWarm] dropped foreign-class hit#%ld Context.Class='%s' (expected '%s' or derived) "
+                         "- forwarding original",
+                f, foreignCls[0] ? foreignCls : "<unresolved>",
+                g_lifecycleHookExpectedClass);
+        }
+        if (g_origLifecycleFunc)
+        {
+            __try { g_origLifecycleFunc(Context, Stack, Result); }
+            __except (EXCEPTION_EXECUTE_HANDLER) { /* swallow */ }
+        }
+        return;
+    }
+
     LONG nHits = InterlockedIncrement(&g_lifecycleHookHits);
 
     // Resolve the current map package + world. Used both for the gameplay-map
@@ -525,7 +601,7 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
         // Lobby/Entrance/Transition/MainMenu/FrontEnd/TitleScreen: skip without
         // touching the counter. These maps don't host saved actors with
         // TSoftObjectPtr<UR5BuildingItem>, so pre-warm there is pointless.
-        if (nHits <= 10 || (nHits % 500) == 0)
+        if (nHits <= 10 || (nHits % 10000) == 0)
             QM_LOG_TRACE("[PreWarm] hit#%ld map='%s' is non-gameplay - skip pre-warm, forwarding original",
                 nHits, gotMap ? mapPkg : "<unresolved>");
     }
@@ -556,7 +632,7 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
                              "forwarding original anyway");
             }
         }
-        else if (nHits <= 5 || (nHits % 500) == 0)
+        else if (nHits <= 5 || (nHits % 10000) == 0)
         {
             QM_LOG_TRACE("[PreWarm] hit#%ld gameplay map '%s' (fire quota %ld already spent in this world, forwarding)",
                 nHits, gotMap ? mapPkg : "<unresolved>", QM_PREWARM_MAX_PER_WORLD);
@@ -575,12 +651,17 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
 }
 
 static bool g_lifecycleHookInstalled = false;
-static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* desc)
+static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* className, const char* desc)
 {
     if (g_lifecycleHookInstalled) return true;
     if (!target || !target->ExecFunction)
     {
         QM_LOG_ERROR("[PreWarm] cannot install lifecycle hook - target or ExecFunction is null");
+        return false;
+    }
+    if (!className || !className[0])
+    {
+        QM_LOG_ERROR("[PreWarm] cannot install lifecycle hook - className is null/empty (foreign-context filter would degenerate)");
         return false;
     }
 
@@ -601,11 +682,18 @@ static bool InstallLifecyclePreWarmHook(QmUE::UFunction* target, const char* des
             desc, execAddr, MH_StatusToString(st));
         return false;
     }
+    // Stash the expected base class name BEFORE flipping g_lifecycleHookInstalled,
+    // because the hook can fire on another thread the moment MH_EnableHook
+    // returns. Buffer is static so its lifetime extends beyond this call.
+    strncpy(g_lifecycleHookExpectedClass, className,
+            sizeof(g_lifecycleHookExpectedClass) - 1);
+    g_lifecycleHookExpectedClass[sizeof(g_lifecycleHookExpectedClass) - 1] = '\0';
     g_lifecycleHookInstalled = true;
     g_lifecycleHookTargetDesc = desc;
     QM_LOG_INFO("[PreWarm] *** INSTALLED *** lifecycle hook %s ExecFn=0x%p detour=0x%p trampoline=0x%p "
-                "(pre-warm will run on first hit, then forward only)",
-        desc, execAddr, (void*)&Hook_LifecyclePreWarm, (void*)g_origLifecycleFunc);
+                "(filter: Context class must be '%s' or derived; foreign hits forwarded immediately)",
+        desc, execAddr, (void*)&Hook_LifecyclePreWarm, (void*)g_origLifecycleFunc,
+        g_lifecycleHookExpectedClass);
     return true;
 }
 
@@ -661,7 +749,7 @@ static bool TryProbeLifecycleHook(int passNumber)
         QM_LOG_INFO("[PreWarm] probe#%d candidate %d/%d HIT: %s class=0x%p fn=0x%p ExecFn=0x%p Flags=0x%08X",
             passNumber, i + 1, kLifecycleTargetCount, t.desc, cls, fn,
             (void*)fn->ExecFunction, fn->FunctionFlags);
-        if (InstallLifecyclePreWarmHook(fn, t.desc))
+        if (InstallLifecyclePreWarmHook(fn, t.className, t.desc))
             return true;
     }
     if (passNumber <= 3 || (passNumber % 30) == 0)
