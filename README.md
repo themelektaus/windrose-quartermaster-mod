@@ -8,21 +8,38 @@ bake them into a single `_P.pak` that drops into the `~mods` folder.
 A profile bundles tweaks across multiple domains:
 
 - **Stack sizes** - per-item or global multiplier / absolute caps
+- **Item Creator** - clone a vanilla item, give it a new name / icon /
+  category and ship it as a brand-new entry
+- **Building Creator** - clone a vanilla building, rewrite display name +
+  description, edit the recipe cost, swap mesh materials, attach a
+  flame/torch FX preset, upload custom looping ambient audio
 - **Loot tables** - per-category Min/Max multipliers
+- **Buyers** - retune what NPC vendors are willing to buy from you and at
+  which price (per-recipe edits with conflict-safe merging)
+- **Sellers** - retune what NPC vendors offer you and at which price
+- **Cooldowns** - bidirectional 0.1-3.0x sliders across eight families
+  (Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle,
+  Ship Summon, Ranged Weapon Reload, Ship Cannon Reload)
 - **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider
 - **Fast-travel bells & signal fires** - raise the placement caps
 - **Building stability** - structures hold longer cantilevers / taller towers
 - **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
 - **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider
+- **Pickaxe range** - 1.0-3.0x slider that scales the trace radius on
+  every pickaxe tier
 - **Light radius** - per-light AttenuationRadius multipliers for candles,
   lanterns, wall lamps + signal fires, torches + chandeliers, building-
   center fires and the belt lantern, 0.1-10x sliders
 - **No smoke** - hide smoke / flame Niagara FX on campfires, furnaces, kilns
-- **Ship Music** - replace any of the 10 vanilla shanties per ship type
-  with your own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio)
-- **Ship Music+** - add your own shanties alongside the 10 vanilla tracks
-  (per-track key, optional title, auto-cloned cue + DA patch on all 4
-  ship-type asset packs)
+- **Sea Shanties** - replace any of the 10 vanilla shanty slots with your
+  own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio), add extra
+  tracks alongside the vanilla 10, tune per-track volume, exclude single
+  slots
+- **Profile import/export** - profiles serialize to a single JSON (audio
+  files travel as a ZIP); drag and drop on the GUI to import, with
+  overwrite confirmation on id conflicts
+- **Issue Reporter** - one-click bundle of the active profile, latest
+  build log and `~mods` listing into a single archive for diagnostics
 - **Mods tab** - inspect `~mods/`, recycle-bin old Quartermaster builds
 
 Vanilla values are extracted directly from the game's main pak file
@@ -135,21 +152,45 @@ icon to clone an existing one. For each profile you can:
   value. Set **per-item overrides** that win over the global policy,
   even for items that are normally locked at stack=1 (Equipment, NPCs,
   Ship cannons, Quest tokens).
+- **Item Creator tab** - clone any vanilla item as a brand-new entry,
+  rewrite name / icon / category, ship it alongside the original in
+  the same pak.
+- **Building Creator tab** - clone a vanilla building, rewrite display
+  name + description, edit the recipe cost, swap mesh materials,
+  optionally attach a flame/torch FX preset and upload looping ambient
+  audio (range + volume sliders).
 - **Loot Tables tab** - per-category Min/Max multipliers applied to
   every entry in matching tables.
+- **Buyers tab** - retune what NPC vendors are willing to buy from you
+  and at which price; per-recipe edits with conflict-safe merging.
+- **Sellers tab** - retune what NPC vendors offer you and at which
+  price; works alongside the Buyers tab without overwriting each other.
+- **Cooldowns tab** - bidirectional 0.1-3.0x sliders across the eight
+  cooldown families (Elixir, Medicine, Spell of Return, Ship Repair
+  Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon
+  Reload).
 - **Misc tab** - cards for pickup radius, fast-travel bell caps,
-  building stability, minimap range, bonfire radius, light radius
-  and no-smoke FX. Each card has its own toggle / slider; nothing is
-  bundled into the pak unless the corresponding card is enabled.
+  building stability, minimap range, bonfire radius, pickaxe range,
+  overall light radius and no-smoke FX. Each card has its own toggle /
+  slider; nothing is bundled into the pak unless the corresponding card
+  is enabled.
 - **Lighting tab** - per-light AttenuationRadius overrides (overrides
   the overall multiplier from the Misc Light Radius card on a per-light
   basis).
-- **Ship Music / Ship Music+ tabs** - upload your own audio to replace
-  vanilla shanties or add new ones; per-ship-type slot management.
+- **Sea Shanties tab** - upload your own audio to replace any of the 10
+  vanilla shanty slots, add extra tracks alongside the vanilla 10, tune
+  per-track volume, exclude single slots. WAV/MP3/FLAC/OGG inputs are
+  auto-transcoded to BinkAudio.
 - **Mods tab** - lists every `.pak` currently in your `~mods` folder,
   marks Quartermaster builds, and recycles old ones with one click.
   Also exposes a button that re-opens the first-run setup dialog so
   you can re-dump vanilla JSONs / icons after a game update.
+
+The header has a **Report** button that bundles the active profile, the
+latest build log and your `~mods` folder listing into a single archive
+for quick diagnostics. Profiles also drag-and-drop in (ZIP for audio
+profiles, plain JSON otherwise) with overwrite confirmation on id
+conflicts.
 
 Press **Build** to run the patch + pack pipeline. The finished `_P.pak`
 lands directly in the game's `~mods` folder, ready to play.
