@@ -93,7 +93,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
         // Defaults if the caller passes 0 (or didn't surface a slider value).
         const double DefaultRangeMeters = 15.0;
-        const double DefaultVolume      = 1.0;
+        const double DefaultVolume      = 0.5;
 
         // Stages the user WAV as a per-building SWAV + looping Cue, returns
         // the resulting refs the BlueprintPatcher needs to rewire the BP's
@@ -110,15 +110,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             Directory.CreateDirectory(stagingItemsDir);
 
             // Apply defaults if the caller passed 0 (= "unset" sentinel).
-            // Clamp to sane bounds: 1 m..1000 m for range; 0.01..3.0 for
-            // volume (the GUI ranges are 1..300 m and 0..3.0 but we allow
+            // Clamp to sane bounds: 1 m..1000 m for range; 0.01..2.0 for
+            // volume (the GUI ranges are 1..300 m and 0..2.0 but we allow
             // slightly more here so a future GUI rev doesn't reject values).
             double effectiveRange  = rangeMeters > 0 ? rangeMeters : DefaultRangeMeters;
             if (effectiveRange < 1.0)    effectiveRange = 1.0;
             if (effectiveRange > 1000.0) effectiveRange = 1000.0;
             double effectiveVolume = volume      > 0 ? volume      : DefaultVolume;
             if (effectiveVolume < 0.01) effectiveVolume = 0.01;
-            if (effectiveVolume > 3.0)  effectiveVolume = 3.0;
+            if (effectiveVolume > 2.0)  effectiveVolume = 2.0;
 
             var swavStem = "SWAV_QmBldgAudio_" + buildingId;
             var cueStem  = "CUE_QmBldgAudio_"  + buildingId;

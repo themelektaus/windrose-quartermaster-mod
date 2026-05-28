@@ -241,7 +241,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             {
                 Id            = "audio",
                 DisplayName   = "Audio",
-                Description   = "Looping ambient audio on the building (Phase A: vanilla clock tick-tack). Cloned from vanilla PendulumClock.",
+                Description   = "Looping ambient audio on the building. Upload your own WAV/MP3 and tune range + volume; falls back to a vanilla clock tick-tack if no file is uploaded.",
                 Kind          = ComponentPresetKind.Audio,
                 NamePrefix    = "Audio",
                 VanillaBpStem = "BP_BuildingBlock_PendulumClockT04_01",

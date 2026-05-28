@@ -993,7 +993,8 @@ namespace Windrose.Quartermaster.Core
         // VolumeMultiplier float property. 1.0 = vanilla loudness, 0.5 =
         // half, 2.0 = double. Lower than 0.01 effectively mutes the
         // building; we don't enforce an upper bound but the GUI caps at
-        // 3.0 to avoid distortion. 0 = unset -> default 1.0.
+        // 2.0 to avoid distortion. 0 = unset -> default 0.5 (chosen as a
+        // safe ambient-loop loudness so a fresh building doesn't blast).
         public double AudioVolume;
 
         public AudioSourceMeta AudioSource;

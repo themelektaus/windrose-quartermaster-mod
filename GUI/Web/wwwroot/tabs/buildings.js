@@ -633,7 +633,7 @@ function renderAudioSourceBlockHtml(custom) {
     const rangeMeters = (typeof custom.audioRangeMeters === 'number' && custom.audioRangeMeters > 0)
         ? custom.audioRangeMeters : 15;
     const volume = (typeof custom.audioVolume === 'number' && custom.audioVolume > 0)
-        ? custom.audioVolume : 1;
+        ? custom.audioVolume : 0.5;
 
     let statusHtml;
     if (src && src.originalFilename) {
@@ -670,7 +670,7 @@ function renderAudioSourceBlockHtml(custom) {
         +   '</label>'
         +   '<label class="building-audio-range">'
         +     '<span>Volume</span>'
-        +     '<input type="range" data-building-field="audioVolume" min="0" max="300" step="5" value="'
+        +     '<input type="range" data-building-field="audioVolume" min="0" max="200" step="5" value="'
         +       String(Math.round(volume * 100)) + '">'
         +     '<span class="building-audio-range-value" data-audio-volume-display>'
         +       String(Math.round(volume * 100)) + ' %</span>'
@@ -1434,9 +1434,9 @@ function onBuildingListChange(e) {
             const disp = card.querySelector('[data-audio-range-display]');
             if (disp) disp.textContent = String(custom.audioRangeMeters) + ' m';
         } else if (field === 'audioVolume') {
-            // Slider is in percent (0..300), profile stores a multiplier
-            // (0..3.0). Floor at 0 means muted; we store 0.01 so the
-            // staging clamp (which treats 0 as "unset -> default 1.0")
+            // Slider is in percent (0..200), profile stores a multiplier
+            // (0..2.0). Floor at 0 means muted; we store 0.01 so the
+            // staging clamp (which treats 0 as "unset -> default 0.5")
             // doesn't reset a user-chosen mute.
             const pct = Number(t.value);
             const mult = (pct > 0 ? pct / 100 : 0.01);
@@ -2116,7 +2116,6 @@ function buildRecipeRowHtml(row, idx) {
                 : '<div class="building-recipe-current"><em>Pick a resource</em></div>')
         +   '</div>'
         +   '<label class="building-recipe-count">'
-        +     '<span>Count</span>'
         +     '<input type="number" min="1" max="999" step="1" data-recipe-count="' + idx + '" value="' + count + '">'
         +   '</label>'
         +   '<button type="button" class="btn-link danger" data-recipe-action="remove" data-recipe-row-idx="' + idx + '" title="Remove this row">Remove</button>'

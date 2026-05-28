@@ -1191,7 +1191,7 @@ public static class ProfilesEndpoint
             {
                 buildingId = bid,
                 rangeMeters = bldg.AudioRangeMeters > 0 ? bldg.AudioRangeMeters : 15.0,
-                volume      = bldg.AudioVolume > 0 ? bldg.AudioVolume : 1.0,
+                volume      = bldg.AudioVolume > 0 ? bldg.AudioVolume : 0.5,
                 source = bldg.AudioSource == null ? null : new
                 {
                     originalFilename = bldg.AudioSource.OriginalFilename,
