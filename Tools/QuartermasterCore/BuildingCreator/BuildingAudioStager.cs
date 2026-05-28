@@ -6,6 +6,7 @@ using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
@@ -74,11 +75,32 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public const string TargetSoundClassName  = "SoundCue";
         public const string TargetSoundClassPkg   = "/Script/Engine";
 
+        // Vanilla SoundAttenuation donor we clone per-building so the user-
+        // facing Range slider can patch FalloffDistance without touching
+        // the cue's AttenuationOverrides struct (which is a 30+-field
+        // FSoundAttenuationSettings whose unversioned layout is fragile).
+        // ATN_Building is the generic decoration-building attenuation
+        // (1 export, 5 imports, FalloffDistance=2000cm by default).
+        public const string VanillaAtnStem = "ATN_Building";
+        public const string VanillaAtnPath = "/Game/Audio/Game/Building/ATN_Building";
+
+        // The CUE_Shanti_10_VoiceNoPlayer cue carries an AttenuationSettings
+        // ObjectProperty pointing at ATN_Shanti_VoiceNoPlayer. We NameMap-
+        // rewrite both the stem and the package path so our cloned cue
+        // references our cloned ATN instead.
+        public const string CueDonorAtnStem = "ATN_Shanti_VoiceNoPlayer";
+        public const string CueDonorAtnPath = "/Game/Audio/Game/Music/Shanti/ATN_Shanti_VoiceNoPlayer";
+
+        // Defaults if the caller passes 0 (or didn't surface a slider value).
+        const double DefaultRangeMeters = 15.0;
+        const double DefaultVolume      = 1.0;
+
         // Stages the user WAV as a per-building SWAV + looping Cue, returns
         // the resulting refs the BlueprintPatcher needs to rewire the BP's
         // AudioComponent.Sound.
         public BuildingAudioStageResult Stage(
-            string buildingId, string userWavPath, string stagingItemsDir)
+            string buildingId, string userWavPath, string stagingItemsDir,
+            double rangeMeters = 0, double volume = 0)
         {
             if (string.IsNullOrEmpty(buildingId)) throw new ArgumentNullException("buildingId");
             if (string.IsNullOrEmpty(userWavPath)) throw new ArgumentNullException("userWavPath");
@@ -87,15 +109,29 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             EnsureTooling();
             Directory.CreateDirectory(stagingItemsDir);
 
+            // Apply defaults if the caller passed 0 (= "unset" sentinel).
+            // Clamp to sane bounds: 1 m..1000 m for range; 0.01..3.0 for
+            // volume (the GUI ranges are 1..300 m and 0..3.0 but we allow
+            // slightly more here so a future GUI rev doesn't reject values).
+            double effectiveRange  = rangeMeters > 0 ? rangeMeters : DefaultRangeMeters;
+            if (effectiveRange < 1.0)    effectiveRange = 1.0;
+            if (effectiveRange > 1000.0) effectiveRange = 1000.0;
+            double effectiveVolume = volume      > 0 ? volume      : DefaultVolume;
+            if (effectiveVolume < 0.01) effectiveVolume = 0.01;
+            if (effectiveVolume > 3.0)  effectiveVolume = 3.0;
+
             var swavStem = "SWAV_QmBldgAudio_" + buildingId;
             var cueStem  = "CUE_QmBldgAudio_"  + buildingId;
+            var atnStem  = "ATN_QmBldgAudio_"  + buildingId;
             // FolderName matches BuildingPatcher.NormalizeAssetSelfPath's
             // convention - all mod assets sit at /Game/Quartermaster/<stem>
             // regardless of which stagingItemsDir subfolder hosts them.
             var swavPackagePath = WindrosePaths.ModItemsPackagePath + swavStem;
             var cuePackagePath  = WindrosePaths.ModItemsPackagePath + cueStem;
+            var atnPackagePath  = WindrosePaths.ModItemsPackagePath + atnStem;
 
-            LogLine("=== [Audio:" + buildingId + "] staging SWAV+Cue ===");
+            LogLine("=== [Audio:" + buildingId + "] staging SWAV+Cue+ATN (range="
+                + Fmt(effectiveRange) + "m, volume=" + Fmt(effectiveVolume) + "x) ===");
 
             // 1. SWAV: Bink-encode + template splice + FolderName rewrite.
             //    We reuse the SoundWave_BinkInline template logic from
@@ -106,13 +142,21 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var swavUexpOut   = Path.Combine(stagingItemsDir, swavStem + ".uexp");
             var swavInfo = StageSwav(userWavPath, swavStem, swavPackagePath, swavUassetOut, swavUexpOut);
 
-            // 2. SoundCue clone. Extract vanilla CUE_Shanti_10_VoiceNoPlayer
+            // 2. ATN: clone ATN_Building, set FolderName + FalloffDistance.
+            //    Falloff is in centimeters in UE (FRotator's worldspace).
+            var atnUassetOut = Path.Combine(stagingItemsDir, atnStem + ".uasset");
+            StageAtn(atnStem, atnPackagePath, atnUassetOut, effectiveRange);
+
+            // 3. SoundCue clone. Extract vanilla CUE_Shanti_10_VoiceNoPlayer
             //    (smallest cue 10 variant). Reshape minimal-cue with the
             //    SWAV as the WavePlayer source. Looping handled by setting
-            //    bLooping=true on the surviving WavePlayer.
+            //    bLooping=true on the surviving WavePlayer. Volume +
+            //    Attenuation rewired here too.
             var cueUassetOut = Path.Combine(stagingItemsDir, cueStem + ".uasset");
             StageCue(swavStem, swavPackagePath, cueStem, cuePackagePath,
-                cueUassetOut, swavInfo.DurationSeconds);
+                atnStem, atnPackagePath,
+                cueUassetOut, swavInfo.DurationSeconds,
+                effectiveVolume, effectiveRange);
 
             return new BuildingAudioStageResult
             {
@@ -121,10 +165,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 SwavPackagePath   = swavPackagePath,
                 CueStem           = cueStem,
                 CuePackagePath    = cuePackagePath,
+                AtnStem           = atnStem,
+                AtnPackagePath    = atnPackagePath,
                 DurationSeconds   = swavInfo.DurationSeconds,
+                RangeMeters       = effectiveRange,
+                Volume            = effectiveVolume,
                 StagedSwavUasset  = swavUassetOut,
                 StagedSwavUexp    = swavUexpOut,
                 StagedCueUasset   = cueUassetOut,
+                StagedAtnUasset   = atnUassetOut,
             };
         }
 
@@ -283,6 +332,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //   - Renames the cue self (stem + folder path) to our cue
         //   - Renames the SWAV ref (SWAV_Shanti_MaggieMay + its path) to
         //     our staged SWAV stem + path
+        //   - Redirects the AttenuationSettings ObjectProperty from the
+        //     vanilla ATN_Shanti_VoiceNoPlayer to our per-building
+        //     ATN_QmBldgAudio (NameMap rewrite, no property-list change).
+        //   - Sets VolumeMultiplier on the cue's main export (Export[0])
+        //     to the user-requested volume.
+        //   - Sets MaxDistance on the cue to match the new falloff range
+        //     in centimeters (so concurrency / culling agree with attn).
         //   - Sets the surviving WavePlayer's bLooping property to true
         //   - Picks a Duration big enough to NOT trigger cue completion
         //     for a typical loop session (10 minutes - the BP's
@@ -291,7 +347,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         void StageCue(
             string swavStem, string swavPackagePath,
             string cueStem,  string cuePackagePath,
-            string outUasset, float audioDurationSec)
+            string atnStem,  string atnPackagePath,
+            string outUasset, float audioDurationSec,
+            double volume, double rangeMeters)
         {
             var perBuildingTemp = Path.Combine(TempDir ?? Path.GetTempPath(),
                 "qm-bldgaudio-cue-" + cueStem);
@@ -306,11 +364,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var mappings = new Usmap(UsmapPath);
             var asset = new UAsset(legacyPath, Ue, mappings);
 
-            // NameMap rewrites - 4 entries:
+            // NameMap rewrites - 6 entries:
             //   CUE_Shanti_10_VoiceNoPlayer -> CUE_QmBldgAudio_<id>
             //   /Game/.../CUE_Shanti_10_VoiceNoPlayer -> /Game/Quartermaster/CUE_QmBldgAudio_<id>
             //   SWAV_Shanti_MaggieMay -> SWAV_QmBldgAudio_<id>
             //   /Game/.../SWAV_Shanti_MaggieMay -> /Game/Quartermaster/SWAV_QmBldgAudio_<id>
+            //   ATN_Shanti_VoiceNoPlayer -> ATN_QmBldgAudio_<id>
+            //   /Game/.../ATN_Shanti_VoiceNoPlayer -> /Game/Quartermaster/ATN_QmBldgAudio_<id>
             var rewrites = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 { vanillaCueStem,
@@ -321,6 +381,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                   swavStem },
                 { ShipMusicAddCueCloner.TemplateSwavPath,
                   swavPackagePath },
+                { CueDonorAtnStem,
+                  atnStem },
+                { CueDonorAtnPath,
+                  atnPackagePath },
             };
             int hits = 0;
             var names = asset.GetNameMapIndexList();
@@ -344,8 +408,155 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // to loop multiple times (10 minutes = 600s).
             ReshapeMinimalAndLoop(asset, swavStem, /*durationSec*/ 600f);
 
+            // Apply user-requested loudness + max-audible distance to
+            // Export[0] (the SoundCue self). Both properties exist on the
+            // vanilla cue already (VolumeMultiplier=0.5, MaxDistance=4100),
+            // we just overwrite them.
+            ApplyVolumeAndRangeToCue(asset, volume, rangeMeters);
+
             asset.Write(outUasset);
-            LogLine("  Cue staged: " + cueStem + " (" + hits + " NameMap rewrites)");
+            LogLine("  Cue staged: " + cueStem + " (" + hits + " NameMap rewrites, "
+                + "volume=" + Fmt(volume) + ", range=" + Fmt(rangeMeters) + "m)");
+        }
+
+        // Stages a per-building SoundAttenuation asset based on vanilla
+        // ATN_Building (the generic decoration-building attenuation, 1
+        // export, 5 imports). We rewrite the NameMap to:
+        //   ATN_Building              -> ATN_QmBldgAudio_<id>
+        //   /Game/.../ATN_Building    -> /Game/Quartermaster/ATN_QmBldgAudio_<id>
+        // ...and patch the FalloffDistance float on the SoundAttenuation
+        // export's StructProperty<SoundAttenuationSettings>. UE expects
+        // FalloffDistance in centimeters (worldspace units), so we
+        // multiply rangeMeters * 100.
+        void StageAtn(string atnStem, string atnPackagePath,
+            string outUasset, double rangeMeters)
+        {
+            var perBuildingTemp = Path.Combine(TempDir ?? Path.GetTempPath(),
+                "qm-bldgaudio-atn-" + atnStem);
+            if (Directory.Exists(perBuildingTemp)) Directory.Delete(perBuildingTemp, true);
+            Directory.CreateDirectory(perBuildingTemp);
+
+            var legacyPath = ExtractVanilla(VanillaAtnStem, perBuildingTemp);
+
+            LogLine("  Cloning attenuation " + VanillaAtnStem + " -> " + atnStem);
+            var mappings = new Usmap(UsmapPath);
+            var asset = new UAsset(legacyPath, Ue, mappings);
+
+            var rewrites = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { VanillaAtnStem, atnStem },
+                { VanillaAtnPath, atnPackagePath },
+            };
+            int hits = 0;
+            var names = asset.GetNameMapIndexList();
+            for (int i = 0; i < names.Count; i++)
+            {
+                var current = names[i].Value;
+                if (rewrites.TryGetValue(current, out var replacement))
+                {
+                    asset.SetNameReference(i, FString.FromString(replacement));
+                    hits++;
+                }
+            }
+            if (hits != rewrites.Count)
+                throw new InvalidOperationException(
+                    "ATN NameMap rewrite incomplete (" + hits + "/" + rewrites.Count
+                    + ") - vanilla ATN_Building drifted?");
+            asset.FolderName = FString.FromString(atnPackagePath);
+
+            // Patch FalloffDistance on Export[0] -> 'Attenuation' StructProperty
+            // (FSoundAttenuationSettings) -> 'FalloffDistance' FloatProperty.
+            float falloffCm = (float)(rangeMeters * 100.0);
+            PatchAtnFalloff(asset, falloffCm);
+
+            asset.Write(outUasset);
+            LogLine("  ATN staged: " + atnStem + " (" + hits + " NameMap rewrites, FalloffDistance="
+                + Fmt(falloffCm) + "cm)");
+        }
+
+        // Walks Export[0].Attenuation struct + nested PluginSettings struct
+        // to find the 'FalloffDistance' float and overwrite it. The
+        // vanilla ATN_Building struct dump (atn-building-recon.txt):
+        //   Attenuation : StructProperty<SoundAttenuationSettings> {
+        //     ...
+        //     FalloffDistance : FloatProperty = 2000
+        //   }
+        // So FalloffDistance is a direct child of the outer Attenuation
+        // struct - one walk level deep is enough.
+        static void PatchAtnFalloff(UAsset asset, float falloffCm)
+        {
+            if (asset.Exports.Count == 0)
+                throw new InvalidOperationException("ATN asset has no exports");
+            var rootExp = asset.Exports[0] as NormalExport;
+            if (rootExp == null)
+                throw new InvalidOperationException("ATN Export[0] is not a NormalExport");
+
+            StructPropertyData attnStruct = null;
+            foreach (var p in rootExp.Data)
+            {
+                if (p?.Name?.Value?.Value == "Attenuation" && p is StructPropertyData sp)
+                {
+                    attnStruct = sp;
+                    break;
+                }
+            }
+            if (attnStruct == null || attnStruct.Value == null)
+                throw new InvalidOperationException("ATN.Attenuation StructProperty not found");
+
+            bool found = false;
+            foreach (var child in attnStruct.Value)
+            {
+                if (child?.Name?.Value?.Value == "FalloffDistance" && child is FloatPropertyData fp)
+                {
+                    fp.Value = falloffCm;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                throw new InvalidOperationException(
+                    "ATN.Attenuation.FalloffDistance not found - layout drift in ATN_Building?");
+        }
+
+        // Overwrites VolumeMultiplier + MaxDistance on the SoundCue's
+        // main export (Export[0]). Both properties exist on the vanilla
+        // CUE_Shanti_10_VoiceNoPlayer donor (VolumeMultiplier=0.5,
+        // MaxDistance=4100), so we just walk Data and replace the Value.
+        static void ApplyVolumeAndRangeToCue(UAsset asset, double volume, double rangeMeters)
+        {
+            if (asset.Exports.Count == 0) return;
+            var cueExp = asset.Exports[0] as NormalExport;
+            if (cueExp == null) return;
+
+            bool vmHit = false, mdHit = false;
+            float falloffCm = (float)(rangeMeters * 100.0);
+            foreach (var p in cueExp.Data)
+            {
+                var n = p?.Name?.Value?.Value;
+                if (n == "VolumeMultiplier" && p is FloatPropertyData vmp)
+                {
+                    vmp.Value = (float)volume;
+                    vmHit = true;
+                }
+                else if (n == "MaxDistance" && p is FloatPropertyData mdp)
+                {
+                    mdp.Value = falloffCm;
+                    mdHit = true;
+                }
+            }
+            // VolumeMultiplier MUST be there - missing means donor drifted.
+            // MaxDistance is informational; the actual falloff lives in
+            // the ATN asset, so we tolerate a missing MaxDistance.
+            if (!vmHit)
+                throw new InvalidOperationException(
+                    "Cue.VolumeMultiplier property absent - donor drifted?");
+            // mdHit not enforced
+            _ = mdHit;
+        }
+
+        static string Fmt(double d)
+        {
+            return d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // Reshape the cue's graph to a single-leaf:
@@ -581,9 +792,14 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string SwavPackagePath;
         public string CueStem;
         public string CuePackagePath;
+        public string AtnStem;
+        public string AtnPackagePath;
         public float DurationSeconds;
+        public double RangeMeters;
+        public double Volume;
         public string StagedSwavUasset;
         public string StagedSwavUexp;
         public string StagedCueUasset;
+        public string StagedAtnUasset;
     }
 }

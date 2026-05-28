@@ -632,6 +632,8 @@ function renderAudioSourceBlockHtml(custom) {
     const src = custom.audioSource || null;
     const rangeMeters = (typeof custom.audioRangeMeters === 'number' && custom.audioRangeMeters > 0)
         ? custom.audioRangeMeters : 15;
+    const volume = (typeof custom.audioVolume === 'number' && custom.audioVolume > 0)
+        ? custom.audioVolume : 1;
 
     let statusHtml;
     if (src && src.originalFilename) {
@@ -665,6 +667,13 @@ function renderAudioSourceBlockHtml(custom) {
         +       String(rangeMeters) + '">'
         +     '<span class="building-audio-range-value" data-audio-range-display>'
         +       String(rangeMeters) + ' m</span>'
+        +   '</label>'
+        +   '<label class="building-audio-range">'
+        +     '<span>Volume</span>'
+        +     '<input type="range" data-building-field="audioVolume" min="0" max="300" step="5" value="'
+        +       String(Math.round(volume * 100)) + '">'
+        +     '<span class="building-audio-range-value" data-audio-volume-display>'
+        +       String(Math.round(volume * 100)) + ' %</span>'
         +   '</label>'
         + '</div>';
 }
@@ -1424,6 +1433,16 @@ function onBuildingListChange(e) {
             custom.audioRangeMeters = (n > 0 ? n : 15);
             const disp = card.querySelector('[data-audio-range-display]');
             if (disp) disp.textContent = String(custom.audioRangeMeters) + ' m';
+        } else if (field === 'audioVolume') {
+            // Slider is in percent (0..300), profile stores a multiplier
+            // (0..3.0). Floor at 0 means muted; we store 0.01 so the
+            // staging clamp (which treats 0 as "unset -> default 1.0")
+            // doesn't reset a user-chosen mute.
+            const pct = Number(t.value);
+            const mult = (pct > 0 ? pct / 100 : 0.01);
+            custom.audioVolume = mult;
+            const disp = card.querySelector('[data-audio-volume-display]');
+            if (disp) disp.textContent = String(pct) + ' %';
         // (Etappe I removed the legacy `<select data-building-field=
         //  "templateId">` element; template picks now go through the
         //  central picker via data-building-template-input, handled
@@ -1817,6 +1836,7 @@ async function refreshAudioStatus(custom, card) {
             custom.audioSource = null;
         }
         if (typeof dto.rangeMeters === 'number') custom.audioRangeMeters = dto.rangeMeters;
+        if (typeof dto.volume === 'number') custom.audioVolume = dto.volume;
         const blk = card.querySelector('.building-audio-block');
         if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
     } catch (_) {

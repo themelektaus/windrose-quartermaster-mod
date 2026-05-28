@@ -988,6 +988,14 @@ namespace Windrose.Quartermaster.Core
         // Both fields are optional - the GUI only surfaces them when the
         // component preset is "audio".
         public double AudioRangeMeters;  // 0 = unset -> default 15 m
+
+        // Loudness multiplier baked into the cloned SoundCue's
+        // VolumeMultiplier float property. 1.0 = vanilla loudness, 0.5 =
+        // half, 2.0 = double. Lower than 0.01 effectively mutes the
+        // building; we don't enforce an upper bound but the GUI caps at
+        // 3.0 to avoid distortion. 0 = unset -> default 1.0.
+        public double AudioVolume;
+
         public AudioSourceMeta AudioSource;
 
         // -----------------------------------------------------------------

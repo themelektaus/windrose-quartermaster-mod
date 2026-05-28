@@ -1662,12 +1662,20 @@ namespace Windrose.Quartermaster.Core
                                             try
                                             {
                                                 bldAudioStage = _audioStager.Stage(
-                                                    b.Id, audioWav, stagingItemsDir);
+                                                    b.Id, audioWav, stagingItemsDir,
+                                                    rangeMeters: b.AudioRangeMeters,
+                                                    volume:      b.AudioVolume);
                                                 LogLine("  [Audio] user audio staged for '" + b.Id + "' -> "
                                                     + bldAudioStage.CueStem + " (loop "
                                                     + bldAudioStage.DurationSeconds.ToString("0.##",
                                                         System.Globalization.CultureInfo.InvariantCulture)
-                                                    + "s)");
+                                                    + "s, range="
+                                                    + bldAudioStage.RangeMeters.ToString("0.##",
+                                                        System.Globalization.CultureInfo.InvariantCulture)
+                                                    + "m, volume="
+                                                    + bldAudioStage.Volume.ToString("0.##",
+                                                        System.Globalization.CultureInfo.InvariantCulture)
+                                                    + "x)");
                                             }
                                             catch (Exception ex)
                                             {
