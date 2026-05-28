@@ -91,7 +91,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // the BP's StaticMeshComponent then resolves to the user mesh
         // at runtime instead of the vanilla torch mesh.
         //
-        // Etappe J v4: if flameSocket is non-null, the BP's NiagaraComponent
+        // Etappe J v4: if componentSocket is non-null, the BP's NiagaraComponent
         // / light-component / audio-component RelativeLocation / Rotation /
         // Scale3D properties are overridden with the socket transform so the
         // flame sits exactly where the user placed a socket on their mesh.
@@ -109,12 +109,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // the patcher now takes only the first socket the caller found
         // (name-agnostic - any socket counts). Multi-flame is parked.
         public BlueprintStageResult Stage(
-            FlamePresetCatalog.FlamePreset preset,
+            ComponentPresetCatalog.ComponentPreset preset,
             string buildingId,
             string userMeshStem,
             string userMeshPath,
             string stagingItemsDir,
-            StaticMeshSocketReader.Socket flameSocket = null)
+            StaticMeshSocketReader.Socket componentSocket = null)
         {
             if (preset == null) throw new ArgumentNullException("preset");
             if (string.IsNullOrWhiteSpace(buildingId)) throw new ArgumentNullException("buildingId");
@@ -125,9 +125,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             Directory.CreateDirectory(stagingItemsDir);
 
-            var cloneStem  = FlamePresetCatalog.FlamePreset.ClonedBpStemFor(buildingId);
-            var clonePath  = FlamePresetCatalog.FlamePreset.ClonedPackagePathFor(buildingId);
-            var classPath  = FlamePresetCatalog.FlamePreset.ClonedClassPathFor(buildingId);
+            var cloneStem  = ComponentPresetCatalog.ComponentPreset.ClonedBpStemFor(preset, buildingId);
+            var clonePath  = ComponentPresetCatalog.ComponentPreset.ClonedPackagePathFor(preset, buildingId);
+            var classPath  = ComponentPresetCatalog.ComponentPreset.ClonedClassPathFor(preset, buildingId);
             var stagedAsset = Path.Combine(stagingItemsDir, cloneStem + ".uasset");
             var stagedUexp  = Path.Combine(stagingItemsDir, cloneStem + ".uexp");
 
@@ -141,16 +141,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 Warnings        = new List<string>(),
             };
 
-            LogLine("=== [Flame:" + preset.Id + ":" + buildingId + "] Step 1: extract vanilla BP '"
+            LogLine("=== [" + preset.Kind + ":" + preset.Id + ":" + buildingId + "] Step 1: extract vanilla BP '"
                 + preset.VanillaBpStem + "' ===");
             var perBuildingTemp = Path.Combine(TempDir ?? Path.GetTempPath(),
-                "qm-flame-" + preset.Id + "-" + buildingId);
+                "qm-" + preset.Kind.ToString().ToLowerInvariant() + "-" + preset.Id + "-" + buildingId);
             if (Directory.Exists(perBuildingTemp)) Directory.Delete(perBuildingTemp, true);
             Directory.CreateDirectory(perBuildingTemp);
 
             var legacyBpPath = ExtractVanillaBlueprint(preset.VanillaBpStem, perBuildingTemp);
 
-            LogLine("=== [Flame:" + preset.Id + ":" + buildingId + "] Step 2: rewrite NameMap and FolderName ===");
+            LogLine("=== [" + preset.Kind + ":" + preset.Id + ":" + buildingId + "] Step 2: rewrite NameMap and FolderName ===");
 
             // Replacement set. We rewrite three flavours of the BP's own
             // identity so all internal cross-refs and the cooked-load
@@ -185,6 +185,24 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             {
                 replacements[preset.SourceVanillaMeshStem] = userMeshStem;
                 replacements[preset.SourceVanillaMeshPath] = userMeshPath;
+            }
+
+            // Secondary mesh refs (e.g. PendulumClock's SM_..._p01 glass-
+            // front cover, BP-added via SCS_Node). Each gets redirected to
+            // the SAME user mesh so the BP's extra R5FoliageMeshComponents
+            // render the user mesh on top of the primary one instead of
+            // showing vanilla geometry. See ComponentPreset.AdditionalSource-
+            // VanillaMeshes for the why + the per-preset entries.
+            if (preset.AdditionalSourceVanillaMeshes != null)
+            {
+                foreach (var extra in preset.AdditionalSourceVanillaMeshes)
+                {
+                    if (extra == null) continue;
+                    if (!string.IsNullOrEmpty(extra.Stem))
+                        replacements[extra.Stem] = userMeshStem;
+                    if (!string.IsNullOrEmpty(extra.Path))
+                        replacements[extra.Path] = userMeshPath;
+                }
             }
 
             var patcher = new DataAssetPatcher { Log = LogLine };
@@ -232,29 +250,29 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             // socket. The caller picks "first socket found" (name-agnostic);
             // any additional sockets on the mesh are ignored.
             //
-            // If flameSocket is null, this entire pass is skipped and the
+            // If componentSocket is null, this entire pass is skipped and the
             // BP keeps the vanilla component positions (~Z=158 cm for the
             // Torch preset). The orchestrator decides whether to call
             // Stage() at all when no sockets exist - see the buildings-
             // step body in BuildPipeline.cs (current contract: "skip flame
             // entirely when 0 sockets", warning logged).
-            if (flameSocket != null)
+            if (componentSocket != null)
             {
                 try
                 {
-                    var patched = PatchSocketTransform(stagedAsset, flameSocket);
-                    LogLine("  [Flame] socket '" + (flameSocket.Name ?? "<noname>")
-                        + "' (X=" + Fmt(flameSocket.LocX) + " Y=" + Fmt(flameSocket.LocY) + " Z=" + Fmt(flameSocket.LocZ)
-                        + " | Pitch=" + Fmt(flameSocket.Pitch) + " Yaw=" + Fmt(flameSocket.Yaw) + " Roll=" + Fmt(flameSocket.Roll)
-                        + " | SX=" + Fmt(flameSocket.ScaleX) + " SY=" + Fmt(flameSocket.ScaleY) + " SZ=" + Fmt(flameSocket.ScaleZ)
+                    var patched = PatchSocketTransform(stagedAsset, componentSocket);
+                    LogLine("  [" + preset.Kind + "] socket '" + (componentSocket.Name ?? "<noname>")
+                        + "' (X=" + Fmt(componentSocket.LocX) + " Y=" + Fmt(componentSocket.LocY) + " Z=" + Fmt(componentSocket.LocZ)
+                        + " | Pitch=" + Fmt(componentSocket.Pitch) + " Yaw=" + Fmt(componentSocket.Yaw) + " Roll=" + Fmt(componentSocket.Roll)
+                        + " | SX=" + Fmt(componentSocket.ScaleX) + " SY=" + Fmt(componentSocket.ScaleY) + " SZ=" + Fmt(componentSocket.ScaleZ)
                         + ") applied to " + patched + " component(s)");
                     result.ComponentsRetransformed = patched;
                 }
                 catch (Exception ex)
                 {
-                    var warn = "Flame socket transform patch failed: "
+                    var warn = preset.Kind + " socket transform patch failed: "
                         + ex.GetType().Name + ": " + ex.Message
-                        + " - BP keeps vanilla flame position";
+                        + " - BP keeps vanilla component position";
                     result.Warnings.Add(warn);
                     LogLine("  warn: " + warn);
                 }
@@ -440,8 +458,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         //      up alongside the regular mesh/icon/recipe rewrites - one
         //      single open/rewrite/write pass, no NormalExport needed.
         //
-        // See FlamePresetCatalog.FlamePreset.ApplyTo() and the buildings-
-        // step body in BuildPipeline.cs for the wiring.
+        // See ComponentPresetCatalog.ComponentPreset.ApplyTo() and the
+        // buildings-step body in BuildPipeline.cs for the wiring.
         // -----------------------------------------------------------------
 
         // -----------------------------------------------------------------

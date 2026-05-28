@@ -47,11 +47,12 @@ const _vanillaBuildingsLoad = { promise: null };
 const _defaultTextureStemsLoad = { promise: null };
 let _defaultTextureStems = null;  // string[] once loaded
 
-// Etappe J: Flame-FX presets. Loaded once via /api/buildings/flame-presets
-// and surfaced as a per-building dropdown so the user can attach an FX +
-// Light bundle (cloned from a vanilla "fire building" BP) to any building.
-const _flamePresetsLoad = { promise: null };
-let _flamePresets = null;  // {id, displayName, description}[] once loaded
+// Component-FX presets. Loaded once via /api/buildings/component-presets
+// and surfaced as a per-building dropdown so the user can attach a
+// donor-BP bundle (Niagara + Light + Audio for "torch"; AudioComponent
+// for "audio") to any building.
+const _componentPresetsLoad = { promise: null };
+let _componentPresets = null;  // {id, displayName, description, kind}[] once loaded
 
 // Cache for per-template inspections (Mesh/Icon/Recipe stems + FText
 // keys). Keyed by templateId, populated on demand when the user picks a
@@ -102,22 +103,22 @@ function ensureVanillaResourcesLoaded() {
     return _vanillaResourcesLoad.promise;
 }
 
-function ensureFlamePresetsLoaded() {
-    if (_flamePresets) return Promise.resolve(_flamePresets);
-    if (_flamePresetsLoad.promise) return _flamePresetsLoad.promise;
-    _flamePresetsLoad.promise = api('GET', '/api/buildings/flame-presets')
+function ensureComponentPresetsLoaded() {
+    if (_componentPresets) return Promise.resolve(_componentPresets);
+    if (_componentPresetsLoad.promise) return _componentPresetsLoad.promise;
+    _componentPresetsLoad.promise = api('GET', '/api/buildings/component-presets')
         .then(dto => {
-            _flamePresets = (dto && Array.isArray(dto.presets)) ? dto.presets.slice() : [];
-            _flamePresetsLoad.promise = null;
-            return _flamePresets;
+            _componentPresets = (dto && Array.isArray(dto.presets)) ? dto.presets.slice() : [];
+            _componentPresetsLoad.promise = null;
+            return _componentPresets;
         })
         .catch(ex => {
-            _flamePresetsLoad.promise = null;
-            _flamePresets = [];
-            console.error('Failed to load flame presets:', ex);
-            return _flamePresets;
+            _componentPresetsLoad.promise = null;
+            _componentPresets = [];
+            console.error('Failed to load component presets:', ex);
+            return _componentPresets;
         });
-    return _flamePresetsLoad.promise;
+    return _componentPresetsLoad.promise;
 }
 
 function ensureDefaultTextureStemsLoaded() {
@@ -422,12 +423,12 @@ function renderBuildingCreator() {
             renderBuildingCreator();
         });
     }
-    // Etappe J: same lazy-load pattern for the flame-preset catalog
-    // so the per-building Flame Preset dropdown can offer the shipped
+    // Same lazy-load pattern for the component-preset catalog so the
+    // per-building Component Preset dropdown can offer the shipped
     // presets. The first render shows a "(loading...)" placeholder;
     // the re-render after the catalog arrives swaps in the real list.
-    if (!_flamePresets && customs.length > 0) {
-        ensureFlamePresetsLoaded().then(() => {
+    if (!_componentPresets && customs.length > 0) {
+        ensureComponentPresetsLoaded().then(() => {
             renderBuildingCreator();
         });
     }
@@ -541,44 +542,49 @@ function buildCustomBuildingCardHtml(custom, index) {
         +     '<div class="building-field building-field-wide" data-building-recipe-host>'
         +       '<div class="building-recipe-status"><em>Loading build cost...</em></div>'
         +     '</div>'
-        +     renderFlamePresetSelectHtml(custom)
+        +     renderComponentPresetSelectHtml(custom)
         +   '</div>'
         + '</li>';
 }
 
-// Renders the Flame-FX preset dropdown for one building card.
-// Loaded list comes from /api/buildings/flame-presets (cached in
-// _flamePresets). When the list isn't loaded yet, render a disabled
-// placeholder; the re-render after ensureFlamePresetsLoaded resolves
-// swaps it for the real select.
-function renderFlamePresetSelectHtml(custom) {
-    const currentId = (custom && custom.flamePresetId) ? custom.flamePresetId : '';
-    const presets = Array.isArray(_flamePresets) ? _flamePresets : null;
-    const helpText = 'Optional. Wraps the building with FX + light cloned from a vanilla fire-building BP. '
+// Renders the Component-FX preset dropdown for one building card.
+// Loaded list comes from /api/buildings/component-presets (cached in
+// _componentPresets). When the list isn't loaded yet, render a disabled
+// placeholder; the re-render after ensureComponentPresetsLoaded
+// resolves swaps it for the real select.
+//
+// Wire-format compat: profiles saved before the rename serialized the
+// field as flamePresetId. The backend's Profile.cs CustomBuilding has
+// a backward-compat setter that migrates flamePresetId -> componentPresetId
+// on load, so the GUI only deals with the new key.
+function renderComponentPresetSelectHtml(custom) {
+    const currentId = (custom && custom.componentPresetId) ? custom.componentPresetId : '';
+    const presets = Array.isArray(_componentPresets) ? _componentPresets : null;
+    const helpText = 'Optional. Wraps the building with components cloned from a vanilla donor BP. '
                    + 'No effect when set to None (default).';
 
     if (!presets) {
         // Not loaded yet - placeholder. Will re-render once the catalog arrives.
         return ''
             + '<label class="building-field building-field-wide">'
-            +   '<span>Flame preset</span>'
-            +   '<select data-building-field="flamePresetId" disabled>'
+            +   '<span>Component preset</span>'
+            +   '<select data-building-field="componentPresetId" disabled>'
             +     '<option value="">(loading...)</option>'
             +   '</select>'
             +   '<small><em>' + escapeHtml(helpText) + '</em></small>'
             + '</label>';
     }
 
-    let opts = '<option value="">None (no flame)</option>';
+    let opts = '<option value="">None (no preset)</option>';
     for (const p of presets) {
         if (!p || !p.id) continue;
         const sel = (p.id === currentId) ? ' selected' : '';
         const label = escapeHtml(p.displayName || p.id);
         opts += '<option value="' + escapeHtml(p.id) + '"' + sel + '>' + label + '</option>';
     }
-    // If the profile carries an id that isn't in the catalog (e.g. someone
-    // hand-edited the JSON), preserve it as a non-matching option so the
-    // user sees "unknown" instead of a silent revert to None.
+    // If the profile carries an id that isn't in the catalog (e.g.
+    // someone hand-edited the JSON), preserve it as a non-matching
+    // option so the user sees "unknown" instead of a silent revert.
     if (currentId && !presets.some(p => p && p.id === currentId)) {
         opts += '<option value="' + escapeHtml(currentId) + '" selected>'
               + escapeHtml(currentId) + ' (unknown - check catalog)</option>';
@@ -593,8 +599,8 @@ function renderFlamePresetSelectHtml(custom) {
 
     return ''
         + '<label class="building-field building-field-wide">'
-        +   '<span>Flame preset</span>'
-        +   '<select data-building-field="flamePresetId">' + opts + '</select>'
+        +   '<span>Component preset</span>'
+        +   '<select data-building-field="componentPresetId">' + opts + '</select>'
         +   '<small><em>' + escapeHtml(hint) + '</em></small>'
         + '</label>';
 }
@@ -1314,18 +1320,17 @@ function onBuildingListChange(e) {
         } else if (field === 'iconStem') {
             custom.iconStem = t.value || '';
             refreshMissingFieldsBanner(card, custom);
-        } else if (field === 'flamePresetId') {
-            // Etappe J: empty string = no preset (default). Stored as
-            // null in the profile so older builds round-trip cleanly.
+        } else if (field === 'componentPresetId') {
+            // Empty string = no preset (default). Stored as null in the
+            // profile so older builds round-trip cleanly.
             const v = (t.value || '').trim();
-            custom.flamePresetId = v ? v : null;
-            // Re-render this card's flame-preset block so the hint line
-            // (description) updates to match the new selection. Cheap:
-            // we just regen the one <label>.
-            const host = card.querySelector('label.building-field-wide select[data-building-field="flamePresetId"]');
+            custom.componentPresetId = v ? v : null;
+            // Re-render this card's component-preset block so the hint
+            // line (description) updates to match the new selection.
+            const host = card.querySelector('label.building-field-wide select[data-building-field="componentPresetId"]');
             if (host) {
                 const lbl = host.closest('label.building-field');
-                if (lbl) lbl.outerHTML = renderFlamePresetSelectHtml(custom);
+                if (lbl) lbl.outerHTML = renderComponentPresetSelectHtml(custom);
             }
         // (Etappe I removed the legacy `<select data-building-field=
         //  "templateId">` element; template picks now go through the

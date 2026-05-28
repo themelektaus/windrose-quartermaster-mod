@@ -937,21 +937,33 @@ namespace Windrose.Quartermaster.Core
         // RecipeCost array so the building can be built for free.
         public List<RecipeCostEntry> RecipeCost;
 
-        // Etappe J: optional Flame-FX preset. When set (non-empty), the
-        // build pipeline clones a vanilla "fire building" BP (e.g.
-        // BP_BuildingBlock_FloorTorch_C) once per used preset into the
-        // mod-pak's output namespace, and patches this building's DA so
-        // its ItemClass soft-class-ref points at the cloned BP. Result:
-        // ingame the building spawns with the Niagara flame FX, the
-        // flickering point light, and the ambient loop SFX inherited
-        // from the vanilla BP (positioned at the BP's own SCS-Component
-        // offsets, which works correctly when the user's mesh is laid
-        // out with the flame point at the same approximate Z as the
-        // vanilla torch tip - ~150 cm). null or empty = no flame.
+        // Etappe J / Audio extension: optional Component-FX preset. When
+        // set (non-empty), the build pipeline clones a vanilla donor BP
+        // (e.g. BP_BuildingBlock_FloorTorch_C for "torch",
+        // BP_BuildingBlock_PendulumClockT04_01 for "audio") once per used
+        // preset into the mod-pak's output namespace, and patches this
+        // building's DA so its ItemClass soft-class-ref points at the
+        // cloned BP. Result: ingame the building spawns with the donor's
+        // SCS-Components by inheritance (Niagara + Light + Audio for
+        // "torch"; AudioComponent for "audio"). null or empty = no preset.
         //
-        // Valid values: see FlamePresetCatalog.Presets (Id field).
-        // Currently: "torch". Future: "candle", "campfire", "brazier".
-        public string FlamePresetId;
+        // Valid values: see ComponentPresetCatalog.Presets (Id field).
+        // Currently: "torch", "audio".
+        public string ComponentPresetId;
+
+        // Backward-compat: profiles that opted into the Torch preset before
+        // the FlamePreset -> ComponentPreset rename serialized as
+        // "flamePresetId". On deserialize we migrate the value into the
+        // new ComponentPresetId field. The getter returns null so with
+        // JsonIgnoreCondition.WhenWritingNull the legacy key never gets
+        // written back to disk - profiles saved after a successful load
+        // will use the new key going forward.
+        [System.Text.Json.Serialization.JsonInclude]
+        public string FlamePresetId
+        {
+            get => null;
+            set { if (!string.IsNullOrEmpty(value) && string.IsNullOrEmpty(ComponentPresetId)) ComponentPresetId = value; }
+        }
 
         // -----------------------------------------------------------------
         // Returns the AssetPrefix that should drive the asset-allowlist

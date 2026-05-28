@@ -18,7 +18,7 @@ namespace Windrose.Quartermaster.Core
         // slash is intentional: callers concatenate stems directly.
         //
         // Centralized here (instead of repeated as a string literal across
-        // BuildingPatcher / GameDeployer / FlamePresetCatalog) so a future
+        // BuildingPatcher / GameDeployer / ComponentPresetCatalog) so a future
         // relocation needs a single edit + a rebuild of the C# tooling. The
         // shipped DefaultTextures + any user-cooked asset are FolderName-
         // normalized to this prefix at staging time (see

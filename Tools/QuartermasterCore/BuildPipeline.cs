@@ -1469,7 +1469,7 @@ namespace Windrose.Quartermaster.Core
                         // The actual Stage() call happens inside the
                         // per-building loop below (after BuildBuildingInputs
                         // so we know inputs.MeshStem).
-                        var stagedFlameBuildings =
+                        var stagedComponentBuildings =
                             new Dictionary<string, BlueprintStageResult>(StringComparer.OrdinalIgnoreCase);
 
                         buildingResults = new List<BuildingPatchResult>();
@@ -1516,54 +1516,55 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
-                            // Etappe J: when a flame preset is selected on
-                            // this building, override the user-picked
-                            // template with the preset's flame source-DA
-                            // refs (e.g. DA_BI_FloorTorch instead of
-                            // DA_BI_DecorativeFood_01). This is required
-                            // because R5BuildingItem DAs that ship without
-                            // ItemClass set (like DecorativeFood_01) leave
-                            // no FName entries we could redirect to our
-                            // cloned BP - and we can't byte-inject a missing
-                            // ItemClass property because of the
-                            // CollisionApproximation custom-serializer.
+                            // Etappe J / Audio extension: when a component
+                            // preset is selected on this building, override
+                            // the user-picked template with the preset's
+                            // source-DA refs (e.g. DA_BI_FloorTorch for
+                            // "torch", DA_BI_PendulumClockT04_01 for
+                            // "audio"). This is required because
+                            // R5BuildingItem DAs that ship without ItemClass
+                            // set (like DecorativeFood_01) leave no FName
+                            // entries we could redirect to our cloned BP -
+                            // and we can't byte-inject a missing ItemClass
+                            // property because of the CollisionApproximation
+                            // custom-serializer.
                             //
-                            // The building inherits the flame source's
-                            // gameplay behaviour (snap rules, GameplayTag =
-                            // Comfort.Lighting, recipe class). The user's
-                            // mesh/icon stems are still substituted via the
-                            // regular NameMap-rewrite pass. ItemClass FName
-                            // entries get retargeted via inputs.ExtraDa-
-                            // NameMapRewrites (set in BuildBuildingInputs).
-                            var bldFlamePreset = FlamePresetCatalog.Resolve(b.FlamePresetId);
+                            // The building inherits the source DA's gameplay
+                            // behaviour (snap rules, GameplayTag, recipe
+                            // class). The user's mesh/icon stems are still
+                            // substituted via the regular NameMap-rewrite
+                            // pass. ItemClass FName entries get retargeted
+                            // via inputs.ExtraDaNameMapRewrites (set below).
+                            var bldComponentPreset = ComponentPresetCatalog.Resolve(b.ComponentPresetId);
 
-                            // Etappe J v4: socket-driven single flame.
-                            // Read the FIRST socket from the user's cooked
-                            // mesh (name-agnostic). If the mesh has no
-                            // sockets at all, silently skip the entire
-                            // flame pipeline for this building (no template
-                            // override, no BP clone, no DA ItemClass swap).
-                            // That keeps the user's chosen template intact
-                            // for meshes that simply don't carry sockets.
+                            // Socket-driven component placement.
                             //
-                            // Multi-flame across N sockets was attempted in
-                            // J v5 but UE crashed at load time on cloned
-                            // NiagaraComponent exports (UAssetAPI doesn't
-                            // fully implement NiagaraVariableWithOffsetPropertyData
-                            // so the deep-clone produced byte-malformed
-                            // output that retoc's legacy->zen pass let
-                            // through). Rolled back to single-socket: any
-                            // additional sockets on the mesh are ignored.
-                            StaticMeshSocketReader.Socket bldFlameSocket = null;
-                            if (bldFlamePreset != null)
+                            // Flame preset: REQUIRES a socket on the user
+                            // mesh - the flame FX + light need a position
+                            // anchor, and skipping the entire preset when
+                            // none is found prevents flame ending up at the
+                            // mesh's origin (= ground for floor decorations,
+                            // wrong place for wall decorations).
+                            //
+                            // Audio preset: socket is OPTIONAL. If a socket
+                            // exists, the AudioComponent is positioned at
+                            // it (useful when the user wants the audio to
+                            // emanate from a specific spot). If no socket
+                            // exists, the AudioComponent stays at the BP's
+                            // vanilla RelativeLocation - still functional
+                            // (audio plays from building origin).
+                            //
+                            // Multi-socket fan-out across all sockets was
+                            // tried in J v5 but UE crashed at load time on
+                            // cloned NiagaraComponent exports (UAssetAPI's
+                            // NiagaraVariableWithOffsetPropertyData is
+                            // incomplete). Rolled back to single-socket:
+                            // additional sockets are ignored.
+                            StaticMeshSocketReader.Socket bldComponentSocket = null;
+                            if (bldComponentPreset != null)
                             {
                                 try
                                 {
-                                    // Resolve profile-relative folders (e.g.
-                                    // CookedFolderPath = "MyPainting" ->
-                                    // <Profiles>/<profile.Id>/MyPainting) so the
-                                    // socket reader finds the mesh file. Absolute
-                                    // paths are returned as-is by the resolver.
                                     var resolvedCookedFolder = _paths.ResolveProfileRelativeFolder(profile.Id, b.CookedFolderPath);
                                     var userMeshFile = Path.Combine(resolvedCookedFolder, b.MeshStem + ".uasset");
                                     var reader = new StaticMeshSocketReader
@@ -1571,31 +1572,34 @@ namespace Windrose.Quartermaster.Core
                                         UsmapPath = usmapPath,
                                         Log       = Log,
                                     };
-                                    bldFlameSocket = reader.FindFirst(userMeshFile);
+                                    bldComponentSocket = reader.FindFirst(userMeshFile);
                                 }
                                 catch (Exception ex)
                                 {
                                     LogLine("  warn: socket read failed for mesh '" + b.MeshStem
-                                        + "': " + ex.Message + " - skipping flame for this building");
-                                    bldFlameSocket = null;
+                                        + "': " + ex.Message + " - component preset will use vanilla BP positions");
+                                    bldComponentSocket = null;
                                 }
 
-                                if (bldFlameSocket == null)
+                                bool requiresSocket = bldComponentPreset.Kind == ComponentPresetKind.Flame;
+                                if (bldComponentSocket == null && requiresSocket)
                                 {
-                                    LogLine("  [Flame] preset '" + bldFlamePreset.Id
+                                    LogLine("  [" + bldComponentPreset.Kind + "] preset '" + bldComponentPreset.Id
                                         + "' set but mesh '" + b.MeshStem
-                                        + "' has no sockets - skipping flame for this building"
+                                        + "' has no sockets - skipping preset for this building"
                                         + " (add at least one socket to the mesh to enable flame placement)");
-                                    bldFlamePreset = null; // disable flame for this building
+                                    bldComponentPreset = null; // disable preset for this building
                                 }
                                 else
                                 {
-                                    LogLine("  [Flame] preset '" + bldFlamePreset.Id
-                                        + "' active for '" + b.Id + "' - using socket '"
-                                        + (bldFlameSocket.Name ?? "<noname>")
-                                        + "', swapping template '" + template.Id
-                                        + "' with source DA '" + bldFlamePreset.SourceVanillaDaStem + "'");
-                                    template = bldFlamePreset.ApplyTo(template);
+                                    var socketDesc = bldComponentSocket != null
+                                        ? "socket '" + (bldComponentSocket.Name ?? "<noname>") + "'"
+                                        : "vanilla BP positions (no socket on mesh)";
+                                    LogLine("  [" + bldComponentPreset.Kind + "] preset '" + bldComponentPreset.Id
+                                        + "' active for '" + b.Id + "' - using " + socketDesc
+                                        + ", swapping template '" + template.Id
+                                        + "' with source DA '" + bldComponentPreset.SourceVanillaDaStem + "'");
+                                    template = bldComponentPreset.ApplyTo(template);
                                 }
                             }
 
@@ -1610,51 +1614,52 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
-                            // Etappe J v3: per-building BP clone (must run
-                            // before the DA patcher because inputs.Extra-
-                            // DaNameMapRewrites is populated from the
-                            // cloned BP stem the Stage() call produces).
+                            // Per-building BP clone (must run before the DA
+                            // patcher because inputs.ExtraDaNameMapRewrites
+                            // is populated from the cloned BP stem the
+                            // Stage() call produces).
                             BlueprintStageResult bldBpStage = null;
-                            if (bldFlamePreset != null)
+                            if (bldComponentPreset != null)
                             {
                                 try
                                 {
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = WindrosePaths.ModItemsPackagePath + userMeshStem;
 
-                                    // Etappe J v4: pass the single picked
-                                    // socket to the patcher; it overwrites
-                                    // RelativeLocation/Rotation/Scale3D on
-                                    // the BP's vanilla NiagaraComponent +
-                                    // Light + Audio templates in-place.
+                                    // Pass the single picked socket to the
+                                    // patcher; it overwrites RelativeLocation
+                                    // / Rotation / Scale3D on the BP's
+                                    // vanilla component templates in-place
+                                    // (Niagara + Light + Audio for Flame;
+                                    // Audio only for Audio preset).
                                     bldBpStage = _blueprintPatcher.Stage(
-                                        bldFlamePreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
-                                        bldFlameSocket);
-                                    stagedFlameBuildings[b.Id] = bldBpStage;
+                                        bldComponentPreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
+                                        bldComponentSocket);
+                                    stagedComponentBuildings[b.Id] = bldBpStage;
                                     foreach (var w in bldBpStage.Warnings ?? new List<string>())
-                                        LogLine("  warn: flame BP '" + b.Id + "': " + w);
+                                        LogLine("  warn: component BP '" + b.Id + "': " + w);
 
                                     // Wire ExtraDaNameMapRewrites: redirect
                                     // the cloned DA's ItemClass FName entries
                                     // (vanilla BP path + "_C" class name) to
                                     // this building's per-building BP clone.
                                     inputs.ExtraDaNameMapRewrites = new Dictionary<string, string>(StringComparer.Ordinal);
-                                    if (!string.IsNullOrEmpty(bldFlamePreset.SourceVanillaItemClassPath))
+                                    if (!string.IsNullOrEmpty(bldComponentPreset.SourceVanillaItemClassPath))
                                     {
-                                        inputs.ExtraDaNameMapRewrites[bldFlamePreset.SourceVanillaItemClassPath]
-                                            = FlamePresetCatalog.FlamePreset.ClonedPackagePathFor(b.Id);
+                                        inputs.ExtraDaNameMapRewrites[bldComponentPreset.SourceVanillaItemClassPath]
+                                            = ComponentPresetCatalog.ComponentPreset.ClonedPackagePathFor(bldComponentPreset, b.Id);
                                     }
-                                    if (!string.IsNullOrEmpty(bldFlamePreset.SourceVanillaItemClassStem))
+                                    if (!string.IsNullOrEmpty(bldComponentPreset.SourceVanillaItemClassStem))
                                     {
-                                        inputs.ExtraDaNameMapRewrites[bldFlamePreset.SourceVanillaItemClassStem + "_C"]
+                                        inputs.ExtraDaNameMapRewrites[bldComponentPreset.SourceVanillaItemClassStem + "_C"]
                                             = bldBpStage.ClonedBpStem + "_C";
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    LogLine("  warn: flame BP staging failed for '" + b.Id
+                                    LogLine("  warn: component BP staging failed for '" + b.Id
                                         + "': " + ex.Message
-                                        + " - building will spawn under vanilla BP class (no FX)");
+                                        + " - building will spawn under vanilla BP class (no preset FX)");
                                 }
                             }
 
@@ -1663,23 +1668,22 @@ namespace Windrose.Quartermaster.Core
                             buildingResults.Add(result);
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
 
-                            // Etappe J v3: surface a confirmation line in
-                            // the build log when the per-building BP clone
-                            // landed AND the DA NameMap rewrites for
-                            // ItemClass fired (the actual rewriting happens
-                            // inside DataAssetPatcher via inputs.Extra-
-                            // DaNameMapRewrites - no second open/write
-                            // pass needed).
-                            if (bldFlamePreset != null && bldBpStage != null)
+                            // Surface a confirmation line in the build log
+                            // when the per-building BP clone landed AND the
+                            // DA NameMap rewrites for ItemClass fired (the
+                            // actual rewriting happens inside DataAssetPatcher
+                            // via inputs.ExtraDaNameMapRewrites - no second
+                            // open/write pass needed).
+                            if (bldComponentPreset != null && bldBpStage != null)
                             {
-                                LogLine("  [Flame] DA ItemClass redirected via NameMap -> "
+                                LogLine("  [" + bldComponentPreset.Kind + "] DA ItemClass redirected via NameMap -> "
                                     + bldBpStage.ClonedClassPath
-                                    + " (preset '" + bldFlamePreset.Id + "')");
+                                    + " (preset '" + bldComponentPreset.Id + "')");
                             }
-                            else if (bldFlamePreset != null)
+                            else if (bldComponentPreset != null)
                             {
                                 result.Warnings.Add(
-                                    "Flame preset '" + bldFlamePreset.Id
+                                    bldComponentPreset.Kind + " preset '" + bldComponentPreset.Id
                                     + "' BP staging failed for '" + b.Id
                                     + "' - building will spawn under vanilla BP class instead of cloned BP.");
                                 LogLine("  warn: " + result.Warnings[^1]);

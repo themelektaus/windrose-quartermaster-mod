@@ -1255,11 +1255,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         // flame preset).
         //
         // Why this is a generic "extra rewrites" bag rather than a
-        // FlamePreset-specific field: the orchestrator computes the
-        // vanilla-BP -> cloned-BP key pairs from the FlamePresetCatalog
+        // ComponentPreset-specific field: the orchestrator computes the
+        // vanilla-BP -> cloned-BP key pairs from the ComponentPresetCatalog
         // already, and BuildingPatcher.Patch's only concern is "swap these
         // FName strings during the same NameMap pass." A generic bag keeps
-        // the patcher decoupled from Flame-specific knowledge and lets
+        // the patcher decoupled from preset-specific knowledge and lets
         // future features (e.g. multi-BP redirects) plug in the same way.
         public Dictionary<string, string> ExtraDaNameMapRewrites;
     }

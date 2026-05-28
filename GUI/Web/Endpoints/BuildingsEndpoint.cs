@@ -82,22 +82,24 @@ public static class BuildingsEndpoint
             });
         });
 
-        // Etappe J: Flame-FX presets the user can attach to any building.
-        // Returns the canonical list (id + displayName + description)
-        // the GUI surfaces as a dropdown in each building's editor. When
-        // the user picks a preset, the build pipeline clones the
-        // corresponding vanilla "fire building" BP once per used preset
-        // and patches each opted-in building's DA to use the cloned BP
-        // as ItemClass - so the building spawns with Niagara flame FX,
-        // a flickering point light, and ambient loop SFX. Default state
-        // for any building is "no preset selected" (= no flame).
-        app.MapGet("/api/buildings/flame-presets", () =>
+        // Component-FX presets the user can attach to any building.
+        // Returns the canonical list (id + displayName + description +
+        // kind) the GUI surfaces as a dropdown in each building's editor.
+        // When the user picks a preset, the build pipeline clones the
+        // corresponding vanilla donor BP per building and patches the
+        // building's DA so its ItemClass points at the cloned BP - so
+        // the building spawns with the donor's SCS-Components (Niagara
+        // flame + light + audio for "torch"; AudioComponent for "audio").
+        // Default state for any building is "no preset selected".
+        //
+        // Backward-compat: the older /api/buildings/flame-presets path
+        // is kept as an alias for frontends that haven't been updated.
+        Microsoft.AspNetCore.Http.IResult HandlePresets() => Results.Json(new
         {
-            return Results.Json(new
-            {
-                presets = FlamePresetCatalog.GetDtos(),
-            });
+            presets = ComponentPresetCatalog.GetDtos(),
         });
+        app.MapGet("/api/buildings/component-presets", HandlePresets);
+        app.MapGet("/api/buildings/flame-presets",     HandlePresets);
     }
 
     static BuildingRecipeInspectionDto InspectRecipe(string templateId, string repoRoot)
