@@ -574,8 +574,8 @@ function renderShipMusicAddedTrack(track) {
     delBtn.type = 'button';
     delBtn.className = 'btn btn-secondary';
     delBtn.textContent = 'Remove';
-    delBtn.addEventListener('click', () => {
-        if (!confirm('Remove track "' + (track.title || track.trackKey) + '"?')) return;
+    delBtn.addEventListener('click', async () => {
+        if (!await confirm('Remove track "' + (track.title || track.trackKey) + '"?')) return;
         deleteShipMusicAddedTrack(track.trackKey).catch(ex => {
             alert('Delete failed: ' + (ex && ex.message ? ex.message : ex));
         });
