@@ -46,12 +46,12 @@ function shipmusicFormatBytes(n) {
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// Mirrors a freshly-saved volume value (already persisted via the
-// per-slot POST endpoint) into state.current so a subsequent global
-// Save (PUT /api/profiles/<id>) doesn't write a stale value back over
-// it. Creates the Songs entry on the fly when the user pre-tunes a
-// slot before uploading audio - this mirrors the endpoint's own
-// behaviour (it creates the ShipMusicSlotOverride on demand).
+// Mirrors a slider value into state.current so the next global Save
+// (PUT /api/profiles/<id>) ships it to disk. Creates the Songs entry
+// on the fly when the user pre-tunes a slot before uploading audio,
+// matching the backend's on-demand creation of ShipMusicSlotOverride.
+// Pairs with markDirty() in the slider's onChange so the user sees the
+// UNSAVED badge and the Save button activates.
 function syncShipMusicSlotVolumeIntoProfile(stem, mul) {
     if (!state.current) return;
     if (!state.current.globals) state.current.globals = {};
@@ -100,24 +100,20 @@ function shipmusicMulFromSliderPct(pct) {
     return p / 100;
 }
 
-// Debounce wrapper so dragging the slider does not spam the backend.
-function shipmusicDebounce(fn, ms) {
-    let timer = null;
-    return function () {
-        const args = arguments;
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => { timer = null; fn.apply(null, args); }, ms);
-    };
-}
-
-// Builds a labeled volume slider (5%-steps, 0..100%) that POSTs the
-// absolute VolumeMultiplier to `url`. `initialMul` is the absolute
-// value returned by the server (e.g. 0.45 = "vanilla VoicePlayer
-// baseline" for shanties). `onSaved` is called after a successful
-// save with the new value (so the caller can refresh local state if
-// it wants to - the central dirty-tracking + state-mirroring lives
-// in the caller's onSaved, not here).
-function buildShipMusicVolumeSlider(initialMul, url, onSaved) {
+// Builds a labeled volume slider (5%-steps, 0..100%). `initialMul` is the
+// absolute value loaded from the server (e.g. 0.45 = "vanilla VoicePlayer
+// baseline" for shanties). `onChange` is called on every slider move with
+// the new absolute value - the caller is expected to mirror it into
+// state.current + markDirty(). The value is NOT persisted here; it ships
+// to the server with the next global Save (PUT /api/profiles/<id>), same
+// as every other profile field, so a pending slider edit can be discarded
+// via the global "Discard changes" flow without leaving a stale per-slot
+// POST in the way.
+//
+// The `url` parameter is retained for ABI stability (callers still pass it)
+// but ignored - the per-slot/per-track volume POST endpoints exist on the
+// backend for API completeness but the GUI no longer calls them.
+function buildShipMusicVolumeSlider(initialMul, url, onChange) {
     const wrap = document.createElement('div');
     wrap.className = 'shipmusic-volume-row';
 
@@ -140,36 +136,10 @@ function buildShipMusicVolumeSlider(initialMul, url, onSaved) {
     valueLbl.textContent = slider.value + '%';
     wrap.appendChild(valueLbl);
 
-    // PUT-on-pause: debounced 250ms so we don't hammer the endpoint
-    // while the user drags. The slot card doesn't re-render on save
-    // because the volume change doesn't affect any other UI element
-    // (state, file name, badge); skipping the refresh keeps focus on
-    // the slider so the user can keep tweaking.
-    const saveDebounced = shipmusicDebounce(async (pct) => {
-        const mul = shipmusicMulFromSliderPct(pct);
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ volume: mul }),
-            });
-            if (!res.ok) {
-                let msg = 'HTTP ' + res.status;
-                try {
-                    const j = await res.json();
-                    if (j && j.error) msg = j.error;
-                } catch (_) { /* fall through */ }
-                throw new Error(msg);
-            }
-            if (typeof onSaved === 'function') onSaved(mul);
-        } catch (ex) {
-            console.warn('volume save failed:', ex);
-        }
-    }, 250);
-
     slider.addEventListener('input', () => {
         valueLbl.textContent = slider.value + '%';
-        saveDebounced(slider.value);
+        const mul = shipmusicMulFromSliderPct(slider.value);
+        if (typeof onChange === 'function') onChange(mul);
     });
 
     return wrap;
@@ -376,12 +346,12 @@ function renderShipMusicSlot(slot) {
                 + '/ship-music/' + encodeURIComponent(slot.stem) + '/volume',
             (mul) => {
                 slot.volume = mul;
-                // Mirror into the loaded profile state so the next
-                // global Save (PUT /api/profiles/<id>) doesn't roll
-                // back the slider position the POST just persisted.
-                // Also flips the dirty badge so the user sees their
-                // change registered in the same way every other field
-                // does.
+                // Mirror into state.current so the next global Save
+                // (PUT /api/profiles/<id>) ships the new value to disk,
+                // and flip the dirty badge so the user knows it's
+                // pending - the slider does not auto-save, the user
+                // must hit Save (or Discard via the unsaved-changes
+                // guard) like with any other profile field.
                 syncShipMusicSlotVolumeIntoProfile(slot.stem, mul);
                 if (typeof markDirty === 'function') markDirty();
             }
