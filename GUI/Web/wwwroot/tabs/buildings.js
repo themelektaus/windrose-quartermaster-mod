@@ -602,7 +602,71 @@ function renderComponentPresetSelectHtml(custom) {
         +   '<span>Component preset</span>'
         +   '<select data-building-field="componentPresetId">' + opts + '</select>'
         +   '<small><em>' + escapeHtml(hint) + '</em></small>'
-        + '</label>';
+        + '</label>'
+        + renderAudioSourceBlockHtml(custom);
+}
+
+// Audio-Source upload + range slider block. Only rendered when the
+// active component preset's kind is "audio". The block contains:
+//   - Upload control (file picker, supported formats: wav/mp3/ogg/flac/m4a/aac/opus)
+//   - Status row showing current audio (filename + duration) or "vanilla loop"
+//   - Clear button
+//   - Range slider (1-300 meters)
+// All controls only become live AFTER the building has an Id (= it's
+// been saved at least once), since the upload endpoint takes /buildings/{bid}.
+function renderAudioSourceBlockHtml(custom) {
+    if (!custom) return '';
+    const presetId = (custom && custom.componentPresetId) || '';
+    const presets = Array.isArray(_componentPresets) ? _componentPresets : null;
+    let isAudioPreset = false;
+    if (presets) {
+        const cur = presets.find(p => p && p.id === presetId);
+        isAudioPreset = !!(cur && cur.kind === 'audio');
+    } else if (presetId === 'audio') {
+        // Fallback when catalog hasn't loaded yet - assume preset id
+        // "audio" is the audio preset (matches the shipped catalog).
+        isAudioPreset = true;
+    }
+    if (!isAudioPreset) return '';
+
+    const src = custom.audioSource || null;
+    const rangeMeters = (typeof custom.audioRangeMeters === 'number' && custom.audioRangeMeters > 0)
+        ? custom.audioRangeMeters : 15;
+
+    let statusHtml;
+    if (src && src.originalFilename) {
+        const dur = typeof src.durationSec === 'number'
+            ? src.durationSec.toFixed(1) + 's' : '';
+        const sz = typeof src.sizeBytes === 'number'
+            ? (src.sizeBytes / 1024 / 1024).toFixed(2) + ' MB' : '';
+        const parts = [escapeHtml(src.originalFilename), dur, sz].filter(Boolean);
+        statusHtml = '<span class="building-audio-status-ready">'
+                   + escapeHtml(parts.join(' - ')) + '</span>'
+                   + ' <button type="button" class="btn-link danger" data-building-action="audio-clear">Clear</button>';
+    } else {
+        statusHtml = '<span class="building-audio-status-vanilla">'
+                   + 'No custom audio - vanilla clock tick-tack loop will play.'
+                   + '</span>';
+    }
+
+    return ''
+        + '<div class="building-field building-field-wide building-audio-block">'
+        +   '<div class="building-audio-header">'
+        +     '<span class="building-audio-label">Audio source</span>'
+        +     '<small><em>Loops on the building. Drop any wav/mp3/ogg/flac/m4a/aac/opus.</em></small>'
+        +   '</div>'
+        +   '<div class="building-audio-controls">'
+        +     '<input type="file" data-building-action="audio-upload" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus">'
+        +   '</div>'
+        +   '<div class="building-audio-status">' + statusHtml + '</div>'
+        +   '<label class="building-audio-range">'
+        +     '<span>Audible range (m)</span>'
+        +     '<input type="range" data-building-field="audioRangeMeters" min="1" max="300" step="1" value="'
+        +       String(rangeMeters) + '">'
+        +     '<span class="building-audio-range-value" data-audio-range-display>'
+        +       String(rangeMeters) + ' m</span>'
+        +   '</label>'
+        + '</div>';
 }
 
 // -----------------------------------------------------------------------
@@ -1280,6 +1344,13 @@ async function onBuildingsNew() {
 function onBuildingListChange(e) {
     const t = e.target;
     if (!t || !t.dataset) return;
+    // File upload (audio source) needs its own path - the dataset key
+    // is buildingAction (not buildingField), and the handler does an
+    // async upload + re-render rather than mutating profile state.
+    if (t.dataset.buildingAction === 'audio-upload') {
+        onBuildingsAudioChange(e);
+        return;
+    }
     const card = t.closest('li.building-card');
     if (!card) return;
     const index = parseInt(card.dataset.buildingIndex, 10);
@@ -1326,12 +1397,33 @@ function onBuildingListChange(e) {
             const v = (t.value || '').trim();
             custom.componentPresetId = v ? v : null;
             // Re-render this card's component-preset block so the hint
-            // line (description) updates to match the new selection.
+            // line (description) updates to match the new selection, AND
+            // the Audio Source sub-block appears/disappears with the
+            // "audio" kind.
             const host = card.querySelector('label.building-field-wide select[data-building-field="componentPresetId"]');
             if (host) {
                 const lbl = host.closest('label.building-field');
-                if (lbl) lbl.outerHTML = renderComponentPresetSelectHtml(custom);
+                if (lbl) {
+                    // Remove the old audio block (if rendered) so we don't
+                    // end up with two when switching preset back-and-forth.
+                    const oldAudio = card.querySelector('.building-audio-block');
+                    if (oldAudio) oldAudio.remove();
+                    lbl.outerHTML = renderComponentPresetSelectHtml(custom);
+                }
             }
+            // Trigger a meta-refresh against the server when we now show
+            // the audio block - keeps the status line up-to-date even if
+            // someone hand-edited the WAV outside the GUI.
+            if (custom.id && custom.componentPresetId) {
+                const presets = Array.isArray(_componentPresets) ? _componentPresets : null;
+                const cur = presets ? presets.find(p => p && p.id === custom.componentPresetId) : null;
+                if (cur && cur.kind === 'audio') refreshAudioStatus(custom, card);
+            }
+        } else if (field === 'audioRangeMeters') {
+            const n = Number(t.value);
+            custom.audioRangeMeters = (n > 0 ? n : 15);
+            const disp = card.querySelector('[data-audio-range-display]');
+            if (disp) disp.textContent = String(custom.audioRangeMeters) + ' m';
         // (Etappe I removed the legacy `<select data-building-field=
         //  "templateId">` element; template picks now go through the
         //  central picker via data-building-template-input, handled
@@ -1624,6 +1716,111 @@ async function onBuildingListClick(e) {
         if (c.meshStem) {
             triggerCookedInspect(index, c.id, c.cookedFolderPath, c.meshStem);
         }
+    } else if (action === 'audio-clear') {
+        const c = customs[index];
+        if (!c.id) return;
+        if (!await confirm('Clear the uploaded audio for "' + (c.name || c.id) + '"?')) return;
+        const profileId = state.current && state.current.id;
+        try {
+            await api('DELETE', '/api/profiles/' + encodeURIComponent(profileId)
+                + '/buildings/' + encodeURIComponent(c.id) + '/audio');
+            c.audioSource = null;
+            // Rerender just the audio block (preserves the file input
+            // outside the block from being unnecessarily reset).
+            const blk = card.querySelector('.building-audio-block');
+            if (blk) blk.outerHTML = renderAudioSourceBlockHtml(c);
+        } catch (err) {
+            await alert('Audio clear failed: ' + (err && err.message ? err.message : err));
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Audio-source file upload (per-building "audio" preset).
+// -----------------------------------------------------------------------
+function onBuildingsAudioChange(e) {
+    const t = e.target;
+    if (!t || t.tagName !== 'INPUT' || t.type !== 'file') return;
+    if (t.dataset.buildingAction !== 'audio-upload') return;
+    const card = t.closest('li.building-card');
+    if (!card) return;
+    const index = parseInt(card.dataset.buildingIndex, 10);
+    if (!isFinite(index)) return;
+    const customs = state.current && state.current.customBuildings;
+    if (!customs || !customs[index]) return;
+    const c = customs[index];
+    if (!t.files || t.files.length === 0) return;
+    const file = t.files[0];
+    const profileId = state.current && state.current.id;
+    if (!profileId || !c.id) {
+        alert('Save the profile first so the building gets an Id, then upload.');
+        return;
+    }
+    uploadBuildingAudio(profileId, c, file, card).finally(() => {
+        // Reset file input so the same file can be re-selected if needed.
+        try { t.value = ''; } catch (_) {}
+    });
+}
+
+async function uploadBuildingAudio(profileId, custom, file, card) {
+    const status = card.querySelector('.building-audio-status');
+    if (status) status.innerHTML = '<em>Uploading + transcoding ' + escapeHtml(file.name) + '...</em>';
+    try {
+        const form = new FormData();
+        form.append('audio', file, file.name);
+        const url = '/api/profiles/' + encodeURIComponent(profileId)
+                  + '/buildings/' + encodeURIComponent(custom.id) + '/audio';
+        const resp = await fetch(url, { method: 'POST', body: form });
+        if (!resp.ok) {
+            let err = 'HTTP ' + resp.status;
+            try { const j = await resp.json(); if (j && j.error) err = j.error; } catch (_) {}
+            throw new Error(err);
+        }
+        const dto = await resp.json();
+        if (dto && dto.source) {
+            custom.audioSource = {
+                originalFilename: dto.source.originalFilename,
+                durationSec: dto.source.durationSec,
+                sampleRate: dto.source.sampleRate,
+                channels: dto.source.channels,
+                sizeBytes: dto.source.sizeBytes,
+            };
+        }
+        const blk = card.querySelector('.building-audio-block');
+        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+    } catch (err) {
+        await alert('Audio upload failed: ' + (err && err.message ? err.message : err));
+        const blk = card.querySelector('.building-audio-block');
+        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+    }
+}
+
+// Refreshes the audio meta from the server (called when user switches
+// the preset to audio - we want the status line to reflect the actual
+// on-disk state, in case the file was added/removed outside the GUI).
+async function refreshAudioStatus(custom, card) {
+    if (!custom || !custom.id) return;
+    const profileId = state.current && state.current.id;
+    if (!profileId) return;
+    try {
+        const dto = await api('GET', '/api/profiles/' + encodeURIComponent(profileId)
+            + '/buildings/' + encodeURIComponent(custom.id) + '/audio');
+        if (dto && dto.source) {
+            custom.audioSource = {
+                originalFilename: dto.source.originalFilename,
+                durationSec: dto.source.durationSec,
+                sampleRate: dto.source.sampleRate,
+                channels: dto.source.channels,
+                sizeBytes: dto.source.sizeBytes,
+            };
+        } else {
+            custom.audioSource = null;
+        }
+        if (typeof dto.rangeMeters === 'number') custom.audioRangeMeters = dto.rangeMeters;
+        const blk = card.querySelector('.building-audio-block');
+        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+    } catch (_) {
+        // best-effort - status was already showing a usable state
     }
 }
 

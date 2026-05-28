@@ -1143,6 +1143,204 @@ public static class ProfilesEndpoint
 
             return Results.NoContent();
         });
+
+        // ---- Building Audio (per-building user audio for "audio" preset) ----
+        //
+        // GET    /api/profiles/{id}/buildings/{bid}/audio
+        //   Returns audio meta + on-disk state for the given building.
+        //
+        // POST   /api/profiles/{id}/buildings/{bid}/audio
+        //   multipart/form-data with key "audio" (file). Preprocessed to
+        //   44.1 kHz / stereo / 16-bit PCM via AudioPreprocessor, stored as
+        //   <Profiles>/<id>/BuildingAudio/<bid>/audio.wav. Returns the
+        //   updated AudioSourceMeta block.
+        //
+        // DELETE /api/profiles/{id}/buildings/{bid}/audio
+        //   Drops the on-disk dir + clears CustomBuilding.AudioSource.
+
+        // Shared lookup helper: find a CustomBuilding by id, or return
+        // (null, error-message) on miss.
+        static (Profile profile, CustomBuilding bldg, string error) LoadBuilding(
+            ProfileStore st, string profileId, string buildingId)
+        {
+            var p = st.Load(profileId);
+            if (p == null) return (null, null, "Profile not found: " + profileId);
+            if (string.IsNullOrEmpty(buildingId))
+                return (p, null, "buildingId is required");
+            var bld = p.CustomBuildings?.FirstOrDefault(b =>
+                b != null && string.Equals(b.Id, buildingId, StringComparison.Ordinal));
+            if (bld == null) return (p, null, "Building not found in profile: " + buildingId);
+            return (p, bld, null);
+        }
+
+        app.MapGet("/api/profiles/{id}/buildings/{bid}/audio",
+            (string id, string bid) =>
+        {
+            var (profile, bldg, err) = LoadBuilding(store, id, bid);
+            if (err != null) return Results.BadRequest(new { error = err });
+
+            var dir = paths.ProfileBuildingAudioDir(id, bid);
+            var wavPath = Path.Combine(dir, "audio.wav");
+            bool wavPresent = File.Exists(wavPath);
+            long wavBytes = 0;
+            if (wavPresent)
+            {
+                try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+            }
+            return Results.Json(new
+            {
+                buildingId = bid,
+                rangeMeters = bldg.AudioRangeMeters > 0 ? bldg.AudioRangeMeters : 15.0,
+                source = bldg.AudioSource == null ? null : new
+                {
+                    originalFilename = bldg.AudioSource.OriginalFilename,
+                    durationSec      = bldg.AudioSource.DurationSec,
+                    sampleRate       = bldg.AudioSource.SampleRate,
+                    channels         = bldg.AudioSource.Channels,
+                    sizeBytes        = bldg.AudioSource.SizeBytes,
+                },
+                state = wavPresent ? "ready" : "missing-wav",
+                wavBytes,
+            });
+        });
+
+        app.MapPost("/api/profiles/{id}/buildings/{bid}/audio",
+            async (string id, string bid, HttpRequest req) =>
+        {
+            var (profile, bldg, err) = LoadBuilding(store, id, bid);
+            if (err != null) return Results.BadRequest(new { error = err });
+
+            if (!req.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data" });
+
+            IFormFileCollection files;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                files = form.Files;
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+
+            IFormFile audioFile = files.GetFile("audio")
+                ?? files.GetFile("wav")
+                ?? files.FirstOrDefault(f => f.FileName != null
+                    && AudioPreprocessor.IsSupportedExtension(f.FileName));
+            if (audioFile == null)
+            {
+                return Results.BadRequest(new {
+                    error = "Need a single audio file (" + AudioPreprocessor.SupportedExtensionsList()
+                          + ")."
+                });
+            }
+            if (!AudioPreprocessor.IsSupportedExtension(audioFile.FileName))
+            {
+                return Results.BadRequest(new {
+                    error = "Unsupported audio format: " + audioFile.FileName
+                          + ". Allowed: " + AudioPreprocessor.SupportedExtensionsList() + "."
+                });
+            }
+
+            // 60 MB cap. Looping ambient audio rarely needs > a few minutes;
+            // a 5-minute 44.1k stereo WAV is ~50 MB.
+            const long maxBytes = 60L * 1024 * 1024;
+            if (audioFile.Length > maxBytes)
+                return Results.BadRequest(new {
+                    error = "File too large: " + audioFile.FileName
+                          + " (" + audioFile.Length + " bytes, cap " + maxBytes + ")"
+                });
+
+            var srcExt = Path.GetExtension(audioFile.FileName);
+            if (string.IsNullOrEmpty(srcExt)) srcExt = ".bin";
+            var stagedSrc = Path.Combine(Path.GetTempPath(),
+                "qm_bldgaudio_" + Guid.NewGuid().ToString("N") + srcExt);
+            await SaveFormFile(audioFile, stagedSrc);
+
+            var dir = paths.ProfileBuildingAudioDir(id, bid);
+            Directory.CreateDirectory(dir);
+            var wavOut = Path.Combine(dir, "audio.wav");
+
+            AudioPreprocessor.Result prep;
+            try
+            {
+                prep = await AudioPreprocessor.PreprocessAsync(
+                    paths, stagedSrc, wavOut, log: null);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            finally
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+            }
+
+            WavInfo.Info wavInfo;
+            try { wavInfo = WavInfo.Read(wavOut); }
+            catch (Exception ex)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Preprocessed WAV failed validation: " + ex.Message
+                });
+            }
+            if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
+                          + wavInfo.Describe() + ")"
+                });
+            }
+
+            bldg.AudioSource = new AudioSourceMeta
+            {
+                OriginalFilename = audioFile.FileName,
+                DurationSec      = (float)wavInfo.DurationSeconds,
+                SampleRate       = wavInfo.SampleRate,
+                Channels         = wavInfo.Channels,
+                SizeBytes        = new FileInfo(wavOut).Length,
+            };
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new
+            {
+                buildingId = bid,
+                source = new
+                {
+                    originalFilename = bldg.AudioSource.OriginalFilename,
+                    durationSec      = bldg.AudioSource.DurationSec,
+                    sampleRate       = bldg.AudioSource.SampleRate,
+                    channels         = bldg.AudioSource.Channels,
+                    sizeBytes        = bldg.AudioSource.SizeBytes,
+                },
+                transcoded = prep.WasTranscoded,
+                sourceFormat = prep.SourceFormat,
+            });
+        });
+
+        app.MapDelete("/api/profiles/{id}/buildings/{bid}/audio",
+            (string id, string bid) =>
+        {
+            var (profile, bldg, err) = LoadBuilding(store, id, bid);
+            if (err != null) return Results.BadRequest(new { error = err });
+
+            var dir = paths.ProfileBuildingAudioDir(id, bid);
+            if (Directory.Exists(dir))
+            {
+                try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
+            }
+            bldg.AudioSource = null;
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+            return Results.NoContent();
+        });
     }
 
     static async Task SaveFormFile(IFormFile file, string diskPath)
@@ -1442,6 +1640,22 @@ public static class ProfilesEndpoint
                 // Carry the optional component-FX preset id through
                 // duplicate so the cloned profile inherits the preset.
                 ComponentPresetId = b.ComponentPresetId,
+                // Audio preset extension: range + meta-block follow the
+                // building on duplicate. The audio.wav file itself is
+                // duplicated separately by the duplicate-profile handler
+                // (per-building dir copy) - this DTO carries only the
+                // display meta.
+                AudioRangeMeters = b.AudioRangeMeters,
+                AudioSource = b.AudioSource == null
+                    ? null
+                    : new AudioSourceMeta
+                    {
+                        OriginalFilename = b.AudioSource.OriginalFilename,
+                        DurationSec      = b.AudioSource.DurationSec,
+                        SampleRate       = b.AudioSource.SampleRate,
+                        Channels         = b.AudioSource.Channels,
+                        SizeBytes        = b.AudioSource.SizeBytes,
+                    },
             });
         }
         return result;

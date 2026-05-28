@@ -82,6 +82,7 @@ namespace Windrose.Quartermaster.Core
         readonly BuildingPatcher _buildingPatcher;
         readonly RecipePatcher _recipePatcher;
         readonly BlueprintPatcher _blueprintPatcher;
+        readonly BuildingAudioStager _audioStager;
 
         public Action<string> Log;
 
@@ -151,6 +152,7 @@ namespace Windrose.Quartermaster.Core
             _buildingPatcher = new BuildingPatcher();
             _recipePatcher = new RecipePatcher();
             _blueprintPatcher = new BlueprintPatcher();
+            _audioStager = new BuildingAudioStager();
         }
 
         public BuildPipelineResult Build(Profile profile, bool keepTemp = false)
@@ -1445,6 +1447,22 @@ namespace Windrose.Quartermaster.Core
                         _blueprintPatcher.AesKey = WindroseGameSecrets.AesKey;
                         _blueprintPatcher.TempDir = buildingTmp;
 
+                        // Audio Phase B: stager for per-building user-WAV
+                        // -> SWAV + looping Cue. Wired identically to the
+                        // blueprintPatcher (shares the same retoc / usmap /
+                        // vanilla refs); the call site below only invokes
+                        // it when ComponentPresetId=="audio" AND the
+                        // building has a user-uploaded audio file present.
+                        _audioStager.Log = Log;
+                        _audioStager.RetocExe = retocExe;
+                        _audioStager.UsmapPath = usmapPath;
+                        _audioStager.VanillaPaksDir = gamePaksDir;
+                        _audioStager.AesKey = WindroseGameSecrets.AesKey;
+                        _audioStager.TempDir = buildingTmp;
+                        _audioStager.BinkEncoderPath    = _paths.BinkAudioEncoderPath;
+                        _audioStager.SwavTemplateUasset = _paths.ShipMusicTemplateUasset;
+                        _audioStager.SwavTemplateUexp   = _paths.ShipMusicTemplateUexp;
+
                         // Stage the shipped VT default textures once per
                         // build, regardless of which buildings reference
                         // them. Canonical stem list: DefaultTextureProvider.Stems.
@@ -1626,6 +1644,46 @@ namespace Windrose.Quartermaster.Core
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = WindrosePaths.ModItemsPackagePath + userMeshStem;
 
+                                    // Audio Phase B: if the user uploaded a
+                                    // per-building audio file for this Audio-
+                                    // preset building, stage the SWAV+Cue
+                                    // BEFORE the BP-clone runs - so the
+                                    // BP NameMap rewrite that points the
+                                    // AudioComponent.Sound at our cue
+                                    // happens in one open/write pass with
+                                    // the mesh/icon rewrites.
+                                    BuildingAudioStageResult bldAudioStage = null;
+                                    if (bldComponentPreset.Kind == ComponentPresetKind.Audio)
+                                    {
+                                        var audioDir = _paths.ProfileBuildingAudioDir(profile.Id, b.Id);
+                                        var audioWav = Path.Combine(audioDir, "audio.wav");
+                                        if (File.Exists(audioWav))
+                                        {
+                                            try
+                                            {
+                                                bldAudioStage = _audioStager.Stage(
+                                                    b.Id, audioWav, stagingItemsDir);
+                                                LogLine("  [Audio] user audio staged for '" + b.Id + "' -> "
+                                                    + bldAudioStage.CueStem + " (loop "
+                                                    + bldAudioStage.DurationSeconds.ToString("0.##",
+                                                        System.Globalization.CultureInfo.InvariantCulture)
+                                                    + "s)");
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                LogLine("  warn: audio stage failed for '" + b.Id
+                                                    + "': " + ex.Message
+                                                    + " - falling back to vanilla Tick-Tack loop");
+                                                bldAudioStage = null;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            LogLine("  [Audio] no user audio for '" + b.Id
+                                                + "' - keeping vanilla Tick-Tack loop");
+                                        }
+                                    }
+
                                     // Pass the single picked socket to the
                                     // patcher; it overwrites RelativeLocation
                                     // / Rotation / Scale3D on the BP's
@@ -1634,7 +1692,7 @@ namespace Windrose.Quartermaster.Core
                                     // Audio only for Audio preset).
                                     bldBpStage = _blueprintPatcher.Stage(
                                         bldComponentPreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
-                                        bldComponentSocket);
+                                        bldComponentSocket, bldAudioStage);
                                     stagedComponentBuildings[b.Id] = bldBpStage;
                                     foreach (var w in bldBpStage.Warnings ?? new List<string>())
                                         LogLine("  warn: component BP '" + b.Id + "': " + w);

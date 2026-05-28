@@ -966,6 +966,31 @@ namespace Windrose.Quartermaster.Core
         }
 
         // -----------------------------------------------------------------
+        // Audio preset extension (only meaningful when ComponentPresetId ==
+        // "audio"). The user can:
+        //
+        //   - Upload a custom audio file (wav/mp3/ogg/...) which is
+        //     transcoded to a 44.1 kHz stereo 16-bit PCM WAV and stored at
+        //     <Profiles>/<id>/BuildingAudio/<buildingId>/audio.wav. If the
+        //     file is absent, the cloned BP keeps the donor's vanilla audio
+        //     (Tick-Tack from MS_Building_Clock_LP). When a user audio file
+        //     IS present, the build pipeline stages a per-building SWAV +
+        //     looping SoundCue under /Game/Quartermaster/ and rewires the
+        //     cloned BP's AudioComponent.Sound to point at the cue.
+        //
+        //   - Set a max-audible distance (range) in meters. Driven by an
+        //     AudioComponent.AttenuationOverrides inline override on the
+        //     cloned BP, so we don't need to stage a separate
+        //     SoundAttenuation asset per building. Default 15 m matches
+        //     the typical "ambient loop you hear if you're next to it"
+        //     feel; the upper bound is generous for big set pieces.
+        //
+        // Both fields are optional - the GUI only surfaces them when the
+        // component preset is "audio".
+        public double AudioRangeMeters;  // 0 = unset -> default 15 m
+        public AudioSourceMeta AudioSource;
+
+        // -----------------------------------------------------------------
         // Returns the AssetPrefix that should drive the asset-allowlist
         // filter + the MI-clone stem naming. Reads the persisted field
         // first; falls back to the value derived from MeshStem when the
@@ -1003,6 +1028,27 @@ namespace Windrose.Quartermaster.Core
             if (m.Success) s = m.Groups[1].Value;
             return s;
         }
+    }
+
+    // Metadata about a user-uploaded audio file for the Audio component
+    // preset. Lives on CustomBuilding.AudioSource. The bytes themselves
+    // sit at <Profiles>/<id>/BuildingAudio/<buildingId>/audio.wav (after
+    // ffmpeg preprocessing to 44.1 kHz / stereo / 16-bit PCM); this DTO
+    // carries only the display-friendly metadata so the GUI can render
+    // "Custom: mysong.wav (12s)" without re-reading the WAV header.
+    public sealed class AudioSourceMeta
+    {
+        // The filename as it was uploaded ("mysound.mp3"). Display only.
+        public string OriginalFilename;
+        // Duration in seconds. Display only AND used at build time to
+        // size the SoundCue's Duration field.
+        public float DurationSec;
+        // Sample rate of the source (after preprocessing should be 44100).
+        public int SampleRate;
+        // Channel count (after preprocessing should be 2).
+        public int Channels;
+        // Cleaned-WAV size in bytes. Display only.
+        public long SizeBytes;
     }
 
     // One row in CustomBuilding.RecipeCost. Mirrors the wire-format

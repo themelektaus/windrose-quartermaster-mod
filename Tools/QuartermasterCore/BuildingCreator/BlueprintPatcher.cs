@@ -114,7 +114,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             string userMeshStem,
             string userMeshPath,
             string stagingItemsDir,
-            StaticMeshSocketReader.Socket componentSocket = null)
+            StaticMeshSocketReader.Socket componentSocket = null,
+            BuildingAudioStageResult audioStage = null)
         {
             if (preset == null) throw new ArgumentNullException("preset");
             if (string.IsNullOrWhiteSpace(buildingId)) throw new ArgumentNullException("buildingId");
@@ -203,6 +204,25 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     if (!string.IsNullOrEmpty(extra.Path))
                         replacements[extra.Path] = userMeshPath;
                 }
+            }
+
+            // Audio Phase B: if a user audio stage is supplied, fold its
+            // NameMap rewrites into this BP's NameMap rewrite pass. Four
+            // entries flip:
+            //   MS_Building_Clock_LP        -> our cue stem
+            //   /Game/.../MS_Building_Clock_LP -> our cue package path
+            //   MetaSoundSource             -> SoundCue (Import.ClassName)
+            //   /Script/MetasoundEngine     -> /Script/Engine (Import.ClassPackage)
+            // After this rewrite the cloned BP's AudioComponent.Sound
+            // import resolves to our cloned cue (which loops our SWAV).
+            if (audioStage != null)
+            {
+                foreach (var kvp in BuildingAudioStager.NameMapRewritesForBp(audioStage))
+                {
+                    replacements[kvp.Key] = kvp.Value;
+                }
+                LogLine("  [Audio] BP NameMap will be retargeted to cue '"
+                    + audioStage.CueStem + "' (SWAV stem '" + audioStage.SwavStem + "')");
             }
 
             var patcher = new DataAssetPatcher { Log = LogLine };

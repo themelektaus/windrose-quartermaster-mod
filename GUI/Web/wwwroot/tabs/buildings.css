@@ -528,3 +528,60 @@
   color: var(--text-dim);
   font-size: var(--font-size-small);
 }
+
+/* Audio-source block (Component preset = "audio"). Surfaces a file
+ * upload + status row + range slider in meters. Only rendered when
+ * the component preset's kind is "audio". */
+.building-audio-block {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  padding: .75em;
+  border: 1px solid color-mix(in srgb, var(--accent), transparent 75%);
+  border-radius: var(--border-radius);
+  background-color: color-mix(in srgb, var(--accent), black 92%);
+}
+
+.building-audio-header {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+}
+
+.building-audio-label {
+  font-weight: bold;
+}
+
+.building-audio-controls input[type="file"] {
+  max-width: 100%;
+}
+
+.building-audio-status {
+  font-size: var(--font-size-small);
+}
+
+.building-audio-status-ready {
+  color: var(--ok, var(--accent));
+}
+
+.building-audio-status-vanilla {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.building-audio-range {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+}
+
+.building-audio-range input[type="range"] {
+  flex: 1 1 auto;
+}
+
+.building-audio-range-value {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  min-width: 4em;
+  text-align: right;
+}

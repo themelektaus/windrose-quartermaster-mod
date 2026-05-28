@@ -126,6 +126,19 @@ namespace Windrose.Quartermaster.Core
             return Path.Combine(Profiles, profileId, "ShipMusicAdd", trackKey);
         }
 
+        // Per-profile per-building folder for the user-uploaded audio that
+        // backs the "Audio" component preset. The file is always stored as
+        // audio.wav after AudioPreprocessor cleaned it to 44.1 kHz /
+        // stereo / 16-bit PCM. The buildingId is the CustomBuilding.Id
+        // (e.g. "QmBldg_<8hex>") - same key the rest of the building's
+        // per-profile state is bucketed under.
+        public string ProfileBuildingAudioDir(string profileId, string buildingId)
+        {
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
+            if (string.IsNullOrEmpty(buildingId)) throw new ArgumentNullException("buildingId");
+            return Path.Combine(Profiles, profileId, "BuildingAudio", buildingId);
+        }
+
         // Resolves a user-supplied folder string (e.g. CustomBuilding.Cooked-
         // FolderPath = "MyPainting") to an absolute filesystem path,
         // preferring a profile-relative location.
