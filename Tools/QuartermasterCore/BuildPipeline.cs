@@ -1569,6 +1569,50 @@ namespace Windrose.Quartermaster.Core
                         _audioStager.SwavTemplateUasset = _paths.ShipMusicTemplateUasset;
                         _audioStager.SwavTemplateUexp   = _paths.ShipMusicTemplateUexp;
 
+                        // Pre-flight tooling check for buildings with the
+                        // Audio component preset + a user-uploaded audio
+                        // file: mirrors the ship-music-add pre-flight at
+                        // the top of Build(). The historical inner try-
+                        // catch around _audioStager.Stage() used to swallow
+                        // missing-encoder errors as a "warn:" line and
+                        // silently fall back to the vanilla Tick-Tack loop -
+                        // a published EXE without the embedded encoder
+                        // would build "successfully" with the wrong audio.
+                        // We now hard-fail upfront if the tooling is
+                        // missing so the user sees the cause instead of
+                        // hunting a silent substitution ingame.
+                        bool hasBuildingAudio = false;
+                        if (profile.CustomBuildings != null)
+                        {
+                            foreach (var bb in profile.CustomBuildings)
+                            {
+                                if (bb == null || string.IsNullOrWhiteSpace(bb.Id)) continue;
+                                var pp = ComponentPresetCatalog.Resolve(bb.ComponentPresetId);
+                                if (pp == null || pp.Kind != ComponentPresetKind.Audio) continue;
+                                var aDir = _paths.ProfileBuildingAudioDir(profile.Id, bb.Id);
+                                if (File.Exists(Path.Combine(aDir, "audio.wav")))
+                                {
+                                    hasBuildingAudio = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (hasBuildingAudio)
+                        {
+                            if (!File.Exists(_paths.BinkAudioEncoderPath))
+                                throw new FileNotFoundException(
+                                    "Bink Audio encoder not found at " + _paths.BinkAudioEncoderPath
+                                    + " - buildings with the Audio component preset and a user-uploaded"
+                                    + " audio file cannot be built without it.");
+                            if (!File.Exists(_paths.ShipMusicTemplateUasset)
+                                || !File.Exists(_paths.ShipMusicTemplateUexp))
+                                throw new FileNotFoundException(
+                                    "SoundWave template missing under "
+                                    + Path.GetDirectoryName(_paths.ShipMusicTemplateUasset)
+                                    + " - expected SoundWave_BinkInline.uasset + .uexp"
+                                    + " (used by the Building Audio stager).");
+                        }
+
                         // Stage the shipped VT default textures once per
                         // build, regardless of which buildings reference
                         // them. Canonical stem list: DefaultTextureProvider.Stems.
@@ -1738,6 +1782,49 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
+                            // Audio Phase B: hard-fail audio staging.
+                            // Runs BEFORE the BP-staging try block so any
+                            // error (encoder missing, donor drift, NameMap
+                            // rewrite incomplete) propagates up and kills
+                            // the build - rather than getting swallowed by
+                            // the outer "BP staging failed" handler and
+                            // silently substituting the vanilla Tick-Tack
+                            // loop for the user's uploaded audio. The
+                            // pre-flight check above already verified
+                            // encoder + templates exist when any building
+                            // wants audio, so a throw here means a real
+                            // problem the user needs to see.
+                            BuildingAudioStageResult bldAudioStage = null;
+                            if (bldComponentPreset != null
+                                && bldComponentPreset.Kind == ComponentPresetKind.Audio)
+                            {
+                                var audioDir = _paths.ProfileBuildingAudioDir(profile.Id, b.Id);
+                                var audioWav = Path.Combine(audioDir, "audio.wav");
+                                if (File.Exists(audioWav))
+                                {
+                                    bldAudioStage = _audioStager.Stage(
+                                        b.Id, audioWav, stagingItemsDir,
+                                        rangeMeters: b.AudioRangeMeters,
+                                        volume:      b.AudioVolume);
+                                    LogLine("  [Audio] user audio staged for '" + b.Id + "' -> "
+                                        + bldAudioStage.CueStem + " (loop "
+                                        + bldAudioStage.DurationSeconds.ToString("0.##",
+                                            System.Globalization.CultureInfo.InvariantCulture)
+                                        + "s, range="
+                                        + bldAudioStage.RangeMeters.ToString("0.##",
+                                            System.Globalization.CultureInfo.InvariantCulture)
+                                        + "m, volume="
+                                        + bldAudioStage.Volume.ToString("0.##",
+                                            System.Globalization.CultureInfo.InvariantCulture)
+                                        + " abs)");
+                                }
+                                else
+                                {
+                                    LogLine("  [Audio] no user audio for '" + b.Id
+                                        + "' - keeping vanilla Tick-Tack loop");
+                                }
+                            }
+
                             // Per-building BP clone (must run before the DA
                             // patcher because inputs.ExtraDaNameMapRewrites
                             // is populated from the cloned BP stem the
@@ -1749,54 +1836,6 @@ namespace Windrose.Quartermaster.Core
                                 {
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = WindrosePaths.ModItemsPackagePath + userMeshStem;
-
-                                    // Audio Phase B: if the user uploaded a
-                                    // per-building audio file for this Audio-
-                                    // preset building, stage the SWAV+Cue
-                                    // BEFORE the BP-clone runs - so the
-                                    // BP NameMap rewrite that points the
-                                    // AudioComponent.Sound at our cue
-                                    // happens in one open/write pass with
-                                    // the mesh/icon rewrites.
-                                    BuildingAudioStageResult bldAudioStage = null;
-                                    if (bldComponentPreset.Kind == ComponentPresetKind.Audio)
-                                    {
-                                        var audioDir = _paths.ProfileBuildingAudioDir(profile.Id, b.Id);
-                                        var audioWav = Path.Combine(audioDir, "audio.wav");
-                                        if (File.Exists(audioWav))
-                                        {
-                                            try
-                                            {
-                                                bldAudioStage = _audioStager.Stage(
-                                                    b.Id, audioWav, stagingItemsDir,
-                                                    rangeMeters: b.AudioRangeMeters,
-                                                    volume:      b.AudioVolume);
-                                                LogLine("  [Audio] user audio staged for '" + b.Id + "' -> "
-                                                    + bldAudioStage.CueStem + " (loop "
-                                                    + bldAudioStage.DurationSeconds.ToString("0.##",
-                                                        System.Globalization.CultureInfo.InvariantCulture)
-                                                    + "s, range="
-                                                    + bldAudioStage.RangeMeters.ToString("0.##",
-                                                        System.Globalization.CultureInfo.InvariantCulture)
-                                                    + "m, volume="
-                                                    + bldAudioStage.Volume.ToString("0.##",
-                                                        System.Globalization.CultureInfo.InvariantCulture)
-                                                    + "x)");
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                LogLine("  warn: audio stage failed for '" + b.Id
-                                                    + "': " + ex.Message
-                                                    + " - falling back to vanilla Tick-Tack loop");
-                                                bldAudioStage = null;
-                                            }
-                                        }
-                                        else
-                                        {
-                                            LogLine("  [Audio] no user audio for '" + b.Id
-                                                + "' - keeping vanilla Tick-Tack loop");
-                                        }
-                                    }
 
                                     // Pass the single picked socket to the
                                     // patcher; it overwrites RelativeLocation
