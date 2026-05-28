@@ -399,6 +399,10 @@ async function uploadShipMusicSlot(slot, fileList) {
         return;
     }
     if (!fileList || fileList.length === 0) return;
+    // Server-side endpoint mutates the profile JSON directly and we then
+    // reload it with loadProfile(), which would silently overwrite any
+    // pending in-memory edits. Guard the user.
+    if (!await confirmDiscardUnsavedChanges('uploading the override')) return;
 
     let audio = null;
     for (const f of fileList) {
@@ -437,6 +441,7 @@ async function uploadShipMusicSlot(slot, fileList) {
 async function resetShipMusicSlot(slot) {
     const id = shipmusicProfileId();
     if (!id) return;
+    if (!await confirmDiscardUnsavedChanges('resetting the slot')) return;
     const url = '/api/profiles/' + encodeURIComponent(id)
               + '/ship-music/' + encodeURIComponent(slot.stem);
     const res = await fetch(url, { method: 'DELETE' });
@@ -451,6 +456,7 @@ async function resetShipMusicSlot(slot) {
 async function excludeShipMusicSlot(slot) {
     const id = shipmusicProfileId();
     if (!id) return;
+    if (!await confirmDiscardUnsavedChanges('excluding the slot')) return;
     const url = '/api/profiles/' + encodeURIComponent(id)
               + '/ship-music/' + encodeURIComponent(slot.stem) + '/exclude';
     const res = await fetch(url, { method: 'POST' });
@@ -469,6 +475,7 @@ async function excludeShipMusicSlot(slot) {
 async function includeShipMusicSlot(slot) {
     const id = shipmusicProfileId();
     if (!id) return;
+    if (!await confirmDiscardUnsavedChanges('including the slot')) return;
     const url = '/api/profiles/' + encodeURIComponent(id)
               + '/ship-music/' + encodeURIComponent(slot.stem) + '/exclude';
     const res = await fetch(url, { method: 'DELETE' });
@@ -604,6 +611,7 @@ async function uploadShipMusicAddedTrack(trackKey, title, fileList) {
     if (!id) { alert('No profile is loaded.'); return; }
     if (!trackKey) { alert('TrackKey is required.'); return; }
     if (!fileList || fileList.length === 0) return;
+    if (!await confirmDiscardUnsavedChanges('adding the track')) return;
 
     let audio = null;
     for (const f of fileList) {
@@ -638,6 +646,7 @@ async function uploadShipMusicAddedTrack(trackKey, title, fileList) {
 async function deleteShipMusicAddedTrack(trackKey) {
     const id = shipmusicProfileId();
     if (!id) return;
+    if (!await confirmDiscardUnsavedChanges('deleting the track')) return;
     const url = '/api/profiles/' + encodeURIComponent(id)
               + '/ship-music-add/' + encodeURIComponent(trackKey);
     const res = await fetch(url, { method: 'DELETE' });

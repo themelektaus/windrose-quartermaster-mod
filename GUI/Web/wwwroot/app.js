@@ -1949,7 +1949,15 @@ function onDocClickClosePicker(e) {
     closePicker();
 }
 
-function showModal({ kind, message, defaultValue }) {
+// kind:
+//   'alert'   - single OK, no return value
+//   'confirm' - OK/Cancel, returns true/false
+//   'prompt'  - text input + OK/Cancel, returns string/null
+//   'choice'  - arbitrary buttons; opts.buttons = [{label, value, primary?}]
+//               returns the selected button's `value`. Escape resolves to
+//               `cancelValue` (defaults to null) so callers can distinguish
+//               "user dismissed" from any explicit choice.
+function showModal({ kind, message, defaultValue, buttons, cancelValue }) {
     return new Promise(resolve => {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -1975,7 +1983,9 @@ function showModal({ kind, message, defaultValue }) {
         card.appendChild(actions);
         overlay.appendChild(card);
 
-        const cancelValue  = kind === 'prompt' ? null : (kind === 'alert' ? undefined : false);
+        const effCancelValue = kind === 'choice'
+            ? (cancelValue !== undefined ? cancelValue : null)
+            : (kind === 'prompt' ? null : (kind === 'alert' ? undefined : false));
         const confirmValue = () =>
             kind === 'prompt' ? input.value : (kind === 'alert' ? undefined : true);
 
@@ -1987,27 +1997,43 @@ function showModal({ kind, message, defaultValue }) {
         const onKey = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
-                close(cancelValue);
+                close(effCancelValue);
             } else if (e.key === 'Enter') {
                 if (kind === 'prompt' && e.target !== input) return;
+                if (kind === 'choice') return; // Enter is ambiguous for multi-choice
                 e.preventDefault();
                 close(confirmValue());
             }
         };
 
-        if (kind !== 'alert') {
-            const cancel = document.createElement('button');
-            cancel.type = 'button';
-            cancel.textContent = 'Cancel';
-            cancel.addEventListener('click', () => close(cancelValue));
-            actions.appendChild(cancel);
+        let firstFocusable = null;
+        if (kind === 'choice') {
+            const list = Array.isArray(buttons) ? buttons : [];
+            for (const b of list) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = String(b.label ?? '');
+                if (b.primary) btn.className = 'primary';
+                btn.addEventListener('click', () => close(b.value));
+                actions.appendChild(btn);
+                if (!firstFocusable || b.primary) firstFocusable = btn;
+            }
+        } else {
+            if (kind !== 'alert') {
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.textContent = 'Cancel';
+                cancel.addEventListener('click', () => close(effCancelValue));
+                actions.appendChild(cancel);
+            }
+            const ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'primary';
+            ok.textContent = 'OK';
+            ok.addEventListener('click', () => close(confirmValue()));
+            actions.appendChild(ok);
+            firstFocusable = ok;
         }
-        const ok = document.createElement('button');
-        ok.type = 'button';
-        ok.className = 'primary';
-        ok.textContent = 'OK';
-        ok.addEventListener('click', () => close(confirmValue()));
-        actions.appendChild(ok);
 
         document.body.appendChild(overlay);
         document.addEventListener('keydown', onKey, true);
@@ -2015,8 +2041,8 @@ function showModal({ kind, message, defaultValue }) {
         if (input) {
             input.focus();
             input.select();
-        } else {
-            ok.focus();
+        } else if (firstFocusable) {
+            firstFocusable.focus();
         }
     });
 }
@@ -2034,3 +2060,38 @@ window.prompt = function(msg, defaultValue) {
         defaultValue: defaultValue ?? '',
     });
 };
+
+// Guard for actions that mutate the profile server-side AND then full-reload
+// it via loadProfile() (which would silently discard any in-memory pending
+// changes). If state.isDirty is set, presents a 3-button dialog so the user
+// can save first, knowingly discard, or cancel out.
+//
+// Returns true if the caller may proceed (clean state, save succeeded, or
+// user explicitly chose discard). Returns false if the user cancelled or
+// the inline-save failed.
+async function confirmDiscardUnsavedChanges(actionLabel) {
+    if (!state.isDirty) return true;
+    const label = actionLabel ? ' before ' + actionLabel : '';
+    const choice = await showModal({
+        kind: 'choice',
+        message: 'You have unsaved profile changes. Save them' + label + ', or discard?',
+        buttons: [
+            { label: 'Save and continue', value: 'save', primary: true },
+            { label: 'Discard changes',   value: 'discard' },
+            { label: 'Cancel',            value: 'cancel' },
+        ],
+        cancelValue: 'cancel',
+    });
+    if (choice === 'save') {
+        try {
+            await onSave();
+        } catch (err) {
+            await alert('Save failed: ' + (err && err.message ? err.message : err));
+            return false;
+        }
+        return true;
+    }
+    if (choice === 'discard') return true;
+    return false; // cancel or dismissed
+}
+window.confirmDiscardUnsavedChanges = confirmDiscardUnsavedChanges;
