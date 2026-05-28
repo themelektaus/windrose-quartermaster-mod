@@ -145,10 +145,10 @@ namespace Windrose.Quartermaster.Core
         public string Title;
         public string OriginalFilename;
 
-        // User-supplied volume multiplier applied to the cloned cue's
-        // VolumeMultiplier. 1.0 = parity with vanilla 0.45/0.5; 0.8 =
-        // added-track default ("a touch quieter"); clamped to [0.01, 2.0]
-        // by the cue cloner.
+        // User-supplied absolute VolumeMultiplier written into the cloned
+        // cue. 0.45 = parity with the vanilla VoicePlayer baseline and is
+        // the default for newly added tracks. 1.0 = full loudness; 0.0 =
+        // muted. Clamped to [0.0, 1.0] by the cue cloner.
         public double UserVolume;
     }
 

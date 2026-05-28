@@ -46,22 +46,57 @@ function shipmusicFormatBytes(n) {
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// Volume slider helpers. UI works in 0..200 (% of vanilla loudness),
-// backend stores the multiplier as 0.0..2.0. We clamp+round here so
-// the GUI never sends out a degenerate value like 1.0000001 (which
+// Mirrors a freshly-saved volume value (already persisted via the
+// per-slot POST endpoint) into state.current so a subsequent global
+// Save (PUT /api/profiles/<id>) doesn't write a stale value back over
+// it. Creates the Songs entry on the fly when the user pre-tunes a
+// slot before uploading audio - this mirrors the endpoint's own
+// behaviour (it creates the ShipMusicSlotOverride on demand).
+function syncShipMusicSlotVolumeIntoProfile(stem, mul) {
+    if (!state.current) return;
+    if (!state.current.globals) state.current.globals = {};
+    if (!state.current.globals.shipMusic) state.current.globals.shipMusic = {};
+    if (!state.current.globals.shipMusic.songs) state.current.globals.shipMusic.songs = {};
+    const songs = state.current.globals.shipMusic.songs;
+    const existing = songs[stem] || {};
+    existing.volume = mul;
+    songs[stem] = existing;
+}
+
+// Same pattern for added tracks - locate the track entry by key,
+// update its volume, leave originalFilename / title alone.
+function syncShipMusicAddedTrackVolumeIntoProfile(trackKey, mul) {
+    if (!state.current) return;
+    if (!state.current.globals) state.current.globals = {};
+    if (!state.current.globals.shipMusicAdd) state.current.globals.shipMusicAdd = {};
+    if (!Array.isArray(state.current.globals.shipMusicAdd.tracks)) {
+        state.current.globals.shipMusicAdd.tracks = [];
+    }
+    const arr = state.current.globals.shipMusicAdd.tracks;
+    for (let i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].trackKey === trackKey) {
+            arr[i].volume = mul;
+            return;
+        }
+    }
+}
+
+// Volume slider helpers. UI works in 0..100 (% absolute VolumeMultiplier),
+// backend stores the absolute value as 0.0..1.0. We clamp+round here so
+// the GUI never sends out a degenerate value like 0.4500001 (which
 // would trigger an unnecessary cue extraction).
 function shipmusicSliderPctFromMul(mul) {
-    if (!isFinite(mul)) mul = 1.0;
+    if (!isFinite(mul)) mul = 0.45;
     let p = Math.round(mul * 100);
     if (p < 0) p = 0;
-    if (p > 200) p = 200;
+    if (p > 100) p = 100;
     return p;
 }
 function shipmusicMulFromSliderPct(pct) {
     let p = parseInt(pct, 10);
-    if (!isFinite(p)) p = 100;
+    if (!isFinite(p)) p = 45;
     if (p < 0) p = 0;
-    if (p > 200) p = 200;
+    if (p > 100) p = 100;
     return p / 100;
 }
 
@@ -75,12 +110,13 @@ function shipmusicDebounce(fn, ms) {
     };
 }
 
-// Builds a labeled volume slider (5%-steps, 0..200%) that POSTs the
-// effective multiplier to `url`. `initialMul` is the multiplier
-// returned by the server (e.g. 1.0 for "vanilla", 0.8 for "added
-// track default"). `onSaved` is called after a successful save with
-// the new multiplier (so the caller can refresh local state if it
-// wants to).
+// Builds a labeled volume slider (5%-steps, 0..100%) that POSTs the
+// absolute VolumeMultiplier to `url`. `initialMul` is the absolute
+// value returned by the server (e.g. 0.45 = "vanilla VoicePlayer
+// baseline" for shanties). `onSaved` is called after a successful
+// save with the new value (so the caller can refresh local state if
+// it wants to - the central dirty-tracking + state-mirroring lives
+// in the caller's onSaved, not here).
 function buildShipMusicVolumeSlider(initialMul, url, onSaved) {
     const wrap = document.createElement('div');
     wrap.className = 'shipmusic-volume-row';
@@ -93,7 +129,7 @@ function buildShipMusicVolumeSlider(initialMul, url, onSaved) {
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.min = '0';
-    slider.max = '200';
+    slider.max = '100';
     slider.step = '5';
     slider.value = String(shipmusicSliderPctFromMul(initialMul));
     slider.className = 'shipmusic-volume-slider';
@@ -327,17 +363,28 @@ function renderShipMusicSlot(slot) {
 
     // Volume slider per vanilla slot. Active even when no override is
     // configured yet - the user can pre-tune the slot before uploading
-    // audio. When the slider sits at 100% the build pipeline skips
+    // audio. When the slider sits at 45% the build pipeline skips
     // cue patching entirely (only the SWAV is overridden, the cue
-    // keeps vanilla VolumeMultiplier).
+    // keeps vanilla VolumeMultiplier - 0.45 for VoicePlayer, 0.5 for
+    // NoPlayer).
     const id = shipmusicProfileId();
     if (id) {
-        const initialMul = typeof slot.volume === 'number' ? slot.volume : 1.0;
+        const initialMul = typeof slot.volume === 'number' ? slot.volume : 0.45;
         const volRow = buildShipMusicVolumeSlider(
             initialMul,
             '/api/profiles/' + encodeURIComponent(id)
                 + '/ship-music/' + encodeURIComponent(slot.stem) + '/volume',
-            (mul) => { slot.volume = mul; }
+            (mul) => {
+                slot.volume = mul;
+                // Mirror into the loaded profile state so the next
+                // global Save (PUT /api/profiles/<id>) doesn't roll
+                // back the slider position the POST just persisted.
+                // Also flips the dirty badge so the user sees their
+                // change registered in the same way every other field
+                // does.
+                syncShipMusicSlotVolumeIntoProfile(slot.stem, mul);
+                if (typeof markDirty === 'function') markDirty();
+            }
         );
         row.appendChild(volRow);
     }
@@ -530,17 +577,21 @@ function renderShipMusicAddedTrack(track) {
 
     row.appendChild(controls);
 
-    // Volume slider per added track. Default is 0.8 (= 80% of vanilla
-    // 0.45/0.5 loudness) so new uploads come in a touch quieter than
-    // vanilla and don't surprise the listener on first add.
+    // Volume slider per added track. Default is 0.45 (= absolute
+    // VolumeMultiplier matching the vanilla VoicePlayer baseline) so
+    // new uploads come in at parity with a typical vanilla shanty.
     const id = shipmusicProfileId();
     if (id) {
-        const initialMul = typeof track.volume === 'number' ? track.volume : 0.8;
+        const initialMul = typeof track.volume === 'number' ? track.volume : 0.45;
         const volRow = buildShipMusicVolumeSlider(
             initialMul,
             '/api/profiles/' + encodeURIComponent(id)
                 + '/ship-music-add/' + encodeURIComponent(track.trackKey) + '/volume',
-            (mul) => { track.volume = mul; }
+            (mul) => {
+                track.volume = mul;
+                syncShipMusicAddedTrackVolumeIntoProfile(track.trackKey, mul);
+                if (typeof markDirty === 'function') markDirty();
+            }
         );
         row.appendChild(volRow);
     }

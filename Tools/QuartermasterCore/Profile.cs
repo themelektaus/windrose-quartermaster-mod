@@ -485,19 +485,20 @@ namespace Windrose.Quartermaster.Core
         // Display-only - the patcher reads the renamed copy from disk.
         public string OriginalFilename;
 
-        // User-set volume multiplier applied on top of the vanilla cue's
-        // VolumeMultiplier. null OR 1.0 means "vanilla unchanged" - the
-        // build pipeline skips cue patching entirely (only the SWAV is
-        // swapped). Non-null and != 1.0 triggers a per-slot cue override
-        // (extract the 4 vanilla CUE_Shanti_<n>_* variants, multiply
-        // their existing VolumeMultiplier by this factor, ship them
-        // back under their original paths).
+        // User-set absolute VolumeMultiplier written directly into the
+        // cloned cue's VolumeMultiplier slot. null OR 0.45 means
+        // "vanilla unchanged" (matches the VoicePlayer baseline that
+        // drives all 10 shanties' VoicePlayer cues; NoPlayer's 0.5
+        // intentionally stays untouched at this value because the
+        // build pipeline skips cue extraction entirely when the slider
+        // matches 0.45). Non-null and != 0.45 triggers a per-slot cue
+        // override (extract the 4 vanilla CUE_Shanti_<n>_* variants,
+        // overwrite their VolumeMultiplier with this absolute value,
+        // ship them back under their original paths - all 4 flavors
+        // stay in lockstep).
         //
-        // Range exposed to the UI: 0.0 .. 2.0 (0% .. 200%); we floor at
-        // 0.01 internally so a "muted" slider still produces a barely-
-        // audible track rather than a completely silent one (otherwise
-        // the user can't tell the SWAV swap actually worked when
-        // debugging). Default UI position is 1.0 = vanilla.
+        // Range exposed to the UI: 0.0 .. 1.0 (0% .. 100%). Default UI
+        // position is 0.45 = vanilla VoicePlayer baseline.
         public double? Volume;
     }
 
@@ -549,18 +550,18 @@ namespace Windrose.Quartermaster.Core
         // Display-only - the patcher reads audio.wav from the per-track dir.
         public string OriginalFilename;
 
-        // User-set volume multiplier applied to the cloned cue's
-        // VolumeMultiplier. The clone always happens (the new cue needs a
-        // new name anyway), so unlike ShipMusicSlotOverride.Volume this is
-        // a normal always-applied factor. Default for new tracks created
-        // via the endpoint is 0.8 = 80% of vanilla loudness (which is
-        // 0.45 for VoicePlayer variants, 0.5 for NoPlayer variants -
-        // user tracks are intentionally a touch quieter than vanilla so
-        // they don't surprise the listener on first add). 1.0 = parity
-        // with vanilla; > 1.0 louder; capped at 2.0 in the UI.
+        // User-set absolute VolumeMultiplier written directly into the
+        // cloned cue's VolumeMultiplier slot. The clone always happens
+        // (the new cue needs a new name anyway), so unlike
+        // ShipMusicSlotOverride.Volume this is always applied (no skip-
+        // on-default short circuit). Default for new tracks created via
+        // the endpoint is 0.45 = parity with the vanilla VoicePlayer
+        // VolumeMultiplier baseline, so a fresh upload plays at the
+        // same loudness as a typical vanilla shanty. 1.0 = full
+        // loudness; 0.0 = muted; capped at 1.0 in the UI.
         //
-        // null is treated as 0.8 (legacy profiles from before this field
-        // existed get the new default on next save).
+        // null is treated as 0.45 (legacy profiles from before this
+        // field existed get the new default on next save).
         public double? Volume;
     }
 
@@ -1018,12 +1019,13 @@ namespace Windrose.Quartermaster.Core
         // component preset is "audio".
         public double AudioRangeMeters;  // 0 = unset -> default 15 m
 
-        // Loudness multiplier baked into the cloned SoundCue's
-        // VolumeMultiplier float property. 1.0 = vanilla loudness, 0.5 =
-        // half, 2.0 = double. Lower than 0.01 effectively mutes the
-        // building; we don't enforce an upper bound but the GUI caps at
-        // 2.0 to avoid distortion. 0 = unset -> default 0.5 (chosen as a
-        // safe ambient-loop loudness so a fresh building doesn't blast).
+        // Absolute VolumeMultiplier written directly into the cloned
+        // SoundCue's VolumeMultiplier float property. 1.0 = full
+        // loudness, 0.5 = half, 0.0 = muted. The GUI exposes 0..100 %
+        // (= 0.0 .. 1.0); the build stager clamps to that window. 0 =
+        // unset -> default 0.45 (= parity with the vanilla shanty
+        // VoicePlayer baseline, a safe ambient-loop loudness so a
+        // fresh building doesn't blast on first placement).
         public double AudioVolume;
 
         public AudioSourceMeta AudioSource;

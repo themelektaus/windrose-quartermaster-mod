@@ -87,19 +87,19 @@ namespace Windrose.Quartermaster.Core
         //                     ~audioDurationSec seconds after this one
         //                     starts (instead of after the vanilla 163s
         //                     timeout). A small pad is added internally.
-        // userVolumeMultiplier - factor applied on top of the vanilla
-        //                     VolumeMultiplier carried by the source cue
-        //                     (0.45 for *_VoicePlayer flavors, 0.5 for
-        //                     NoPlayer; consistent across all 10 vanilla
-        //                     shanties as of Windrose 5.6). 1.0 = parity
-        //                     with vanilla; 0.8 = "added track default"
-        //                     (a touch quieter than vanilla so new
-        //                     uploads don't surprise the listener); > 1.0
-        //                     louder. Clamped to [0.01, 2.0].
+        // userVolumeAbsolute - absolute VolumeMultiplier to write into the
+        //                     cloned cue's Export[0] (overwriting the
+        //                     vanilla 0.45 for *_VoicePlayer flavors / 0.5
+        //                     for NoPlayer; consistent across all 10 vanilla
+        //                     shanties as of Windrose 5.6). 0.45 = parity
+        //                     with the VoicePlayer vanilla baseline and is
+        //                     the default for newly added tracks; 1.0 =
+        //                     full loudness; 0.0 = muted. Clamped to
+        //                     [0.0, 1.0].
         public ShipMusicAddCueCloneResult Clone(
             string inputUassetPath, string outputUassetPath, string usmapPath,
             string flavor, string newIndex, string newSwavStem,
-            float audioDurationSec, double userVolumeMultiplier = 1.0)
+            float audioDurationSec, double userVolumeAbsolute = 0.45)
         {
             if (string.IsNullOrEmpty(inputUassetPath))  throw new ArgumentNullException("inputUassetPath");
             if (string.IsNullOrEmpty(outputUassetPath)) throw new ArgumentNullException("outputUassetPath");
@@ -156,12 +156,12 @@ namespace Windrose.Quartermaster.Core
             // the graph and shrinking Duration we let the engine release
             // the cue right after the user's audio finishes.
             //
-            // Volume multiplier piggybacks on the same pass: while we're
-            // touching cueExp.Data anyway, scale the existing
-            // VolumeMultiplier by the user-supplied factor.
-            double clampedVol = userVolumeMultiplier;
-            if (clampedVol < 0.01) clampedVol = 0.01;
-            if (clampedVol > 2.0) clampedVol = 2.0;
+            // Volume absolute piggybacks on the same pass: while we're
+            // touching cueExp.Data anyway, overwrite VolumeMultiplier
+            // with the user-supplied absolute value (no scaling).
+            double clampedVol = userVolumeAbsolute;
+            if (clampedVol < 0.0) clampedVol = 0.0;
+            if (clampedVol > 1.0) clampedVol = 1.0;
             ReshapeToMinimal(asset, newSwav, audioDurationSec, clampedVol);
 
             var outDir = Path.GetDirectoryName(outputUassetPath);
@@ -277,7 +277,7 @@ namespace Windrose.Quartermaster.Core
         // every FPackageIndex in the asset, which UAssetAPI can't do
         // cheaply, and the cost in disk space is < 5 KB per cue.
         void ReshapeToMinimal(UAsset asset, string newSwavStem, float audioDurationSec,
-            double userVolumeMultiplier)
+            double userVolumeAbsolute)
         {
             if (asset.Exports.Count == 0)
                 throw new InvalidOperationException("Cue asset has no exports");
@@ -306,9 +306,9 @@ namespace Windrose.Quartermaster.Core
 
             // Step 1: SoundCue.Duration + bHasDelayNode + VolumeMultiplier
             // (we leave FirstNode unchanged - it still points at the
-            // Random root). VolumeMultiplier is the vanilla 0.45 (voice)
-            // or 0.5 (NoPlayer) from the source cue; we multiply by the
-            // user factor (already clamped in the caller).
+            // Random root). VolumeMultiplier in the source cue is the
+            // vanilla 0.45 (voice) / 0.5 (NoPlayer); we overwrite it
+            // with the absolute user value (already clamped in caller).
             FloatPropertyData durProp = null;
             ObjectPropertyData firstNodeProp = null;
             BoolPropertyData delayFlagProp = null;
@@ -341,20 +341,20 @@ namespace Windrose.Quartermaster.Core
                 LogLine("  bHasDelayNode: " + delayFlagProp.Value + " (unchanged, zero-length Delay still present)");
 
             // VolumeMultiplier: existing value comes from the vanilla
-            // template (0.45 / 0.5 depending on flavor). Multiply by user
-            // factor and write back. Missing property is a hard error -
-            // means vanilla cue layout drifted and the build would be
-            // silently wrong (user expects 80%, gets 100%).
+            // template (0.45 / 0.5 depending on flavor). Overwrite with
+            // the absolute user value (no scaling). Missing property is
+            // a hard error - means vanilla cue layout drifted and the
+            // build would be silently wrong (user expects 45%, gets 100%).
             if (volProp == null)
                 throw new InvalidOperationException(
                     "SoundCue.VolumeMultiplier property missing - vanilla cue template "
                     + "layout may have drifted.");
             float oldVol = volProp.Value;
-            float newVol = (float)(oldVol * userVolumeMultiplier);
+            float newVol = (float)userVolumeAbsolute;
             volProp.Value = newVol;
             LogLine("  VolumeMultiplier: " + oldVol.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + " * " + userVolumeMultiplier.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + " -> " + newVol.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                + " -> " + newVol.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " (absolute, user slider value)");
 
             // Step 2: Random -> reduce ChildNodes + Weights to 1 entry.
             int randomIdx0 = firstNodeProp.Value.Index - 1;

@@ -1059,23 +1059,32 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
 
-                // Override-slot volume-multiplier patcher: for every
-                // shipMusicJob whose UserVolume != 1.0 (= "vanilla
-                // unchanged"), pull the 4 vanilla cue variants
-                // (Large/Medium/Small VoicePlayer + NoPlayer) and scale
-                // each cue's VolumeMultiplier by the user factor. The
-                // cues keep their vanilla NameMap / FolderName, so the
-                // mod-pak overrides them at their original /Game/Audio/
-                // Game/Music/Shanti/.../CUE_Shanti_<n>_*.uasset paths -
-                // no DA modification needed.
+                // Override-slot absolute-volume patcher: for every
+                // shipMusicJob whose UserVolume != 0.45 (= "vanilla
+                // unchanged", matches the VoicePlayer baseline that
+                // drives the GUI's default slider position), pull the 4
+                // vanilla cue variants (Large/Medium/Small VoicePlayer
+                // + NoPlayer) and overwrite each cue's VolumeMultiplier
+                // with the user-supplied absolute value. The cues keep
+                // their vanilla NameMap / FolderName, so the mod-pak
+                // overrides them at their original /Game/Audio/Game/
+                // Music/Shanti/.../CUE_Shanti_<n>_*.uasset paths - no DA
+                // modification needed.
                 //
                 // 0.001 tolerance avoids triggering the override for a
-                // slider that effectively equals 1.0 due to UI rounding
-                // (e.g. 99.5% scaled by /100 from the GUI).
+                // slider that effectively equals 0.45 due to UI rounding.
+                // NoPlayer's vanilla 0.5 falls outside this tolerance,
+                // so when the user actually picks the default 45% slot
+                // we still skip cue extraction (NoPlayer stays at its
+                // pristine 0.5). The instant the user nudges the slider
+                // off 45%, all four variants get overwritten to the new
+                // absolute value - intentional: one slider per slot
+                // controls the whole flavor quartet.
                 var volJobs = new List<ShipMusicJob>();
+                const double VanillaVoicePlayerVolume = 0.45;
                 foreach (var j in shipMusicJobs)
                 {
-                    if (Math.Abs(j.UserVolume - 1.0) > 0.001) volJobs.Add(j);
+                    if (Math.Abs(j.UserVolume - VanillaVoicePlayerVolume) > 0.001) volJobs.Add(j);
                 }
                 if (volJobs.Count > 0)
                 {
@@ -1359,7 +1368,7 @@ namespace Windrose.Quartermaster.Core
                                     newIndex:         job.NewIndex,
                                     newSwavStem:      job.TrackKey,
                                     audioDurationSec: audioDur,
-                                    userVolumeMultiplier: job.UserVolume);
+                                    userVolumeAbsolute: job.UserVolume);
                                 createdCues.Add(cr.NewCueStem);
                             }
                             trackRes.CueStemsCreated = createdCues;
@@ -2770,10 +2779,11 @@ namespace Windrose.Quartermaster.Core
                     Slot = slot,
                     UserWavPath = userWav,
                     OriginalFilename = ov.OriginalFilename,
-                    // null -> 1.0 (= vanilla unchanged, build pipeline
-                    // skips cue patching). Otherwise we pass the raw
-                    // value through; the patcher clamps to [0.01, 2.0].
-                    UserVolume = ov.Volume.HasValue ? ov.Volume.Value : 1.0,
+                    // null -> 0.45 (= vanilla VoicePlayer baseline, build
+                    // pipeline skips cue patching at this value).
+                    // Otherwise we pass the raw absolute value through;
+                    // the patcher clamps to [0.0, 1.0].
+                    UserVolume = ov.Volume.HasValue ? ov.Volume.Value : 0.45,
                 });
             }
             return jobs;
@@ -2823,11 +2833,12 @@ namespace Windrose.Quartermaster.Core
                     UserWavPath = userWav,
                     Title = t.Title,
                     OriginalFilename = t.OriginalFilename,
-                    // null -> 0.8 (= "added track default", a touch
-                    // quieter than vanilla 0.45/0.5 so it doesn't
-                    // surprise the listener on first add). The patcher
-                    // clamps to [0.01, 2.0].
-                    UserVolume = t.Volume.HasValue ? t.Volume.Value : 0.8,
+                    // null -> 0.45 (= absolute VolumeMultiplier matching
+                    // the vanilla VoicePlayer baseline; new tracks
+                    // therefore play at parity with the typical vanilla
+                    // shanty out of the box). The patcher clamps to
+                    // [0.0, 1.0].
+                    UserVolume = t.Volume.HasValue ? t.Volume.Value : 0.45,
                 });
                 nextIndex++;
             }
@@ -3666,12 +3677,13 @@ namespace Windrose.Quartermaster.Core
         public string UserWavPath;
         public string OriginalFilename;
 
-        // User-supplied volume multiplier (1.0 = vanilla unchanged,
-        // 0.0..2.0 range, clamped at the patcher). When ~1.0 the
-        // pipeline skips cue extraction entirely - only the SWAV is
-        // swapped. When != 1.0 we extract the 4 vanilla cue variants
-        // (Large/Medium/Small VoicePlayer + NoPlayer) for this slot
-        // and scale their VolumeMultiplier by this factor.
+        // User-supplied absolute VolumeMultiplier (0.45 = vanilla
+        // VoicePlayer baseline = "vanilla unchanged", 0.0..1.0 range,
+        // clamped at the patcher). When ~0.45 the pipeline skips cue
+        // extraction entirely - only the SWAV is swapped. When != 0.45
+        // we extract the 4 vanilla cue variants (Large/Medium/Small
+        // VoicePlayer + NoPlayer) for this slot and overwrite their
+        // VolumeMultiplier with this absolute value.
         public double UserVolume;
     }
 

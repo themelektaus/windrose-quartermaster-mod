@@ -669,12 +669,13 @@ public static class ProfilesEndpoint
                     // Any configured override (Songs entry) stays on disk
                     // and re-activates on include.
                     excluded = excludedSet.Contains(slot.Stem),
-                    // User-set volume multiplier. null OR 1.0 means
-                    // "vanilla unchanged" (UI slider defaults to 100%).
-                    // Stored on the override even when no audio is
-                    // uploaded yet, so the user can pre-tune a slot
-                    // before picking an audio file.
-                    volume = ov?.Volume ?? 1.0,
+                    // User-set absolute VolumeMultiplier. null OR 0.45
+                    // means "vanilla unchanged" (UI slider defaults to
+                    // 45%, which matches the VoicePlayer vanilla
+                    // baseline). Stored on the override even when no
+                    // audio is uploaded yet, so the user can pre-tune a
+                    // slot before picking an audio file.
+                    volume = ov?.Volume ?? 0.45,
                 };
             }).ToArray();
             return Results.Json(new { slots = rows });
@@ -751,10 +752,11 @@ public static class ProfilesEndpoint
         });
 
         // POST /api/profiles/{id}/ship-music/{slotStem}/volume
-        //   JSON body: { "volume": 0.0..2.0 }. Sets the per-slot volume
-        //   multiplier. 1.0 means "vanilla unchanged" (build pipeline
-        //   skips cue patching). Creates the Songs entry on the fly so
-        //   the user can pre-tune a slot before uploading audio. The
+        //   JSON body: { "volume": 0.0..1.0 }. Sets the per-slot
+        //   absolute VolumeMultiplier. 0.45 means "vanilla unchanged"
+        //   (matches the VoicePlayer baseline; build pipeline skips cue
+        //   patching at that value). Creates the Songs entry on the fly
+        //   so the user can pre-tune a slot before uploading audio. The
         //   entry is removed by DELETE /ship-music/{slotStem} together
         //   with the audio.
         app.MapPost("/api/profiles/{id}/ship-music/{slotStem}/volume",
@@ -782,7 +784,7 @@ public static class ProfilesEndpoint
             // we save the clamped value so subsequent GETs reflect the
             // effective setting.
             if (volume < 0.0) volume = 0.0;
-            if (volume > 2.0) volume = 2.0;
+            if (volume > 1.0) volume = 1.0;
 
             if (profile.Globals == null) profile.Globals = new ProfileGlobals();
             if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
@@ -939,7 +941,8 @@ public static class ProfilesEndpoint
                 profile.Globals.ShipMusic.Songs = new Dictionary<string, ShipMusicSlotOverride>(StringComparer.OrdinalIgnoreCase);
             // Preserve any pre-existing Volume so a fresh audio upload
             // doesn't wipe out the user's volume slider position. If no
-            // entry existed yet, Volume stays null (= 1.0 = vanilla).
+            // entry existed yet, Volume stays null (= 0.45 = vanilla
+            // VoicePlayer baseline).
             profile.Globals.ShipMusic.Songs.TryGetValue(slotStem, out var prior);
             profile.Globals.ShipMusic.Songs[slotStem] = new ShipMusicSlotOverride
             {
@@ -1037,11 +1040,12 @@ public static class ProfilesEndpoint
                         newIndex = (idx + 11).ToString(System.Globalization.CultureInfo.InvariantCulture),
                         state = wavPresent ? "ready" : "missing-wav",
                         wavBytes,
-                        // User volume multiplier. Default for new tracks
-                        // is 0.8 ("a touch quieter than vanilla 0.45/0.5").
+                        // Absolute VolumeMultiplier written into the cloned
+                        // cue at build time. Default for new tracks is
+                        // 0.45 (= parity with vanilla VoicePlayer baseline).
                         // null on legacy tracks gets the new default
-                        // surfaced to the UI so the slider starts at 80%.
-                        volume = t.Volume ?? 0.8,
+                        // surfaced to the UI so the slider starts at 45%.
+                        volume = t.Volume ?? 0.45,
                     };
                 })
                 .Where(r => r != null)
@@ -1164,16 +1168,17 @@ public static class ProfilesEndpoint
             var existing = profile.Globals.ShipMusicAdd.Tracks
                 .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
             // Preserve any existing volume slider position when replacing
-            // audio. New tracks default to 0.8 (= 80% of vanilla 0.45/0.5
-            // loudness - a touch quieter than vanilla so it doesn't
-            // surprise the listener on first add).
+            // audio. New tracks default to 0.45 (= absolute parity with
+            // the vanilla VoicePlayer VolumeMultiplier baseline; the
+            // build pipeline writes this value directly into the cloned
+            // cue's VolumeMultiplier slot).
             double? volumeForEntry = null;
             if (existing >= 0)
             {
                 var prior = profile.Globals.ShipMusicAdd.Tracks[existing];
                 volumeForEntry = prior?.Volume;
             }
-            if (!volumeForEntry.HasValue) volumeForEntry = 0.8;
+            if (!volumeForEntry.HasValue) volumeForEntry = 0.45;
             var entry = new ShipMusicAddedTrack
             {
                 TrackKey = trackKey,
@@ -1200,9 +1205,10 @@ public static class ProfilesEndpoint
         });
 
         // POST /api/profiles/{id}/ship-music-add/{trackKey}/volume
-        //   JSON body: { "volume": 0.0..2.0 }. Sets the per-track volume
-        //   multiplier (applied to the cloned cue's VolumeMultiplier at
-        //   build time). The track must already exist.
+        //   JSON body: { "volume": 0.0..1.0 }. Sets the per-track absolute
+        //   VolumeMultiplier (written into the cloned cue's
+        //   VolumeMultiplier slot at build time). The track must already
+        //   exist.
         app.MapPost("/api/profiles/{id}/ship-music-add/{trackKey}/volume",
             async (string id, string trackKey, HttpRequest req) =>
         {
@@ -1224,7 +1230,7 @@ public static class ProfilesEndpoint
                 return Results.BadRequest(new { error = "Invalid JSON: " + ex.Message });
             }
             if (volume < 0.0) volume = 0.0;
-            if (volume > 2.0) volume = 2.0;
+            if (volume > 1.0) volume = 1.0;
 
             var idx = profile.Globals?.ShipMusicAdd?.Tracks?
                 .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
@@ -1310,7 +1316,7 @@ public static class ProfilesEndpoint
             {
                 buildingId = bid,
                 rangeMeters = bldg.AudioRangeMeters > 0 ? bldg.AudioRangeMeters : 15.0,
-                volume      = bldg.AudioVolume > 0 ? bldg.AudioVolume : 0.5,
+                volume      = bldg.AudioVolume > 0 ? bldg.AudioVolume : 0.45,
                 source = bldg.AudioSource == null ? null : new
                 {
                     originalFilename = bldg.AudioSource.OriginalFilename,

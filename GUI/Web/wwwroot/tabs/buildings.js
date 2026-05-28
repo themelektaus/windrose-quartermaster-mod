@@ -274,7 +274,6 @@ async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
     if (!custom) return;
     if (custom.templateId === templateId) return;
     custom.templateId = templateId;
-    state.isDirty = true;
     // Clear the per-template recipe-default cache for the new id so
     // triggerRecipeRender re-fetches the new vanilla pre-fill.
     _recipeDefaultCache.delete(templateId);
@@ -287,7 +286,11 @@ async function setVanillaBuildingTemplateForCard(buildingIndex, templateId) {
     // refresh. The render loop itself triggers ensureVanillaBuildingInspection
     // for the hint line.
     renderBuildingCreator();
-    refreshSaveButton();
+    // markDirty() flips state.isDirty AND wakes up the Save button
+    // (updateButtons) + the UNSAVED badge (renderProfileMeta). Setting
+    // state.isDirty by hand without these would leave the Save button
+    // greyed out - the very bug this call fixes.
+    if (typeof markDirty === 'function') markDirty();
     // Warm the inspection cache so triggerRecipeRender hits a populated
     // cache on next call.
     ensureVanillaBuildingInspection(templateId);
@@ -633,7 +636,7 @@ function renderAudioSourceBlockHtml(custom) {
     const rangeMeters = (typeof custom.audioRangeMeters === 'number' && custom.audioRangeMeters > 0)
         ? custom.audioRangeMeters : 15;
     const volume = (typeof custom.audioVolume === 'number' && custom.audioVolume > 0)
-        ? custom.audioVolume : 0.5;
+        ? custom.audioVolume : 0.45;
 
     let statusHtml;
     if (src && src.originalFilename) {
@@ -670,7 +673,7 @@ function renderAudioSourceBlockHtml(custom) {
         +   '</label>'
         +   '<label class="building-audio-range">'
         +     '<span>Volume</span>'
-        +     '<input type="range" data-building-field="audioVolume" min="0" max="200" step="5" value="'
+        +     '<input type="range" data-building-field="audioVolume" min="0" max="100" step="5" value="'
         +       String(Math.round(volume * 100)) + '">'
         +     '<span class="building-audio-range-value" data-audio-volume-display>'
         +       String(Math.round(volume * 100)) + ' %</span>'
@@ -952,7 +955,7 @@ async function setVanillaMiParentForSlot(buildingId, slotIndex, packagePath) {
     if (currentEl) currentEl.innerHTML = 'Current: <code>' + escapeHtml(packagePath) + '</code>';
 
     await renderSlotParams(buildingId, slotIndex, packagePath);
-    state.isDirty = true;
+    markDirty();
     updateButtons();
     refreshMissingFieldsBanner(card, building);
 }
@@ -1341,7 +1344,7 @@ async function onBuildingsNew() {
     state.current.customBuildings.push(newEntry);
     // Make the new building immediately active in the dropdown.
     state.buildingCreatorActiveId = newEntry.id;
-    state.isDirty = true;
+    markDirty();
     renderBuildingCreator();
     renderBuildingCreatorStatus();
     updateButtons();
@@ -1434,12 +1437,13 @@ function onBuildingListChange(e) {
             const disp = card.querySelector('[data-audio-range-display]');
             if (disp) disp.textContent = String(custom.audioRangeMeters) + ' m';
         } else if (field === 'audioVolume') {
-            // Slider is in percent (0..200), profile stores a multiplier
-            // (0..2.0). Floor at 0 means muted; we store 0.01 so the
-            // staging clamp (which treats 0 as "unset -> default 0.5")
-            // doesn't reset a user-chosen mute.
+            // Slider is in percent (0..100), profile stores an absolute
+            // VolumeMultiplier (0..1.0). Floor at 0 means muted; we
+            // store 0.001 so the staging clamp (which treats 0 as
+            // "unset -> default 0.45") doesn't reset a user-chosen
+            // mute back to vanilla.
             const pct = Number(t.value);
-            const mult = (pct > 0 ? pct / 100 : 0.01);
+            const mult = (pct > 0 ? pct / 100 : 0.001);
             custom.audioVolume = mult;
             const disp = card.querySelector('[data-audio-volume-display]');
             if (disp) disp.textContent = String(pct) + ' %';
@@ -1450,7 +1454,7 @@ function onBuildingListChange(e) {
         } else {
             return;
         }
-        state.isDirty = true;
+        markDirty();
     } else if (t.dataset.slotParentSearch !== undefined) {
         // Re-filter the central picker while the user types. If the picker
         // is not currently open for this input (e.g. focus stayed in the
@@ -1504,13 +1508,13 @@ function onBuildingListChange(e) {
         return;
     } else if (t.dataset.paramScalar !== undefined) {
         applyScalarParam(custom, t, 'paramScalar');
-        state.isDirty = true;
+        markDirty();
     } else if (t.dataset.paramVector !== undefined || t.dataset.paramVectorAlpha !== undefined) {
         applyVectorParam(custom, t);
-        state.isDirty = true;
+        markDirty();
     } else if (t.dataset.paramTexture !== undefined) {
         applyTextureParam(custom, t);
-        state.isDirty = true;
+        markDirty();
     } else if (t.dataset.recipeSearch !== undefined) {
         // Mirror of slotParentSearch: re-filter the central picker as
         // the user types. Pick is committed via the central onPickerClick.
@@ -1533,7 +1537,7 @@ function onBuildingListChange(e) {
         // Source badge needs refreshing when we move from vanilla -> user.
         const defaults = _recipeDefaultCache.get(custom.templateId);
         renderRecipeForCard(custom.id, defaults);
-        state.isDirty = true;
+        markDirty();
     } else {
         return;
     }
@@ -1616,7 +1620,7 @@ async function onBuildingListClick(e) {
         }
         const input = slotEl.querySelector('input[data-param-scalar="' + cssEscape(name) + '"]');
         if (input && Number.isFinite(def)) input.value = def;
-        state.isDirty = true;
+        markDirty();
         updateButtons();
         return;
     }
@@ -1640,7 +1644,7 @@ async function onBuildingListClick(e) {
         const alphaIn = slotEl.querySelector('input[data-param-vector-alpha="' + cssEscape(name) + '"]');
         if (colorIn) colorIn.value = rgbToHex(r, g, b);
         if (alphaIn) alphaIn.value = Number.isFinite(a) ? a : 1;
-        state.isDirty = true;
+        markDirty();
         updateButtons();
         return;
     }
@@ -1658,7 +1662,7 @@ async function onBuildingListClick(e) {
         }
         const sel = slotEl.querySelector('select[data-param-texture="' + cssEscape(name) + '"]');
         if (sel) sel.value = '';
-        state.isDirty = true;
+        markDirty();
         updateButtons();
         return;
     }
@@ -1676,19 +1680,19 @@ async function onBuildingListClick(e) {
             const rows = ensureUserRecipeRows(building);
             rows.push({ itemPath: '', count: 1 });
             renderRecipeForCard(building.id, defaults);
-            state.isDirty = true;
+            markDirty();
         } else if (action === 'remove') {
             const idx = parseInt(recipeBtn.dataset.recipeRowIdx, 10);
             if (!isFinite(idx)) return;
             const rows = ensureUserRecipeRows(building);
             if (idx >= 0 && idx < rows.length) rows.splice(idx, 1);
             renderRecipeForCard(building.id, defaults);
-            state.isDirty = true;
+            markDirty();
         } else if (action === 'reset') {
             // Revert to "use vanilla defaults" by dropping the user list.
             building.recipeCost = null;
             renderRecipeForCard(building.id, defaults);
-            state.isDirty = true;
+            markDirty();
         }
         updateButtons();
         return;
@@ -1721,7 +1725,7 @@ async function onBuildingListClick(e) {
                 state.buildingCreatorActiveId = customs[nextIdx] ? customs[nextIdx].id : null;
             }
         }
-        state.isDirty = true;
+        markDirty();
         renderBuildingCreator();
         renderBuildingCreatorStatus();
         updateButtons();
@@ -1917,7 +1921,7 @@ async function scanCookedFolderForCard(index, rawPath) {
             if (!c.meshStem && meshStems.length === 1) { c.meshStem = meshStems[0]; autoPicked = true; }
             if (!c.iconStem && iconStems.length === 1) { c.iconStem = iconStems[0]; autoPicked = true; }
             if (autoPicked) {
-                state.isDirty = true;
+                markDirty();
                 refreshMeshIconSelects(card, c);
                 refreshMissingFieldsBanner(card, c);
                 if (c.cookedFolderPath && c.meshStem) {
@@ -2187,7 +2191,7 @@ function setRecipeResourceForRow(buildingId, rowIdx, packagePath) {
     if (!Number.isFinite(rows[rowIdx].count) || rows[rowIdx].count <= 0) rows[rowIdx].count = 1;
     const defaults = _recipeDefaultCache.get(building.templateId);
     renderRecipeForCard(building.id, defaults);
-    state.isDirty = true;
+    markDirty();
     updateButtons();
 }
 

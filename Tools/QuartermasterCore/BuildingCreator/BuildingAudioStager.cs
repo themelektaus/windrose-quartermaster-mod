@@ -92,8 +92,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public const string CueDonorAtnPath = "/Game/Audio/Game/Music/Shanti/ATN_Shanti_VoiceNoPlayer";
 
         // Defaults if the caller passes 0 (or didn't surface a slider value).
+        // 0.45 matches the vanilla shanty VoicePlayer baseline and is the
+        // ambient-loop loudness we picked as the universal default for
+        // the Audio component preset.
         const double DefaultRangeMeters = 15.0;
-        const double DefaultVolume      = 0.5;
+        const double DefaultVolume      = 0.45;
 
         // Stages the user WAV as a per-building SWAV + looping Cue, returns
         // the resulting refs the BlueprintPatcher needs to rewire the BP's
@@ -110,15 +113,17 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             Directory.CreateDirectory(stagingItemsDir);
 
             // Apply defaults if the caller passed 0 (= "unset" sentinel).
-            // Clamp to sane bounds: 1 m..1000 m for range; 0.01..2.0 for
-            // volume (the GUI ranges are 1..300 m and 0..2.0 but we allow
-            // slightly more here so a future GUI rev doesn't reject values).
+            // Clamp to sane bounds: 1 m..1000 m for range; 0.0..1.0 for
+            // volume (the GUI surfaces 1..300 m and 0..100 % - we keep
+            // the range upper bound looser server-side, but match the
+            // GUI's 0..1.0 absolute window for volume so degenerate
+            // multipliers above unity don't slip through).
             double effectiveRange  = rangeMeters > 0 ? rangeMeters : DefaultRangeMeters;
             if (effectiveRange < 1.0)    effectiveRange = 1.0;
             if (effectiveRange > 1000.0) effectiveRange = 1000.0;
             double effectiveVolume = volume      > 0 ? volume      : DefaultVolume;
-            if (effectiveVolume < 0.01) effectiveVolume = 0.01;
-            if (effectiveVolume > 2.0)  effectiveVolume = 2.0;
+            if (effectiveVolume < 0.0)  effectiveVolume = 0.0;
+            if (effectiveVolume > 1.0)  effectiveVolume = 1.0;
 
             var swavStem = "SWAV_QmBldgAudio_" + buildingId;
             var cueStem  = "CUE_QmBldgAudio_"  + buildingId;
@@ -131,7 +136,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var atnPackagePath  = WindrosePaths.ModItemsPackagePath + atnStem;
 
             LogLine("=== [Audio:" + buildingId + "] staging SWAV+Cue+ATN (range="
-                + Fmt(effectiveRange) + "m, volume=" + Fmt(effectiveVolume) + "x) ===");
+                + Fmt(effectiveRange) + "m, volume=" + Fmt(effectiveVolume) + " abs) ===");
 
             // 1. SWAV: Bink-encode + template splice + FolderName rewrite.
             //    We reuse the SoundWave_BinkInline template logic from
