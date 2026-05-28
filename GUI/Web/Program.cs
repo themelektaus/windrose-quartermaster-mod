@@ -157,6 +157,7 @@ public static class Program
         {
             SeedUsmapIfMissing(resolvedRoot);
             SyncDxgiDllFromEmbedded(resolvedRoot);
+            SyncBinkAudioEncFromEmbedded(resolvedRoot);
             SeedTemplatesIfMissing(resolvedRoot);
         }
 
@@ -406,6 +407,61 @@ public static class Program
                 return; // on-disk copy is in sync with the embedded resource
         }
 
+        File.WriteAllBytes(targetPath, embeddedBytes);
+        File.WriteAllText(stampPath, embeddedHash);
+    }
+
+    /// <summary>
+    /// Writes the embedded Bink Audio encoder CLI
+    /// (<c>BinkAudioEnc.binkaudioenc.exe</c> resource) into
+    /// <paramref name="dataRoot"/>/Tools/binkaudioenc.exe, replacing any
+    /// previously seeded copy whenever the embedded version differs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Windrose.Quartermaster.Core.WindrosePaths.BinkAudioEncoderPath"/>
+    /// resolves to <c>&lt;ModRoot&gt;/Tools/binkaudioenc.exe</c>, which in a
+    /// deployed run lives under <c>QuartermasterData\Tools\</c>. Both
+    /// ShipMusicPatcher and BuildingAudioStager probe that exact path at
+    /// build time and fail loudly with "Bink Audio encoder not found at ..."
+    /// when it's missing - which is exactly what users hit before this
+    /// seed step was added, because <c>dotnet publish</c> alone doesn't
+    /// carry the in-tree CLI into the published bundle.
+    /// </para>
+    /// <para>
+    /// SHA256-stamp pattern (matches <see cref="SyncDxgiDllFromEmbedded"/>):
+    /// we compare the embedded resource's hash against a sidecar stamp
+    /// (<c>binkaudioenc.exe.embedded-sha256</c>) and rewrite both when
+    /// they disagree. This makes a fresh publish that rebuilt the CLI
+    /// roll forward to existing installs - the historical "seed-if-
+    /// missing" pattern would have left users stuck on the first launch's
+    /// binary.
+    /// </para>
+    /// </remarks>
+    static void SyncBinkAudioEncFromEmbedded(string dataRoot)
+    {
+        var toolsDir = Path.Combine(dataRoot, "Tools");
+        var targetPath = Path.Combine(toolsDir, "binkaudioenc.exe");
+        var stampPath  = targetPath + ".embedded-sha256";
+
+        var asm = typeof(Program).Assembly;
+        const string resourceName = "BinkAudioEnc.binkaudioenc.exe";
+        using var src = asm.GetManifestResourceStream(resourceName);
+        if (src == null) return;
+
+        using var ms = new MemoryStream();
+        src.CopyTo(ms);
+        var embeddedBytes = ms.ToArray();
+        var embeddedHash = Convert.ToHexString(SHA256.HashData(embeddedBytes));
+
+        if (File.Exists(targetPath) && File.Exists(stampPath))
+        {
+            var existingStamp = File.ReadAllText(stampPath).Trim();
+            if (string.Equals(existingStamp, embeddedHash, StringComparison.OrdinalIgnoreCase))
+                return; // on-disk copy is in sync with the embedded resource
+        }
+
+        Directory.CreateDirectory(toolsDir);
         File.WriteAllBytes(targetPath, embeddedBytes);
         File.WriteAllText(stampPath, embeddedHash);
     }

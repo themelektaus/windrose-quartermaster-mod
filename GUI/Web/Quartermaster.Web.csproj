@@ -108,6 +108,32 @@
     </EmbeddedResource>
   </ItemGroup>
   <!--
+    Embed the in-tree Bink Audio encoder CLI (built once via
+    Tools/BinkAudioEnc/build.bat, ~75 KB) so a deployed EXE can encode
+    user-uploaded WAVs into Bink Audio without the user having to ship
+    the Tools/BinkAudioEnc/ source tree or run the C++ build themselves.
+    On first launch we extract it into <DataRoot>/Tools/binkaudioenc.exe
+    (= <exe-dir>/QuartermasterData/Tools/binkaudioenc.exe for deployed
+    runs); ShipMusicPatcher + BuildingAudioStager both resolve it via
+    WindrosePaths.BinkAudioEncoderPath which already points at that
+    location, so no callsite change is needed.
+
+    Update story: same SHA256-stamp pattern as dxgi.dll so a publish
+    that rebuilt the encoder rolls forward to existing installs instead
+    of getting stuck on whatever copy was there on first launch.
+
+    If the EXE happens to land somewhere binkaudioenc.exe is missing
+    from the source tree (e.g. someone forgot to run build.bat first),
+    the glob silently fails to embed and the runtime falls back to the
+    existing "encoder not found" error at build time - same posture as
+    dxgi.dll above.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Tools\binkaudioenc.exe">
+      <LogicalName>BinkAudioEnc.binkaudioenc.exe</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--
     Embed the shipped template assets (UE-cooked .uasset/.uexp/.ubulk
     triplets) so a deployed EXE can stage them into the per-build pak
     without the user having to ship Tools/Templates/ along. Two flavours:
