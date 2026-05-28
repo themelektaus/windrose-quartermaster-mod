@@ -182,6 +182,32 @@
   background-color: var(--bg);
 }
 
+/* Volume slider row. One per slot card / added-track card. The
+   slider takes the remaining space; the value label has a fixed
+   minimum width so its width doesn't change as the value updates
+   (would cause jitter while dragging). */
+.shipmusic-volume-row {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+
+  .shipmusic-volume-label {
+    color: var(--text-dim);
+    min-width: 5em;
+  }
+
+  .shipmusic-volume-slider {
+    flex: 1;
+  }
+
+  .shipmusic-volume-value {
+    color: var(--text-dim);
+    min-width: 3.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 /* ---- Add Track form ---- */
 
 .shipmusic-add-form {

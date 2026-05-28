@@ -46,6 +46,99 @@ function shipmusicFormatBytes(n) {
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// Volume slider helpers. UI works in 0..200 (% of vanilla loudness),
+// backend stores the multiplier as 0.0..2.0. We clamp+round here so
+// the GUI never sends out a degenerate value like 1.0000001 (which
+// would trigger an unnecessary cue extraction).
+function shipmusicSliderPctFromMul(mul) {
+    if (!isFinite(mul)) mul = 1.0;
+    let p = Math.round(mul * 100);
+    if (p < 0) p = 0;
+    if (p > 200) p = 200;
+    return p;
+}
+function shipmusicMulFromSliderPct(pct) {
+    let p = parseInt(pct, 10);
+    if (!isFinite(p)) p = 100;
+    if (p < 0) p = 0;
+    if (p > 200) p = 200;
+    return p / 100;
+}
+
+// Debounce wrapper so dragging the slider does not spam the backend.
+function shipmusicDebounce(fn, ms) {
+    let timer = null;
+    return function () {
+        const args = arguments;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { timer = null; fn.apply(null, args); }, ms);
+    };
+}
+
+// Builds a labeled volume slider (5%-steps, 0..200%) that POSTs the
+// effective multiplier to `url`. `initialMul` is the multiplier
+// returned by the server (e.g. 1.0 for "vanilla", 0.8 for "added
+// track default"). `onSaved` is called after a successful save with
+// the new multiplier (so the caller can refresh local state if it
+// wants to).
+function buildShipMusicVolumeSlider(initialMul, url, onSaved) {
+    const wrap = document.createElement('div');
+    wrap.className = 'shipmusic-volume-row';
+
+    const label = document.createElement('span');
+    label.className = 'hint shipmusic-volume-label';
+    label.textContent = 'Volume';
+    wrap.appendChild(label);
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '200';
+    slider.step = '5';
+    slider.value = String(shipmusicSliderPctFromMul(initialMul));
+    slider.className = 'shipmusic-volume-slider';
+    wrap.appendChild(slider);
+
+    const valueLbl = document.createElement('span');
+    valueLbl.className = 'hint shipmusic-volume-value';
+    valueLbl.textContent = slider.value + '%';
+    wrap.appendChild(valueLbl);
+
+    // PUT-on-pause: debounced 250ms so we don't hammer the endpoint
+    // while the user drags. The slot card doesn't re-render on save
+    // because the volume change doesn't affect any other UI element
+    // (state, file name, badge); skipping the refresh keeps focus on
+    // the slider so the user can keep tweaking.
+    const saveDebounced = shipmusicDebounce(async (pct) => {
+        const mul = shipmusicMulFromSliderPct(pct);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ volume: mul }),
+            });
+            if (!res.ok) {
+                let msg = 'HTTP ' + res.status;
+                try {
+                    const j = await res.json();
+                    if (j && j.error) msg = j.error;
+                } catch (_) { /* fall through */ }
+                throw new Error(msg);
+            }
+            if (typeof onSaved === 'function') onSaved(mul);
+        } catch (ex) {
+            console.warn('volume save failed:', ex);
+        }
+    }, 250);
+
+    slider.addEventListener('input', () => {
+        valueLbl.textContent = slider.value + '%';
+        saveDebounced(slider.value);
+    });
+
+    return wrap;
+}
+
 // Cache of the last GET response so cross-card guards (e.g. "exclude
 // would leave zero active tracks") can read both slot and added-track
 // counts without a refetch.
@@ -231,6 +324,24 @@ function renderShipMusicSlot(slot) {
     controls.appendChild(excludeBtn);
 
     row.appendChild(controls);
+
+    // Volume slider per vanilla slot. Active even when no override is
+    // configured yet - the user can pre-tune the slot before uploading
+    // audio. When the slider sits at 100% the build pipeline skips
+    // cue patching entirely (only the SWAV is overridden, the cue
+    // keeps vanilla VolumeMultiplier).
+    const id = shipmusicProfileId();
+    if (id) {
+        const initialMul = typeof slot.volume === 'number' ? slot.volume : 1.0;
+        const volRow = buildShipMusicVolumeSlider(
+            initialMul,
+            '/api/profiles/' + encodeURIComponent(id)
+                + '/ship-music/' + encodeURIComponent(slot.stem) + '/volume',
+            (mul) => { slot.volume = mul; }
+        );
+        row.appendChild(volRow);
+    }
+
     return row;
 }
 
@@ -418,6 +529,22 @@ function renderShipMusicAddedTrack(track) {
     controls.appendChild(delBtn);
 
     row.appendChild(controls);
+
+    // Volume slider per added track. Default is 0.8 (= 80% of vanilla
+    // 0.45/0.5 loudness) so new uploads come in a touch quieter than
+    // vanilla and don't surprise the listener on first add.
+    const id = shipmusicProfileId();
+    if (id) {
+        const initialMul = typeof track.volume === 'number' ? track.volume : 0.8;
+        const volRow = buildShipMusicVolumeSlider(
+            initialMul,
+            '/api/profiles/' + encodeURIComponent(id)
+                + '/ship-music-add/' + encodeURIComponent(track.trackKey) + '/volume',
+            (mul) => { track.volume = mul; }
+        );
+        row.appendChild(volRow);
+    }
+
     return row;
 }
 

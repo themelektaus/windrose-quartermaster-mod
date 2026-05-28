@@ -484,6 +484,21 @@ namespace Windrose.Quartermaster.Core
         // Original filename the user picked, e.g. "MyAwesomeShanty.uasset".
         // Display-only - the patcher reads the renamed copy from disk.
         public string OriginalFilename;
+
+        // User-set volume multiplier applied on top of the vanilla cue's
+        // VolumeMultiplier. null OR 1.0 means "vanilla unchanged" - the
+        // build pipeline skips cue patching entirely (only the SWAV is
+        // swapped). Non-null and != 1.0 triggers a per-slot cue override
+        // (extract the 4 vanilla CUE_Shanti_<n>_* variants, multiply
+        // their existing VolumeMultiplier by this factor, ship them
+        // back under their original paths).
+        //
+        // Range exposed to the UI: 0.0 .. 2.0 (0% .. 200%); we floor at
+        // 0.01 internally so a "muted" slider still produces a barely-
+        // audible track rather than a completely silent one (otherwise
+        // the user can't tell the SWAV swap actually worked when
+        // debugging). Default UI position is 1.0 = vanilla.
+        public double? Volume;
     }
 
     // Ship-music ADD feature (distinct from the Override above): user-supplied
@@ -533,6 +548,20 @@ namespace Windrose.Quartermaster.Core
         // Original filename the user picked, e.g. "MyTrack.wav".
         // Display-only - the patcher reads audio.wav from the per-track dir.
         public string OriginalFilename;
+
+        // User-set volume multiplier applied to the cloned cue's
+        // VolumeMultiplier. The clone always happens (the new cue needs a
+        // new name anyway), so unlike ShipMusicSlotOverride.Volume this is
+        // a normal always-applied factor. Default for new tracks created
+        // via the endpoint is 0.8 = 80% of vanilla loudness (which is
+        // 0.45 for VoicePlayer variants, 0.5 for NoPlayer variants -
+        // user tracks are intentionally a touch quieter than vanilla so
+        // they don't surprise the listener on first add). 1.0 = parity
+        // with vanilla; > 1.0 louder; capped at 2.0 in the UI.
+        //
+        // null is treated as 0.8 (legacy profiles from before this field
+        // existed get the new default on next save).
+        public double? Volume;
     }
 
     // Lighting-radius patch. Multiplies the AttenuationRadius FloatProperty

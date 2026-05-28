@@ -1058,6 +1058,102 @@ namespace Windrose.Quartermaster.Core
                         },
                     });
                 }
+
+                // Override-slot volume-multiplier patcher: for every
+                // shipMusicJob whose UserVolume != 1.0 (= "vanilla
+                // unchanged"), pull the 4 vanilla cue variants
+                // (Large/Medium/Small VoicePlayer + NoPlayer) and scale
+                // each cue's VolumeMultiplier by the user factor. The
+                // cues keep their vanilla NameMap / FolderName, so the
+                // mod-pak overrides them at their original /Game/Audio/
+                // Game/Music/Shanti/.../CUE_Shanti_<n>_*.uasset paths -
+                // no DA modification needed.
+                //
+                // 0.001 tolerance avoids triggering the override for a
+                // slider that effectively equals 1.0 due to UI rounding
+                // (e.g. 99.5% scaled by /100 from the GUI).
+                var volJobs = new List<ShipMusicJob>();
+                foreach (var j in shipMusicJobs)
+                {
+                    if (Math.Abs(j.UserVolume - 1.0) > 0.001) volJobs.Add(j);
+                }
+                if (volJobs.Count > 0)
+                {
+                    // Build the slot-index ? job map so we can resolve
+                    // the cue stem ? user multiplier in the callback.
+                    // ShipMusicSlots.All is positional; CUE index is
+                    // (1-based) position+1.
+                    var volByCueIdx = new Dictionary<int, double>();
+                    var filterStems = new List<string>();
+                    foreach (var j in volJobs)
+                    {
+                        int pos0 = ShipMusicSlots.All.ToList().IndexOf(j.Slot);
+                        if (pos0 < 0)
+                        {
+                            LogLine("ShipMusic-override-volume: slot '" + j.Slot.Stem
+                                + "' not in catalog - skipping volume override");
+                            continue;
+                        }
+                        int cueIdx = pos0 + 1;
+                        volByCueIdx[cueIdx] = j.UserVolume;
+                        // Filter stems for retoc to-legacy. Two-digit pad
+                        // not needed - the file names use "01".."10".
+                        string n = cueIdx.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+                        filterStems.Add("CUE_Shanti_" + n + "_Large_VoicePlayer");
+                        filterStems.Add("CUE_Shanti_" + n + "_Medium_VoicePlayer");
+                        filterStems.Add("CUE_Shanti_" + n + "_Small_VoicePlayer");
+                        filterStems.Add("CUE_Shanti_" + n + "_VoiceNoPlayer");
+                    }
+
+                    if (volByCueIdx.Count > 0)
+                    {
+                        LogLine("ShipMusic-override-volume source: "
+                            + volByCueIdx.Count + " slot"
+                            + (volByCueIdx.Count == 1 ? "" : "s")
+                            + " with non-default volume (4 cue variants each = "
+                            + filterStems.Count + " files)");
+
+                        var volByCueIdxLocal = volByCueIdx;
+                        sources.Add(new IoStoreCompositeSource
+                        {
+                            Name = "ship-music-override-volume",
+                            InputDir = gamePaksDir,
+                            Filters = filterStems,
+                            AfterExtract = stagingDir =>
+                            {
+                                var patcher = new ShipMusicOverrideCuePatcher { Log = Log };
+                                foreach (var kv in volByCueIdxLocal)
+                                {
+                                    int cueIdx = kv.Key;
+                                    double userVol = kv.Value;
+                                    string n = cueIdx.ToString("00",
+                                        System.Globalization.CultureInfo.InvariantCulture);
+                                    // Iterate the 4 flavors. Paths derived
+                                    // from the same constants the AddCueCloner
+                                    // uses (CueRelDir + the slot-specific stem).
+                                    foreach (var f in ShipMusicAddPipelineHelper.Flavors)
+                                    {
+                                        string stem = f == "NoPlayer"
+                                            ? "CUE_Shanti_" + n + "_VoiceNoPlayer"
+                                            : "CUE_Shanti_" + n + "_" + f + "_VoicePlayer";
+                                        string rel = ShipMusicAddCueCloner.CueRelDir(f) + "/"
+                                                   + stem + ".uasset";
+                                        string abs = Path.Combine(stagingDir,
+                                            rel.Replace('/', Path.DirectorySeparatorChar));
+                                        if (!File.Exists(abs))
+                                        {
+                                            throw new InvalidOperationException(
+                                                "ShipMusic-override-volume: vanilla cue missing in staging: "
+                                                + abs + " - retoc filter for "
+                                                + stem + " did not match");
+                                        }
+                                        patcher.Patch(abs, abs, usmapPath, userVol);
+                                    }
+                                }
+                            },
+                        });
+                    }
+                }
             }
 
             // Ship-music DA rewrite: covers two distinct features that
@@ -1262,7 +1358,8 @@ namespace Windrose.Quartermaster.Core
                                     flavor:           flavor,
                                     newIndex:         job.NewIndex,
                                     newSwavStem:      job.TrackKey,
-                                    audioDurationSec: audioDur);
+                                    audioDurationSec: audioDur,
+                                    userVolumeMultiplier: job.UserVolume);
                                 createdCues.Add(cr.NewCueStem);
                             }
                             trackRes.CueStemsCreated = createdCues;
@@ -2673,6 +2770,10 @@ namespace Windrose.Quartermaster.Core
                     Slot = slot,
                     UserWavPath = userWav,
                     OriginalFilename = ov.OriginalFilename,
+                    // null -> 1.0 (= vanilla unchanged, build pipeline
+                    // skips cue patching). Otherwise we pass the raw
+                    // value through; the patcher clamps to [0.01, 2.0].
+                    UserVolume = ov.Volume.HasValue ? ov.Volume.Value : 1.0,
                 });
             }
             return jobs;
@@ -2722,6 +2823,11 @@ namespace Windrose.Quartermaster.Core
                     UserWavPath = userWav,
                     Title = t.Title,
                     OriginalFilename = t.OriginalFilename,
+                    // null -> 0.8 (= "added track default", a touch
+                    // quieter than vanilla 0.45/0.5 so it doesn't
+                    // surprise the listener on first add). The patcher
+                    // clamps to [0.01, 2.0].
+                    UserVolume = t.Volume.HasValue ? t.Volume.Value : 0.8,
                 });
                 nextIndex++;
             }
@@ -3559,6 +3665,14 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicSlots.SlotInfo Slot;
         public string UserWavPath;
         public string OriginalFilename;
+
+        // User-supplied volume multiplier (1.0 = vanilla unchanged,
+        // 0.0..2.0 range, clamped at the patcher). When ~1.0 the
+        // pipeline skips cue extraction entirely - only the SWAV is
+        // swapped. When != 1.0 we extract the 4 vanilla cue variants
+        // (Large/Medium/Small VoicePlayer + NoPlayer) for this slot
+        // and scale their VolumeMultiplier by this factor.
+        public double UserVolume;
     }
 
     // Standalone summary of "ship-music slots got replaced in this

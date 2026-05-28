@@ -144,6 +144,12 @@ namespace Windrose.Quartermaster.Core
         // Display-only metadata.
         public string Title;
         public string OriginalFilename;
+
+        // User-supplied volume multiplier applied to the cloned cue's
+        // VolumeMultiplier. 1.0 = parity with vanilla 0.45/0.5; 0.8 =
+        // added-track default ("a touch quieter"); clamped to [0.01, 2.0]
+        // by the cue cloner.
+        public double UserVolume;
     }
 
     public sealed class ShipMusicAddResult

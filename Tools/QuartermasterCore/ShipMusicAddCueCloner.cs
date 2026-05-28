@@ -87,10 +87,19 @@ namespace Windrose.Quartermaster.Core
         //                     ~audioDurationSec seconds after this one
         //                     starts (instead of after the vanilla 163s
         //                     timeout). A small pad is added internally.
+        // userVolumeMultiplier - factor applied on top of the vanilla
+        //                     VolumeMultiplier carried by the source cue
+        //                     (0.45 for *_VoicePlayer flavors, 0.5 for
+        //                     NoPlayer; consistent across all 10 vanilla
+        //                     shanties as of Windrose 5.6). 1.0 = parity
+        //                     with vanilla; 0.8 = "added track default"
+        //                     (a touch quieter than vanilla so new
+        //                     uploads don't surprise the listener); > 1.0
+        //                     louder. Clamped to [0.01, 2.0].
         public ShipMusicAddCueCloneResult Clone(
             string inputUassetPath, string outputUassetPath, string usmapPath,
             string flavor, string newIndex, string newSwavStem,
-            float audioDurationSec)
+            float audioDurationSec, double userVolumeMultiplier = 1.0)
         {
             if (string.IsNullOrEmpty(inputUassetPath))  throw new ArgumentNullException("inputUassetPath");
             if (string.IsNullOrEmpty(outputUassetPath)) throw new ArgumentNullException("outputUassetPath");
@@ -146,7 +155,14 @@ namespace Windrose.Quartermaster.Core
             // even if the leaf WavePlayer's audio is 9s long. By bypassing
             // the graph and shrinking Duration we let the engine release
             // the cue right after the user's audio finishes.
-            ReshapeToMinimal(asset, newSwav, audioDurationSec);
+            //
+            // Volume multiplier piggybacks on the same pass: while we're
+            // touching cueExp.Data anyway, scale the existing
+            // VolumeMultiplier by the user-supplied factor.
+            double clampedVol = userVolumeMultiplier;
+            if (clampedVol < 0.01) clampedVol = 0.01;
+            if (clampedVol > 2.0) clampedVol = 2.0;
+            ReshapeToMinimal(asset, newSwav, audioDurationSec, clampedVol);
 
             var outDir = Path.GetDirectoryName(outputUassetPath);
             if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
@@ -260,7 +276,8 @@ namespace Windrose.Quartermaster.Core
         // stay in the file - removing them would require renumbering
         // every FPackageIndex in the asset, which UAssetAPI can't do
         // cheaply, and the cost in disk space is < 5 KB per cue.
-        void ReshapeToMinimal(UAsset asset, string newSwavStem, float audioDurationSec)
+        void ReshapeToMinimal(UAsset asset, string newSwavStem, float audioDurationSec,
+            double userVolumeMultiplier)
         {
             if (asset.Exports.Count == 0)
                 throw new InvalidOperationException("Cue asset has no exports");
@@ -287,17 +304,22 @@ namespace Windrose.Quartermaster.Core
             const float DurationPadSec = 0.5f;
             float newDuration = audioDurationSec + DurationPadSec;
 
-            // Step 1: SoundCue.Duration + bHasDelayNode (we leave FirstNode
-            // unchanged - it still points at the Random root).
+            // Step 1: SoundCue.Duration + bHasDelayNode + VolumeMultiplier
+            // (we leave FirstNode unchanged - it still points at the
+            // Random root). VolumeMultiplier is the vanilla 0.45 (voice)
+            // or 0.5 (NoPlayer) from the source cue; we multiply by the
+            // user factor (already clamped in the caller).
             FloatPropertyData durProp = null;
             ObjectPropertyData firstNodeProp = null;
             BoolPropertyData delayFlagProp = null;
+            FloatPropertyData volProp = null;
             foreach (var p in cueExp.Data)
             {
                 var n = p?.Name?.Value?.Value;
                 if (n == "Duration" && p is FloatPropertyData fp) durProp = fp;
                 else if (n == "FirstNode" && p is ObjectPropertyData fop) firstNodeProp = fop;
                 else if (n == "bHasDelayNode" && p is BoolPropertyData bp) delayFlagProp = bp;
+                else if (n == "VolumeMultiplier" && p is FloatPropertyData vp) volProp = vp;
             }
             if (firstNodeProp == null || firstNodeProp.Value == null || !firstNodeProp.Value.IsExport())
                 throw new InvalidOperationException(
@@ -317,6 +339,22 @@ namespace Windrose.Quartermaster.Core
             // node in the subtree, so the flag still matches reality.
             if (delayFlagProp != null)
                 LogLine("  bHasDelayNode: " + delayFlagProp.Value + " (unchanged, zero-length Delay still present)");
+
+            // VolumeMultiplier: existing value comes from the vanilla
+            // template (0.45 / 0.5 depending on flavor). Multiply by user
+            // factor and write back. Missing property is a hard error -
+            // means vanilla cue layout drifted and the build would be
+            // silently wrong (user expects 80%, gets 100%).
+            if (volProp == null)
+                throw new InvalidOperationException(
+                    "SoundCue.VolumeMultiplier property missing - vanilla cue template "
+                    + "layout may have drifted.");
+            float oldVol = volProp.Value;
+            float newVol = (float)(oldVol * userVolumeMultiplier);
+            volProp.Value = newVol;
+            LogLine("  VolumeMultiplier: " + oldVol.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " * " + userVolumeMultiplier.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " -> " + newVol.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             // Step 2: Random -> reduce ChildNodes + Weights to 1 entry.
             int randomIdx0 = firstNodeProp.Value.Index - 1;

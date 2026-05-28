@@ -669,6 +669,12 @@ public static class ProfilesEndpoint
                     // Any configured override (Songs entry) stays on disk
                     // and re-activates on include.
                     excluded = excludedSet.Contains(slot.Stem),
+                    // User-set volume multiplier. null OR 1.0 means
+                    // "vanilla unchanged" (UI slider defaults to 100%).
+                    // Stored on the override even when no audio is
+                    // uploaded yet, so the user can pre-tune a slot
+                    // before picking an audio file.
+                    volume = ov?.Volume ?? 1.0,
                 };
             }).ToArray();
             return Results.Json(new { slots = rows });
@@ -742,6 +748,58 @@ public static class ProfilesEndpoint
             try { store.Save(profile); }
             catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
             return Results.NoContent();
+        });
+
+        // POST /api/profiles/{id}/ship-music/{slotStem}/volume
+        //   JSON body: { "volume": 0.0..2.0 }. Sets the per-slot volume
+        //   multiplier. 1.0 means "vanilla unchanged" (build pipeline
+        //   skips cue patching). Creates the Songs entry on the fly so
+        //   the user can pre-tune a slot before uploading audio. The
+        //   entry is removed by DELETE /ship-music/{slotStem} together
+        //   with the audio.
+        app.MapPost("/api/profiles/{id}/ship-music/{slotStem}/volume",
+            async (string id, string slotStem, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (!ShipMusicSlots.ByStem.TryGetValue(slotStem, out var slot))
+                return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
+
+            double volume;
+            try
+            {
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+                if (!doc.RootElement.TryGetProperty("volume", out var vEl))
+                    return Results.BadRequest(new { error = "Missing 'volume' field" });
+                volume = vEl.GetDouble();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON: " + ex.Message });
+            }
+
+            // Clamp to UI range. The patcher itself also clamps, but
+            // we save the clamped value so subsequent GETs reflect the
+            // effective setting.
+            if (volume < 0.0) volume = 0.0;
+            if (volume > 2.0) volume = 2.0;
+
+            if (profile.Globals == null) profile.Globals = new ProfileGlobals();
+            if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
+            if (profile.Globals.ShipMusic.Songs == null)
+                profile.Globals.ShipMusic.Songs = new Dictionary<string, ShipMusicSlotOverride>(StringComparer.OrdinalIgnoreCase);
+
+            if (!profile.Globals.ShipMusic.Songs.TryGetValue(slotStem, out var existing) || existing == null)
+            {
+                existing = new ShipMusicSlotOverride();
+            }
+            existing.Volume = volume;
+            profile.Globals.ShipMusic.Songs[slotStem] = existing;
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new { slotStem, volume });
         });
 
         app.MapPost("/api/profiles/{id}/ship-music/{slotStem}",
@@ -879,9 +937,14 @@ public static class ProfilesEndpoint
             if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
             if (profile.Globals.ShipMusic.Songs == null)
                 profile.Globals.ShipMusic.Songs = new Dictionary<string, ShipMusicSlotOverride>(StringComparer.OrdinalIgnoreCase);
+            // Preserve any pre-existing Volume so a fresh audio upload
+            // doesn't wipe out the user's volume slider position. If no
+            // entry existed yet, Volume stays null (= 1.0 = vanilla).
+            profile.Globals.ShipMusic.Songs.TryGetValue(slotStem, out var prior);
             profile.Globals.ShipMusic.Songs[slotStem] = new ShipMusicSlotOverride
             {
                 OriginalFilename = originalFilename,
+                Volume = prior?.Volume,
             };
 
             try { store.Save(profile); }
@@ -974,6 +1037,11 @@ public static class ProfilesEndpoint
                         newIndex = (idx + 11).ToString(System.Globalization.CultureInfo.InvariantCulture),
                         state = wavPresent ? "ready" : "missing-wav",
                         wavBytes,
+                        // User volume multiplier. Default for new tracks
+                        // is 0.8 ("a touch quieter than vanilla 0.45/0.5").
+                        // null on legacy tracks gets the new default
+                        // surfaced to the UI so the slider starts at 80%.
+                        volume = t.Volume ?? 0.8,
                     };
                 })
                 .Where(r => r != null)
@@ -1095,11 +1163,23 @@ public static class ProfilesEndpoint
 
             var existing = profile.Globals.ShipMusicAdd.Tracks
                 .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
+            // Preserve any existing volume slider position when replacing
+            // audio. New tracks default to 0.8 (= 80% of vanilla 0.45/0.5
+            // loudness - a touch quieter than vanilla so it doesn't
+            // surprise the listener on first add).
+            double? volumeForEntry = null;
+            if (existing >= 0)
+            {
+                var prior = profile.Globals.ShipMusicAdd.Tracks[existing];
+                volumeForEntry = prior?.Volume;
+            }
+            if (!volumeForEntry.HasValue) volumeForEntry = 0.8;
             var entry = new ShipMusicAddedTrack
             {
                 TrackKey = trackKey,
                 Title = string.IsNullOrEmpty(title) ? null : title,
                 OriginalFilename = originalFilename,
+                Volume = volumeForEntry,
             };
             if (existing >= 0) profile.Globals.ShipMusicAdd.Tracks[existing] = entry;
             else profile.Globals.ShipMusicAdd.Tracks.Add(entry);
@@ -1117,6 +1197,45 @@ public static class ProfilesEndpoint
                 transcoded = prep.WasTranscoded,
                 sourceFormat = prep.SourceFormat,
             });
+        });
+
+        // POST /api/profiles/{id}/ship-music-add/{trackKey}/volume
+        //   JSON body: { "volume": 0.0..2.0 }. Sets the per-track volume
+        //   multiplier (applied to the cloned cue's VolumeMultiplier at
+        //   build time). The track must already exist.
+        app.MapPost("/api/profiles/{id}/ship-music-add/{trackKey}/volume",
+            async (string id, string trackKey, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+            if (string.IsNullOrEmpty(trackKey))
+                return Results.BadRequest(new { error = "trackKey is required" });
+
+            double volume;
+            try
+            {
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+                if (!doc.RootElement.TryGetProperty("volume", out var vEl))
+                    return Results.BadRequest(new { error = "Missing 'volume' field" });
+                volume = vEl.GetDouble();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON: " + ex.Message });
+            }
+            if (volume < 0.0) volume = 0.0;
+            if (volume > 2.0) volume = 2.0;
+
+            var idx = profile.Globals?.ShipMusicAdd?.Tracks?
+                .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
+            if (idx == null || idx.Value < 0)
+                return Results.BadRequest(new { error = "Added track not found: " + trackKey });
+
+            profile.Globals.ShipMusicAdd.Tracks[idx.Value].Volume = volume;
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+            return Results.Json(new { trackKey, volume });
         });
 
         app.MapDelete("/api/profiles/{id}/ship-music-add/{trackKey}",
