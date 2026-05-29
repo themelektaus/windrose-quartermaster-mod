@@ -227,7 +227,7 @@ fieldset .indent input[type="number"] {
 
 .bonfire-music-status .bonfire-music-muted {
   color: var(--text-dim);
-  font-style: italic;
+  font-size: var(--font-size-small);
 }
 
 .bonfire-music-status .btn-link {
