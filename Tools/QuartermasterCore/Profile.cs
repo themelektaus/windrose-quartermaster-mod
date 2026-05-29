@@ -293,12 +293,15 @@ namespace Windrose.Quartermaster.Core
     // "The Hearth" plays).
     //
     // Note: the influence range around the building center is controlled
-    // separately by BonfireRadiusGlobal above. Volume tweaking would have
-    // to flow through MS_Music_BuildingCenter (MetaSound graph) or the
-    // MIX_BuildingCenter SoundMix snapshot - neither of which we touch in
-    // v1, so Volume here is stored but not yet applied at build time.
-    // The field stays on the schema so a future patcher can pick it up
-    // without a profile migration.
+    // separately by BonfireRadiusGlobal above. Volume is applied at build
+    // time as a pre-encode PCM gain: the staged audio.wav gets run
+    // through ffmpeg with `-filter:a volume=X` before binkaudioenc.exe
+    // consumes it, so the burnt-in level effectively rescales playback
+    // (volume=0 produces digital silence = mute, volume=1 = unchanged).
+    // We deliberately avoid touching MS_Music_BuildingCenter (MetaSound
+    // graph) or the MIX_BuildingCenter SoundMix snapshot - the PCM-gain
+    // approach is simpler and lets the user dial in arbitrary attenuation
+    // without authoring MetaSound patches.
     public sealed class BonfireMusicGlobal
     {
         // Original filename the user picked, e.g. "MyHearthTheme.mp3".
@@ -306,11 +309,11 @@ namespace Windrose.Quartermaster.Core
         // from <Profiles>/<id>/BonfireMusic/.
         public string OriginalFilename;
 
-        // User-set absolute VolumeMultiplier. Stored for forward-compat
-        // (see class comment); current build pipeline ignores this field
-        // because the vanilla volume lives in the MetaSound and the MIX
-        // snapshot, not on the SWAV itself. Range exposed to the UI:
-        // 0.0 .. 1.0. Default is null (= vanilla baseline).
+        // User-set absolute VolumeMultiplier applied as a pre-encode PCM
+        // gain (see class comment). Range exposed to the UI: 0.0 .. 1.0
+        // where 0.0 = digital silence, 1.0 = unchanged. Default is null
+        // (treated as 1.0 / vanilla baseline so legacy profiles that
+        // never touched the slider keep their existing loudness).
         public double? Volume;
     }
 

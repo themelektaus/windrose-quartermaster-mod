@@ -278,6 +278,114 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // Apply a uniform PCM gain to an existing 44.1 kHz / stereo /
+        // 16-bit WAV by running it through `ffmpeg -filter:a volume=X`.
+        // Used by the build pipeline to bake the user-set bonfire-music
+        // volume into the samples before binkaudioenc.exe consumes them.
+        //
+        // Returns the path of the produced WAV. If `gain` is essentially
+        // 1.0 (within tolerance) the source path is returned unchanged
+        // and no ffmpeg invocation happens. The caller is responsible
+        // for cleaning up the produced temp file when gain != 1.0;
+        // when gain == 1.0 the caller must NOT delete the returned path
+        // (it's the original input).
+        //
+        // gain < 0 is clamped to 0 (silence). gain > 1 is permitted -
+        // ffmpeg's `volume` filter will clip on int16 overflow which is
+        // the same behaviour as the in-engine Volume property.
+        public static async Task<string> ApplyGainAsync(
+            WindrosePaths paths,
+            string sourceWavPath,
+            double gain,
+            Action<string> log,
+            CancellationToken ct = default)
+        {
+            if (paths == null) throw new ArgumentNullException("paths");
+            if (string.IsNullOrEmpty(sourceWavPath))
+                throw new ArgumentNullException("sourceWavPath");
+            if (!File.Exists(sourceWavPath))
+                throw new FileNotFoundException("Source WAV not found: " + sourceWavPath);
+
+            if (gain < 0.0) gain = 0.0;
+            if (Math.Abs(gain - 1.0) < 1e-4)
+            {
+                // No-op: return the original path so the caller can keep
+                // using it directly without an unnecessary copy.
+                return sourceWavPath;
+            }
+
+            var ffmpeg = paths.FfmpegPath;
+            if (!File.Exists(ffmpeg))
+                throw new InvalidOperationException(
+                    "ffmpeg.exe is required to apply audio gain but was not found at "
+                    + ffmpeg + ". Open the setup overlay and run the \"ffmpeg\" step "
+                    + "(one-time ~190 MB download).");
+
+            // Format gain as invariant-culture decimal so ffmpeg parses
+            // it (the filter parser barfs on the German-locale comma
+            // separator otherwise).
+            var gainStr = gain.ToString("0.######",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            var tempOut = Path.Combine(Path.GetTempPath(),
+                "qm_gain_" + Guid.NewGuid().ToString("N") + ".wav");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpeg,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-y");
+            psi.ArgumentList.Add("-nostdin");
+            psi.ArgumentList.Add("-loglevel"); psi.ArgumentList.Add("error");
+            psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(sourceWavPath);
+            psi.ArgumentList.Add("-vn");
+            psi.ArgumentList.Add("-filter:a"); psi.ArgumentList.Add("volume=" + gainStr);
+            psi.ArgumentList.Add("-ac"); psi.ArgumentList.Add("2");
+            psi.ArgumentList.Add("-ar"); psi.ArgumentList.Add("44100");
+            psi.ArgumentList.Add("-sample_fmt"); psi.ArgumentList.Add("s16");
+            psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("wav");
+            psi.ArgumentList.Add(tempOut);
+
+            Log(log, "ffmpeg apply gain volume=" + gainStr
+                + " -> " + Path.GetFileName(tempOut));
+
+            var stderr = new StringBuilder();
+            using (var p = new Process())
+            {
+                p.StartInfo = psi;
+                p.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null) stderr.AppendLine(e.Data);
+                };
+                p.Start();
+                p.BeginErrorReadLine();
+                _ = p.StandardOutput.ReadToEndAsync(ct);
+                await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
+                if (p.ExitCode != 0)
+                {
+                    var err = stderr.ToString().Trim();
+                    if (err.Length > 800) err = err.Substring(0, 800) + " ...";
+                    try { if (File.Exists(tempOut)) File.Delete(tempOut); }
+                    catch { /* best-effort */ }
+                    throw new InvalidOperationException(
+                        "ffmpeg failed to apply volume=" + gainStr + " gain (exit "
+                        + p.ExitCode + ")"
+                        + (err.Length > 0 ? ": " + err : "") + ".");
+                }
+            }
+
+            if (!File.Exists(tempOut))
+                throw new InvalidOperationException(
+                    "ffmpeg reported success but produced no gain-adjusted WAV.");
+
+            return tempOut;
+        }
+
         static string FormatMb(long bytes)
         {
             return (bytes / (1024.0 * 1024.0)).ToString("0.0",

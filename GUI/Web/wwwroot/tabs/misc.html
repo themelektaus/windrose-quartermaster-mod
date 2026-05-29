@@ -163,8 +163,13 @@
         <div class="bonfire-music-status" id="bonfire-music-status">
           <span class="bonfire-music-vanilla">No custom audio - vanilla "The Hearth" plays.</span>
         </div>
+        <div class="bonfire-music-volume indent">
+          <label for="bonfire-music-volume">Volume</label>
+          <input type="range" id="bonfire-music-volume" min="0" max="100" step="5" value="100">
+          <span id="bonfire-music-volume-value">100%</span>
+        </div>
         <p class="hint">
-          The placement range around the building-center is controlled by the Bonfire Radius slider above.
+          Volume is baked into the audio samples at build time (0% = silent / mute, 100% = unchanged). The placement range around the building-center is controlled by the Bonfire Radius slider above.
         </p>
       </div>
     </section>

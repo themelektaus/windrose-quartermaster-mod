@@ -1201,10 +1201,13 @@ namespace Windrose.Quartermaster.Core
                 LogLine("BonfireMusic source: 1 custom hearth theme"
                         + (string.IsNullOrEmpty(bonfireMusicJob.OriginalFilename)
                             ? ""
-                            : " ('" + bonfireMusicJob.OriginalFilename + "')"));
+                            : " ('" + bonfireMusicJob.OriginalFilename + "')")
+                        + " @ volume=" + bonfireMusicJob.UserVolume.ToString("0.00",
+                            System.Globalization.CultureInfo.InvariantCulture));
                 var slot = BonfireMusicSlot.ToSlotInfo();
                 var localJob = bonfireMusicJob;
                 var localSlot = slot;
+                var localPaths = _paths;
                 sources.Add(new IoStoreCompositeSource
                 {
                     Name = "bonfire-music",
@@ -1213,17 +1216,48 @@ namespace Windrose.Quartermaster.Core
                     InputDir = null,
                     AfterExtract = stagingDir =>
                     {
-                        var patcher = new ShipMusicPatcher { Log = Log };
-                        var r = patcher.PatchFromWav(
-                            localJob.UserWavPath,
-                            templateUassetPath,
-                            templateUexpPath,
-                            encoderPath,
-                            stagingDir,
-                            localSlot,
-                            usmapPath);
-                        r.OriginalFilename = localJob.OriginalFilename;
-                        bonfireMusicPatchResult = r;
+                        // Bake the user volume into the staged WAV via a
+                        // pre-encode ffmpeg gain pass. When UserVolume is
+                        // 1.0 ApplyGainAsync short-circuits and returns
+                        // the original path, so we only pay the ffmpeg
+                        // cost when the slider was actually moved.
+                        // volume=0 produces digital silence which is the
+                        // mute case the user asked for.
+                        string wavForEncode = localJob.UserWavPath;
+                        string tempGainWav = null;
+                        try
+                        {
+                            wavForEncode = AudioPreprocessor.ApplyGainAsync(
+                                localPaths,
+                                localJob.UserWavPath,
+                                localJob.UserVolume,
+                                Log).GetAwaiter().GetResult();
+                            if (!string.Equals(wavForEncode, localJob.UserWavPath,
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                tempGainWav = wavForEncode;
+                            }
+
+                            var patcher = new ShipMusicPatcher { Log = Log };
+                            var r = patcher.PatchFromWav(
+                                wavForEncode,
+                                templateUassetPath,
+                                templateUexpPath,
+                                encoderPath,
+                                stagingDir,
+                                localSlot,
+                                usmapPath);
+                            r.OriginalFilename = localJob.OriginalFilename;
+                            bonfireMusicPatchResult = r;
+                        }
+                        finally
+                        {
+                            if (tempGainWav != null)
+                            {
+                                try { File.Delete(tempGainWav); }
+                                catch { /* best-effort temp cleanup */ }
+                            }
+                        }
                     },
                 });
             }
@@ -2934,10 +2968,19 @@ namespace Windrose.Quartermaster.Core
                 }
                 return null;
             }
+            // Volume = null preserves the vanilla loudness (treated as
+            // 1.0 here). The patcher applies the gain as a pre-encode
+            // ffmpeg filter so volume=0 produces digital silence -
+            // effectively a mute toggle without having to bypass the
+            // bonfire-music swap entirely.
+            double vol = bm.Volume ?? 1.0;
+            if (vol < 0.0) vol = 0.0;
+            if (vol > 1.0) vol = 1.0;
             return new BonfireMusicJob
             {
                 UserWavPath = userWav,
                 OriginalFilename = bm.OriginalFilename,
+                UserVolume = vol,
             };
         }
 
@@ -3862,12 +3905,18 @@ namespace Windrose.Quartermaster.Core
 
     // One scheduled bonfire-music ("The Hearth") replacement. Single
     // slot, so the resolver returns null or a populated instance, no
-    // list. Mirrors ShipMusicJob's payload but without the UserVolume
-    // field because v1 does not patch the MetaSound / MIX volume.
+    // list. UserVolume rides along as an absolute multiplier in
+    // [0.0, 1.0] - the build pipeline bakes it into the staged WAV as
+    // a pre-encode PCM gain (ffmpeg `-filter:a volume=X`) before the
+    // Bink encoder consumes the buffer. 0.0 = digital silence (the
+    // SWAV plays at zero amplitude in-engine, effectively muting "The
+    // Hearth"); 1.0 = unchanged. Defaults to 1.0 when the profile
+    // hasn't touched the slider yet.
     public sealed class BonfireMusicJob
     {
         public string UserWavPath;
         public string OriginalFilename;
+        public double UserVolume = 1.0;
     }
 
     // Standalone summary of "bonfire-music got replaced in this build".

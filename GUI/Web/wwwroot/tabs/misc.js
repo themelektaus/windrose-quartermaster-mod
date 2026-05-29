@@ -381,6 +381,70 @@ async function onBonfireMusicFileChange(e) {
     }
 }
 
+// Reads the current bonfire-music volume from state.current and parks
+// it on the slider. Default 100% (= 1.0 absolute, vanilla baseline) when
+// the profile carries no Volume yet. Range exposed to the UI: 0..100,
+// where 0 = digital silence (mute, baked into the SWAV samples at build
+// time) and 100 = unchanged. Called from applyProfileToUI() so a
+// profile switch / load repaints the slider to its persisted value.
+function syncBonfireMusicVolumeFromState() {
+    const slider = document.getElementById('bonfire-music-volume');
+    if (!slider) return;
+    const bm = state.current && state.current.globals
+        && state.current.globals.bonfireMusic;
+    const v = (bm && typeof bm.volume === 'number') ? bm.volume : 1.0;
+    let pct = Math.round(v * 100);
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    slider.value = String(pct);
+    syncBonfireMusicVolumeReadout();
+}
+
+function syncBonfireMusicVolumeReadout() {
+    const slider = document.getElementById('bonfire-music-volume');
+    const out = document.getElementById('bonfire-music-volume-value');
+    if (!slider || !out) return;
+    out.textContent = (parseFloat(slider.value) || 0).toFixed(0) + '%';
+}
+
+// Slider onInput / onChange: mirror the new value into
+// state.current.globals.bonfireMusic.volume + markDirty(). The value
+// rides in the global PUT body alongside every other profile field and
+// gets applied at build time as a pre-encode ffmpeg PCM gain. No POST
+// here - we deliberately stay consistent with the ship-music sliders
+// (Discard would otherwise have nothing to roll back to).
+function setBonfireMusicVolumeFromUI() {
+    if (!state.current) return;
+    syncBonfireMusicVolumeReadout();
+    const slider = document.getElementById('bonfire-music-volume');
+    if (!slider) return;
+    let pct = parseFloat(slider.value);
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    const mul = pct / 100.0;
+    state.current.globals = state.current.globals || {};
+    // Volume is meaningful even when no audio.wav is uploaded yet (it
+    // would silence vanilla "The Hearth" once the user does upload),
+    // so we materialize the BonfireMusic node when the slider moves
+    // away from the default. At exactly 1.0 we leave the node null /
+    // intact to keep "vanilla" profiles minimal in the JSON.
+    if (Math.abs(mul - 1.0) < 1e-6) {
+        if (state.current.globals.bonfireMusic) {
+            state.current.globals.bonfireMusic.volume = null;
+        }
+    } else {
+        if (!state.current.globals.bonfireMusic) {
+            state.current.globals.bonfireMusic = {
+                originalFilename: null,
+                volume: mul,
+            };
+        } else {
+            state.current.globals.bonfireMusic.volume = mul;
+        }
+    }
+    markDirty();
+}
+
 async function clearBonfireMusic() {
     if (!state.current || !state.current.id) return;
     const ok = await confirm('Remove custom bonfire music and revert to vanilla "The Hearth"?');
@@ -426,4 +490,6 @@ function bindMiscHandlers() {
     document.getElementById('pickaxe-multiplier').addEventListener('input', setPickaxeRangeFromUI);
     const bmInput = document.getElementById('bonfire-music-upload');
     if (bmInput) bmInput.addEventListener('change', onBonfireMusicFileChange);
+    const bmVol = document.getElementById('bonfire-music-volume');
+    if (bmVol) bmVol.addEventListener('input', setBonfireMusicVolumeFromUI);
 }

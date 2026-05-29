@@ -238,3 +238,29 @@ fieldset .indent input[type="number"] {
 .bonfire-music-status .btn-link.danger {
   color: var(--danger, #d44);
 }
+
+.bonfire-music-volume {
+  display: flex;
+  align-items: center;
+  gap: .6em;
+  margin-top: .4em;
+}
+
+.bonfire-music-volume label {
+  font-size: .9em;
+  color: var(--text-dim);
+  min-width: 4em;
+}
+
+.bonfire-music-volume input[type="range"] {
+  flex: 1;
+  max-width: 260px;
+}
+
+.bonfire-music-volume #bonfire-music-volume-value {
+  font-variant-numeric: tabular-nums;
+  font-size: .9em;
+  color: var(--text);
+  min-width: 3.5em;
+  text-align: right;
+}

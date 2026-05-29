@@ -694,6 +694,12 @@ function applyProfileToUI() {
     if (typeof refreshBonfireMusicStatus === 'function') {
         refreshBonfireMusicStatus();
     }
+    // Volume slider lives in state.current.globals.bonfireMusic.volume
+    // (rides in the global PUT body, baked into the staged WAV as a
+    // pre-encode PCM gain at build time).
+    if (typeof syncBonfireMusicVolumeFromState === 'function') {
+        syncBonfireMusicVolumeFromState();
+    }
     renderProfileMeta();
 }
 
