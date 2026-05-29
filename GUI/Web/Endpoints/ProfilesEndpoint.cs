@@ -1526,12 +1526,26 @@ public static class ProfilesEndpoint
             {
                 try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
             }
+            // State machine:
+            //   vanilla       - no BonfireMusic node on the profile
+            //   custom        - WAV uploaded + filename set
+            //   muted-vanilla - no upload, no filename, Volume == 0
+            //                   (build synthesizes a silence SWAV so
+            //                   "The Hearth" goes quiet in-engine)
+            //   broken        - filename set but the WAV is missing
+            //                   (user needs to re-upload or clear)
+            string stateStr;
+            if (bm == null) stateStr = "vanilla";
+            else if (wavPresent) stateStr = "custom";
+            else if (string.IsNullOrEmpty(bm.OriginalFilename)
+                     && (bm.Volume.HasValue && bm.Volume.Value <= 1e-4))
+                stateStr = "muted-vanilla";
+            else stateStr = "broken";
             return Results.Json(new
             {
-                state = bm == null ? "vanilla"
-                      : wavPresent ? "custom"
-                      : "broken",
+                state = stateStr,
                 originalFilename = bm?.OriginalFilename,
+                volume = bm?.Volume,
                 title = BonfireMusicSlot.Title,
                 stem = BonfireMusicSlot.Stem,
                 wavBytes,

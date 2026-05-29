@@ -281,10 +281,16 @@ function setNoSmokeFromUI() {
 // just a mirror.
 // ---------------------------------------------------------------------------
 function bonfireMusicStatusHtml(meta) {
-    if (!meta || meta.state === 'vanilla' || !meta.originalFilename) {
+    if (!meta || meta.state === 'vanilla') {
         return '<span class="bonfire-music-vanilla">No custom audio - vanilla "The Hearth" plays.</span>';
     }
-    const fname = escapeHtml(meta.originalFilename);
+    if (meta.state === 'muted-vanilla') {
+        // No upload, slider dialed to 0%. The build synthesizes a
+        // silence SWAV so vanilla "The Hearth" goes quiet in-engine.
+        return '<span class="bonfire-music-muted">Vanilla "The Hearth" will be muted on next build (Volume 0%).</span>'
+             + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
+    }
+    const fname = escapeHtml(meta.originalFilename || '');
     if (meta.state === 'broken') {
         return '<span class="bonfire-music-broken">Filename "' + fname
              + '" is set on the profile but its audio.wav is missing - re-upload or clear.</span>'
@@ -442,7 +448,42 @@ function setBonfireMusicVolumeFromUI() {
             state.current.globals.bonfireMusic.volume = mul;
         }
     }
+    // Re-render the status line client-side so the user sees the
+    // muted-vanilla / vanilla transition immediately when dragging the
+    // slider to / away from 0% (instead of having to Save first and
+    // wait for the GET to return the new state). Mirrors the state
+    // machine the server uses in /api/profiles/{id}/bonfire-music GET.
+    refreshBonfireMusicStatusLocally();
     markDirty();
+}
+
+// Computes a status meta object from the in-memory state.current and
+// renders it. Used after slider drags so the muted-vanilla / vanilla /
+// custom transitions show up immediately without an HTTP round-trip.
+function refreshBonfireMusicStatusLocally() {
+    const bm = state.current && state.current.globals
+        && state.current.globals.bonfireMusic;
+    if (!bm) {
+        renderBonfireMusicStatus({ state: 'vanilla' });
+        return;
+    }
+    const hasFilename = !!bm.originalFilename;
+    const vol = (typeof bm.volume === 'number') ? bm.volume : 1.0;
+    if (hasFilename) {
+        // Don't downgrade a "custom"-rendered card with a real upload
+        // to "broken" just because we lack the wavBytes here - the next
+        // server refresh will reconcile. Render as custom with no size.
+        renderBonfireMusicStatus({
+            state: 'custom',
+            originalFilename: bm.originalFilename,
+        });
+        return;
+    }
+    if (vol <= 1e-4) {
+        renderBonfireMusicStatus({ state: 'muted-vanilla' });
+        return;
+    }
+    renderBonfireMusicStatus({ state: 'vanilla' });
 }
 
 async function clearBonfireMusic() {

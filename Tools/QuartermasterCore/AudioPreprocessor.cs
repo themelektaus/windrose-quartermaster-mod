@@ -386,6 +386,98 @@ namespace Windrose.Quartermaster.Core
             return tempOut;
         }
 
+        // Synthesize a stereo / 44.1 kHz / 16-bit PCM silence WAV of the
+        // requested length via ffmpeg's `anullsrc` lavfi source. Used by
+        // the bonfire-music pipeline to provide a "mute vanilla" path
+        // even when the user hasn't uploaded a custom theme: the resolver
+        // detects Volume == 0 with no audio.wav present, calls this to
+        // produce a transient silence WAV, and feeds it through the same
+        // BinkAudio encode + SoundWave splice the upload path uses.
+        //
+        // durationSec must be > 0. Returned path is a freshly created
+        // temp file; the caller owns cleanup. Throws if ffmpeg is not
+        // installed (mirror of ApplyGainAsync's preflight).
+        public static async Task<string> GenerateSilenceAsync(
+            WindrosePaths paths,
+            double durationSec,
+            Action<string> log,
+            CancellationToken ct = default)
+        {
+            if (paths == null) throw new ArgumentNullException("paths");
+            if (durationSec <= 0.0)
+                throw new ArgumentOutOfRangeException("durationSec",
+                    "Silence duration must be > 0 seconds.");
+
+            var ffmpeg = paths.FfmpegPath;
+            if (!File.Exists(ffmpeg))
+                throw new InvalidOperationException(
+                    "ffmpeg.exe is required to synthesize a silence WAV but was not found at "
+                    + ffmpeg + ". Open the setup overlay and run the \"ffmpeg\" step "
+                    + "(one-time ~190 MB download).");
+
+            var durStr = durationSec.ToString("0.###",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            var tempOut = Path.Combine(Path.GetTempPath(),
+                "qm_silence_" + Guid.NewGuid().ToString("N") + ".wav");
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpeg,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-y");
+            psi.ArgumentList.Add("-nostdin");
+            psi.ArgumentList.Add("-loglevel"); psi.ArgumentList.Add("error");
+            psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("lavfi");
+            psi.ArgumentList.Add("-i");
+            psi.ArgumentList.Add("anullsrc=channel_layout=stereo:sample_rate=44100");
+            psi.ArgumentList.Add("-t"); psi.ArgumentList.Add(durStr);
+            psi.ArgumentList.Add("-ac"); psi.ArgumentList.Add("2");
+            psi.ArgumentList.Add("-ar"); psi.ArgumentList.Add("44100");
+            psi.ArgumentList.Add("-sample_fmt"); psi.ArgumentList.Add("s16");
+            psi.ArgumentList.Add("-f"); psi.ArgumentList.Add("wav");
+            psi.ArgumentList.Add(tempOut);
+
+            Log(log, "ffmpeg generate silence " + durStr + "s -> "
+                + Path.GetFileName(tempOut));
+
+            var stderr = new StringBuilder();
+            using (var p = new Process())
+            {
+                p.StartInfo = psi;
+                p.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null) stderr.AppendLine(e.Data);
+                };
+                p.Start();
+                p.BeginErrorReadLine();
+                _ = p.StandardOutput.ReadToEndAsync(ct);
+                await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
+                if (p.ExitCode != 0)
+                {
+                    var err = stderr.ToString().Trim();
+                    if (err.Length > 800) err = err.Substring(0, 800) + " ...";
+                    try { if (File.Exists(tempOut)) File.Delete(tempOut); }
+                    catch { /* best-effort */ }
+                    throw new InvalidOperationException(
+                        "ffmpeg failed to synthesize silence (exit "
+                        + p.ExitCode + ")"
+                        + (err.Length > 0 ? ": " + err : "") + ".");
+                }
+            }
+
+            if (!File.Exists(tempOut))
+                throw new InvalidOperationException(
+                    "ffmpeg reported success but produced no silence WAV.");
+
+            return tempOut;
+        }
+
         static string FormatMb(long bytes)
         {
             return (bytes / (1024.0 * 1024.0)).ToString("0.0",

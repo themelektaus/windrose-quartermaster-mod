@@ -1196,12 +1196,20 @@ namespace Windrose.Quartermaster.Core
                         + " - expected SoundWave_BinkInline.uasset + .uexp"
                         + " (also required for the bonfire-music swap).");
 
-                LogLine("BonfireMusic source: 1 custom hearth theme"
-                        + (string.IsNullOrEmpty(bonfireMusicJob.OriginalFilename)
-                            ? ""
-                            : " ('" + bonfireMusicJob.OriginalFilename + "')")
-                        + " @ volume=" + bonfireMusicJob.UserVolume.ToString("0.00",
-                            System.Globalization.CultureInfo.InvariantCulture));
+                if (bonfireMusicJob.IsSynthesizedSilence)
+                {
+                    LogLine("BonfireMusic source: muting vanilla 'The Hearth' "
+                            + "(no upload, volume=0) - synthesizing silence SWAV.");
+                }
+                else
+                {
+                    LogLine("BonfireMusic source: 1 custom hearth theme"
+                            + (string.IsNullOrEmpty(bonfireMusicJob.OriginalFilename)
+                                ? ""
+                                : " ('" + bonfireMusicJob.OriginalFilename + "')")
+                            + " @ volume=" + bonfireMusicJob.UserVolume.ToString("0.00",
+                                System.Globalization.CultureInfo.InvariantCulture));
+                }
                 var slot = BonfireMusicSlot.ToSlotInfo();
                 var localJob = bonfireMusicJob;
                 var localSlot = slot;
@@ -1214,26 +1222,42 @@ namespace Windrose.Quartermaster.Core
                     InputDir = null,
                     AfterExtract = stagingDir =>
                     {
-                        // Bake the user volume into the staged WAV via a
-                        // pre-encode ffmpeg gain pass. When UserVolume is
-                        // 1.0 ApplyGainAsync short-circuits and returns
-                        // the original path, so we only pay the ffmpeg
-                        // cost when the slider was actually moved.
-                        // volume=0 produces digital silence which is the
-                        // mute case the user asked for.
-                        string wavForEncode = localJob.UserWavPath;
-                        string tempGainWav = null;
+                        // Either bake the user volume into the staged WAV
+                        // via a pre-encode ffmpeg gain pass, or synthesize
+                        // a silence WAV from scratch when the user dialed
+                        // Volume=0 without an upload. Both cases produce a
+                        // transient temp WAV that gets cleaned up below;
+                        // the no-op gain path (Volume=1) short-circuits
+                        // and reuses the staged user WAV directly.
+                        string wavForEncode = null;
+                        string tempWav = null;
                         try
                         {
-                            wavForEncode = AudioPreprocessor.ApplyGainAsync(
-                                localPaths,
-                                localJob.UserWavPath,
-                                localJob.UserVolume,
-                                Log).GetAwaiter().GetResult();
-                            if (!string.Equals(wavForEncode, localJob.UserWavPath,
-                                    StringComparison.OrdinalIgnoreCase))
+                            if (localJob.IsSynthesizedSilence)
                             {
-                                tempGainWav = wavForEncode;
+                                // 4 seconds is plenty - the MetaSound
+                                // loops the buffer in-engine, so even a
+                                // short silence buffer gives the player
+                                // uninterrupted quiet inside the comfort
+                                // zone.
+                                wavForEncode = AudioPreprocessor.GenerateSilenceAsync(
+                                    localPaths,
+                                    4.0,
+                                    Log).GetAwaiter().GetResult();
+                                tempWav = wavForEncode;
+                            }
+                            else
+                            {
+                                wavForEncode = AudioPreprocessor.ApplyGainAsync(
+                                    localPaths,
+                                    localJob.UserWavPath,
+                                    localJob.UserVolume,
+                                    Log).GetAwaiter().GetResult();
+                                if (!string.Equals(wavForEncode, localJob.UserWavPath,
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    tempWav = wavForEncode;
+                                }
                             }
 
                             var patcher = new ShipMusicPatcher { Log = Log };
@@ -1245,14 +1269,16 @@ namespace Windrose.Quartermaster.Core
                                 stagingDir,
                                 localSlot,
                                 usmapPath);
-                            r.OriginalFilename = localJob.OriginalFilename;
+                            r.OriginalFilename = localJob.IsSynthesizedSilence
+                                ? "(muted)"
+                                : localJob.OriginalFilename;
                             bonfireMusicPatchResult = r;
                         }
                         finally
                         {
-                            if (tempGainWav != null)
+                            if (tempWav != null)
                             {
-                                try { File.Delete(tempGainWav); }
+                                try { File.Delete(tempWav); }
                                 catch { /* best-effort temp cleanup */ }
                             }
                         }
@@ -2951,21 +2977,6 @@ namespace Windrose.Quartermaster.Core
             var bm = profile.Globals != null ? profile.Globals.BonfireMusic : null;
             if (bm == null) return null;
 
-            var dir = _paths.ProfileBonfireMusicDir(profile.Id);
-            var userWav = Path.Combine(dir, "audio.wav");
-            if (!File.Exists(userWav))
-            {
-                // Profile carries the metadata but the on-disk WAV is
-                // gone. Falling back to vanilla here avoids cryptic
-                // patcher errors deeper in the pipeline.
-                if (!string.IsNullOrEmpty(bm.OriginalFilename))
-                {
-                    LogLine("BonfireMusic: '" + bm.OriginalFilename
-                            + "' is configured but its audio.wav is missing in "
-                            + dir + " - falling back to vanilla 'The Hearth'.");
-                }
-                return null;
-            }
             // Volume = null preserves the vanilla loudness (treated as
             // 1.0 here). The patcher applies the gain as a pre-encode
             // ffmpeg filter so volume=0 produces digital silence -
@@ -2974,11 +2985,59 @@ namespace Windrose.Quartermaster.Core
             double vol = bm.Volume ?? 1.0;
             if (vol < 0.0) vol = 0.0;
             if (vol > 1.0) vol = 1.0;
+
+            var dir = _paths.ProfileBonfireMusicDir(profile.Id);
+            var userWav = Path.Combine(dir, "audio.wav");
+            bool hasUserWav = File.Exists(userWav);
+
+            if (!hasUserWav)
+            {
+                // No upload on disk - two interesting sub-cases:
+                //   1) The profile knows about a prior upload by name
+                //      (OriginalFilename set). The bytes are gone, so
+                //      we fall back to vanilla and warn.
+                //   2) The profile carries no filename, the slider was
+                //      just dialed to 0%. That's the explicit
+                //      "mute vanilla 'The Hearth'" request - we
+                //      synthesize a silence WAV at build time so the
+                //      SWAV swap still happens, producing silent
+                //      playback. Volume == 1.0 with no upload is a
+                //      no-op (vanilla plays untouched).
+                bool hasFilename = !string.IsNullOrEmpty(bm.OriginalFilename);
+                bool wantsMute = vol <= 1e-4;
+                if (hasFilename)
+                {
+                    LogLine("BonfireMusic: '" + bm.OriginalFilename
+                            + "' is configured but its audio.wav is missing in "
+                            + dir + " - falling back to vanilla 'The Hearth'.");
+                    return null;
+                }
+                if (!wantsMute)
+                {
+                    // No upload + non-zero volume = nothing useful to
+                    // do. Vanilla "The Hearth" plays at its normal
+                    // level.
+                    return null;
+                }
+                // Mute path: signal the build block to synthesize a
+                // silence WAV. UserVolume is irrelevant here (silence
+                // times any gain is still silence) but we propagate
+                // the 0.0 for consistent build-log output.
+                return new BonfireMusicJob
+                {
+                    UserWavPath = null,
+                    OriginalFilename = null,
+                    UserVolume = 0.0,
+                    IsSynthesizedSilence = true,
+                };
+            }
+
             return new BonfireMusicJob
             {
                 UserWavPath = userWav,
                 OriginalFilename = bm.OriginalFilename,
                 UserVolume = vol,
+                IsSynthesizedSilence = false,
             };
         }
 
@@ -3912,9 +3971,21 @@ namespace Windrose.Quartermaster.Core
     // hasn't touched the slider yet.
     public sealed class BonfireMusicJob
     {
+        // Path of the staged user-provided WAV (44.1 kHz / stereo /
+        // 16-bit PCM). Null when IsSynthesizedSilence is true - the
+        // build block then generates a transient silence WAV instead.
         public string UserWavPath;
         public string OriginalFilename;
         public double UserVolume = 1.0;
+
+        // True when the resolver decided to mute vanilla "The Hearth"
+        // without a user upload (Volume == 0 + no audio.wav on disk).
+        // In that case UserWavPath is null and the build block calls
+        // AudioPreprocessor.GenerateSilenceAsync() to produce a stereo
+        // 44.1 kHz silence WAV which is then fed through the regular
+        // BinkAudio encode + SoundWave splice. Lets the user mute the
+        // hearth theme without having to upload a silent dummy file.
+        public bool IsSynthesizedSilence;
     }
 
     // Standalone summary of "bonfire-music got replaced in this build".
