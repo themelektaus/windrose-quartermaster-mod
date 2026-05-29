@@ -126,6 +126,17 @@ namespace Windrose.Quartermaster.Core
             return Path.Combine(Profiles, profileId, "ShipMusicAdd", trackKey);
         }
 
+        // Per-profile single-slot folder for the user-uploaded audio that
+        // replaces the vanilla bonfire / building-center hearth theme
+        // (SWAV_Music_BuildingCenter_v3). Single slot (unlike ShipMusic's
+        // 10 per-stem subdirs), so no further nesting. File layout:
+        //   <Profiles>/<id>/BonfireMusic/audio.wav
+        public string ProfileBonfireMusicDir(string profileId)
+        {
+            if (string.IsNullOrEmpty(profileId)) throw new ArgumentNullException("profileId");
+            return Path.Combine(Profiles, profileId, "BonfireMusic");
+        }
+
         // Per-profile per-building folder for the user-uploaded audio that
         // backs the "Audio" component preset. The file is always stored as
         // audio.wav after AudioPreprocessor cleaned it to 44.1 kHz /

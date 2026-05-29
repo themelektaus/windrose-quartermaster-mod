@@ -402,6 +402,30 @@ public static class BuildEndpoint
                         excludedSlots,
                     };
                 }
+                // Bonfire-music: single-slot SWAV swap for "The Hearth".
+                // null when the profile didn't configure a custom hearth
+                // theme. Mirror of the per-slot ship-music payload shape
+                // so the frontend can reuse the same renderer.
+                object bonfireMusicInfo = null;
+                if (result.BonfireMusicResult != null
+                    && result.BonfireMusicResult.SlotResult != null)
+                {
+                    var bm = result.BonfireMusicResult;
+                    var s = bm.SlotResult;
+                    bonfireMusicInfo = new
+                    {
+                        ucasPath = bm.UcasPath,
+                        utocPath = bm.UtocPath,
+                        stem = s.SlotStem,
+                        title = s.SlotTitle,
+                        originalFilename = s.OriginalFilename,
+                        sampleRate = s.SampleRate,
+                        numChannels = s.NumChannels,
+                        durationSeconds = s.DurationSeconds,
+                        ubulkSize = s.UbulkSize,
+                        diagnostic = s.FormatDiagnostic(),
+                    };
+                }
                 // Crop growth: when active, scales every DA_Crop_*.json
                 // GrowthDuration by the user multiplier. Carries the
                 // count of patched crops + a representative vanilla -> effective
@@ -532,6 +556,7 @@ public static class BuildEndpoint
                     cooldowns = cooldownsInfo,
                     shipMusic = shipMusicInfo,
                     shipMusicAdd = shipMusicAddInfo,
+                    bonfireMusic = bonfireMusicInfo,
                     lighting = lightingInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,

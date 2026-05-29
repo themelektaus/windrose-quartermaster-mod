@@ -689,6 +689,11 @@ function applyProfileToUI() {
     syncMinimapInputState();
     syncBonfireInputState();
     syncPickaxeInputState();
+    // Bonfire-music card: fire-and-forget refresh against the server
+    // (the on-disk WAV is the source of truth, not state.current).
+    if (typeof refreshBonfireMusicStatus === 'function') {
+        refreshBonfireMusicStatus();
+    }
     renderProfileMeta();
 }
 
@@ -1220,6 +1225,14 @@ async function onBuild() {
                     }
                 }
             }
+            if (data.bonfireMusic) {
+                const bm = data.bonfireMusic;
+                const name = bm.originalFilename || '(unnamed)';
+                const diag = bm.diagnostic ? ' [' + bm.diagnostic + ']' : '';
+                lines.push({ kind: 'ok', msg:
+                    'DONE - bonfire music replaced: ' + (bm.title || 'The Hearth')
+                    + ' -> ' + name + diag });
+            }
             if (data.lighting) {
                 const lg = data.lighting;
                 const overall = (lg.overallMultiplier != null ? lg.overallMultiplier : 1.0).toFixed(2);
@@ -1288,7 +1301,7 @@ async function onBuild() {
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
-                && !data.shipMusic && !data.shipMusicAdd && !data.lighting
+                && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.cropGrowth && !data.cookingDuration
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });

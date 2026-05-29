@@ -102,6 +102,7 @@ namespace Windrose.Quartermaster.Core
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
         public BonfireRadiusGlobal BonfireRadius;
+        public BonfireMusicGlobal BonfireMusic;
         public PickaxeRangeGlobal PickaxeRange;
         public CooldownsGlobal Cooldowns;
         public ProductionTimesGlobal ProductionTimes;
@@ -269,6 +270,48 @@ namespace Windrose.Quartermaster.Core
         // Final scaling factor applied to both vanilla influence floats.
         // null OR == 1.0 -> no bonfire patch is built for this profile.
         public double? Multiplier;
+    }
+
+    // Bonfire / building-center hearth-theme music override. Replaces
+    // R5/Content/Audio/Game/Music/SWAV_Music_BuildingCenter_v3 (a.k.a.
+    // "The Hearth") with a user-supplied audio track. The asset is
+    // referenced by MS_Music_BuildingCenter (the MetaSound that the
+    // BP_BuildingCenter actor starts on comfort-zone enter); replacing
+    // the SWAV bytes alone propagates to every playback context the
+    // MS uses without touching the MetaSound graph or the MIX snapshot.
+    //
+    // Reuses the same pipeline as ship-music slot overrides: user audio
+    // -> AudioPreprocessor (44.1 kHz stereo 16-bit PCM WAV) ->
+    // BinkAudioEncoder -> SoundWave_BinkInline template splice with the
+    // NameMap rename targeting the vanilla SWAV stem.
+    //
+    // Storage: <Profiles>/<id>/BonfireMusic/audio.wav (single slot, no
+    // sub-dirs since there's only one hearth theme).
+    //
+    // null OR OriginalFilename empty + missing audio.wav on disk = no
+    // bonfire-music source contributes to the IoStore composite (vanilla
+    // "The Hearth" plays).
+    //
+    // Note: the influence range around the building center is controlled
+    // separately by BonfireRadiusGlobal above. Volume tweaking would have
+    // to flow through MS_Music_BuildingCenter (MetaSound graph) or the
+    // MIX_BuildingCenter SoundMix snapshot - neither of which we touch in
+    // v1, so Volume here is stored but not yet applied at build time.
+    // The field stays on the schema so a future patcher can pick it up
+    // without a profile migration.
+    public sealed class BonfireMusicGlobal
+    {
+        // Original filename the user picked, e.g. "MyHearthTheme.mp3".
+        // Display-only - the patcher reads the preprocessed audio.wav
+        // from <Profiles>/<id>/BonfireMusic/.
+        public string OriginalFilename;
+
+        // User-set absolute VolumeMultiplier. Stored for forward-compat
+        // (see class comment); current build pipeline ignores this field
+        // because the vanilla volume lives in the MetaSound and the MIX
+        // snapshot, not on the SWAV itself. Range exposed to the UI:
+        // 0.0 .. 1.0. Default is null (= vanilla baseline).
+        public double? Volume;
     }
 
     // Pickaxe range / reach patch. Multiplies the TraceScaleModifier on each

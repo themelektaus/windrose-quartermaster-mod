@@ -121,6 +121,13 @@ public static class ProfilesEndpoint
                     try { Directory.Delete(shipMusicRoot, recursive: true); }
                     catch { /* best-effort cleanup; not fatal */ }
                 }
+                // BonfireMusic subtree (single slot for the hearth theme).
+                var bonfireMusicRoot = paths.ProfileBonfireMusicDir(id);
+                if (Directory.Exists(bonfireMusicRoot))
+                {
+                    try { Directory.Delete(bonfireMusicRoot, recursive: true); }
+                    catch { /* best-effort cleanup; not fatal */ }
+                }
             }
             catch (Exception ex)
             {
@@ -472,6 +479,28 @@ public static class ProfilesEndpoint
                         {
                             var fname = Path.GetFileName(file);
                             File.Copy(file, Path.Combine(dstSlotDir, fname), overwrite: true);
+                        }
+                    }
+                }
+            }
+            catch { /* best-effort */ }
+
+            // Same story for the BonfireMusic single-slot dir - the
+            // cloned BonfireMusicGlobal.OriginalFilename refers to bytes
+            // on disk that need to live under the clone's profile id.
+            try
+            {
+                if (src.Globals != null && src.Globals.BonfireMusic != null)
+                {
+                    var srcBmDir = paths.ProfileBonfireMusicDir(src.Id);
+                    if (Directory.Exists(srcBmDir))
+                    {
+                        var dstBmDir = paths.ProfileBonfireMusicDir(clone.Id);
+                        Directory.CreateDirectory(dstBmDir);
+                        foreach (var file in Directory.EnumerateFiles(srcBmDir, "*", SearchOption.TopDirectoryOnly))
+                        {
+                            var fname = Path.GetFileName(file);
+                            File.Copy(file, Path.Combine(dstBmDir, fname), overwrite: true);
                         }
                     }
                 }
@@ -1467,6 +1496,193 @@ public static class ProfilesEndpoint
             catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
             return Results.NoContent();
         });
+
+        // ---- Bonfire / building-center hearth music ("The Hearth") ----
+        //
+        // GET    /api/profiles/{id}/bonfire-music
+        //   Returns the current upload state (filename + WAV size +
+        //   on-disk state). Single slot, no per-stem subdir.
+        //
+        // POST   /api/profiles/{id}/bonfire-music
+        //   multipart/form-data with key "audio" (file). Preprocessed to
+        //   44.1 kHz / stereo / 16-bit PCM via AudioPreprocessor, stored
+        //   as <Profiles>/<id>/BonfireMusic/audio.wav. Creates / updates
+        //   the BonfireMusic global. Replaces any prior upload.
+        //
+        // DELETE /api/profiles/{id}/bonfire-music
+        //   Drops the on-disk dir + clears the global. Idempotent
+        //   (returns 204 when already vanilla).
+        app.MapGet("/api/profiles/{id}/bonfire-music", (string id) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            var bm = profile.Globals?.BonfireMusic;
+            var dir = paths.ProfileBonfireMusicDir(id);
+            var wavPath = Path.Combine(dir, "audio.wav");
+            bool wavPresent = File.Exists(wavPath);
+            long wavBytes = 0;
+            if (wavPresent)
+            {
+                try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+            }
+            return Results.Json(new
+            {
+                state = bm == null ? "vanilla"
+                      : wavPresent ? "custom"
+                      : "broken",
+                originalFilename = bm?.OriginalFilename,
+                title = BonfireMusicSlot.Title,
+                stem = BonfireMusicSlot.Stem,
+                wavBytes,
+            });
+        });
+
+        app.MapPost("/api/profiles/{id}/bonfire-music",
+            async (string id, HttpRequest req) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            if (!req.HasFormContentType)
+                return Results.BadRequest(new { error = "Expected multipart/form-data" });
+
+            IFormFileCollection files;
+            string originalFilename;
+            try
+            {
+                var form = await req.ReadFormAsync();
+                files = form.Files;
+                originalFilename = form["filename"].ToString();
+            }
+            catch (Exception ex)
+            {
+                return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
+            }
+
+            IFormFile audioFile = files.GetFile("audio")
+                ?? files.GetFile("wav")
+                ?? files.FirstOrDefault(f => f.FileName != null
+                    && AudioPreprocessor.IsSupportedExtension(f.FileName));
+            if (audioFile == null)
+            {
+                return Results.BadRequest(new {
+                    error = "Need a single audio file (" + AudioPreprocessor.SupportedExtensionsList() + ")."
+                });
+            }
+            if (!AudioPreprocessor.IsSupportedExtension(audioFile.FileName))
+            {
+                return Results.BadRequest(new {
+                    error = "Unsupported audio format: " + audioFile.FileName
+                          + ". Allowed: " + AudioPreprocessor.SupportedExtensionsList() + "."
+                });
+            }
+
+            // 150 MB cap matches the ship-music override endpoint (same
+            // pipeline + storage class - users may want a long hearth
+            // theme so the cap is generous).
+            const long maxBytes = 150L * 1024 * 1024;
+            if (audioFile.Length > maxBytes)
+                return Results.BadRequest(new {
+                    error = "File too large: " + audioFile.FileName
+                          + " (" + audioFile.Length + " bytes, cap " + maxBytes + ")"
+                });
+
+            var srcExt = Path.GetExtension(audioFile.FileName);
+            if (string.IsNullOrEmpty(srcExt)) srcExt = ".bin";
+            var stagedSrc = Path.Combine(Path.GetTempPath(),
+                "qm_hearth_" + Guid.NewGuid().ToString("N") + srcExt);
+            await SaveFormFile(audioFile, stagedSrc);
+
+            var dir = paths.ProfileBonfireMusicDir(id);
+            Directory.CreateDirectory(dir);
+            var wavOut = Path.Combine(dir, "audio.wav");
+
+            AudioPreprocessor.Result prep;
+            try
+            {
+                prep = await AudioPreprocessor.PreprocessAsync(
+                    paths, stagedSrc, wavOut, log: null);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            finally
+            {
+                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+            }
+
+            WavInfo.Info wavInfo;
+            try { wavInfo = WavInfo.Read(wavOut); }
+            catch (Exception ex)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Preprocessed WAV failed validation: " + ex.Message
+                });
+            }
+            if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
+            {
+                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                return Results.BadRequest(new {
+                    error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
+                          + wavInfo.Describe() + ")"
+                });
+            }
+
+            if (string.IsNullOrEmpty(originalFilename))
+                originalFilename = audioFile.FileName ?? BonfireMusicSlot.Stem + srcExt;
+
+            if (profile.Globals == null) profile.Globals = new ProfileGlobals();
+            // Preserve any pre-existing Volume (currently stored but not
+            // wired into the patcher - see BonfireMusicGlobal docs).
+            double? priorVolume = profile.Globals.BonfireMusic?.Volume;
+            profile.Globals.BonfireMusic = new BonfireMusicGlobal
+            {
+                OriginalFilename = originalFilename,
+                Volume = priorVolume,
+            };
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.Json(new
+            {
+                stem = BonfireMusicSlot.Stem,
+                title = BonfireMusicSlot.Title,
+                originalFilename,
+                wavBytes = new FileInfo(wavOut).Length,
+                durationSeconds = wavInfo.DurationSeconds,
+                transcoded = prep.WasTranscoded,
+                sourceFormat = prep.SourceFormat,
+            });
+        });
+
+        app.MapDelete("/api/profiles/{id}/bonfire-music", (string id) =>
+        {
+            var profile = store.Load(id);
+            if (profile == null) return Results.NotFound(new { error = "Profile not found", id });
+
+            var dir = paths.ProfileBonfireMusicDir(id);
+            if (Directory.Exists(dir))
+            {
+                try { Directory.Delete(dir, recursive: true); }
+                catch { /* best-effort */ }
+            }
+
+            if (profile.Globals != null)
+            {
+                profile.Globals.BonfireMusic = null;
+            }
+
+            try { store.Save(profile); }
+            catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+
+            return Results.NoContent();
+        });
     }
 
     static async Task SaveFormFile(IFormFile file, string diskPath)
@@ -1534,6 +1750,13 @@ public static class ProfilesEndpoint
                 : new BonfireRadiusGlobal
                 {
                     Multiplier = g.BonfireRadius.Multiplier,
+                },
+            BonfireMusic = g.BonfireMusic == null
+                ? null
+                : new BonfireMusicGlobal
+                {
+                    OriginalFilename = g.BonfireMusic.OriginalFilename,
+                    Volume = g.BonfireMusic.Volume,
                 },
             PickaxeRange = g.PickaxeRange == null
                 ? null

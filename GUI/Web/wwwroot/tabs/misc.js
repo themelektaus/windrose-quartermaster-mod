@@ -261,6 +261,145 @@ function setNoSmokeFromUI() {
     markDirty();
 }
 
+// ---------------------------------------------------------------------------
+// Bonfire / building-center hearth-music ("The Hearth") replacement.
+//
+// Single-slot SWAV swap. The card on the Misc tab carries:
+//   - A file-input (multi-format accept) that POSTs to
+//     /api/profiles/{id}/bonfire-music with the audio bytes.
+//   - A status line that reflects the on-disk + profile state:
+//       * "vanilla"   - no upload yet, vanilla "The Hearth" plays
+//       * "ready"     - WAV on disk + filename in profile; build picks it up
+//       * "broken"    - filename in profile but WAV missing on disk
+//   - A "Clear" link that DELETEs the upload.
+//
+// Unlike the volume / multiplier cards on this tab, this one auto-saves
+// the audio bytes server-side (the upload POST persists the WAV +
+// updates BonfireMusicGlobal.OriginalFilename atomically). The status
+// refresh is best-effort and never marks the profile dirty: the
+// underlying bytes ARE the persistence, the in-memory state.current is
+// just a mirror.
+// ---------------------------------------------------------------------------
+function bonfireMusicStatusHtml(meta) {
+    if (!meta || meta.state === 'vanilla' || !meta.originalFilename) {
+        return '<span class="bonfire-music-vanilla">No custom audio - vanilla "The Hearth" plays.</span>';
+    }
+    const fname = escapeHtml(meta.originalFilename);
+    if (meta.state === 'broken') {
+        return '<span class="bonfire-music-broken">Filename "' + fname
+             + '" is set on the profile but its audio.wav is missing - re-upload or clear.</span>'
+             + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
+    }
+    let sizeNote = '';
+    if (typeof meta.wavBytes === 'number' && meta.wavBytes > 0) {
+        sizeNote = ' (' + Math.round(meta.wavBytes / 1024) + ' KB)';
+    }
+    return '<span class="bonfire-music-ready">Custom: ' + fname + sizeNote + '</span>'
+         + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
+}
+
+// Renders the status line + binds the Clear handler. Called from
+// applyProfileToUI() on profile load and from upload/clear handlers
+// after they mutate server-side.
+function renderBonfireMusicStatus(meta) {
+    const el = document.getElementById('bonfire-music-status');
+    if (!el) return;
+    el.innerHTML = bonfireMusicStatusHtml(meta);
+    const clearBtn = document.getElementById('bonfire-music-clear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearBonfireMusic);
+    }
+}
+
+// Pulls fresh meta from the server. Best-effort: a failure just leaves
+// the existing status line in place (the user can re-upload to fix any
+// stale rendering).
+async function refreshBonfireMusicStatus() {
+    if (!state.current || !state.current.id) {
+        renderBonfireMusicStatus(null);
+        return;
+    }
+    try {
+        const meta = await api('GET',
+            '/api/profiles/' + encodeURIComponent(state.current.id) + '/bonfire-music');
+        renderBonfireMusicStatus(meta);
+    } catch (_) {
+        // Fall back to whatever the profile carries inline so the user
+        // sees something rather than a blank card on a transient error.
+        const bm = state.current.globals && state.current.globals.bonfireMusic;
+        renderBonfireMusicStatus(bm
+            ? { state: 'broken', originalFilename: bm.originalFilename }
+            : null);
+    }
+}
+
+async function onBonfireMusicFileChange(e) {
+    const t = e.target;
+    if (!t || t.tagName !== 'INPUT' || t.type !== 'file') return;
+    if (!t.files || t.files.length === 0) return;
+    const file = t.files[0];
+    if (!state.current || !state.current.id) {
+        await alert('Save the profile first so it has an id, then upload.');
+        try { t.value = ''; } catch (_) {}
+        return;
+    }
+    const statusEl = document.getElementById('bonfire-music-status');
+    if (statusEl) {
+        statusEl.innerHTML = '<em>Uploading + transcoding ' + escapeHtml(file.name) + '...</em>';
+    }
+    try {
+        const form = new FormData();
+        form.append('audio', file, file.name);
+        const url = '/api/profiles/' + encodeURIComponent(state.current.id) + '/bonfire-music';
+        const resp = await fetch(url, { method: 'POST', body: form });
+        if (!resp.ok) {
+            let err = 'HTTP ' + resp.status;
+            try { const j = await resp.json(); if (j && j.error) err = j.error; } catch (_) {}
+            throw new Error(err);
+        }
+        const dto = await resp.json();
+        // Mirror the server-side mutation into state.current so a
+        // subsequent loadProfile() round-trip would be a no-op. The
+        // upload itself is auto-saved, so we do NOT call markDirty().
+        state.current.globals = state.current.globals || {};
+        state.current.globals.bonfireMusic = {
+            originalFilename: dto.originalFilename,
+            volume: (state.current.globals.bonfireMusic
+                  && state.current.globals.bonfireMusic.volume) || null,
+        };
+        renderBonfireMusicStatus({
+            state: 'custom',
+            originalFilename: dto.originalFilename,
+            wavBytes: dto.wavBytes,
+        });
+    } catch (err) {
+        await alert('Bonfire-music upload failed: ' + (err && err.message ? err.message : err));
+        // Reload meta to recover the displayed state.
+        refreshBonfireMusicStatus();
+    } finally {
+        try { t.value = ''; } catch (_) {}
+    }
+}
+
+async function clearBonfireMusic() {
+    if (!state.current || !state.current.id) return;
+    const ok = await confirm('Remove custom bonfire music and revert to vanilla "The Hearth"?');
+    if (!ok) return;
+    try {
+        const url = '/api/profiles/' + encodeURIComponent(state.current.id) + '/bonfire-music';
+        const resp = await fetch(url, { method: 'DELETE' });
+        if (!resp.ok && resp.status !== 204) {
+            let err = 'HTTP ' + resp.status;
+            try { const j = await resp.json(); if (j && j.error) err = j.error; } catch (_) {}
+            throw new Error(err);
+        }
+        if (state.current.globals) state.current.globals.bonfireMusic = null;
+        renderBonfireMusicStatus(null);
+    } catch (err) {
+        await alert('Could not clear bonfire music: ' + (err && err.message ? err.message : err));
+    }
+}
+
 function bindMiscHandlers() {
     for (const set of STACK_SIZE_SETS) {
         for (const r of document.querySelectorAll('input[name="' + set.name + '"]')) {
@@ -285,4 +424,6 @@ function bindMiscHandlers() {
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);
     document.getElementById('pickaxe-enabled').addEventListener('change', setPickaxeRangeFromUI);
     document.getElementById('pickaxe-multiplier').addEventListener('input', setPickaxeRangeFromUI);
+    const bmInput = document.getElementById('bonfire-music-upload');
+    if (bmInput) bmInput.addEventListener('change', onBonfireMusicFileChange);
 }

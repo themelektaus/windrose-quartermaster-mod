@@ -456,6 +456,8 @@ namespace Windrose.Quartermaster.Core
                 bool cooldownsActive = cooldownJobs.Count > 0;
                 var shipMusicJobs = ResolveShipMusicJobs(profile);
                 bool shipMusicActive = shipMusicJobs.Count > 0;
+                var bonfireMusicJob = ResolveBonfireMusicJob(profile);
+                bool bonfireMusicActive = bonfireMusicJob != null;
                 var shipMusicAddJobs = ResolveShipMusicAddJobs(profile);
                 bool shipMusicAddActive = shipMusicAddJobs.Count > 0;
                 // Exclusions of vanilla shanty slots (Profile.Globals.ShipMusic
@@ -473,7 +475,7 @@ namespace Windrose.Quartermaster.Core
                 // re-derive activity flag from the same list so the
                 // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || lightingActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // If the profile carries CustomBuildings that all got
@@ -516,9 +518,10 @@ namespace Windrose.Quartermaster.Core
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
                 ShipMusicAddResult shipMusicAddResult = null;
+                BonfireMusicResult bonfireMusicResult = null;
                 LightingResult lightingResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || lightingActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -530,6 +533,7 @@ namespace Windrose.Quartermaster.Core
                         shipMusicJobs,
                         shipMusicAddJobs,
                         shipMusicExcludedIndices,
+                        bonfireMusicJob,
                         lightingJobs,
                         iconBakeJobs,
                         buildingsActive,
@@ -541,6 +545,7 @@ namespace Windrose.Quartermaster.Core
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
                     shipMusicAddResult = compositeResult.ShipMusicAdd;
+                    bonfireMusicResult = compositeResult.BonfireMusic;
                     lightingResult = compositeResult.Lighting;
                     iconBakeResults = compositeResult.Icons;
                     buildingResults = compositeResult.Buildings;
@@ -697,6 +702,7 @@ namespace Windrose.Quartermaster.Core
                     CooldownsResult = cooldownsResult,
                     ShipMusicResult = shipMusicResult,
                     ShipMusicAddResult = shipMusicAddResult,
+                    BonfireMusicResult = bonfireMusicResult,
                     LightingResult = lightingResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
@@ -759,6 +765,7 @@ namespace Windrose.Quartermaster.Core
             List<ShipMusicJob> shipMusicJobs,
             List<ShipMusicAddJob> shipMusicAddJobs,
             IReadOnlyCollection<int> shipMusicExcludedIndices,
+            BonfireMusicJob bonfireMusicJob,
             List<LightingJob> lightingJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
@@ -1163,6 +1170,62 @@ namespace Windrose.Quartermaster.Core
                         });
                     }
                 }
+            }
+
+            // Bonfire-music ("The Hearth") replacement: single-slot
+            // SWAV swap for SWAV_Music_BuildingCenter_v3. Re-uses the
+            // ShipMusicPatcher (the patcher only cares about a SlotInfo
+            // with Stem + VirtualUassetPath) so the WAV -> BinkAudio ->
+            // SoundWave-template pipeline is identical to the shanty
+            // replacements above. The MetaSound that references the
+            // SWAV (MS_Music_BuildingCenter) and the MIX snapshot are
+            // left untouched - swapping the SWAV bytes propagates
+            // automatically through the MetaSound graph.
+            ShipMusicPatchResult bonfireMusicPatchResult = null;
+            if (bonfireMusicJob != null)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                var encoderPath = _paths.BinkAudioEncoderPath;
+                var templateUassetPath = _paths.ShipMusicTemplateUasset;
+                var templateUexpPath = _paths.ShipMusicTemplateUexp;
+                if (!File.Exists(encoderPath))
+                    throw new FileNotFoundException(
+                        "Bink Audio encoder not found at " + encoderPath
+                        + " - bonfire-music ('The Hearth') cannot be built without it.");
+                if (!File.Exists(templateUassetPath) || !File.Exists(templateUexpPath))
+                    throw new FileNotFoundException(
+                        "Ship-music template missing under " + Path.GetDirectoryName(templateUassetPath)
+                        + " - expected SoundWave_BinkInline.uasset + .uexp"
+                        + " (also required for the bonfire-music swap).");
+
+                LogLine("BonfireMusic source: 1 custom hearth theme"
+                        + (string.IsNullOrEmpty(bonfireMusicJob.OriginalFilename)
+                            ? ""
+                            : " ('" + bonfireMusicJob.OriginalFilename + "')"));
+                var slot = BonfireMusicSlot.ToSlotInfo();
+                var localJob = bonfireMusicJob;
+                var localSlot = slot;
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "bonfire-music",
+                    // Pre-staged via the callback below; no retoc to-legacy
+                    // sweep needed (same pattern as the shanty SWAV jobs).
+                    InputDir = null,
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new ShipMusicPatcher { Log = Log };
+                        var r = patcher.PatchFromWav(
+                            localJob.UserWavPath,
+                            templateUassetPath,
+                            templateUexpPath,
+                            encoderPath,
+                            stagingDir,
+                            localSlot,
+                            usmapPath);
+                        r.OriginalFilename = localJob.OriginalFilename;
+                        bonfireMusicPatchResult = r;
+                    },
+                });
             }
 
             // Ship-music DA rewrite: covers two distinct features that
@@ -2092,6 +2155,19 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            BonfireMusicResult bonfireMusicOut = null;
+            if (bonfireMusicPatchResult != null)
+            {
+                bonfireMusicOut = new BonfireMusicResult
+                {
+                    Enabled = true,
+                    SlotResult = bonfireMusicPatchResult,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             LightingResult lightingOut = null;
             if (lightingPatchResults.Count > 0)
             {
@@ -2116,6 +2192,7 @@ namespace Windrose.Quartermaster.Core
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
                 ShipMusicAdd = shipMusicAddOut,
+                BonfireMusic = bonfireMusicOut,
                 Lighting = lightingOut,
                 Icons = iconResults,
                 Buildings = buildingResults,
@@ -2133,6 +2210,7 @@ namespace Windrose.Quartermaster.Core
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;
             public ShipMusicAddResult ShipMusicAdd;
+            public BonfireMusicResult BonfireMusic;
             public LightingResult Lighting;
             public List<IconBakerPatcher.BakeResult> Icons;
             public List<BuildingPatchResult> Buildings;
@@ -2828,6 +2906,41 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
+        // Resolves the single bonfire-music ("The Hearth") replacement
+        // slot. Returns null when:
+        //   - profile has no BonfireMusic global, OR
+        //   - the audio.wav file is missing on disk (logs a warning so
+        //     the user notices their setup is half-configured).
+        // Otherwise returns one BonfireMusicJob pointing at the on-disk
+        // WAV. The build pipeline activates the bonfire-music source
+        // whenever this returns non-null.
+        BonfireMusicJob ResolveBonfireMusicJob(Profile profile)
+        {
+            var bm = profile.Globals != null ? profile.Globals.BonfireMusic : null;
+            if (bm == null) return null;
+
+            var dir = _paths.ProfileBonfireMusicDir(profile.Id);
+            var userWav = Path.Combine(dir, "audio.wav");
+            if (!File.Exists(userWav))
+            {
+                // Profile carries the metadata but the on-disk WAV is
+                // gone. Falling back to vanilla here avoids cryptic
+                // patcher errors deeper in the pipeline.
+                if (!string.IsNullOrEmpty(bm.OriginalFilename))
+                {
+                    LogLine("BonfireMusic: '" + bm.OriginalFilename
+                            + "' is configured but its audio.wav is missing in "
+                            + dir + " - falling back to vanilla 'The Hearth'.");
+                }
+                return null;
+            }
+            return new BonfireMusicJob
+            {
+                UserWavPath = userWav,
+                OriginalFilename = bm.OriginalFilename,
+            };
+        }
+
         // Resolves added-track jobs (extends shanty roster beyond vanilla 10).
         // Each entry in profile.Globals.ShipMusicAdd.Tracks consumes one
         // free slot starting at index 11; missing audio.wav or unsafe
@@ -3491,6 +3604,12 @@ namespace Windrose.Quartermaster.Core
         // ShipMusicAddTrackResult per added track plus the shared
         // triplet paths.
         public ShipMusicAddResult ShipMusicAddResult;
+        // Bonfire-music ("The Hearth") replacement result. null when the
+        // profile didn't configure a custom hearth theme (or the on-disk
+        // audio.wav was missing). When non-null, carries the single
+        // ShipMusicPatchResult for the replaced SWAV_Music_BuildingCenter_v3
+        // plus the shared triplet paths.
+        public BonfireMusicResult BonfireMusicResult;
         // Light-radius (AttenuationRadius) patch inclusion result. null
         // when no light source has an effective multiplier != 1.0. When
         // non-null, carries one LightingPatchResult per patched light
@@ -3736,6 +3855,29 @@ namespace Windrose.Quartermaster.Core
     {
         public bool Enabled;
         public List<ShipMusicPatchResult> SlotResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    // One scheduled bonfire-music ("The Hearth") replacement. Single
+    // slot, so the resolver returns null or a populated instance, no
+    // list. Mirrors ShipMusicJob's payload but without the UserVolume
+    // field because v1 does not patch the MetaSound / MIX volume.
+    public sealed class BonfireMusicJob
+    {
+        public string UserWavPath;
+        public string OriginalFilename;
+    }
+
+    // Standalone summary of "bonfire-music got replaced in this build".
+    // The patched SoundWave rides inside the SAME IoStore triplet as
+    // every other composite member, so PakPath has the same null /
+    // stub semantics as the others.
+    public sealed class BonfireMusicResult
+    {
+        public bool Enabled;
+        public ShipMusicPatchResult SlotResult;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
