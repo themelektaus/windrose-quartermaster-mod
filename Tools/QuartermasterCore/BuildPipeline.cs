@@ -495,9 +495,7 @@ namespace Windrose.Quartermaster.Core
                             + skeleton
                             + "\nFill the missing field(s) in the Buildings tab and Save, then Build again.");
                     }
-                    throw new InvalidOperationException(
-                        "Profile produces no changes - nothing to pack. "
-                        + "Adjust globals or add per-item / per-loot-table overrides.");
+                    throw new InvalidOperationException("Profile produces no changes - nothing to pack.");
                 }
 
                 // Build IoStore composite triplet FIRST (into a staging

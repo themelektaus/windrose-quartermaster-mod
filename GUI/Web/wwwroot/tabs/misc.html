@@ -126,9 +126,6 @@
       </div>
       <div class="card-content">
         <h2>Bonfire Radius</h2>
-        <p class="hint">
-          Scales the influence sphere around a placed building-center / bonfire so you can build farther from it.
-        </p>
         <div class="pickup-row">
           <label class="check-row">
             <input type="checkbox" id="bonfire-enabled">
@@ -140,25 +137,13 @@
             <span id="bonfire-radius-readout">100 m</span>
             <span id="bonfire-height-readout">60 m</span>
           </div>
+          <p class="hint" style="margin:0">
+            Scales the influence sphere around a bonfire
+          </p>
         </div>
-        <p class="hint">
-          vanilla influence radius: 50 m<br>
-          vanilla influence height: 30 m
-        </p>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-icon">
-        <div data-icon style="background-image: url(bonfire-radius.png); "></div>
-      </div>
-      <div class="card-content">
-        <h2>Bonfire Music</h2>
-        <p class="hint">
-          Replace "The Hearth", the looping theme that plays inside the bonfire / building-center comfort zone, with your own track. Upload WAV / MP3 / OGG / FLAC / M4A / AAC / OPUS; non-WAV uploads are transcoded automatically.
-        </p>
+        <h2 style="margin-top:1em">Music</h2>
         <div class="bonfire-music-controls">
-          <input type="file" id="bonfire-music-upload" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus">
+          <input type="file" id="bonfire-music-upload" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus" style="width:100%">
         </div>
         <div class="bonfire-music-status" id="bonfire-music-status">
           <span class="bonfire-music-vanilla">No custom audio - vanilla "The Hearth" plays.</span>
@@ -168,9 +153,6 @@
           <input type="range" id="bonfire-music-volume" min="0" max="100" step="5" value="100">
           <span id="bonfire-music-volume-value">100%</span>
         </div>
-        <p class="hint">
-          Volume is baked into the audio samples at build time (0% = silent / mute, 100% = unchanged). The placement range around the building-center is controlled by the Bonfire Radius slider above.
-        </p>
       </div>
     </section>
 
