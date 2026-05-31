@@ -44,6 +44,19 @@
   height: .375em;
 }
 
+@media only screen and (max-width: 1400px) {
+  :root {
+    --font-size: 13px;
+    --font-size-small: 10px;
+    --font-size-big: 15px;
+    --font-size-bigger: 18px;
+  }
+  ::-webkit-scrollbar {
+    width: .25em;
+    height: .25em;
+  }
+}
+
 ::-webkit-scrollbar-track {
   background: var(--bg-elev-2);
 }
@@ -603,7 +616,8 @@ footer.collapsed .footer-body {
 .setup-checks {
   list-style: none;
   margin: 0 0 1em;
-  padding: 0;
+  padding: 0 0 .5em 0;
+  overflow: auto;
 }
 
 .setup-checks li {
