@@ -281,13 +281,48 @@ async function boot() {
     bindSetupHandlers();
     bindHandlers();
 
-    const status = await api('GET', '/api/setup/status');
+    let status = await api('GET', '/api/setup/status');
     if (status.isReady) {
         await loadAppData();
         return;
     }
 
+    // No vanilla pak resolves => Steam auto-detect didn't find Windrose AND
+    // no manual override is set (or the override is stale / typoed). Pop the
+    // game-install modal first so the user can point us at the right folder
+    // before we even render the setup-overlay's checklist. Loop until the
+    // user either fixes the path or explicitly dismisses the modal.
+    while (!status.hasVanillaPak) {
+        const closeKind = await openGameInstallModalForBoot();
+        if (closeKind === 'dismissed') break;
+        status = await api('GET', '/api/setup/status');
+        if (status.isReady) {
+            await loadAppData();
+            return;
+        }
+    }
+
     showSetupOverlay(status);
+}
+
+// Boot-time wrapper around showGameInstallModal: prefetches the current
+// /api/game-install status (since we know we want to show it) and returns
+// 'fixed' / 'dismissed' depending on whether the user saved / cancelled.
+async function openGameInstallModalForBoot() {
+    let data = null;
+    try {
+        const r = await fetch('/api/game-install');
+        data = await r.json();
+    } catch { /* fall through with null data */ }
+    const initial = (data && data.overrideSet && data.overrideGameRoot)
+        ? data.overrideGameRoot
+        : (data && data.steamGameRoot) || '';
+    const result = await showGameInstallModal({
+        initialValue: initial,
+        status: data || {},
+    });
+    if (result === 'saved' || result === 'cleared') return 'fixed';
+    return 'dismissed';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -359,9 +394,25 @@ function renderSetupError(status) {
     const out = document.getElementById('setup-error');
     if (!status.hasVanillaPak) {
         out.hidden = false;
-        out.textContent =
-            'Cannot find a Windrose install: ' + (status.vanillaPakError || '(no detail)') +
-            '\nInstall Windrose via Steam, then click Re-check.';
+        // Plain text + a "Configure" affordance so the user doesn't have to
+        // close the overlay, open Mods, click Configure, etc. The button
+        // re-runs the same modal as the boot-time auto-show.
+        out.replaceChildren(
+            document.createTextNode(
+                'Cannot find a Windrose install: ' + (status.vanillaPakError || '(no detail)') +
+                '\nInstall Windrose via Steam, set a manual path, then click Re-check.'),
+        );
+        const wrap = document.createElement('div');
+        wrap.style.marginTop = '.6em';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Set game install path manually';
+        btn.addEventListener('click', async () => {
+            await openGameInstallModal();
+            await recheckSetup();
+        });
+        wrap.appendChild(btn);
+        out.appendChild(wrap);
         return;
     }
     if (!status.hasUsmap) {
@@ -2114,3 +2165,195 @@ async function confirmDiscardUnsavedChanges(actionLabel) {
     return false; // cancel or dismissed
 }
 window.confirmDiscardUnsavedChanges = confirmDiscardUnsavedChanges;
+
+// Custom modal for the manual Game-install override. Built on the same
+// modal-overlay class as showModal() but with a richer body:
+//   - text input pre-populated with the current override or Steam suggestion
+//   - "Detect via Steam" button that fetches /api/game-install and writes
+//     the auto-detected gameRoot into the input
+//   - validation feedback line that updates after each save attempt
+//   - Save / Clear override / Cancel buttons
+//
+// Resolves when the user closes the modal (any path). Save attempts
+// re-prompt on failure so the user can correct the path without
+// re-opening the modal.
+function showGameInstallModal({ initialValue, status }) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        const card = document.createElement('div');
+        card.className = 'modal-card game-install-modal';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Configure Windrose game install';
+        title.style.margin = '0 0 .5em 0';
+        card.appendChild(title);
+
+        const intro = document.createElement('p');
+        intro.className = 'modal-message';
+        intro.textContent = 'Point Quartermaster at the folder that contains R5\\Binaries\\Win64\\R5-Win64-Shipping.exe. Everything else (vanilla paks, ~mods folder, dxgi target) is derived from this.';
+        card.appendChild(intro);
+
+        // Steam-detect line (only shown if Steam suggested a path).
+        const steamLine = document.createElement('p');
+        steamLine.className = 'modal-message';
+        steamLine.style.color = 'var(--text-dim)';
+        steamLine.style.fontSize = '.9em';
+        if (status && status.steamGameRoot) {
+            steamLine.textContent = 'Steam auto-detect found: ' + status.steamGameRoot;
+        } else if (status && status.steamError) {
+            steamLine.textContent = 'Steam auto-detect: ' + status.steamError;
+        } else {
+            steamLine.textContent = 'Steam auto-detect found nothing.';
+        }
+        card.appendChild(steamLine);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'modal-input';
+        input.style.fontFamily = 'var(--monospace)';
+        input.style.fontSize = 'var(--monospace-size)';
+        input.value = initialValue || '';
+        input.placeholder = 'e.g. C:\\Games\\Windrose';
+        card.appendChild(input);
+
+        const feedback = document.createElement('div');
+        feedback.style.minHeight = '1.4em';
+        feedback.style.marginTop = '.4em';
+        feedback.style.fontSize = '.9em';
+        feedback.style.color = 'var(--text-dim)';
+        card.appendChild(feedback);
+
+        const actions = document.createElement('div');
+        actions.className = 'modal-actions';
+        actions.style.flexWrap = 'wrap';
+        card.appendChild(actions);
+        overlay.appendChild(card);
+
+        let closed = false;
+        const close = (value) => {
+            if (closed) return;
+            closed = true;
+            document.removeEventListener('keydown', onKey, true);
+            overlay.remove();
+            resolve(value);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close(null);
+            }
+        };
+
+        const setBusy = (busy) => {
+            for (const b of actions.querySelectorAll('button')) b.disabled = busy;
+            input.disabled = busy;
+        };
+
+        // "Detect via Steam" - re-fetches /api/game-install and writes the
+        // detected gameRoot into the input. If Steam doesn't surface
+        // anything, the feedback line explains why instead of clearing
+        // what the user already typed.
+        const detectBtn = document.createElement('button');
+        detectBtn.type = 'button';
+        detectBtn.textContent = 'Detect via Steam';
+        detectBtn.addEventListener('click', async () => {
+            setBusy(true);
+            feedback.style.color = 'var(--text-dim)';
+            feedback.textContent = 'Probing Steam...';
+            try {
+                const r = await fetch('/api/game-install');
+                const data = await r.json();
+                if (data && data.steamGameRoot) {
+                    input.value = data.steamGameRoot;
+                    feedback.textContent = 'Filled from Steam auto-detect.';
+                } else {
+                    feedback.style.color = 'var(--danger)';
+                    feedback.textContent = (data && data.steamError) || 'Steam auto-detect found nothing.';
+                }
+            } catch (err) {
+                feedback.style.color = 'var(--danger)';
+                feedback.textContent = 'Steam probe failed: ' + (err && err.message ? err.message : err);
+            } finally {
+                setBusy(false);
+            }
+        });
+        actions.appendChild(detectBtn);
+
+        // "Clear override" - DELETEs the persisted override (back to Steam
+        // auto-detect). Closes the modal with value 'cleared' so callers
+        // can react.
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.textContent = 'Clear override';
+        clearBtn.addEventListener('click', async () => {
+            setBusy(true);
+            feedback.style.color = 'var(--text-dim)';
+            feedback.textContent = 'Clearing...';
+            try {
+                const r = await fetch('/api/game-install', { method: 'DELETE' });
+                if (!r.ok) {
+                    const errPayload = await r.json().catch(() => null);
+                    feedback.style.color = 'var(--danger)';
+                    feedback.textContent = (errPayload && errPayload.error) || ('HTTP ' + r.status);
+                    setBusy(false);
+                    return;
+                }
+                close('cleared');
+            } catch (err) {
+                feedback.style.color = 'var(--danger)';
+                feedback.textContent = 'Clear failed: ' + (err && err.message ? err.message : err);
+                setBusy(false);
+            }
+        });
+        actions.appendChild(clearBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => close(null));
+        actions.appendChild(cancelBtn);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'primary';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', async () => {
+            const path = (input.value || '').trim();
+            if (!path) {
+                feedback.style.color = 'var(--danger)';
+                feedback.textContent = 'Path is empty. Enter a folder or click "Clear override" to revert to Steam auto-detect.';
+                return;
+            }
+            setBusy(true);
+            feedback.style.color = 'var(--text-dim)';
+            feedback.textContent = 'Validating...';
+            try {
+                const r = await fetch('/api/game-install', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gameRoot: path }),
+                });
+                if (!r.ok) {
+                    const errPayload = await r.json().catch(() => null);
+                    feedback.style.color = 'var(--danger)';
+                    feedback.textContent = (errPayload && errPayload.error) || ('HTTP ' + r.status);
+                    setBusy(false);
+                    return;
+                }
+                close('saved');
+            } catch (err) {
+                feedback.style.color = 'var(--danger)';
+                feedback.textContent = 'Save failed: ' + (err && err.message ? err.message : err);
+                setBusy(false);
+            }
+        });
+        actions.appendChild(saveBtn);
+
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', onKey, true);
+        input.focus();
+        input.select();
+    });
+}
+window.showGameInstallModal = showGameInstallModal;

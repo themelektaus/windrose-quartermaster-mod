@@ -8,6 +8,25 @@
   border-radius: var(--border-radius);
 }
 
+.game-install-status {
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+  word-break: break-all;
+  background: var(--bg-elev);
+  padding: .35em .5em;
+  border-radius: var(--border-radius);
+  margin-bottom: .5em;
+}
+.game-install-status.ok    { color: var(--text); }
+.game-install-status.bad   { color: var(--danger); }
+.game-install-status.steam { color: var(--text-dim); }
+.game-install-status .label {
+  display: block;
+  font-size: .85em;
+  color: var(--text-dim);
+  margin-bottom: .15em;
+}
+
 .mods-list {
   list-style: none;
   margin: 0;

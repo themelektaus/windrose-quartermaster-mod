@@ -142,6 +142,12 @@ public static class Program
         // the entry point and removes the first-request ordering risk.
         Windrose.Quartermaster.Core.WindrosePaths.ConfigureNativeDllDir(resolvedRoot);
 
+        // Prime the game-install override resolver so SteamLocator
+        // first-checks the user-configured gameRoot before walking the
+        // Steam libraryfolders.vdf. Without this call, the override file
+        // is invisible and Quartermaster behaves Steam-only.
+        Windrose.Quartermaster.Core.GameInstallOverride.ConfigureDataRoot(resolvedRoot);
+
         // Deployed EXE: seed the embedded UE5 *.usmap so setup works without
         // the user first dumping one via UE4SS. Only seed when none is
         // present so a user-supplied newer dump (e.g. after a game update)
@@ -202,6 +208,7 @@ public static class Program
         ProfilesEndpoint.Map(app, resolvedRoot);
         BuildEndpoint.Map(app, resolvedRoot);
         SetupEndpoint.Map(app, resolvedRoot);
+        GameInstallEndpoint.Map(app, resolvedRoot);
         ModsEndpoint.Map(app, resolvedRoot);
         ExportEndpoint.Map(app, resolvedRoot);
         ReportEndpoint.Map(app, resolvedRoot);

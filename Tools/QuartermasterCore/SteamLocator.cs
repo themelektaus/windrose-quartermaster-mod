@@ -116,19 +116,36 @@ namespace Windrose.Quartermaster.Core
         // Returns the absolute path to the Windrose vanilla pak by
         // probing every Steam library for
         //   <library>\steamapps\common\Windrose\R5\Content\Paks\<paknames>.
-        // Throws a descriptive error when nothing is found so callers can
-        // surface it to the user.
+        // Honors GameInstallOverride first so users without Steam (Epic,
+        // GOG, dedicated server, portable install) can point Quartermaster
+        // at any folder layout that mirrors the Steam tree. Throws a
+        // descriptive error when nothing is found so callers can surface
+        // it to the user.
         public static string FindVanillaPak()
         {
+            // 1. User-configured override wins. GameInstallOverride only
+            //    surfaces when the configured gameRoot actually resolves
+            //    to an on-disk pak, so a stale / typoed override falls
+            //    through to Steam below without throwing.
+            var fromOverride = GameInstallOverride.TryResolveVanillaPak();
+            if (!string.IsNullOrEmpty(fromOverride)) return fromOverride;
+
+            var overrideGameRoot = GameInstallOverride.GetGameRoot();
+            var hasOverride = !string.IsNullOrEmpty(overrideGameRoot);
+
             var steam = FindSteamInstallPath();
             if (string.IsNullOrEmpty(steam))
             {
                 var hint = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
                     ? "no SteamPath in HKCU and no InstallPath in HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam"
                     : "checked ~/.steam/steam, ~/.local/share/Steam and the Flatpak path";
-                throw new InvalidOperationException(
-                    $"Could not locate the Steam install ({hint}). " +
-                    "Pass an explicit pak path to override.");
+                var msg = $"Could not locate the Steam install ({hint}). " +
+                          "Pass an explicit pak path to override.";
+                if (hasOverride)
+                    msg = "Configured game install does not contain a Windrose vanilla pak " +
+                          "(<gameRoot>\\R5\\Content\\Paks\\): " + overrideGameRoot +
+                          "\nSteam auto-detect also failed: " + hint;
+                throw new InvalidOperationException(msg);
             }
             var libs = FindLibraryPaths(steam);
             foreach (var lib in libs)
@@ -144,10 +161,13 @@ namespace Windrose.Quartermaster.Core
             }
             var searched = string.Join("\n  ", libs.ConvertAll(l =>
                 Path.Combine(l, "steamapps", "common", "Windrose", "R5", "Content", "Paks")));
-            throw new InvalidOperationException(
-                "Could not find a Windrose vanilla pak under any Steam library.\n" +
-                "Searched:\n  " + searched + "\n" +
-                "Pass an explicit pak path to override.");
+            var failMsg = "Could not find a Windrose vanilla pak under any Steam library.\n" +
+                          "Searched:\n  " + searched + "\n" +
+                          "Pass an explicit pak path to override.";
+            if (hasOverride)
+                failMsg = "Configured game install does not contain a Windrose vanilla pak: " +
+                          overrideGameRoot + "\nSteam auto-detect also failed:\n  " + searched;
+            throw new InvalidOperationException(failMsg);
         }
 
         // Convenience: returns the Paks/ directory that contains the vanilla

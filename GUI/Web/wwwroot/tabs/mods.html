@@ -24,6 +24,15 @@
     </section>
 
     <section class="card">
+      <h2>Game install</h2>
+      <p class="hint">
+        Steam installs are auto-detected. For Epic / GOG / dedicated server / portable copies, set the path to your Windrose folder (the one that contains <code>R5\Binaries\Win64\R5-Win64-Shipping.exe</code>) - all build / deploy / play paths derive from it.
+      </p>
+      <div id="game-install-status" class="game-install-status">-</div>
+      <button id="btn-configure-game-install" type="button">Configure game install</button>
+    </section>
+
+    <section class="card">
       <h2>Export</h2>
       <p class="hint">
         Extracts every building asset (DataAssets, Blueprints, Static Meshes, Materials, Textures, audio cues) from the vanilla IoStore container to <code>Sources/Vanilla/R5/Content/</code> so you can clone them in the UE editor.

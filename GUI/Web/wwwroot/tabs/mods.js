@@ -137,6 +137,7 @@ function bindModsHandlers() {
     document.getElementById('mods-refresh').addEventListener('click',         loadMods);
     document.getElementById('btn-open-setup').addEventListener('click',       openSetupManually);
     document.getElementById('btn-export-building').addEventListener('click',  runBuildingExport);
+    document.getElementById('btn-configure-game-install').addEventListener('click', () => openGameInstallModal());
     document.getElementById('mods-list').addEventListener('click', e => {
         const t = e.target;
         if (t && t.dataset && t.dataset.deleteMod) {
@@ -146,7 +147,79 @@ function bindModsHandlers() {
     // Status-Probe beim Tab-Wechsel auf "Mods": ist verlustfrei (HEAD-style),
     // wird auch beim ersten Rendern ausgeloest.
     loadExportStatus();
+    loadGameInstallStatus();
 }
+
+// Probes /api/game-install (no-throw) and paints the Mods-tab Game-install
+// card so the user sees at a glance which path Quartermaster currently
+// resolves (override vs Steam auto-detect vs broken).
+async function loadGameInstallStatus() {
+    const el = document.getElementById('game-install-status');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/game-install');
+        const data = await r.json();
+        if (!r.ok) {
+            el.className = 'game-install-status bad';
+            el.textContent = 'Status check failed: HTTP ' + r.status;
+            return;
+        }
+        renderGameInstallStatus(el, data);
+    } catch (e) {
+        el.className = 'game-install-status bad';
+        el.textContent = 'Status check failed: ' + e.message;
+    }
+}
+
+function renderGameInstallStatus(el, data) {
+    if (data.isResolved) {
+        const isOverride = data.overrideSet && data.overrideValid;
+        el.className = 'game-install-status ' + (isOverride ? 'ok' : 'steam');
+        const labelText = isOverride ? 'Manual override' : 'Steam auto-detect';
+        const span = document.createElement('span');
+        span.className = 'label';
+        span.textContent = labelText;
+        el.replaceChildren(span, document.createTextNode(data.effectiveGameRoot || data.effectiveVanillaPak || '(unknown)'));
+    } else {
+        el.className = 'game-install-status bad';
+        const span = document.createElement('span');
+        span.className = 'label';
+        span.textContent = 'Not configured';
+        el.replaceChildren(span, document.createTextNode(data.effectiveError || data.overrideError || data.steamError || 'No game install found.'));
+    }
+}
+
+// Opens the manual game-install configuration modal. If the override is
+// unset, attempts a Steam auto-detect and uses that as the default value
+// the user can accept or replace. The modal stays open until the user
+// either saves a valid path, clears the override, or cancels.
+async function openGameInstallModal() {
+    let data;
+    try {
+        const r = await fetch('/api/game-install');
+        data = await r.json();
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+    } catch (e) {
+        await alert('Could not load game-install status: ' + e.message);
+        return;
+    }
+
+    // Pre-fill: prefer the user's stored override, else the Steam auto-detect
+    // suggestion, else empty.
+    const initial = (data.overrideSet && data.overrideGameRoot)
+        ? data.overrideGameRoot
+        : (data.steamGameRoot || '');
+
+    await showGameInstallModal({
+        initialValue: initial,
+        status: data,
+    });
+
+    // Refresh the Mods-tab card after the modal closes so the new state
+    // (override saved, cleared, or unchanged) shows immediately.
+    await loadGameInstallStatus();
+}
+window.openGameInstallModal = openGameInstallModal;
 
 // Liest /api/export/status und zeigt im Status-DIV wie viele Assets bereits
 // extrahiert wurden. Schnell (nur Directory-Counts), kein CUE4Parse-Init.
