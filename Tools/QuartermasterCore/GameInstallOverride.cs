@@ -10,7 +10,7 @@ namespace Windrose.Quartermaster.Core
     // installs. Users on Epic / GOG / dedicated-server / portable setups
     // can use this override to point Quartermaster at any folder layout
     // that mirrors the Steam tree:
-    //   <GameRoot>/R5/Binaries/Win64/R5-Win64-Shipping.exe
+    //   <GameRoot>/R5/Binaries/Win64/Windrose*.exe (client or dedicated server)
     //   <GameRoot>/R5/Content/Paks/pakchunk0-Windows(.pak | Server.pak)
     //   <GameRoot>/R5/Content/Paks/~mods/                        (created on demand)
     //
@@ -108,12 +108,14 @@ namespace Windrose.Quartermaster.Core
             SaveGameRoot(null);
         }
 
-        // Validates a candidate game-root path: it must contain the
-        // R5\Binaries\Win64\R5-Win64-Shipping.exe AND at least one of the
-        // known vanilla pak filenames under R5\Content\Paks\. Returns
-        // (true, null) on success or (false, errorMessage) when invalid.
-        // Used by the GUI endpoint to give the user immediate feedback
-        // before persisting.
+        // Validates a candidate game-root path: it must contain at least one
+        // Windrose*.exe under R5\Binaries\Win64\ (covers client
+        // 'Windrose-Win64-Shipping.exe', dedicated-server
+        // 'WindroseServer-Win64-Shipping.exe', and any future renames) AND
+        // at least one of the known vanilla pak filenames under
+        // R5\Content\Paks\. Returns (true, null) on success or
+        // (false, errorMessage) when invalid. Used by the GUI endpoint to
+        // give the user immediate feedback before persisting.
         public static (bool Ok, string Error) Validate(string gameRoot)
         {
             if (string.IsNullOrWhiteSpace(gameRoot))
@@ -124,9 +126,14 @@ namespace Windrose.Quartermaster.Core
             if (!Directory.Exists(full))
                 return (false, "Folder does not exist: " + full);
 
-            var exe = Path.Combine(full, "R5", "Binaries", "Win64", "R5-Win64-Shipping.exe");
-            if (!File.Exists(exe))
-                return (false, "Missing game executable: " + exe);
+            var binariesDir = Path.Combine(full, "R5", "Binaries", "Win64");
+            if (!Directory.Exists(binariesDir))
+                return (false, "Missing binaries directory: " + binariesDir);
+            string[] exes;
+            try { exes = Directory.GetFiles(binariesDir, "Windrose*.exe"); }
+            catch (Exception ex) { return (false, "Could not scan binaries directory: " + ex.Message); }
+            if (exes.Length == 0)
+                return (false, "Missing game executable (no Windrose*.exe found under): " + binariesDir);
 
             var paksDir = Path.Combine(full, "R5", "Content", "Paks");
             if (!Directory.Exists(paksDir))

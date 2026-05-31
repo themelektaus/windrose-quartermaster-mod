@@ -210,7 +210,7 @@ async function openGameInstallModal() {
         ? data.overrideGameRoot
         : (data.steamGameRoot || '');
 
-    await showGameInstallModal({
+    const result = await showGameInstallModal({
         initialValue: initial,
         status: data,
     });
@@ -218,6 +218,13 @@ async function openGameInstallModal() {
     // Refresh the Mods-tab card after the modal closes so the new state
     // (override saved, cleared, or unchanged) shows immediately.
     await loadGameInstallStatus();
+
+    // If the override actually changed, the mods directory may now resolve
+    // to a different path - re-run the same fetch the Refresh button does
+    // so the user sees the new mods list without an extra click.
+    if (result === 'saved' || result === 'cleared') {
+        await loadMods();
+    }
 }
 window.openGameInstallModal = openGameInstallModal;
 

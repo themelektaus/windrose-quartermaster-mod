@@ -2191,7 +2191,7 @@ function showGameInstallModal({ initialValue, status }) {
 
         const intro = document.createElement('p');
         intro.className = 'modal-message';
-        intro.textContent = 'Point Quartermaster at the folder that contains R5\\Binaries\\Win64\\R5-Win64-Shipping.exe. Everything else (vanilla paks, ~mods folder, dxgi target) is derived from this.';
+        intro.textContent = 'Point Quartermaster at the folder that contains R5\\Binaries\\Win64\\Windrose-Win64-Shipping.exe (or WindroseServer-Win64-Shipping.exe on a dedicated server). Everything else (vanilla paks, ~mods folder, dxgi target) is derived from this.';
         card.appendChild(intro);
 
         // Steam-detect line (only shown if Steam suggested a path).

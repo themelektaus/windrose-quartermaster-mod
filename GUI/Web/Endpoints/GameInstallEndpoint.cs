@@ -20,10 +20,10 @@ namespace Windrose.Quartermaster.Web.Endpoints;
 //                                  pre-populate the "Configure" modal.
 //
 //   POST   /api/game-install   ->  body { "gameRoot": "..." }. Validates
-//                                  that the folder contains the expected
-//                                  R5\Binaries\Win64\R5-Win64-Shipping.exe
-//                                  plus a vanilla pak before persisting.
-//                                  400 with details on validation failure.
+//                                  that the folder contains at least one
+//                                  R5\Binaries\Win64\Windrose*.exe plus a
+//                                  vanilla pak before persisting. 400 with
+//                                  details on validation failure.
 //
 //   DELETE /api/game-install   ->  clears the override (= back to Steam
 //                                  auto-detect).
@@ -109,6 +109,14 @@ public static class GameInstallEndpoint
         // Steam-side probe without throwing - we want to suggest the
         // auto-detected path in the modal even if the user has a stale
         // override that's currently invalid.
+        //
+        // Important: we require the candidate folder to actually contain a
+        // vanilla pak under R5\Content\Paks\, not just an existing Windrose
+        // directory. Steam library leftovers from a previous install (or a
+        // partially-uninstalled copy on a different drive) can leave an empty
+        // Windrose folder behind that would otherwise outrank the real
+        // install on a later library and produce a divergent suggestion in
+        // the modal vs. the resolved effectiveGameRoot below.
         string steamGameRoot = null;
         string steamError = null;
         try
@@ -118,15 +126,21 @@ public static class GameInstallEndpoint
             {
                 foreach (var lib in SteamLocator.FindLibraryPaths(steam))
                 {
-                    var candidate = Path.Combine(lib, "steamapps", "common", "Windrose");
-                    if (Directory.Exists(candidate))
+                    var paksDir = Path.Combine(lib, "steamapps", "common",
+                        "Windrose", "R5", "Content", "Paks");
+                    if (!Directory.Exists(paksDir)) continue;
+                    var hasVanilla = false;
+                    foreach (var name in SteamLocator.VanillaPakNames)
                     {
-                        steamGameRoot = Path.GetFullPath(candidate);
-                        break;
+                        if (File.Exists(Path.Combine(paksDir, name))) { hasVanilla = true; break; }
                     }
+                    if (!hasVanilla) continue;
+                    steamGameRoot = Path.GetFullPath(
+                        Path.Combine(lib, "steamapps", "common", "Windrose"));
+                    break;
                 }
                 if (string.IsNullOrEmpty(steamGameRoot))
-                    steamError = "Steam is installed but no Windrose folder was found under any library's steamapps/common/.";
+                    steamError = "Steam is installed but no Windrose vanilla pak was found under any library's steamapps/common/Windrose/R5/Content/Paks/.";
             }
             else
             {
