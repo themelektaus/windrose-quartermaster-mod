@@ -135,7 +135,7 @@ function syncCooldownReadout(family) {
     if (!els.slider || !els.value || !els.readout) return;
     const mul = parseFloat(els.slider.value);
     const safeMul = isFinite(mul) ? mul : 1.0;
-    els.value.innerHTML = safeMul.toFixed(2).replace(/\.?0+$/, '') + 'x<!--&times;-->';
+    els.value.textContent = safeMul.toFixed(2).replace(/\.?0+$/, '') + 'x';
     els.readout.textContent = family.renderReadout(safeMul);
 }
 
@@ -202,7 +202,7 @@ function syncStationReadout(family) {
     if (!els.slider || !els.value || !els.readout) return;
     const mul = parseFloat(els.slider.value);
     const safeMul = isFinite(mul) ? mul : 1.0;
-    els.value.innerHTML = safeMul.toFixed(2).replace(/\.?0+$/, '') + 'x<!--&times;-->';
+    els.value.textContent = safeMul.toFixed(2).replace(/\.?0+$/, '') + 'x';
     els.readout.textContent = family.renderReadout(safeMul);
 }
 

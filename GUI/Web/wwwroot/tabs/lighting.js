@@ -141,14 +141,14 @@ function syncLightingOverallReadout() {
     const overall = getLightingOverall();
     slider.value = overall;
     if (value) {
-        value.innerHTML = overall.toFixed(2).replace(/\.?0+$/, '') + 'x<!--&times;-->';
+        value.textContent = overall.toFixed(2).replace(/\.?0+$/, '') + 'x';
     }
 }
 
 function renderLightingRows() {
     const list = document.getElementById('lighting-list');
     if (!list) return;
-    list.innerHTML = '';
+    list.replaceChildren();
     for (const light of LIGHT_SOURCES) {
         const row = document.createElement('div');
         row.className = 'lighting-row';
@@ -156,8 +156,11 @@ function renderLightingRows() {
 
         const nameEl = document.createElement('div');
         nameEl.className = 'lighting-row-name';
-        nameEl.innerHTML = esc(light.name)
-            + '<span class="lighting-row-category">' + esc(light.category) + '</span>';
+        nameEl.textContent = light.name;
+        const cat = document.createElement('span');
+        cat.className = 'lighting-row-category';
+        cat.textContent = light.category;
+        nameEl.appendChild(cat);
         row.appendChild(nameEl);
 
         // Per-light slider.
@@ -192,7 +195,7 @@ function renderLightingRows() {
             const safe = isFinite(cur) ? cur : 1.0;
             const isFollowing = Math.abs(safe - 1.0) < 1e-9;
             multEl.classList.toggle('is-following', isFollowing);
-            multEl.innerHTML = safe.toFixed(2).replace(/\.?0+$/, '') + 'x<!--&times;-->';
+            multEl.textContent = safe.toFixed(2).replace(/\.?0+$/, '') + 'x';
             const effective = resolveEffectiveLightingMultiplier(light.stem);
             const effCm = light.vanillaCm * effective;
             const vanCm = light.vanillaCm;
@@ -229,7 +232,7 @@ function syncLightingMiscCard() {
     const overall = getLightingOverall();
     if (slider) slider.value = overall;
     if (value) {
-        value.innerHTML = overall.toFixed(2).replace(/\.?0+$/, '') + 'x<!--&times;-->';
+        value.textContent = overall.toFixed(2).replace(/\.?0+$/, '') + 'x';
     }
     if (readout) {
         const overrides = (getLightingState() && getLightingState().overrides) || {};
