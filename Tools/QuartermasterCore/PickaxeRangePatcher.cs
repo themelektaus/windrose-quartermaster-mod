@@ -68,7 +68,7 @@ namespace Windrose.Quartermaster.Core
             var mappings = new Usmap(usmapPath);
 
             LogLine("Loading uasset: " + inputAssetPath);
-            var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(inputAssetPath, UAssetIo.Ue, mappings);
 
             // The CDO is not necessarily the first NormalExport; locate it by TraceScaleModifier presence.
             var propName = FName.FromString(asset, TraceScaleModifierPropertyName);

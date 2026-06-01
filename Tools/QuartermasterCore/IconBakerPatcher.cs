@@ -173,7 +173,7 @@ namespace Windrose.Quartermaster.Core
             }
 
             // Rename FName slots so the engine indexes a new asset rather than overriding the template.
-            var asset = new UAsset(templateUasset, EngineVersion.VER_UE5_6);
+            var asset = new UAsset(templateUasset, UAssetIo.Ue);
             var nameMap = asset.GetNameMapIndexList();
 
             if (nameMap.Count < 4)

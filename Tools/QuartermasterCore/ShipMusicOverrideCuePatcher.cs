@@ -12,7 +12,6 @@ namespace Windrose.Quartermaster.Core
     {
         public Action<string> Log;
 
-        const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
         public Patched Patch(
             string inputUassetPath, string outputUassetPath, string usmapPath,
@@ -32,7 +31,7 @@ namespace Windrose.Quartermaster.Core
 
             LogLine("Loading cue: " + inputUassetPath);
             var mappings = new Usmap(usmapPath);
-            var asset = new UAsset(inputUassetPath, Ue, mappings);
+            var asset = new UAsset(inputUassetPath, UAssetIo.Ue, mappings);
 
             if (asset.Exports.Count == 0)
                 throw new InvalidOperationException(

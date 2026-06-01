@@ -55,7 +55,7 @@ namespace Windrose.Quartermaster.Core
 
             LogLine("Loading uasset: " + assetPath);
             var mappings = new Usmap(usmapPath);
-            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(assetPath, UAssetIo.Ue, mappings);
 
             int totalHandles = 0;
             int patchedHandles = 0;

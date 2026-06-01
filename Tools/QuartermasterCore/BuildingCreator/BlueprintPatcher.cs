@@ -175,7 +175,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (socket == null) return 0;
 
             var mappings = new Usmap(UsmapPath);
-            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(assetPath, UAssetIo.Ue, mappings);
 
             int patched = 0;
             for (int i = 0; i < asset.Exports.Count; i++)

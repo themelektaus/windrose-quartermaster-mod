@@ -91,7 +91,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading usmap: " + usmapPath);
             var mappings = new Usmap(usmapPath);
             LogLine("Loading uasset: " + inputAssetPath);
-            var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(inputAssetPath, UAssetIo.Ue, mappings);
 
             var durationName = FName.FromString(asset, DurationMagnitudeProp);
             var (target, targetIndex, duration) = FindExportWithStruct(
@@ -151,7 +151,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading usmap: " + usmapPath);
             var mappings = new Usmap(usmapPath);
             LogLine("Loading uasset: " + inputAssetPath);
-            var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(inputAssetPath, UAssetIo.Ue, mappings);
 
             var magName = FName.FromString(asset, MagnitudeProp);
             var (_, targetIndex, magProp) = FindExportWithFloat(

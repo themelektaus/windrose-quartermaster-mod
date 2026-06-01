@@ -13,7 +13,6 @@ namespace Windrose.Quartermaster.Core
     {
         public Action<string> Log;
 
-        const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
         public const string TemplateCueIndex = "10";
         public const string TemplateSwavStem = "SWAV_Shanti_MaggieMay";
@@ -53,7 +52,7 @@ namespace Windrose.Quartermaster.Core
             var mappings = new Usmap(usmapPath);
 
             LogLine("Loading cue: " + inputUassetPath + " (flavor=" + flavor + ")");
-            var asset = new UAsset(inputUassetPath, Ue, mappings);
+            var asset = new UAsset(inputUassetPath, UAssetIo.Ue, mappings);
 
             int hits = ApplyRules(asset, rules);
             if (hits != rules.Count)

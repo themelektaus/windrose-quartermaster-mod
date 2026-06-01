@@ -38,7 +38,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         {
 
             var mapping = new Usmap(UsmapPath);
-            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mapping);
+            var asset = new UAsset(assetPath, UAssetIo.Ue, mapping);
 
             NormalExport miExport = null;
             foreach (var ex in asset.Exports)

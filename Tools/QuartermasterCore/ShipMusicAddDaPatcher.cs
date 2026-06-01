@@ -14,7 +14,6 @@ namespace Windrose.Quartermaster.Core
     {
         public Action<string> Log;
 
-        const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
         public const string DaRelDir =
             "R5/Content/Gameplay/Water/Character/Params/Audio";
@@ -44,7 +43,7 @@ namespace Windrose.Quartermaster.Core
             var mappings = new Usmap(usmapPath);
 
             LogLine("Loading DA: " + inputDaPath);
-            var asset = new UAsset(inputDaPath, Ue, mappings);
+            var asset = new UAsset(inputDaPath, UAssetIo.Ue, mappings);
 
             var ne = asset.Exports[0] as NormalExport
                 ?? throw new InvalidOperationException(

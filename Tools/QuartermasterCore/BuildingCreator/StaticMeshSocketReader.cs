@@ -43,7 +43,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 throw new InvalidOperationException("StaticMeshSocketReader: UsmapPath not set or missing: " + UsmapPath);
 
             var mappings = new Usmap(UsmapPath);
-            var asset = new UAsset(meshAssetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(meshAssetPath, UAssetIo.Ue, mappings);
 
             for (int i = 0; i < asset.Exports.Count; i++)
             {

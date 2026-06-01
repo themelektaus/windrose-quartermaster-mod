@@ -37,7 +37,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 return new FTextKeyRewriteResult { PerKeyHits = new Dictionary<string, int>() };
 
             var mappings = new Usmap(usmapPath);
-            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(assetPath, UAssetIo.Ue, mappings);
 
             var perKeyHits = new Dictionary<string, int>(rewrites.Count, StringComparer.Ordinal);
             foreach (var r in rewrites) perKeyHits[r.VanillaKey] = 0;

@@ -37,7 +37,7 @@ namespace Windrose.Quartermaster.Core
             var mappings = new Usmap(usmapPath);
 
             LogLine("Loading uasset: " + inputAssetPath);
-            var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(inputAssetPath, UAssetIo.Ue, mappings);
 
             // The CDO is the "Default__<ClassName>_C" NormalExport; fall back to the first NormalExport.
             NormalExport cdo = null;

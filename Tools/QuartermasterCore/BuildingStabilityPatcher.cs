@@ -256,7 +256,7 @@ namespace Windrose.Quartermaster.Core
 
         byte[] ProbeIntegrityBytes(string assetPath, Usmap mappings)
         {
-            var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(assetPath, UAssetIo.Ue, mappings);
             if (asset.Exports.Count == 0) return null;
 
             var firstExp = asset.Exports[0];

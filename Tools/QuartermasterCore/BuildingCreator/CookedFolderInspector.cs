@@ -102,7 +102,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         List<MeshMaterialSlot> ReadMeshSlots(string meshFile)
         {
             var mapping = new Usmap(UsmapPath);
-            var asset = new UAsset(meshFile, EngineVersion.VER_UE5_6, mapping);
+            var asset = new UAsset(meshFile, UAssetIo.Ue, mapping);
 
             NormalExport meshExport = null;
             foreach (var ex in asset.Exports)

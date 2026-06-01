@@ -120,7 +120,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading usmap: " + usmapPath);
             var mappings = new Usmap(usmapPath);
             LogLine("Loading template uasset: " + destUassetAbs);
-            var asset = new UAsset(destUassetAbs, EngineVersion.VER_UE5_6, mappings);
+            var asset = new UAsset(destUassetAbs, UAssetIo.Ue, mappings);
 
             var vanillaPackagePath = "/Game/" + slot.VirtualUassetPath
                 .Replace("R5/Content/", "", StringComparison.Ordinal)

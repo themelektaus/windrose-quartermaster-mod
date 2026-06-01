@@ -297,7 +297,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             try
             {
                 var mapping = new Usmap(usmapPath);
-                var asset = new UAsset(stagedUassetPath, EngineVersion.VER_UE5_6, mapping);
+                var asset = new UAsset(stagedUassetPath, UAssetIo.Ue, mapping);
 
                 var currentFolderName = asset.FolderName?.Value;
                 if (string.IsNullOrEmpty(currentFolderName)
@@ -517,7 +517,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             int scalarSkippedVanilla = 0, vectorSkippedVanilla = 0;
 
             var mapping = new Usmap(UsmapPath);
-            var miAsset = new UAsset(cloneFile, EngineVersion.VER_UE5_6, mapping);
+            var miAsset = new UAsset(cloneFile, UAssetIo.Ue, mapping);
             int scalarHits = 0, vectorHits = 0;
 
             if (slot.ScalarParams != null)

@@ -24,7 +24,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string AesKey;
         public string TempDir;
 
-        const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
         public const string VanillaSoundStem      = "MS_Building_Clock_LP";
         public const string VanillaSoundPath      = "/Game/Audio/Game/Building/Loops/MS_Building_Clock_LP";
@@ -161,7 +160,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             File.Copy(SwavTemplateUasset, outUasset, overwrite: true);
             File.Copy(SwavTemplateUexp,   outUexp,   overwrite: true);
             var mappings = new Usmap(UsmapPath);
-            var asset = new UAsset(outUasset, Ue, mappings);
+            var asset = new UAsset(outUasset, UAssetIo.Ue, mappings);
 
             int renamed = 0;
             var names = asset.GetNameMapIndexList();
@@ -252,7 +251,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             LogLine("  Cloning cue " + vanillaCueStem + " -> " + cueStem);
             var mappings = new Usmap(UsmapPath);
-            var asset = new UAsset(legacyPath, Ue, mappings);
+            var asset = new UAsset(legacyPath, UAssetIo.Ue, mappings);
 
             var rewrites = new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -307,7 +306,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             LogLine("  Cloning attenuation " + VanillaAtnStem + " -> " + atnStem);
             var mappings = new Usmap(UsmapPath);
-            var asset = new UAsset(legacyPath, Ue, mappings);
+            var asset = new UAsset(legacyPath, UAssetIo.Ue, mappings);
 
             var rewrites = new Dictionary<string, string>(StringComparer.Ordinal)
             {
