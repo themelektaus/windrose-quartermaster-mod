@@ -61,6 +61,16 @@ let _componentPresets = null;  // {id, displayName, description, kind}[] once lo
 // network round-trip.
 const _vanillaBuildingInspectInflight = new Map();
 
+// Loading placeholder for the centralized #picker-dropdown while a
+// catalog lazy-loads. app.js's populatePicker rebuilds the list once
+// the load settles.
+function setPickerLoading(dd, text) {
+    const li = document.createElement('li');
+    li.className = 'picker-empty';
+    li.textContent = text;
+    dd.replaceChildren(li);
+}
+
 function ensureVanillaMaterialsLoaded() {
     if (state.vanillaMaterials) return Promise.resolve(state.vanillaMaterials);
     if (_vanillaMaterialsLoad.promise) return _vanillaMaterialsLoad.promise;
@@ -211,7 +221,7 @@ async function openVanillaBuildingPicker(inputEl, buildingIndex, selectAll) {
         if (state.vanillaBuildingTemplates) {
             populatePicker(inputEl.value);
         } else {
-            dd.innerHTML = '<li class="picker-empty">Loading vanilla building templates...</li>';
+            setPickerLoading(dd, 'Loading vanilla building templates...');
         }
         dd.hidden = false;
     }
@@ -324,8 +334,8 @@ function renderBuildingCreator() {
     if (!list) return;
 
     if (!state.current) {
-        list.innerHTML = '';
-        if (picker) picker.innerHTML = '';
+        list.replaceChildren();
+        if (picker) picker.replaceChildren();
         if (pickerWrap) pickerWrap.hidden = true;
         return;
     }
@@ -333,8 +343,8 @@ function renderBuildingCreator() {
     const customs = state.current.customBuildings || [];
 
     if (customs.length === 0) {
-        list.innerHTML = '';
-        if (picker) picker.innerHTML = '';
+        list.replaceChildren();
+        if (picker) picker.replaceChildren();
         if (pickerWrap) pickerWrap.hidden = true;
         state.buildingCreatorActiveId = null;
         return;
@@ -353,22 +363,22 @@ function renderBuildingCreator() {
     // Populate / refresh the dropdown. Hidden when only one building
     // exists (no choice to make).
     if (picker) {
-        const opts = [];
+        picker.replaceChildren();
         for (let i = 0; i < customs.length; i++) {
             const c = customs[i];
             if (!c) continue;
             const label = (c.name && c.name.trim()) ? c.name : '(unnamed)';
-            const selAttr = (c.id === activeId) ? ' selected' : '';
-            opts.push('<option value="' + escapeHtml(c.id) + '"' + selAttr + '>'
-                + escapeHtml(label) + '</option>');
+            picker.appendChild(new Option(label, c.id));
         }
-        picker.innerHTML = opts.join('');
+        picker.value = activeId;
     }
     if (pickerWrap) pickerWrap.hidden = (customs.length <= 1);
 
     // Render ONLY the active card.
     const active = customs[activeIndex];
-    list.innerHTML = buildCustomBuildingCardHtml(active, activeIndex);
+    const activeCard = buildCustomBuildingCardNode(active, activeIndex);
+    if (activeCard) list.replaceChildren(activeCard);
+    else list.replaceChildren();
 
     // Kick off background work for the active card only:
     //  - lightweight scan (file classification)
@@ -447,8 +457,27 @@ function onBuildingsActivePickerChange(e) {
     renderBuildingCreator();
 }
 
-function buildCustomBuildingCardHtml(custom, index) {
-    if (!custom) return '';
+// Builds a one-element status node: <div class="cls"><em>text</em></div>.
+function buildStatusNode(cls, text) {
+    const div = document.createElement('div');
+    div.className = cls;
+    const em = document.createElement('em');
+    em.textContent = text;
+    div.appendChild(em);
+    return div;
+}
+
+// Like buildStatusNode but the text is plain (no <em>), used for the
+// error-state status rows that render with a building-scan-error class.
+function buildPlainStatusNode(cls, text) {
+    const div = document.createElement('div');
+    div.className = cls;
+    div.textContent = text;
+    return div;
+}
+
+function buildCustomBuildingCardNode(custom, index) {
+    if (!custom) return null;
     // The templateId is a Vanilla DA virtual path (e.g.
     // "/Game/Gameplay/Building/.../DA_BI_FloorTorch_01"). The picker
     // populates the on-demand vanilla-inspection cache on selection
@@ -457,12 +486,6 @@ function buildCustomBuildingCardHtml(custom, index) {
         ? state.vanillaBuildingInspections.get(custom.templateId) || null
         : null;
 
-    const safeName   = escapeHtml(custom.name || '');
-    const safeDesc   = escapeHtml(custom.description || '');
-    const safePath   = escapeHtml(custom.cookedFolderPath || '');
-
-    const missingHtml = renderMissingRequiredBanner(custom, null);
-
     // Template label: file stem from the inspection when available,
     // otherwise fall back to the raw templateId so the user can see
     // which DA was picked even if the inspection cache is cold.
@@ -470,84 +493,94 @@ function buildCustomBuildingCardHtml(custom, index) {
     if (ins) tplLabel = ins.displayName || ins.id || '';
     else if (custom.templateId) tplLabel = custom.templateId;
 
+    const card = cloneTemplate('tpl-building-card');
+    card.dataset.buildingIndex = index;
+    card.dataset.buildingId = custom.id;
+
+    setBuildingTitleName(card.querySelector('.building-title-name'), custom.name || '');
+    card.querySelector('.building-title-id').textContent = custom.id;
+
+    const tplInput = card.querySelector('[data-building-template-input]');
+    tplInput.value = tplLabel;
+
+    // Category facet options for the picker. ~8 entries in 5.6.
+    const categories = state.vanillaBuildingCategories || [];
+    if (categories.length > 0) {
+        const catSel = document.createElement('select');
+        catSel.dataset.buildingTemplateCategory = '';
+        catSel.title = 'Filter picker by category';
+        catSel.appendChild(new Option('All categories', ''));
+        for (const c of categories) catSel.appendChild(new Option(c, c));
+        tplInput.insertAdjacentElement('afterend', catSel);
+    }
+
     // Per-template hint line: surface mesh/icon/category from the
     // inspection for context. Shows a resolving placeholder while the
     // inspection is still loading from the backend.
-    let tplHint = '';
+    const titles = card.querySelector('.building-titles');
     if (ins) {
         const parts = [];
-        if (ins.category) parts.push(escapeHtml(ins.category));
-        if (ins.meshStem) parts.push('mesh: ' + escapeHtml(ins.meshStem));
-        if (ins.recipeStem) parts.push('cost: ' + escapeHtml(ins.recipeStem));
-        tplHint = parts.join(' · ');
+        if (ins.category) parts.push(ins.category);
+        if (ins.meshStem) parts.push('mesh: ' + ins.meshStem);
+        if (ins.recipeStem) parts.push('cost: ' + ins.recipeStem);
+        let tplHint = parts.join(' · ');
         if (ins.warnings && ins.warnings.length > 0) {
-            tplHint += ' · ' + escapeHtml(ins.warnings[0]);
+            tplHint += ' · ' + ins.warnings[0];
+        }
+        if (tplHint) {
+            const small = document.createElement('small');
+            small.className = 'building-title-template';
+            const span = document.createElement('span');
+            span.textContent = tplHint;
+            small.appendChild(span);
+            titles.appendChild(small);
         }
     } else if (custom.templateId) {
-        tplHint = '<em>resolving template...</em>';
+        const small = document.createElement('small');
+        small.className = 'building-title-template';
+        const span = document.createElement('span');
+        const em = document.createElement('em');
+        em.textContent = 'resolving template...';
+        span.appendChild(em);
+        small.appendChild(span);
+        titles.appendChild(small);
     }
 
-    // Category facet options for the picker. ~8 entries in 5.6.
-    const categoryOpts = (state.vanillaBuildingCategories || []).map(c =>
-        '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>'
-    ).join('');
+    const fields = card.querySelector('.building-fields');
 
-    return ''
-        + '<li class="building-card" data-building-index="' + index + '" data-building-id="' + escapeHtml(custom.id) + '">'
-        +   '<header class="building-card-header">'
-        +     '<div class="building-titles">'
-        +       '<div class="building-title-name">' + (safeName || '<em>(unnamed)</em>') + '</div>'
-        +       '<div class="building-title-id">' + escapeHtml(custom.id) + '</div>'
-        +       '<div class="building-title-template">'
-        +         '<span>Template:</span>'
-        +         '<input type="text" data-building-template-input value="' + escapeHtml(tplLabel)
-        +           '" placeholder="Click to browse vanilla templates..." autocomplete="off">'
-        +         (categoryOpts
-                    ? '<select data-building-template-category title="Filter picker by category">'
-                        + '<option value="">All categories</option>' + categoryOpts + '</select>'
-                    : '')
-        +       '</div>'
-        +       (tplHint ? '<small class="building-title-template"><span>' + tplHint + '</span></small>' : '')
-        +     '</div>'
-        +     '<div class="building-card-actions">'
-        +       '<button type="button" class="btn-link danger" data-building-action="delete" title="Delete building">Delete</button>'
-        +     '</div>'
-        +   '</header>'
-        +   '<div class="building-fields">'
-        +     missingHtml
-        +     '<label class="building-field building-field-wide">'
-        +       '<span>Name (in-game)</span>'
-        +       '<input type="text" data-building-field="name" value="' + safeName + '" placeholder="Building display name">'
-        +     '</label>'
-        +     '<label class="building-field building-field-wide">'
-        +       '<span>Description (tooltip)</span>'
-        +       '<textarea data-building-field="description" rows="2" placeholder="Tooltip text...">' + safeDesc + '</textarea>'
-        +     '</label>'
-        +     '<label class="building-field building-field-wide">'
-        +       '<span>Cooked folder path<span class="required-marker" title="required">*</span></span>'
-        +       '<div class="building-folder-row">'
-        +         '<input type="text" data-building-field="cookedFolderPath" value="' + safePath
-        +           '" placeholder="E:\\UEProj\\Saved\\Cooked\\Windows\\<Project>\\Content\\Quartermaster\\Items">'
-        +         '<button type="button" class="btn-link" data-building-action="scan" title="Re-scan folder">Scan</button>'
-        +       '</div>'
-        +     '</label>'
-        +     '<div class="building-field building-field-wide" data-building-scan-host>'
-        +       (custom.cookedFolderPath
-                    ? '<div class="building-scan"><em>Scanning...</em></div>'
-                    : '<div class="building-scan"><em>Pick a folder above and click Scan, or just type a path - we&apos;ll scan automatically when you stop editing.</em></div>')
-        +     '</div>'
-        +     renderMeshIconSelectsHtml(custom)
-        +     '<div class="building-field building-field-wide" data-building-slots-host>'
-        +       (custom.cookedFolderPath && custom.meshStem
-                    ? '<div class="building-slots-status"><em>Reading mesh slots...</em></div>'
-                    : '<div class="building-slots-status"><em>Set the cooked folder and mesh stem above to see material slots.</em></div>')
-        +     '</div>'
-        +     '<div class="building-field building-field-wide" data-building-recipe-host>'
-        +       '<div class="building-recipe-status"><em>Loading build cost...</em></div>'
-        +     '</div>'
-        +     renderComponentPresetSelectHtml(custom)
-        +   '</div>'
-        + '</li>';
+    const banner = buildMissingRequiredBannerNode(custom, null);
+    if (banner) fields.insertBefore(banner, fields.firstChild);
+
+    card.querySelector('input[data-building-field="name"]').value = custom.name || '';
+    card.querySelector('textarea[data-building-field="description"]').value = custom.description || '';
+    card.querySelector('input[data-building-field="cookedFolderPath"]').value = custom.cookedFolderPath || '';
+
+    const scanHost = card.querySelector('[data-building-scan-host]');
+    scanHost.appendChild(custom.cookedFolderPath
+        ? buildStatusNode('building-scan', 'Scanning...')
+        : buildStatusNode('building-scan', "Pick a folder above and click Scan, or just type a path - we'll scan automatically when you stop editing."));
+
+    // Mesh + Icon selects sit between the scan-host and slots-host.
+    scanHost.after(renderMeshIconSelectsNode(custom));
+
+    const slotsHost = card.querySelector('[data-building-slots-host]');
+    slotsHost.appendChild((custom.cookedFolderPath && custom.meshStem)
+        ? buildStatusNode('building-slots-status', 'Reading mesh slots...')
+        : buildStatusNode('building-slots-status', 'Set the cooked folder and mesh stem above to see material slots.'));
+
+    // Component-preset block (+ optional audio sub-block) closes the fields.
+    fields.appendChild(renderComponentPresetSelectNode(custom));
+    return card;
+}
+
+function setBuildingTitleName(el, name) {
+    if (name) {
+        el.textContent = name;
+    } else {
+        const em = document.createElement('em');
+        em.textContent = '(unnamed)';
+        el.replaceChildren(em);
+    }
 }
 
 // Renders the Component-FX preset dropdown for one building card.
@@ -560,38 +593,36 @@ function buildCustomBuildingCardHtml(custom, index) {
 // field as flamePresetId. The backend's Profile.cs CustomBuilding has
 // a backward-compat setter that migrates flamePresetId -> componentPresetId
 // on load, so the GUI only deals with the new key.
-function renderComponentPresetSelectHtml(custom) {
+function renderComponentPresetSelectNode(custom) {
     const currentId = (custom && custom.componentPresetId) ? custom.componentPresetId : '';
     const presets = Array.isArray(_componentPresets) ? _componentPresets : null;
     const helpText = 'Optional. Wraps the building with components cloned from a vanilla donor BP. '
                    + 'No effect when set to None (default).';
 
+    const label = cloneTemplate('tpl-building-component-preset');
+    const select = label.querySelector('select[data-building-field="componentPresetId"]');
+    const hintEm = label.querySelector('small em');
+
     if (!presets) {
         // Not loaded yet - placeholder. Will re-render once the catalog arrives.
-        return ''
-            + '<label class="building-field building-field-wide">'
-            +   '<span>Component preset</span>'
-            +   '<select data-building-field="componentPresetId" disabled>'
-            +     '<option value="">(loading...)</option>'
-            +   '</select>'
-            +   '<small><em>' + escapeHtml(helpText) + '</em></small>'
-            + '</label>';
+        select.disabled = true;
+        select.appendChild(new Option('(loading...)', ''));
+        hintEm.textContent = helpText;
+        return label;
     }
 
-    let opts = '<option value="">None (no preset)</option>';
+    select.appendChild(new Option('None (no preset)', ''));
     for (const p of presets) {
         if (!p || !p.id) continue;
-        const sel = (p.id === currentId) ? ' selected' : '';
-        const label = escapeHtml(p.displayName || p.id);
-        opts += '<option value="' + escapeHtml(p.id) + '"' + sel + '>' + label + '</option>';
+        select.appendChild(new Option(p.displayName || p.id, p.id));
     }
     // If the profile carries an id that isn't in the catalog (e.g.
     // someone hand-edited the JSON), preserve it as a non-matching
     // option so the user sees "unknown" instead of a silent revert.
     if (currentId && !presets.some(p => p && p.id === currentId)) {
-        opts += '<option value="' + escapeHtml(currentId) + '" selected>'
-              + escapeHtml(currentId) + ' (unknown - check catalog)</option>';
+        select.appendChild(new Option(currentId + ' (unknown - check catalog)', currentId));
     }
+    select.value = currentId;
 
     // Surface the picked preset's description as the hint line.
     let hint = helpText;
@@ -599,14 +630,13 @@ function renderComponentPresetSelectHtml(custom) {
         const cur = presets.find(p => p && p.id === currentId);
         if (cur && cur.description) hint = cur.description;
     }
+    hintEm.textContent = hint;
 
-    return ''
-        + '<label class="building-field building-field-wide">'
-        +   '<span>Component preset</span>'
-        +   '<select data-building-field="componentPresetId">' + opts + '</select>'
-        +   '<small><em>' + escapeHtml(hint) + '</em></small>'
-        + '</label>'
-        + renderAudioSourceBlockHtml(custom);
+    const frag = document.createDocumentFragment();
+    frag.appendChild(label);
+    const audio = renderAudioSourceBlockNode(custom);
+    if (audio) frag.appendChild(audio);
+    return frag;
 }
 
 // Audio-Source upload + range slider block. Only rendered when the
@@ -617,8 +647,8 @@ function renderComponentPresetSelectHtml(custom) {
 //   - Range slider (1-300 meters)
 // All controls only become live AFTER the building has an Id (= it's
 // been saved at least once), since the upload endpoint takes /buildings/{bid}.
-function renderAudioSourceBlockHtml(custom) {
-    if (!custom) return '';
+function renderAudioSourceBlockNode(custom) {
+    if (!custom) return null;
     const presetId = (custom && custom.componentPresetId) || '';
     const presets = Array.isArray(_componentPresets) ? _componentPresets : null;
     let isAudioPreset = false;
@@ -630,7 +660,7 @@ function renderAudioSourceBlockHtml(custom) {
         // "audio" is the audio preset (matches the shipped catalog).
         isAudioPreset = true;
     }
-    if (!isAudioPreset) return '';
+    if (!isAudioPreset) return null;
 
     const src = custom.audioSource || null;
     const rangeMeters = (typeof custom.audioRangeMeters === 'number' && custom.audioRangeMeters > 0)
@@ -638,47 +668,48 @@ function renderAudioSourceBlockHtml(custom) {
     const volume = (typeof custom.audioVolume === 'number' && custom.audioVolume > 0)
         ? custom.audioVolume : 0.45;
 
-    let statusHtml;
+    const block = cloneTemplate('tpl-building-audio-block');
+
+    const statusEl = block.querySelector('.building-audio-status');
     if (src && src.originalFilename) {
         const dur = typeof src.durationSec === 'number'
             ? src.durationSec.toFixed(1) + 's' : '';
         const sz = typeof src.sizeBytes === 'number'
             ? (src.sizeBytes / 1024 / 1024).toFixed(2) + ' MB' : '';
-        const parts = [escapeHtml(src.originalFilename), dur, sz].filter(Boolean);
-        statusHtml = '<span class="building-audio-status-ready">'
-                   + escapeHtml(parts.join(' - ')) + '</span>'
-                   + ' <button type="button" class="btn-link danger" data-building-action="audio-clear">Clear</button>';
+        const parts = [src.originalFilename, dur, sz].filter(Boolean);
+        const ready = document.createElement('span');
+        ready.className = 'building-audio-status-ready';
+        ready.textContent = parts.join(' - ');
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'btn-link danger';
+        clearBtn.dataset.buildingAction = 'audio-clear';
+        clearBtn.textContent = 'Clear';
+        statusEl.append(ready, ' ', clearBtn);
     } else {
-        statusHtml = '<span class="building-audio-status-vanilla">'
-                   + 'No custom audio - vanilla clock tick-tack loop will play.'
-                   + '</span>';
+        const vanilla = document.createElement('span');
+        vanilla.className = 'building-audio-status-vanilla';
+        vanilla.textContent = 'No custom audio - vanilla clock tick-tack loop will play.';
+        statusEl.appendChild(vanilla);
     }
 
-    return ''
-        + '<div class="building-field building-field-wide building-audio-block">'
-        +   '<div class="building-audio-header">'
-        +     '<span class="building-audio-label">Audio source</span>'
-        +     '<small><em>Loops on the building. Drop any wav/mp3/ogg/flac/m4a/aac/opus.</em></small>'
-        +   '</div>'
-        +   '<div class="building-audio-controls">'
-        +     '<input type="file" data-building-action="audio-upload" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus">'
-        +   '</div>'
-        +   '<div class="building-audio-status">' + statusHtml + '</div>'
-        +   '<label class="building-audio-range">'
-        +     '<span>Audible range (m)</span>'
-        +     '<input type="range" data-building-field="audioRangeMeters" min="1" max="300" step="1" value="'
-        +       String(rangeMeters) + '">'
-        +     '<span class="building-audio-range-value" data-audio-range-display>'
-        +       String(rangeMeters) + ' m</span>'
-        +   '</label>'
-        +   '<label class="building-audio-range">'
-        +     '<span>Volume</span>'
-        +     '<input type="range" data-building-field="audioVolume" min="0" max="100" step="5" value="'
-        +       String(Math.round(volume * 100)) + '">'
-        +     '<span class="building-audio-range-value" data-audio-volume-display>'
-        +       String(Math.round(volume * 100)) + ' %</span>'
-        +   '</label>'
-        + '</div>';
+    const rangeInput = block.querySelector('input[data-building-field="audioRangeMeters"]');
+    rangeInput.value = String(rangeMeters);
+    block.querySelector('[data-audio-range-display]').textContent = String(rangeMeters) + ' m';
+
+    const volInput = block.querySelector('input[data-building-field="audioVolume"]');
+    volInput.value = String(Math.round(volume * 100));
+    block.querySelector('[data-audio-volume-display]').textContent = String(Math.round(volume * 100)) + ' %';
+    return block;
+}
+
+// Swap an existing .building-audio-block for a freshly rendered one.
+// Mirrors the old `blk.outerHTML = render...` semantics: a null result
+// (preset no longer audio) removes the block entirely.
+function replaceAudioBlock(blk, custom) {
+    const node = renderAudioSourceBlockNode(custom);
+    if (node) blk.replaceWith(node);
+    else blk.remove();
 }
 
 // -----------------------------------------------------------------------
@@ -688,8 +719,8 @@ function renderAudioSourceBlockHtml(custom) {
 //   - iconStem        (so the build menu thumbnail isn't blank)
 //   - per-slot VanillaMaterialParentPath (only when slot list is known)
 // -----------------------------------------------------------------------
-function renderMissingRequiredBanner(custom, _tpl) {
-    if (!custom) return '';
+function buildMissingRequiredBannerNode(custom, _tpl) {
+    if (!custom) return null;
     const missing = [];
     if (!custom.cookedFolderPath || !custom.cookedFolderPath.trim()) missing.push('Cooked folder path');
     if (!custom.meshStem         || !custom.meshStem.trim())         missing.push('Mesh stem');
@@ -708,28 +739,31 @@ function renderMissingRequiredBanner(custom, _tpl) {
             }
         }
     }
-    if (missing.length === 0) return '';
-    return '<div class="building-missing-fields">'
-        + 'Required field' + (missing.length === 1 ? '' : 's') + ' empty: <strong>'
-        + missing.map(escapeHtml).join(', ')
-        + '</strong>. This building will be skipped at Build time.'
-        + '</div>';
+    if (missing.length === 0) return null;
+    const div = document.createElement('div');
+    div.className = 'building-missing-fields';
+    div.append('Required field' + (missing.length === 1 ? '' : 's') + ' empty: ');
+    const strong = document.createElement('strong');
+    strong.textContent = missing.join(', ');
+    div.appendChild(strong);
+    div.append('. This building will be skipped at Build time.');
+    return div;
 }
 
 function refreshMissingFieldsBanner(card, custom) {
     if (!card) return;
     const fields = card.querySelector('.building-fields');
     if (!fields) return;
-    const html = renderMissingRequiredBanner(custom, null);
+    const node = buildMissingRequiredBannerNode(custom, null);
     const existing = fields.querySelector(':scope > .building-missing-fields');
-    if (!html) {
+    if (!node) {
         if (existing) existing.remove();
         return;
     }
     if (existing) {
-        existing.outerHTML = html;
+        existing.replaceWith(node);
     } else {
-        fields.insertAdjacentHTML('afterbegin', html);
+        fields.insertBefore(node, fields.firstChild);
     }
 }
 
@@ -753,7 +787,7 @@ async function runCookedInspect(index, buildingId, rawPath, meshStem) {
     if (!path || !stem) return;
     const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
     const host = card ? card.querySelector('[data-building-slots-host]') : null;
-    if (host) host.innerHTML = '<div class="building-slots-status"><em>Reading mesh slots...</em></div>';
+    if (host) host.replaceChildren(buildStatusNode('building-slots-status', 'Reading mesh slots...'));
 
     let inspection;
     try {
@@ -768,8 +802,8 @@ async function runCookedInspect(index, buildingId, rawPath, meshStem) {
             + '&profileId=' + encodeURIComponent(profileId);
         inspection = await api('GET', url);
     } catch (ex) {
-        if (host) host.innerHTML = '<div class="building-slots-status building-scan-error">Failed to read mesh: '
-            + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
+        if (host) host.replaceChildren(buildPlainStatusNode('building-slots-status building-scan-error',
+            'Failed to read mesh: ' + ((ex && ex.message) ? ex.message : String(ex))));
         return;
     }
     _cookedInspectionCache.set(buildingId, inspection);
@@ -799,12 +833,12 @@ function renderSlotPickersForCard(buildingId) {
     if (!building) return;
     const inspection = _cookedInspectionCache.get(buildingId);
     if (!inspection) {
-        host.innerHTML = '<div class="building-slots-status"><em>Awaiting mesh inspection...</em></div>';
+        host.replaceChildren(buildStatusNode('building-slots-status', 'Awaiting mesh inspection...'));
         return;
     }
     if (!inspection.ok) {
-        host.innerHTML = '<div class="building-slots-status building-scan-error">'
-            + escapeHtml(inspection.error || 'Mesh inspect failed') + '</div>';
+        host.replaceChildren(buildPlainStatusNode('building-slots-status building-scan-error',
+            inspection.error || 'Mesh inspect failed'));
         return;
     }
     if (!Array.isArray(inspection.meshSlots) || inspection.meshSlots.length === 0) {
@@ -813,26 +847,32 @@ function renderSlotPickersForCard(buildingId) {
         // here so the user sees the actual cause (e.g. UAssetAPI throwing
         // under parallel load) instead of a silent "no slots" message.
         const warnings = Array.isArray(inspection.warnings) ? inspection.warnings : [];
-        let html = '<div class="building-slots-status"><em>Mesh has no material slots.</em>';
+        const status = buildStatusNode('building-slots-status', 'Mesh has no material slots.');
         if (warnings.length > 0) {
-            html += '<div class="building-slots-warnings">';
+            const wrap = document.createElement('div');
+            wrap.className = 'building-slots-warnings';
             for (const w of warnings) {
-                html += '<div class="building-slots-warning">' + escapeHtml(String(w)) + '</div>';
+                const wEl = document.createElement('div');
+                wEl.className = 'building-slots-warning';
+                wEl.textContent = String(w);
+                wrap.appendChild(wEl);
             }
-            html += '</div>';
+            status.appendChild(wrap);
         }
-        html += '</div>';
-        host.innerHTML = html;
+        host.replaceChildren(status);
         return;
     }
 
-    const parts = ['<div class="building-slots-list">'];
-    parts.push('<div class="building-slots-list-title">Material slots (from ' + escapeHtml(inspection.meshStem) + ')</div>');
+    const listWrap = document.createElement('div');
+    listWrap.className = 'building-slots-list';
+    const title = document.createElement('div');
+    title.className = 'building-slots-list-title';
+    title.textContent = 'Material slots (from ' + (inspection.meshStem || '') + ')';
+    listWrap.appendChild(title);
     for (const ms of inspection.meshSlots) {
-        parts.push(renderSlotCardHtml(building, ms, inspection));
+        listWrap.appendChild(renderSlotCardNode(building, ms, inspection));
     }
-    parts.push('</div>');
-    host.innerHTML = parts.join('');
+    host.replaceChildren(listWrap);
 
     // For slots that already have a Vanilla parent picked, fire the
     // inspect to (re)build the param controls.
@@ -846,36 +886,58 @@ function renderSlotPickersForCard(buildingId) {
     }
 }
 
-function renderSlotCardHtml(building, meshSlot, inspection) {
+function renderSlotCardNode(building, meshSlot, inspection) {
     const key = String(meshSlot.index);
     const sl = (building.slots && building.slots[key]) || {};
-    const safeSlotName = escapeHtml(meshSlot.slotName || ('slot' + meshSlot.index));
-    const safeUserMi = meshSlot.userMaterialStem
-        ? '<small>User-cooked MI: <code>' + escapeHtml(meshSlot.userMaterialStem) + '</code></small>'
-        : '<small><em>(no user MI bound to this slot)</em></small>';
-    const safeParent = escapeHtml(sl.vanillaMaterialParentPath || '');
-    const parentStem = safeParent ? extractStem(sl.vanillaMaterialParentPath) : '';
-    return ''
-        + '<div class="building-slot" data-slot-index="' + meshSlot.index + '">'
-        +   '<div class="building-slot-header">'
-        +     '<span class="building-slot-name">Slot ' + meshSlot.index + ' &mdash; ' + safeSlotName + '</span>'
-        +     safeUserMi
-        +   '</div>'
-        +   '<div class="building-slot-parent">'
-        +     '<label><span>Vanilla MI parent<span class="required-marker">*</span></span>'
-        +       '<input type="text" data-slot-parent-search value="' + escapeHtml(parentStem) + '"'
-        +         ' placeholder="Click to browse all Vanilla MIs, type to filter..." autocomplete="off" spellcheck="false">'
-        +     '</label>'
-        +     (safeParent
-                ? '<div class="building-slot-parent-current">Current: <code>' + safeParent + '</code></div>'
-                : '<div class="building-slot-parent-current"><em>Pick a parent above.</em></div>')
-        +   '</div>'
-        +   '<div class="building-slot-params" data-slot-params-host>'
-        +     (safeParent
-                ? '<div class="building-slot-params-status"><em>Loading parameters...</em></div>'
-                : '<div class="building-slot-params-status"><em>Parameters will appear after picking a parent.</em></div>')
-        +   '</div>'
-        + '</div>';
+    const slotName = meshSlot.slotName || ('slot' + meshSlot.index);
+    const parentPath = sl.vanillaMaterialParentPath || '';
+    const parentStem = parentPath ? extractStem(parentPath) : '';
+
+    const slot = cloneTemplate('tpl-building-slot');
+    slot.dataset.slotIndex = meshSlot.index;
+
+    slot.querySelector('.building-slot-name').textContent =
+        'Slot ' + meshSlot.index + ' — ' + slotName;
+
+    const header = slot.querySelector('.building-slot-header');
+    const userMi = document.createElement('small');
+    if (meshSlot.userMaterialStem) {
+        userMi.append('User-cooked MI: ');
+        const code = document.createElement('code');
+        code.textContent = meshSlot.userMaterialStem;
+        userMi.appendChild(code);
+    } else {
+        const em = document.createElement('em');
+        em.textContent = '(no user MI bound to this slot)';
+        userMi.appendChild(em);
+    }
+    header.appendChild(userMi);
+
+    slot.querySelector('[data-slot-parent-search]').value = parentStem;
+
+    setSlotParentCurrent(slot.querySelector('.building-slot-parent-current'), parentPath);
+
+    const host = slot.querySelector('[data-slot-params-host]');
+    host.appendChild(parentPath
+        ? buildStatusNode('building-slot-params-status', 'Loading parameters...')
+        : buildStatusNode('building-slot-params-status', 'Parameters will appear after picking a parent.'));
+    return slot;
+}
+
+// Fills .building-slot-parent-current: "Current: <code>path</code>" when
+// a parent is set, otherwise the "Pick a parent above." placeholder.
+function setSlotParentCurrent(el, parentPath) {
+    if (!el) return;
+    if (parentPath) {
+        el.replaceChildren('Current: ');
+        const code = document.createElement('code');
+        code.textContent = parentPath;
+        el.appendChild(code);
+    } else {
+        const em = document.createElement('em');
+        em.textContent = 'Pick a parent above.';
+        el.replaceChildren(em);
+    }
 }
 
 function extractStem(packagePath) {
@@ -905,7 +967,7 @@ async function openVanillaMiPicker(input, buildingId, slotIndex, selectAll) {
         if (state.vanillaMaterials) {
             populatePicker(input.value);
         } else {
-            dd.innerHTML = '<li class="picker-empty">Loading vanilla materials catalog...</li>';
+            setPickerLoading(dd, 'Loading vanilla materials catalog...');
         }
         dd.hidden = false;
     }
@@ -952,7 +1014,7 @@ async function setVanillaMiParentForSlot(buildingId, slotIndex, packagePath) {
     const searchBox = slotEl.querySelector('[data-slot-parent-search]');
     if (searchBox) searchBox.value = extractStem(packagePath);
     const currentEl = slotEl.querySelector('.building-slot-parent-current');
-    if (currentEl) currentEl.innerHTML = 'Current: <code>' + escapeHtml(packagePath) + '</code>';
+    if (currentEl) setSlotParentCurrent(currentEl, packagePath);
 
     await renderSlotParams(buildingId, slotIndex, packagePath);
     markDirty();
@@ -966,6 +1028,17 @@ async function setVanillaMiParentForSlot(buildingId, slotIndex, packagePath) {
 // control per param. Pre-fills from the user-cooked MI's values when
 // the parents match.
 // -----------------------------------------------------------------------
+// <div class="building-slot-params-group"><div class="...-group-title">title</div></div>
+function buildSlotParamsGroup(title) {
+    const group = document.createElement('div');
+    group.className = 'building-slot-params-group';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'building-slot-params-group-title';
+    titleEl.textContent = title;
+    group.appendChild(titleEl);
+    return group;
+}
+
 async function renderSlotParams(buildingId, slotIndex, packagePath) {
     const card = document.querySelector('li.building-card[data-building-id="' + buildingId + '"]');
     if (!card) return;
@@ -973,7 +1046,7 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
     if (!slotEl) return;
     const host = slotEl.querySelector('[data-slot-params-host]');
     if (!host) return;
-    host.innerHTML = '<div class="building-slot-params-status"><em>Loading parameters...</em></div>';
+    host.replaceChildren(buildStatusNode('building-slot-params-status', 'Loading parameters...'));
 
     let mi;
     if (_vanillaInspectCache.has(packagePath)) {
@@ -983,8 +1056,8 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
             mi = await api('GET', '/api/vanilla-materials/inspect?path=' + encodeURIComponent(packagePath));
             _vanillaInspectCache.set(packagePath, mi);
         } catch (ex) {
-            host.innerHTML = '<div class="building-slot-params-status building-scan-error">Failed to inspect MI: '
-                + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
+            host.replaceChildren(buildPlainStatusNode('building-slot-params-status building-scan-error',
+                'Failed to inspect MI: ' + ((ex && ex.message) ? ex.message : String(ex))));
             return;
         }
     }
@@ -1053,72 +1126,100 @@ async function renderSlotParams(buildingId, slotIndex, packagePath) {
 
     // Now render the param controls. One section per param type with
     // current value pre-populated.
-    const parts = [];
-    parts.push('<div class="building-slot-params-header">'
-        + '<span>Params from <code>' + escapeHtml(mi.stem) + '</code></span>'
-        + (userMi ? ' <small>(pre-filled from user-cooked <code>' + escapeHtml(meshSlot.userMaterialStem) + '</code>)</small>' : '')
-        + '</div>');
+    const frag = document.createDocumentFragment();
+
+    const headerEl = document.createElement('div');
+    headerEl.className = 'building-slot-params-header';
+    const headerSpan = document.createElement('span');
+    headerSpan.append('Params from ');
+    const headerCode = document.createElement('code');
+    headerCode.textContent = mi.stem;
+    headerSpan.appendChild(headerCode);
+    headerEl.appendChild(headerSpan);
+    if (userMi) {
+        const small = document.createElement('small');
+        small.append('(pre-filled from user-cooked ');
+        const code = document.createElement('code');
+        code.textContent = meshSlot.userMaterialStem;
+        small.append(code, ')');
+        headerEl.append(' ', small);
+    }
+    frag.appendChild(headerEl);
+
+    let groupCount = 0;
 
     if (mi.scalars && mi.scalars.length > 0) {
-        parts.push('<div class="building-slot-params-group"><div class="building-slot-params-group-title">Scalars</div>');
+        const group = buildSlotParamsGroup('Scalars');
         for (const s of mi.scalars) {
             const current = sl.scalarParams[s.name];
             const v = (typeof current === 'number') ? current : s.value;
-            parts.push('<div class="building-slot-param">'
-                + '<label><span>' + escapeHtml(s.name) + '</span>'
-                + '<input type="number" step="0.01" data-param-scalar="' + escapeHtml(s.name) + '" value="' + v + '">'
-                + '</label>'
-                + '<button type="button" class="btn-link" data-param-reset-scalar="' + escapeHtml(s.name) + '" data-default="' + s.value + '" title="Reset to Vanilla default (' + s.value + ')">Reset</button>'
-                + '</div>');
+            const row = cloneTemplate('tpl-building-slot-param-scalar');
+            row.querySelector('span').textContent = s.name;
+            const input = row.querySelector('input[data-param-scalar]');
+            input.dataset.paramScalar = s.name;
+            input.value = v;
+            const reset = row.querySelector('button[data-param-reset-scalar]');
+            reset.dataset.paramResetScalar = s.name;
+            reset.dataset.default = s.value;
+            reset.title = 'Reset to Vanilla default (' + s.value + ')';
+            group.appendChild(row);
         }
-        parts.push('</div>');
+        frag.appendChild(group);
+        groupCount++;
     }
 
     if (mi.vectors && mi.vectors.length > 0) {
-        parts.push('<div class="building-slot-params-group"><div class="building-slot-params-group-title">Colors</div>');
+        const group = buildSlotParamsGroup('Colors');
         for (const vp of mi.vectors) {
             const current = sl.vectorParams[vp.name];
             const r = current ? current[0] : vp.r;
             const g = current ? current[1] : vp.g;
             const b = current ? current[2] : vp.b;
             const a = current ? current[3] : vp.a;
-            const hex = rgbToHex(r, g, b);
-            parts.push('<div class="building-slot-param">'
-                + '<label><span>' + escapeHtml(vp.name) + '</span>'
-                + '<input type="color" data-param-vector="' + escapeHtml(vp.name) + '" value="' + hex + '">'
-                + '<input type="number" step="0.01" min="0" max="1" data-param-vector-alpha="' + escapeHtml(vp.name) + '" value="' + a + '" title="Alpha">'
-                + '</label>'
-                + '<button type="button" class="btn-link" data-param-reset-vector="' + escapeHtml(vp.name)
-                    + '" data-default-r="' + vp.r + '" data-default-g="' + vp.g + '" data-default-b="' + vp.b + '" data-default-a="' + vp.a
-                    + '" title="Reset to Vanilla default">Reset</button>'
-                + '</div>');
+            const row = cloneTemplate('tpl-building-slot-param-vector');
+            row.querySelector('span').textContent = vp.name;
+            const colorIn = row.querySelector('input[data-param-vector]');
+            colorIn.dataset.paramVector = vp.name;
+            colorIn.value = rgbToHex(r, g, b);
+            const alphaIn = row.querySelector('input[data-param-vector-alpha]');
+            alphaIn.dataset.paramVectorAlpha = vp.name;
+            alphaIn.value = a;
+            const reset = row.querySelector('button[data-param-reset-vector]');
+            reset.dataset.paramResetVector = vp.name;
+            reset.dataset.defaultR = vp.r;
+            reset.dataset.defaultG = vp.g;
+            reset.dataset.defaultB = vp.b;
+            reset.dataset.defaultA = vp.a;
+            group.appendChild(row);
         }
-        parts.push('</div>');
+        frag.appendChild(group);
+        groupCount++;
     }
 
     if (mi.textures && mi.textures.length > 0) {
         const cookedTextures = collectCookedTextureStems(building, inspection);
-        parts.push('<div class="building-slot-params-group"><div class="building-slot-params-group-title">Textures</div>');
+        const group = buildSlotParamsGroup('Textures');
         for (const t of mi.textures) {
             const current = sl.textureParams[t.name];
             const stem = (typeof current === 'string') ? current : '';
-            parts.push('<div class="building-slot-param">'
-                + '<label><span>' + escapeHtml(t.name) + '</span>'
-                + '<select data-param-texture="' + escapeHtml(t.name) + '">'
-                +   renderTextureOptions(cookedTextures, stem, t.textureStem)
-                + '</select>'
-                + '</label>'
-                + '<button type="button" class="btn-link" data-param-reset-texture="' + escapeHtml(t.name) + '" title="Reset to Vanilla">Reset</button>'
-                + '</div>');
+            const row = cloneTemplate('tpl-building-slot-param-texture');
+            row.querySelector('span').textContent = t.name;
+            const select = row.querySelector('select[data-param-texture]');
+            select.dataset.paramTexture = t.name;
+            renderTextureOptionsInto(select, cookedTextures, stem, t.textureStem);
+            const reset = row.querySelector('button[data-param-reset-texture]');
+            reset.dataset.paramResetTexture = t.name;
+            group.appendChild(row);
         }
-        parts.push('</div>');
+        frag.appendChild(group);
+        groupCount++;
     }
 
-    if (parts.length === 1) {
-        parts.push('<div class="building-slot-params-status"><em>This MI has no editable parameters.</em></div>');
+    if (groupCount === 0) {
+        frag.appendChild(buildStatusNode('building-slot-params-status', 'This MI has no editable parameters.'));
     }
 
-    host.innerHTML = parts.join('');
+    host.replaceChildren(frag);
     // Dirty + button refresh is the caller's responsibility - this
     // function gets called both from user-initiated picks (which DO
     // mutate the profile) and from background re-renders on tab open
@@ -1174,35 +1275,33 @@ function collectCookedTextureStems(building, _inspection) {
 // `currentStem` is the value currently saved on the slot's
 // textureParams; `vanillaStem` is the parent-MI's existing texture
 // reference for this param (used in the placeholder text only).
-function renderTextureOptions(stems, currentStem, vanillaStem) {
-    const parts = [];
-    parts.push('<option value="">(use Vanilla: ' + escapeHtml(vanillaStem || '?') + ')</option>');
+function renderTextureOptionsInto(select, stems, currentStem, vanillaStem) {
+    select.appendChild(new Option('(use Vanilla: ' + (vanillaStem || '?') + ')', ''));
 
     let foundCurrent = false;
-    const mark = (stem) => {
-        const sel = (stem === currentStem) ? ' selected' : '';
-        if (stem === currentStem) foundCurrent = true;
-        return '<option value="' + escapeHtml(stem) + '"' + sel + '>' + escapeHtml(stem) + '</option>';
+    const addOptgroup = (label, list) => {
+        const og = document.createElement('optgroup');
+        og.label = label;
+        for (const s of list) {
+            if (s === currentStem) foundCurrent = true;
+            og.appendChild(new Option(s, s));
+        }
+        select.appendChild(og);
     };
 
     if (stems.defaults && stems.defaults.length > 0) {
-        parts.push('<optgroup label="Default textures (always available)">');
-        for (const s of stems.defaults) parts.push(mark(s));
-        parts.push('</optgroup>');
+        addOptgroup('Default textures (always available)', stems.defaults);
     }
     if (stems.folder && stems.folder.length > 0) {
-        parts.push('<optgroup label="From cooked folder">');
-        for (const s of stems.folder) parts.push(mark(s));
-        parts.push('</optgroup>');
+        addOptgroup('From cooked folder', stems.folder);
     }
     // Saved value that didn't match either group - keep it as a free-
     // standing option so the picker reflects current state instead of
     // silently dropping the user's pick.
     if (currentStem && !foundCurrent) {
-        parts.push('<option value="' + escapeHtml(currentStem) + '" selected>'
-            + escapeHtml(currentStem) + ' (not found)</option>');
+        select.appendChild(new Option(currentStem + ' (not found)', currentStem));
     }
-    return parts.join('');
+    select.value = currentStem || '';
 }
 
 const _buildingTextureStemCache = new Map(); // building.id -> [stem...]
@@ -1220,31 +1319,23 @@ const _buildingIconStemCache    = new Map(); // building.id -> [stem...] (T_*_Ic
 // empty), we still show the currently-saved value as a single option so
 // the field stays addressable until the scan completes.
 // -----------------------------------------------------------------------
-function renderMeshIconSelectsHtml(custom) {
+function renderMeshIconSelectsNode(custom) {
     const meshStems = _buildingMeshStemCache.get(custom.id) || [];
     const iconStems = _buildingIconStemCache.get(custom.id) || [];
-    return ''
-        + '<label class="building-field">'
-        +   '<span>Mesh stem (SM_...)<span class="required-marker" title="required">*</span></span>'
-        +   renderStemSelectHtml('meshStem', custom.meshStem || '', meshStems)
-        + '</label>'
-        + '<label class="building-field">'
-        +   '<span>Icon stem (T_..._Icon)<span class="required-marker" title="required">*</span></span>'
-        +   renderStemSelectHtml('iconStem', custom.iconStem || '', iconStems)
-        + '</label>';
+    const frag = document.getElementById('tpl-building-mesh-icon').content.cloneNode(true);
+    fillStemSelect(frag.querySelector('select[data-building-field="meshStem"]'), custom.meshStem || '', meshStems);
+    fillStemSelect(frag.querySelector('select[data-building-field="iconStem"]'), custom.iconStem || '', iconStems);
+    return frag;
 }
 
-function renderStemSelectHtml(field, currentValue, options) {
-    const opts = [];
+function fillStemSelect(select, currentValue, options) {
     const hasScan = options.length > 0;
-
-    opts.push('<option value=""></option>');
+    select.appendChild(new Option('', ''));
 
     let foundCurrent = false;
     for (const stem of options) {
-        const sel = (stem === currentValue) ? ' selected' : '';
         if (stem === currentValue) foundCurrent = true;
-        opts.push('<option value="' + escapeHtml(stem) + '"' + sel + '>' + escapeHtml(stem) + '</option>');
+        select.appendChild(new Option(stem, stem));
     }
     // Survive cache-misses: if the profile already has a value the scan
     // didn't surface (e.g. card just rendered, scan still running, or
@@ -1253,17 +1344,17 @@ function renderStemSelectHtml(field, currentValue, options) {
     // looking like the user lost their pick.
     if (currentValue && !foundCurrent) {
         const label = hasScan
-            ? escapeHtml(currentValue) + ' (not found in folder)'
-            : escapeHtml(currentValue);
-        opts.push('<option value="' + escapeHtml(currentValue) + '" selected>' + label + '</option>');
+            ? currentValue + ' (not found in folder)'
+            : currentValue;
+        select.appendChild(new Option(label, currentValue));
     }
-    return '<select data-building-field="' + field + '">' + opts.join('') + '</select>';
+    select.value = currentValue || '';
 }
 
 // Re-render Mesh + Icon selects in-place after a scan refreshes the
 // per-kind stem caches. We replace the two label containers as a unit
 // instead of patching individual options to keep the markup in sync
-// with renderMeshIconSelectsHtml without a full card re-render (which
+// with renderMeshIconSelectsNode without a full card re-render (which
 // would lose focus/scroll state if the user is mid-edit).
 function refreshMeshIconSelects(card, custom) {
     if (!card || !custom) return;
@@ -1275,14 +1366,9 @@ function refreshMeshIconSelects(card, custom) {
     const meshLabel = meshSelect ? meshSelect.closest('label.building-field') : null;
     const iconLabel = iconSelect ? iconSelect.closest('label.building-field') : null;
     if (!meshLabel || !iconLabel) return;
-    const newHtml = renderMeshIconSelectsHtml(custom);
-    // Replace both labels at once: outerHTML on the first one would
-    // detach iconLabel from the DOM if we did them separately, so we
-    // wrap-and-swap via a documentFragment.
-    const tmp = document.createElement('div');
-    tmp.innerHTML = newHtml;
-    const newMesh = tmp.querySelector('label.building-field:nth-of-type(1)');
-    const newIcon = tmp.querySelector('label.building-field:nth-of-type(2)');
+    const frag = renderMeshIconSelectsNode(custom);
+    const newMesh = frag.querySelector('select[data-building-field="meshStem"]').closest('label.building-field');
+    const newIcon = frag.querySelector('select[data-building-field="iconStem"]').closest('label.building-field');
     if (newMesh) meshLabel.replaceWith(newMesh);
     if (newIcon) iconLabel.replaceWith(newIcon);
 }
@@ -1375,10 +1461,7 @@ function onBuildingListChange(e) {
         if (field === 'name') {
             custom.name = t.value;
             const titleEl = card.querySelector('.building-title-name');
-            if (titleEl) {
-                const safe = escapeHtml(custom.name || '');
-                titleEl.innerHTML = safe || '<em>(unnamed)</em>';
-            }
+            if (titleEl) setBuildingTitleName(titleEl, custom.name || '');
             // Keep the active-card dropdown in sync with the typed name.
             const picker = document.getElementById('buildings-active-picker');
             if (picker) {
@@ -1420,7 +1503,7 @@ function onBuildingListChange(e) {
                     // end up with two when switching preset back-and-forth.
                     const oldAudio = card.querySelector('.building-audio-block');
                     if (oldAudio) oldAudio.remove();
-                    lbl.outerHTML = renderComponentPresetSelectHtml(custom);
+                    lbl.replaceWith(renderComponentPresetSelectNode(custom));
                 }
             }
             // Trigger a meta-refresh against the server when we now show
@@ -1751,7 +1834,7 @@ async function onBuildingListClick(e) {
             // Rerender just the audio block (preserves the file input
             // outside the block from being unnecessarily reset).
             const blk = card.querySelector('.building-audio-block');
-            if (blk) blk.outerHTML = renderAudioSourceBlockHtml(c);
+            if (blk) replaceAudioBlock(blk, c);
         } catch (err) {
             await alert('Audio clear failed: ' + (err && err.message ? err.message : err));
         }
@@ -1787,7 +1870,11 @@ function onBuildingsAudioChange(e) {
 
 async function uploadBuildingAudio(profileId, custom, file, card) {
     const status = card.querySelector('.building-audio-status');
-    if (status) status.innerHTML = '<em>Uploading + transcoding ' + escapeHtml(file.name) + '...</em>';
+    if (status) {
+        const em = document.createElement('em');
+        em.textContent = 'Uploading + transcoding ' + file.name + '...';
+        status.replaceChildren(em);
+    }
     try {
         const form = new FormData();
         form.append('audio', file, file.name);
@@ -1810,11 +1897,11 @@ async function uploadBuildingAudio(profileId, custom, file, card) {
             };
         }
         const blk = card.querySelector('.building-audio-block');
-        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+        if (blk) replaceAudioBlock(blk, custom);
     } catch (err) {
         await alert('Audio upload failed: ' + (err && err.message ? err.message : err));
         const blk = card.querySelector('.building-audio-block');
-        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+        if (blk) replaceAudioBlock(blk, custom);
     }
 }
 
@@ -1842,7 +1929,7 @@ async function refreshAudioStatus(custom, card) {
         if (typeof dto.rangeMeters === 'number') custom.audioRangeMeters = dto.rangeMeters;
         if (typeof dto.volume === 'number') custom.audioVolume = dto.volume;
         const blk = card.querySelector('.building-audio-block');
-        if (blk) blk.outerHTML = renderAudioSourceBlockHtml(custom);
+        if (blk) replaceAudioBlock(blk, custom);
     } catch (_) {
         // best-effort - status was already showing a usable state
     }
@@ -1879,7 +1966,7 @@ async function scanCookedFolderForCard(index, rawPath) {
 
     const path = (rawPath || '').trim();
     if (!path) {
-        host.innerHTML = '<div class="building-scan"><em>Enter a cooked folder path to scan.</em></div>';
+        host.replaceChildren(buildStatusNode('building-scan', 'Enter a cooked folder path to scan.'));
         return;
     }
     const cached = _buildingScanCache.get(index);
@@ -1887,7 +1974,7 @@ async function scanCookedFolderForCard(index, rawPath) {
         return;
     }
 
-    host.innerHTML = '<div class="building-scan"><em>Scanning ' + escapeHtml(path) + '...</em></div>';
+    host.replaceChildren(buildStatusNode('building-scan', 'Scanning ' + path + '...'));
     try {
         // profileId lets the backend resolve profile-relative folder
         // names like "MyPainting" -> <Profiles>/<profileId>/MyPainting.
@@ -1895,7 +1982,7 @@ async function scanCookedFolderForCard(index, rawPath) {
         const scan = await api('GET', '/api/buildings/scan-cooked?path=' + encodeURIComponent(path)
             + '&profileId=' + encodeURIComponent(profileId));
         _buildingScanCache.set(index, path);
-        host.innerHTML = renderScanResult(scan, customs[index]);
+        host.replaceChildren(renderScanResultNode(scan, customs[index]));
         // Cache stems per kind so the Mesh + Icon + Texture dropdowns
         // can list them without re-fetching. The Mesh + Icon selects
         // are then re-rendered in-place so the user sees the new picks
@@ -1930,16 +2017,23 @@ async function scanCookedFolderForCard(index, rawPath) {
             }
         }
     } catch (ex) {
-        host.innerHTML = '<div class="building-scan building-scan-error">Scan failed: '
-            + escapeHtml((ex && ex.message) ? ex.message : String(ex)) + '</div>';
+        host.replaceChildren(buildPlainStatusNode('building-scan building-scan-error',
+            'Scan failed: ' + ((ex && ex.message) ? ex.message : String(ex))));
     }
 }
 
-function renderScanResult(scan, building) {
+// Builds a scan-warning span with the given .bad/.skip class and text.
+function scanWarnSpan(cls, text) {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    return span;
+}
+
+function renderScanResultNode(scan, building) {
     if (!scan || !scan.exists) {
-        return '<div class="building-scan building-scan-error">'
-            + escapeHtml(scan && scan.error ? scan.error : 'Folder not found.')
-            + '</div>';
+        return buildPlainStatusNode('building-scan building-scan-error',
+            scan && scan.error ? scan.error : 'Folder not found.');
     }
     const entries = scan.entries || [];
     const counts = {};
@@ -1949,44 +2043,69 @@ function renderScanResult(scan, building) {
                       + (counts.blueprint || 0) + (counts.data || 0);
 
     const warnings = [];
-    if ((counts.mesh || 0) === 0) warnings.push('<span class="bad">No mesh (SM_*) found.</span>');
-    if ((counts.icon || 0) === 0) warnings.push('<span class="bad">No icon (T_*_Icon) found.</span>');
+    if ((counts.mesh || 0) === 0) warnings.push(scanWarnSpan('bad', 'No mesh (SM_*) found.'));
+    if ((counts.icon || 0) === 0) warnings.push(scanWarnSpan('bad', 'No icon (T_*_Icon) found.'));
     if ((counts.material || 0) + (counts.matinst || 0) > 0) {
-        warnings.push('<span class="skip">'
-            + ((counts.material || 0) + (counts.matinst || 0))
-            + ' user-cooked material(s) - will be skipped at build (replaced by Vanilla-MI clone).</span>');
+        warnings.push(scanWarnSpan('skip',
+            ((counts.material || 0) + (counts.matinst || 0))
+            + ' user-cooked material(s) - will be skipped at build (replaced by Vanilla-MI clone).'));
     }
     const stems = new Set(entries.map(e => e.stem));
     if (building && building.meshStem && !stems.has(building.meshStem)) {
-        warnings.push('<span class="bad">Mesh stem "' + escapeHtml(building.meshStem) + '" not found in folder.</span>');
+        warnings.push(scanWarnSpan('bad', 'Mesh stem "' + building.meshStem + '" not found in folder.'));
     }
     if (building && building.iconStem && !stems.has(building.iconStem)) {
-        warnings.push('<span class="bad">Icon stem "' + escapeHtml(building.iconStem) + '" not found in folder.</span>');
+        warnings.push(scanWarnSpan('bad', 'Icon stem "' + building.iconStem + '" not found in folder.'));
     }
 
-    const fileList = entries
-        .filter(e => e.kind !== 'sidecar' && e.kind !== 'other')
-        .map(e => '<li>'
-            + '<span class="kind' + scanKindClass(e.kind) + '">' + escapeHtml(scanKindLabel(e.kind)) + '</span>'
-            + '<span class="name">' + escapeHtml(e.name) + '</span>'
-            + '</li>')
-        .join('');
+    const root = cloneTemplate('tpl-building-scan-result');
 
-    const statusRow = '<div class="building-scan-status">'
-        + '<span>' + entries.length + ' file(s), ' + totalAssets + ' asset(s)</span>'
-        + (counts.mesh    ? '<span>mesh: ' + counts.mesh    + '</span>' : '')
-        + (counts.icon    ? '<span>icon: ' + counts.icon    + '</span>' : '')
-        + (counts.texture ? '<span>texture: ' + counts.texture + '</span>' : '')
-        + ((counts.material || counts.matinst)
-            ? '<span class="skip">material: ' + ((counts.material || 0) + (counts.matinst || 0)) + ' (skipped)</span>'
-            : '')
-        + '</div>';
+    const statusRow = document.createElement('div');
+    statusRow.className = 'building-scan-status';
+    const totalSpan = document.createElement('span');
+    totalSpan.textContent = entries.length + ' file(s), ' + totalAssets + ' asset(s)';
+    statusRow.appendChild(totalSpan);
+    const addCountSpan = (text) => {
+        const s = document.createElement('span');
+        s.textContent = text;
+        statusRow.appendChild(s);
+    };
+    if (counts.mesh)    addCountSpan('mesh: ' + counts.mesh);
+    if (counts.icon)    addCountSpan('icon: ' + counts.icon);
+    if (counts.texture) addCountSpan('texture: ' + counts.texture);
+    if (counts.material || counts.matinst) {
+        const s = document.createElement('span');
+        s.className = 'skip';
+        s.textContent = 'material: ' + ((counts.material || 0) + (counts.matinst || 0)) + ' (skipped)';
+        statusRow.appendChild(s);
+    }
+    root.appendChild(statusRow);
 
-    return '<div class="building-scan">'
-        + statusRow
-        + (warnings.length > 0 ? '<div>' + warnings.join(' ') + '</div>' : '')
-        + (fileList ? '<ul class="building-scan-files">' + fileList + '</ul>' : '')
-        + '</div>';
+    if (warnings.length > 0) {
+        const wrap = document.createElement('div');
+        warnings.forEach((node, i) => {
+            if (i > 0) wrap.appendChild(document.createTextNode(' '));
+            wrap.appendChild(node);
+        });
+        root.appendChild(wrap);
+    }
+
+    const files = entries.filter(e => e.kind !== 'sidecar' && e.kind !== 'other');
+    if (files.length > 0) {
+        const ul = document.createElement('ul');
+        ul.className = 'building-scan-files';
+        for (const e of files) {
+            const li = cloneTemplate('tpl-building-scan-file');
+            const kind = li.querySelector('.kind');
+            const extra = scanKindClass(e.kind).trim();
+            if (extra) kind.classList.add(extra);
+            kind.textContent = scanKindLabel(e.kind);
+            li.querySelector('.name').textContent = e.name;
+            ul.appendChild(li);
+        }
+        root.appendChild(ul);
+    }
+    return root;
 }
 
 function scanKindLabel(k) {
@@ -2067,63 +2186,91 @@ function renderRecipeForCard(buildingId, defaults) {
     const vanillaTag = (defaults && defaults.vanillaRecipeTag) || '';
     const defaultsErr = (defaults && defaults.ok === false) ? defaults.error : '';
 
-    host.innerHTML = buildRecipeSectionHtml(rows, usingVanilla, vanillaTag, defaultsErr);
+    host.replaceChildren(buildRecipeSectionNode(rows, usingVanilla, vanillaTag, defaultsErr));
 }
 
-function buildRecipeSectionHtml(rows, usingVanilla, vanillaTag, errMsg) {
-    const rowsHtml = rows.map((r, idx) => buildRecipeRowHtml(r, idx)).join('');
-    const tagLine = vanillaTag
-        ? '<div class="building-recipe-meta">Vanilla tag: <code>' + escapeHtml(vanillaTag) + '</code></div>'
-        : '';
-    const sourceBadge = usingVanilla
-        ? '<span class="building-recipe-source vanilla">Vanilla defaults</span>'
-        : '<span class="building-recipe-source user">Custom (overrides vanilla)</span>';
-    const errHtml = errMsg
-        ? '<div class="building-recipe-error">' + escapeHtml(errMsg) + '</div>'
-        : '';
-    const emptyHint = (rows.length === 0)
-        ? '<div class="building-recipe-empty"><em>No build cost - building is free.</em></div>'
-        : '';
-    return ''
-        + '<div class="building-recipe">'
-        +   '<div class="building-recipe-header">'
-        +     '<strong>Build cost</strong>'
-        +     sourceBadge
-        +     '<div class="building-recipe-actions">'
-        +       '<button type="button" class="primary" data-recipe-action="add">Add</button>'
-        +       (!usingVanilla ? '<button type="button" class="btn-link danger" data-recipe-action="reset" title="Discard overrides; use template default">Reset</button>' : '')
-        +     '</div>'
-        +   '</div>'
-        +   errHtml
-        +   tagLine
-        +   '<ol class="building-recipe-rows">' + rowsHtml + '</ol>'
-        +   emptyHint
-        + '</div>';
+function buildRecipeSectionNode(rows, usingVanilla, vanillaTag, errMsg) {
+    const section = cloneTemplate('tpl-building-recipe');
+    const header = section.querySelector('.building-recipe-header');
+
+    const sourceBadge = document.createElement('span');
+    sourceBadge.className = usingVanilla
+        ? 'building-recipe-source vanilla'
+        : 'building-recipe-source user';
+    sourceBadge.textContent = usingVanilla ? 'Vanilla defaults' : 'Custom (overrides vanilla)';
+    // Order is <strong>, badge, .building-recipe-actions.
+    header.insertBefore(sourceBadge, header.querySelector('.building-recipe-actions'));
+
+    if (!usingVanilla) {
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'btn-link danger';
+        reset.dataset.recipeAction = 'reset';
+        reset.title = 'Discard overrides; use template default';
+        reset.textContent = 'Reset';
+        header.querySelector('.building-recipe-actions').appendChild(reset);
+    }
+
+    const ol = section.querySelector('.building-recipe-rows');
+
+    if (errMsg) {
+        const err = document.createElement('div');
+        err.className = 'building-recipe-error';
+        err.textContent = errMsg;
+        section.insertBefore(err, ol);
+    }
+    if (vanillaTag) {
+        const meta = document.createElement('div');
+        meta.className = 'building-recipe-meta';
+        meta.append('Vanilla tag: ');
+        const code = document.createElement('code');
+        code.textContent = vanillaTag;
+        meta.appendChild(code);
+        section.insertBefore(meta, ol);
+    }
+
+    for (let idx = 0; idx < rows.length; idx++) {
+        ol.appendChild(buildRecipeRowNode(rows[idx], idx));
+    }
+
+    if (rows.length === 0) {
+        section.appendChild(buildStatusNode('building-recipe-empty', 'No build cost - building is free.'));
+    }
+    return section;
 }
 
-function buildRecipeRowHtml(row, idx) {
+function buildRecipeRowNode(row, idx) {
     const itemPath = (row && row.itemPath) || '';
     const count    = (row && Number.isFinite(row.count)) ? row.count : 0;
     const display  = itemPath
         ? (_resourceDisplayCache.get(itemPath) || prettifyResourcePath(itemPath))
         : '';
-    const safeDisplay = escapeHtml(display);
-    const safePath    = escapeHtml(itemPath);
 
-    return ''
-        + '<li class="building-recipe-row" data-recipe-row="' + idx + '">'
-        +   '<div class="building-recipe-search">'
-        +     '<input type="text" data-recipe-search="' + idx + '" value="' + safeDisplay
-        +       '" placeholder="Click to browse resources, type to filter..." autocomplete="off" spellcheck="false">'
-        +     (itemPath
-                ? '<div class="building-recipe-current"><code>' + safePath + '</code></div>'
-                : '<div class="building-recipe-current"><em>Pick a resource</em></div>')
-        +   '</div>'
-        +   '<label class="building-recipe-count">'
-        +     '<input type="number" min="1" max="999" step="1" data-recipe-count="' + idx + '" value="' + count + '">'
-        +   '</label>'
-        +   '<button type="button" class="btn-link danger" data-recipe-action="remove" data-recipe-row-idx="' + idx + '" title="Remove this row">Remove</button>'
-        + '</li>';
+    const li = cloneTemplate('tpl-building-recipe-row');
+    li.dataset.recipeRow = idx;
+
+    const search = li.querySelector('[data-recipe-search]');
+    search.dataset.recipeSearch = idx;
+    search.value = display;
+
+    const current = li.querySelector('.building-recipe-current');
+    if (itemPath) {
+        const code = document.createElement('code');
+        code.textContent = itemPath;
+        current.appendChild(code);
+    } else {
+        const em = document.createElement('em');
+        em.textContent = 'Pick a resource';
+        current.appendChild(em);
+    }
+
+    const countInput = li.querySelector('[data-recipe-count]');
+    countInput.dataset.recipeCount = idx;
+    countInput.value = count;
+
+    const remove = li.querySelector('button[data-recipe-action="remove"]');
+    remove.dataset.recipeRowIdx = idx;
+    return li;
 }
 
 function prettifyResourcePath(path) {
@@ -2165,7 +2312,7 @@ async function openResourcePicker(input, buildingId, rowIdx, selectAll) {
         if (state.vanillaResources) {
             populatePicker(input.value);
         } else {
-            dd.innerHTML = '<li class="picker-empty">Loading resources catalog...</li>';
+            setPickerLoading(dd, 'Loading resources catalog...');
         }
         dd.hidden = false;
     }

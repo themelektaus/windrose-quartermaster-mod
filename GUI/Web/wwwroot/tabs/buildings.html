@@ -45,4 +45,170 @@
     <div id="buildings-error" class="mods-error" hidden></div>
     <ul id="buildings-list" class="buyers-list"></ul>
   </section>
+
+  <!-- Cloned + filled in buildings.js; data-building-* hooks drive the buildings-list delegation. -->
+  <template id="tpl-building-card">
+    <li class="building-card">
+      <header class="building-card-header">
+        <div class="building-titles">
+          <div class="building-title-name"></div>
+          <div class="building-title-id"></div>
+          <div class="building-title-template">
+            <span>Template:</span>
+            <input type="text" data-building-template-input
+                   placeholder="Click to browse vanilla templates..." autocomplete="off">
+          </div>
+        </div>
+        <div class="building-card-actions">
+          <button type="button" class="btn-link danger" data-building-action="delete" title="Delete building">Delete</button>
+        </div>
+      </header>
+      <div class="building-fields">
+        <label class="building-field building-field-wide">
+          <span>Name (in-game)</span>
+          <input type="text" data-building-field="name" placeholder="Building display name">
+        </label>
+        <label class="building-field building-field-wide">
+          <span>Description (tooltip)</span>
+          <textarea data-building-field="description" rows="2" placeholder="Tooltip text..."></textarea>
+        </label>
+        <label class="building-field building-field-wide">
+          <span>Cooked folder path<span class="required-marker" title="required">*</span></span>
+          <div class="building-folder-row">
+            <input type="text" data-building-field="cookedFolderPath"
+                   placeholder="E:\UEProj\Saved\Cooked\Windows\<Project>\Content\Quartermaster\Items">
+            <button type="button" class="btn-link" data-building-action="scan" title="Re-scan folder">Scan</button>
+          </div>
+        </label>
+        <div class="building-field building-field-wide" data-building-scan-host></div>
+        <div class="building-field building-field-wide" data-building-slots-host></div>
+        <div class="building-field building-field-wide" data-building-recipe-host>
+          <div class="building-recipe-status"><em>Loading build cost...</em></div>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <template id="tpl-building-mesh-icon">
+    <label class="building-field">
+      <span>Mesh stem (SM_...)<span class="required-marker" title="required">*</span></span>
+      <select data-building-field="meshStem"></select>
+    </label>
+    <label class="building-field">
+      <span>Icon stem (T_..._Icon)<span class="required-marker" title="required">*</span></span>
+      <select data-building-field="iconStem"></select>
+    </label>
+  </template>
+
+  <template id="tpl-building-component-preset">
+    <label class="building-field building-field-wide">
+      <span>Component preset</span>
+      <select data-building-field="componentPresetId"></select>
+      <small><em></em></small>
+    </label>
+  </template>
+
+  <template id="tpl-building-audio-block">
+    <div class="building-field building-field-wide building-audio-block">
+      <div class="building-audio-header">
+        <span class="building-audio-label">Audio source</span>
+        <small><em>Loops on the building. Drop any wav/mp3/ogg/flac/m4a/aac/opus.</em></small>
+      </div>
+      <div class="building-audio-controls">
+        <input type="file" data-building-action="audio-upload" accept=".wav,.mp3,.ogg,.flac,.m4a,.aac,.opus">
+      </div>
+      <div class="building-audio-status"></div>
+      <label class="building-audio-range">
+        <span>Audible range (m)</span>
+        <input type="range" data-building-field="audioRangeMeters" min="1" max="300" step="1">
+        <span class="building-audio-range-value" data-audio-range-display></span>
+      </label>
+      <label class="building-audio-range">
+        <span>Volume</span>
+        <input type="range" data-building-field="audioVolume" min="0" max="100" step="5">
+        <span class="building-audio-range-value" data-audio-volume-display></span>
+      </label>
+    </div>
+  </template>
+
+  <template id="tpl-building-slot">
+    <div class="building-slot">
+      <div class="building-slot-header">
+        <span class="building-slot-name"></span>
+      </div>
+      <div class="building-slot-parent">
+        <label><span>Vanilla MI parent<span class="required-marker">*</span></span>
+          <input type="text" data-slot-parent-search
+                 placeholder="Click to browse all Vanilla MIs, type to filter..." autocomplete="off" spellcheck="false">
+        </label>
+        <div class="building-slot-parent-current"></div>
+      </div>
+      <div class="building-slot-params" data-slot-params-host></div>
+    </div>
+  </template>
+
+  <template id="tpl-building-slot-param-scalar">
+    <div class="building-slot-param">
+      <label><span></span>
+        <input type="number" step="0.01" data-param-scalar>
+      </label>
+      <button type="button" class="btn-link" data-param-reset-scalar>Reset</button>
+    </div>
+  </template>
+
+  <template id="tpl-building-slot-param-vector">
+    <div class="building-slot-param">
+      <label><span></span>
+        <input type="color" data-param-vector>
+        <input type="number" step="0.01" min="0" max="1" data-param-vector-alpha title="Alpha">
+      </label>
+      <button type="button" class="btn-link" data-param-reset-vector title="Reset to Vanilla default">Reset</button>
+    </div>
+  </template>
+
+  <template id="tpl-building-slot-param-texture">
+    <div class="building-slot-param">
+      <label><span></span>
+        <select data-param-texture></select>
+      </label>
+      <button type="button" class="btn-link" data-param-reset-texture title="Reset to Vanilla">Reset</button>
+    </div>
+  </template>
+
+  <template id="tpl-building-recipe">
+    <div class="building-recipe">
+      <div class="building-recipe-header">
+        <strong>Build cost</strong>
+        <div class="building-recipe-actions">
+          <button type="button" class="primary" data-recipe-action="add">Add</button>
+        </div>
+      </div>
+      <ol class="building-recipe-rows"></ol>
+    </div>
+  </template>
+
+  <template id="tpl-building-recipe-row">
+    <li class="building-recipe-row">
+      <div class="building-recipe-search">
+        <input type="text" data-recipe-search
+               placeholder="Click to browse resources, type to filter..." autocomplete="off" spellcheck="false">
+        <div class="building-recipe-current"></div>
+      </div>
+      <label class="building-recipe-count">
+        <input type="number" min="1" max="999" step="1" data-recipe-count>
+      </label>
+      <button type="button" class="btn-link danger" data-recipe-action="remove" title="Remove this row">Remove</button>
+    </li>
+  </template>
+
+  <template id="tpl-building-scan-result">
+    <div class="building-scan"></div>
+  </template>
+
+  <template id="tpl-building-scan-file">
+    <li>
+      <span class="kind"></span>
+      <span class="name"></span>
+    </li>
+  </template>
 </div>
