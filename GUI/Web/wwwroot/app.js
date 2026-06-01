@@ -355,7 +355,7 @@ function renderSetupChecks(status) {
         ['hasVanillaPak', 'Windrose install detected via Steam',
                           status.vanillaPakPath || status.vanillaPakError],
         ['hasUsmap',      'UE5 mappings file (.usmap) in mod root',
-                          status.usmapPath || 'Drop a Ctrl+Num6 dump into the mod root.'],
+                          status.usmapPath || 'Missing - see the setup error below for how to restore it.'],
     ];
     const sources = Array.isArray(status.sources) ? status.sources : [];
     const sourceRows = sources.map(s => {
@@ -418,9 +418,7 @@ function renderSetupError(status) {
     if (!status.hasUsmap) {
         out.hidden = false;
         out.textContent =
-            'No .usmap file found in the mod root.\n' +
-            'Generate one via UE4SS Keybinds (DumpUSMAP - Ctrl+Num6 by default), ' +
-            'copy it next to the mod, then click Re-check.';
+            (status.usmapHint || 'No .usmap file found.') + '\nThen click Re-check.';
         return;
     }
     out.hidden = true;

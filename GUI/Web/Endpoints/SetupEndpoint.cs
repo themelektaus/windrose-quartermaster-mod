@@ -43,6 +43,7 @@ public static class SetupEndpoint
                 iconsDir = status.IconsDir,
                 hasUsmap = status.HasUsmap,
                 usmapPath = status.UsmapPath,
+                usmapHint = status.UsmapHint,
                 hasRepak = status.HasRepak,
                 hasIconExtractor = status.HasIconExtractor,
                 hasVanillaPak = status.HasVanillaPak,

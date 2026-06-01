@@ -120,6 +120,13 @@ namespace Windrose.Quartermaster.Core
                 : AppContext.BaseDirectory;
         }
 
+        public static bool IsDevRepoRoot(string root)
+        {
+            return !string.IsNullOrEmpty(root)
+                && File.Exists(Path.Combine(root, "Tools", "QuartermasterCore",
+                                                  "QuartermasterCore.csproj"));
+        }
+
         public static WindrosePaths FromModRoot(string modRoot)
         {
             if (string.IsNullOrEmpty(modRoot)) throw new ArgumentNullException("modRoot");

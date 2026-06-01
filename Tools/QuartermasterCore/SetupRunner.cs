@@ -46,6 +46,7 @@ namespace Windrose.Quartermaster.Core
             string usmap;
             status.HasUsmap = UsmapLocator.TryFind(_paths.ModRoot, out usmap);
             status.UsmapPath = usmap;
+            status.UsmapHint = status.HasUsmap ? null : UsmapLocator.MissingMessage(_paths.ModRoot);
 
             status.HasRepak = File.Exists(Path.Combine(_paths.ModRoot, "repak.exe"));
             status.HasIconExtractor = true;
@@ -107,12 +108,7 @@ namespace Windrose.Quartermaster.Core
             if (!UsmapLocator.TryFind(_paths.ModRoot, out usmap))
             {
                 throw new InvalidOperationException(
-                    "Setup needs a .usmap file in " + _paths.ModRoot + ".\n\n" +
-                    "Generate one with UE4SS' built-in dumper:\n" +
-                    "  1. Start Windrose, load a save, walk around for 5-10 seconds.\n" +
-                    "  2. Press Ctrl+Num6 (UE4SS Keybinds mod -> DumpUSMAP).\n" +
-                    "  3. Copy the produced .usmap into " + _paths.ModRoot + ".\n\n" +
-                    "Then click Re-run setup.");
+                    UsmapLocator.MissingMessage(_paths.ModRoot) + "\n\nThen click Re-run setup.");
             }
 
             if (ForceAll || !status.HasIcons)
@@ -184,6 +180,7 @@ namespace Windrose.Quartermaster.Core
         public string IconsDir;
         public bool HasUsmap;
         public string UsmapPath;
+        public string UsmapHint;
         public bool HasRepak;
         public bool HasIconExtractor;
         public bool HasVanillaPak;

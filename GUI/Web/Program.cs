@@ -160,8 +160,7 @@ public static class Program
 
     static bool LooksLikeDevRepo(string root)
     {
-        return File.Exists(Path.Combine(root, "Tools", "QuartermasterCore",
-                                              "QuartermasterCore.csproj"));
+        return Windrose.Quartermaster.Core.WindrosePaths.IsDevRepoRoot(root);
     }
 
     static void TerminatePriorInstances()

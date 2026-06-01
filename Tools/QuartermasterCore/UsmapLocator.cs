@@ -21,16 +21,25 @@ namespace Windrose.Quartermaster.Core
                 .FirstOrDefault();
 
             if (newest == null)
-            {
-                throw new InvalidOperationException(
-                    "No *.usmap file found in " + modRoot + ".\n\n" +
-                    "Generate one with UE4SS' built-in dumper:\n" +
-                    "  1. Start Windrose, load a save, walk around for 5-10 seconds.\n" +
-                    "  2. Press Ctrl+Num6 (UE4SS Keybinds mod -> DumpUSMAP).\n" +
-                    "  3. Copy the produced .usmap (typically next to UE4SS.exe under\n" +
-                    "     <Game>\\R5\\Binaries\\Win64\\ue4ss\\) into " + modRoot + ".");
-            }
+                throw new InvalidOperationException(MissingMessage(modRoot));
             return newest.FullName;
+        }
+
+        public static string MissingMessage(string modRoot)
+        {
+            if (WindrosePaths.IsDevRepoRoot(modRoot))
+            {
+                return
+                    "No *.usmap file found in " + modRoot + ".\n\n" +
+                    "Generate one with Dumper-7:\n" +
+                    "  1. Start Windrose via Steam, load a save, walk around for 5-10 seconds.\n" +
+                    "  2. Run Tools\\Dumper7Setup\\run_dump.bat (press F8 to dump, F6 to unload).\n" +
+                    "  3. Copy the produced .usmap from Tools\\Dumper7Setup\\output\\ into " + modRoot + ".";
+            }
+            return
+                "Type mappings (.usmap) are missing from " + modRoot + ".\n\n" +
+                "This file ships with Quartermaster and is restored automatically on launch - " +
+                "restart the app to recreate it. If it keeps failing, place a current .usmap into the folder above.";
         }
 
         public static bool TryFind(string modRoot, out string path)

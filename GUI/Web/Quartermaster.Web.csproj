@@ -78,7 +78,7 @@
   </Target>
   <!--
     Embed the UE5 mappings file (.usmap) so a fresh copy of the EXE can
-    run setup without the user first dumping one via UE4SS Ctrl+Num6.
+    run setup without the user first dumping one via Dumper-7.
     On deployed runs we write this into <DataRoot>\<filename>.usmap if
     no .usmap is already there. Game-update story: drop a newer .usmap
     next to the EXE in QuartermasterData\, UsmapLocator picks newest
