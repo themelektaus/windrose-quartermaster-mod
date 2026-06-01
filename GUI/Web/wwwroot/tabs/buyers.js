@@ -48,12 +48,6 @@ function filterBuyers() {
     return out;
 }
 
-function cloneTemplate(id) {
-    const tpl = document.getElementById(id);
-    if (!tpl) throw new Error('template #' + id + ' missing');
-    return tpl.content.firstElementChild.cloneNode(true);
-}
-
 function renderBuyers() {
     const errEl = document.getElementById('buyers-error');
     if (state.buyers.error) {

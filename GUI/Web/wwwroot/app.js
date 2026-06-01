@@ -83,6 +83,12 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 
+function cloneTemplate(id) {
+    const tpl = document.getElementById(id);
+    if (!tpl) throw new Error('template #' + id + ' missing');
+    return tpl.content.firstElementChild.cloneNode(true);
+}
+
 async function loadAppData() {
     const [profiles, items, lootTables] = await Promise.all([
         api('GET', '/api/profiles'),
