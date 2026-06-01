@@ -333,10 +333,10 @@ async function openGameInstallModalForBoot() {
 
 document.addEventListener('DOMContentLoaded', () => {
     boot().catch(err => {
-        document.body.innerHTML =
-            '<pre style="color:#e16464;padding:2em;white-space:pre-wrap;">' +
-            esc('Init failed: ' + err.message + '\n\n' + (err.stack || '')) +
-            '</pre>';
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'color:#e16464;padding:2em;white-space:pre-wrap;';
+        pre.textContent = 'Init failed: ' + err.message + '\n\n' + (err.stack || '');
+        document.body.replaceChildren(pre);
     });
 });
 
@@ -355,6 +355,20 @@ function hideSetupOverlay() {
     document.getElementById('setup-overlay').hidden = true;
 }
 
+function buildSetupCheckRow(cls, label, detail) {
+    const li = cloneTemplate('tpl-setup-check');
+    li.className = cls;
+    const div = li.querySelector('div');
+    div.querySelector('b').textContent = label;
+    if (detail) {
+        div.appendChild(document.createElement('br'));
+        const small = document.createElement('small');
+        small.textContent = detail;
+        div.appendChild(small);
+    }
+    return li;
+}
+
 function renderSetupChecks(status) {
     const ul = document.getElementById('setup-checks');
     const staticRows = [
@@ -364,36 +378,23 @@ function renderSetupChecks(status) {
                           status.usmapPath || 'Missing - see the setup error below for how to restore it.'],
     ];
     const sources = Array.isArray(status.sources) ? status.sources : [];
-    const sourceRows = sources.map(s => {
-        const detail = s.description || s.diskPath || '';
-        return '<li class="' + (s.ok ? 'ok' : 'bad') + '">' +
-            '<div><b>' + esc(s.label || s.key) + '</b>' +
-            (detail ? '<br><small>' + esc(detail) + '</small>' : '') +
-            '</div></li>';
-    });
-    const staticHtml = staticRows.map(([key, label, detail]) => {
-        const ok = !!status[key];
-        return '<li class="' + (ok ? 'ok' : 'bad') + '">' +
-            '<div><b>' + esc(label) + '</b>' +
-            (detail ? '<br><small>' + esc(detail) + '</small>' : '') +
-            '</div></li>';
-    });
-    const iconsRow = '<li class="' + (status.hasIcons ? 'ok' : 'bad') + '">' +
-        '<div><b>' + esc('Item icons extracted') + '</b>' +
-        '<br><small>' + esc((status.iconsDir || '') + ' - produced by the icons step.') + '</small>' +
-        '</div></li>';
-    // ffmpeg is optional - WAV-only users never need it - so we render
-    // the row in a neutral "info" state when absent (not red). Re-running
-    // setup downloads it; absence does not block the configurator.
-    const ffmpegCls = status.hasFfmpeg ? 'ok' : 'optional';
+    // ffmpeg is optional - WAV-only users never need it - so absent renders in
+    // a neutral "optional" state, not red. Re-running setup downloads it.
     const ffmpegDetail = status.hasFfmpeg
         ? (status.ffmpegPath || '')
         : 'Optional - one-time ~190 MB download. Only needed if you upload mp3 / ogg / flac / m4a / aac / opus in the Ship Music tab.';
-    const ffmpegRow = '<li class="' + ffmpegCls + '">' +
-        '<div><b>' + esc('ffmpeg (audio transcoder)') + '</b>' +
-        '<br><small>' + esc(ffmpegDetail) + '</small>' +
-        '</div></li>';
-    ul.innerHTML = staticHtml.concat(sourceRows).concat([iconsRow, ffmpegRow]).join('');
+
+    const frag = document.createDocumentFragment();
+    for (const [key, label, detail] of staticRows) {
+        frag.appendChild(buildSetupCheckRow(status[key] ? 'ok' : 'bad', label, detail));
+    }
+    for (const s of sources) {
+        frag.appendChild(buildSetupCheckRow(s.ok ? 'ok' : 'bad', s.label || s.key, s.description || s.diskPath || ''));
+    }
+    frag.appendChild(buildSetupCheckRow(status.hasIcons ? 'ok' : 'bad', 'Item icons extracted',
+        (status.iconsDir || '') + ' - produced by the icons step.'));
+    frag.appendChild(buildSetupCheckRow(status.hasFfmpeg ? 'ok' : 'optional', 'ffmpeg (audio transcoder)', ffmpegDetail));
+    ul.replaceChildren(frag);
 }
 
 function renderSetupError(status) {
@@ -447,7 +448,7 @@ function appendSetupLog(line, kind) {
 }
 
 function clearSetupLog() {
-    document.getElementById('setup-log').innerHTML = '';
+    document.getElementById('setup-log').replaceChildren();
 }
 
 function setSetupButtonsDisabled(disabled) {
@@ -761,17 +762,22 @@ function applyProfileToUI() {
 function renderProfileMeta() {
     const p = state.current;
     const out = document.getElementById('profile-meta');
-    if (!p) { out.innerHTML = ''; return; }
-    let html = '';
-    if (state.isDirty) html += '<span class="dirty-badge">UNSAVED</span>';
-    html += esc(p.description) || `&nbsp;`;
-    out.innerHTML = html;
+    if (!p) { out.replaceChildren(); return; }
+    const frag = document.createDocumentFragment();
+    if (state.isDirty) {
+        const badge = document.createElement('span');
+        badge.className = 'dirty-badge';
+        badge.textContent = 'UNSAVED';
+        frag.appendChild(badge);
+    }
+    frag.appendChild(document.createTextNode(p.description || ' '));
+    out.replaceChildren(frag);
 }
 
 function populateProfileSelect() {
     const sel = document.getElementById('profile-select');
     state.profiles.sort((a, b) => a.name.localeCompare(b.name));
-    sel.innerHTML = '';
+    sel.replaceChildren();
     for (const p of state.profiles) {
         const o = document.createElement('option');
         o.value = p.id;
@@ -826,7 +832,7 @@ function closePicker() {
     const dd = document.getElementById('picker-dropdown');
     if (dd) {
         dd.hidden = true;
-        dd.innerHTML = '';
+        dd.replaceChildren();
     }
     state.picker = null;
 }
@@ -855,6 +861,31 @@ function positionPicker(input) {
     }
 }
 
+function buildPickerOption(pickId, opts) {
+    const li = cloneTemplate('tpl-picker-option');
+    li.dataset.pickId = pickId;
+    if (opts.icon) {
+        const img = document.createElement('img');
+        img.src = opts.icon;
+        img.loading = 'lazy';
+        img.alt = '';
+        li.querySelector('.placeholder-icon').replaceWith(img);
+    } else {
+        li.querySelector('.placeholder-icon').textContent = opts.glyph || '?';
+    }
+    const b = li.querySelector('.info b');
+    b.textContent = opts.name;
+    if (opts.badge) {
+        b.appendChild(document.createTextNode(' '));
+        const badge = document.createElement('span');
+        badge.className = 'picker-badge custom';
+        badge.textContent = opts.badge;
+        b.appendChild(badge);
+    }
+    li.querySelector('.info small').textContent = opts.subtitle || '';
+    return li;
+}
+
 function populatePicker(query) {
     const dd = document.getElementById('picker-dropdown');
     if (!dd || !state.picker) return;
@@ -866,14 +897,7 @@ function populatePicker(query) {
             const name = m.displayName || '';
             const path = m.packagePath || '';
             if (q && !name.toLowerCase().includes(q) && !path.toLowerCase().includes(q)) continue;
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
-                    '<div class="placeholder-icon">M</div>' +
-                    '<div class="info">' +
-                        '<b>' + esc(name) + '</b>' +
-                        '<small>' + esc(path) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(path, { glyph: 'M', name: name, subtitle: path }));
         }
     } else if (state.picker.source === 'recipeResource') {
         // Custom items from the Item Creator first - same package-path
@@ -892,17 +916,7 @@ function populatePicker(query) {
                 && !name.toLowerCase().includes(q)
                 && !id.toLowerCase().includes(q)
                 && !path.toLowerCase().includes(q)) continue;
-            const iconHtml = item.icon
-                ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
-                : '<div class="placeholder-icon">?</div>';
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
-                    iconHtml +
-                    '<div class="info">' +
-                        '<b>' + esc(name) + ' <span class="picker-badge custom">Custom</span></b>' +
-                        '<small>' + esc(id) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(path, { icon: item.icon || null, name: name, badge: 'Custom', subtitle: id }));
         }
         for (const r of state.vanillaResources || []) {
             const name = r.displayName || r.stem || '';
@@ -912,17 +926,7 @@ function populatePicker(query) {
                 && !name.toLowerCase().includes(q)
                 && !stem.toLowerCase().includes(q)
                 && !path.toLowerCase().includes(q)) continue;
-            const iconHtml = r.iconUrl
-                ? '<img src="' + esc(r.iconUrl) + '" loading="lazy" alt="">'
-                : '<div class="placeholder-icon">?</div>';
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(path) + '">' +
-                    iconHtml +
-                    '<div class="info">' +
-                        '<b>' + esc(name) + '</b>' +
-                        '<small>' + esc(stem) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(path, { icon: r.iconUrl || null, name: name, subtitle: stem }));
         }
     } else if (state.picker.source === 'vanillaBuilding') {
         // Vanilla R5BuildingItem DA picker (Etappe I). Filters by both
@@ -940,14 +944,7 @@ function populatePicker(query) {
                 && !name.toLowerCase().includes(q)
                 && !path.toLowerCase().includes(q)
                 && !cat.toLowerCase().includes(q)) continue;
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(t.id) + '">' +
-                    '<div class="placeholder-icon">B</div>' +
-                    '<div class="info">' +
-                        '<b>' + esc(name) + '</b>' +
-                        '<small>' + esc(cat) + ' · ' + esc(path) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(t.id, { glyph: 'B', name: name, subtitle: cat + ' · ' + path }));
         }
     } else if (state.picker.type === 'table') {
         for (const lt of state.lootTables) {
@@ -956,14 +953,7 @@ function populatePicker(query) {
                 (lt.category || '') +
                 (lt.type ? ' · ' + lt.type : '') +
                 (lt.entries ? ' · ' + lt.entries.length + ' entries' : '');
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(lt.id) + '">' +
-                    '<div class="placeholder-icon">▦</div>' +
-                    '<div class="info">' +
-                        '<b>' + esc(lt.id) + '</b>' +
-                        '<small>' + esc(subtitle) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(lt.id, { glyph: '▦', name: lt.id, subtitle: subtitle }));
         }
     } else {
         for (const item of state.items) {
@@ -976,24 +966,19 @@ function populatePicker(query) {
                 (item.itemClass ? ' · ' + item.itemClass : '') +
                 (item.category  ? ' · ' + item.category  : '') +
                 (item.rarity   ? ' · ' + item.rarity   : '');
-            const iconHtml = item.icon
-                ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
-                : '<div class="placeholder-icon">?</div>';
-            rows.push(
-                '<li class="picker-option" data-pick-id="' + esc(item.id) + '">' +
-                    iconHtml +
-                    '<div class="info">' +
-                        '<b>' + esc(displayName) + '</b>' +
-                        '<small>' + esc(subtitle) + '</small>' +
-                    '</div>' +
-                '</li>');
+            rows.push(buildPickerOption(item.id, { icon: item.icon || null, name: displayName, subtitle: subtitle }));
         }
     }
 
     if (rows.length === 0) {
-        dd.innerHTML = '<li class="picker-empty">No matches</li>';
+        const li = document.createElement('li');
+        li.className = 'picker-empty';
+        li.textContent = 'No matches';
+        dd.replaceChildren(li);
     } else {
-        dd.innerHTML = rows.join('');
+        const frag = document.createDocumentFragment();
+        for (const r of rows) frag.appendChild(r);
+        dd.replaceChildren(frag);
     }
 }
 
@@ -1383,9 +1368,16 @@ async function onBuild() {
 
 function setBuildLog(lines) {
     const out = document.getElementById('build-log');
-    out.innerHTML = lines.map(l =>
-        '<span class="' + l.kind + '">[' + l.kind.toUpperCase() + ']</span> ' + esc(l.msg)
-    ).join('\n');
+    const frag = document.createDocumentFragment();
+    lines.forEach((l, i) => {
+        if (i > 0) frag.appendChild(document.createTextNode('\n'));
+        const span = document.createElement('span');
+        span.className = l.kind;
+        span.textContent = '[' + l.kind.toUpperCase() + ']';
+        frag.appendChild(span);
+        frag.appendChild(document.createTextNode(' ' + l.msg));
+    });
+    out.replaceChildren(frag);
     // Auto-scroll to bottom so the last (most relevant) status line is visible
     // when the build finishes - mirrors the SSE-style append used in mods.js.
     out.scrollTop = out.scrollHeight;
@@ -1477,7 +1469,10 @@ function cssEsc(s) {
 async function onQuit() {
     if (state.isDirty && !await confirm('Unsaved changes will be lost. Exit anyway?')) return;
     await fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
-    document.body.innerHTML = '<div class="shutdown-info">Server stopped. This window can be closed.</div>';
+    const info = document.createElement('div');
+    info.className = 'shutdown-info';
+    info.textContent = 'Server stopped. This window can be closed.';
+    document.body.replaceChildren(info);
 }
 
 async function onPlay() {

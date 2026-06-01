@@ -115,6 +115,18 @@
 
   <ul id="picker-dropdown" class="picker-dropdown" hidden></ul>
 
+  <!-- Global render templates, cloned in app.js (cloneTemplate). -->
+  <template id="tpl-picker-option">
+    <li class="picker-option">
+      <div class="placeholder-icon"></div>
+      <div class="info"><b></b><small></small></div>
+    </li>
+  </template>
+
+  <template id="tpl-setup-check">
+    <li><div><b></b></div></li>
+  </template>
+
   <script src="tabs/misc.js"></script>
   <script src="tabs/items.js"></script>
   <script src="tabs/loot.js"></script>
