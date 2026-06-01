@@ -46,9 +46,14 @@ function renderMods() {
         const msg = state.mods.files.length === 0
             ? 'No .pak files in this folder yet. Build a profile to drop one here.'
             : 'No mods match the current filter.';
-        list.innerHTML = '<li class="mods-empty">' + esc(msg) + '</li>';
+        const li = document.createElement('li');
+        li.className = 'mods-empty';
+        li.textContent = msg;
+        list.replaceChildren(li);
     } else {
-        list.innerHTML = filtered.map(buildModRowHtml).join('');
+        const frag = document.createDocumentFragment();
+        for (const f of filtered) frag.appendChild(buildModRowNode(f));
+        list.replaceChildren(frag);
     }
 
     document.getElementById('mods-count').textContent =
@@ -71,24 +76,46 @@ function filterMods() {
     return out;
 }
 
-function buildModRowHtml(f) {
-    const cls = f.isQuartermaster ? 'mod owned' : 'mod foreign';
-    const marker = f.isQuartermaster ? 'Q' : '*';
-    const sizeKb = (f.sizeBytes / 1024).toFixed(1);
-    const when = formatModifiedDate(f.modifiedUtc);
-    const nameBlock = f.isQuartermaster
-        ? ('<span class="display">' + esc(f.displayName || f.filename) + '</span>'
-           + '<span class="filename">' + esc(f.filename) + '</span>')
-        : ('<span class="filename">' + esc(f.filename) + '</span>');
-    const actions = f.isQuartermaster
-        ? '<button type="button" class="danger" data-delete-mod="' + esc(f.filename) + '" title="Move to recycle bin">Delete</button>'
-        : '<span class="lock" title="Foreign mod - managed externally">read-only</span>';
-    return '<li class="' + cls + '">'
-         +   '<span class="mod-marker" title="' + (f.isQuartermaster ? 'Built by Quartermaster' : 'External mod') + '">' + marker + '</span>'
-         +   '<div class="mod-name">' + nameBlock + '</div>'
-         +   '<div class="mod-meta"><span>' + esc(sizeKb) + ' KB</span><span>' + esc(when) + '</span></div>'
-         +   '<div class="mod-actions">' + actions + '</div>'
-         + '</li>';
+function buildModRowNode(f) {
+    const row = cloneTemplate('tpl-mod-row');
+    row.className = f.isQuartermaster ? 'mod owned' : 'mod foreign';
+
+    const marker = row.querySelector('.mod-marker');
+    marker.textContent = f.isQuartermaster ? 'Q' : '*';
+    marker.title = f.isQuartermaster ? 'Built by Quartermaster' : 'External mod';
+
+    const nameEl = row.querySelector('.mod-name');
+    if (f.isQuartermaster) {
+        const disp = document.createElement('span');
+        disp.className = 'display';
+        disp.textContent = f.displayName || f.filename;
+        nameEl.appendChild(disp);
+    }
+    const fname = document.createElement('span');
+    fname.className = 'filename';
+    fname.textContent = f.filename;
+    nameEl.appendChild(fname);
+
+    row.querySelector('.mod-size').textContent = (f.sizeBytes / 1024).toFixed(1) + ' KB';
+    row.querySelector('.mod-when').textContent = formatModifiedDate(f.modifiedUtc);
+
+    const actions = row.querySelector('.mod-actions');
+    if (f.isQuartermaster) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'danger';
+        btn.dataset.deleteMod = f.filename;
+        btn.title = 'Move to recycle bin';
+        btn.textContent = 'Delete';
+        actions.appendChild(btn);
+    } else {
+        const lock = document.createElement('span');
+        lock.className = 'lock';
+        lock.title = 'Foreign mod - managed externally';
+        lock.textContent = 'read-only';
+        actions.appendChild(lock);
+    }
+    return row;
 }
 
 function formatModifiedDate(iso) {
@@ -279,7 +306,7 @@ function runBuildingExport() {
     // damit ein laufender Export visuell genauso "live" wie ein Build
     // wirkt (auch wenn das Tab-Pane oben den Status weiter anzeigt).
     setFooterCollapsed(false);
-    logEl.innerHTML = '';
+    logEl.replaceChildren();
 
     const append = (line, kind) => {
         const span = document.createElement('span');
