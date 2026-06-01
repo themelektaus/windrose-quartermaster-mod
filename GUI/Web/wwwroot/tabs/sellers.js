@@ -23,8 +23,8 @@ function populateSellerFactionFilter() {
     }
     const factions = Array.from(seen).sort();
     const prev = sel.value;
-    sel.innerHTML = '<option value="">All factions</option>'
-        + factions.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('');
+    sel.replaceChildren(new Option('All factions', ''));
+    for (const f of factions) sel.appendChild(new Option(f, f));
     if (prev && factions.includes(prev)) sel.value = prev;
 }
 
@@ -62,16 +62,21 @@ function renderSellers() {
         const msg = state.sellers.list.length === 0
             ? 'No PlayerBuys RecipeLists in vanilla yet. Re-run setup to extract them.'
             : 'No sellers match the current filter.';
-        list.innerHTML = '<li class="buyers-empty">' + esc(msg) + '</li>';
+        const li = document.createElement('li');
+        li.className = 'buyers-empty';
+        li.textContent = msg;
+        list.replaceChildren(li);
     } else {
-        list.innerHTML = filtered.map(buildSellerCardHtml).join('');
+        const frag = document.createDocumentFragment();
+        for (const s of filtered) frag.appendChild(buildSellerCardNode(s));
+        list.replaceChildren(frag);
     }
 
     document.getElementById('sellers-count').textContent =
         filtered.length + ' / ' + state.sellers.list.length + ' lists';
 }
 
-function buildSellerCardHtml(s) {
+function buildSellerCardNode(s) {
     const listOvr = (state.current && state.current.sellerLists
                      && state.current.sellerLists[s.id]) || null;
     const removedSet = listOvr && listOvr.removedRecipeIds
@@ -81,68 +86,58 @@ function buildSellerCardHtml(s) {
     const recipeOrder = listOvr && listOvr.recipeOrder;
 
     const entries = s.entries || [];
-    let allRows;
+    const rows = [];
 
     if (recipeOrder) {
         const vanillaMap = new Map(entries.map(e => [e.recipeId, e]));
-        const orderedRows = recipeOrder
-            .map(id => {
-                const ve = vanillaMap.get(id);
-                if (ve) return buildSellerEntryRowHtml(s.id, ve, false);
-                if (id.startsWith('QM_SCustom_')) return buildSellerAddedRowHtml(s.id, id);
-                return '';
-            })
-            .filter(r => r !== '');
-        const removedRows = entries
-            .filter(e => removedSet.has(e.recipeId))
-            .map(e => buildSellerEntryRowHtml(s.id, e, true));
-        allRows = orderedRows.concat(removedRows);
+        for (const id of recipeOrder) {
+            const ve = vanillaMap.get(id);
+            if (ve) rows.push(buildSellerEntryRowNode(s.id, ve, false));
+            else if (id.startsWith('QM_SCustom_')) rows.push(buildSellerAddedRowNode(s.id, id));
+        }
+        for (const e of entries) {
+            if (removedSet.has(e.recipeId)) rows.push(buildSellerEntryRowNode(s.id, e, true));
+        }
     } else {
-        const vanillaRows = entries.map(e => buildSellerEntryRowHtml(s.id, e, removedSet.has(e.recipeId)));
-        const addedRows = addedIds.map(id => buildSellerAddedRowHtml(s.id, id));
-        allRows = vanillaRows.concat(addedRows);
+        for (const e of entries) rows.push(buildSellerEntryRowNode(s.id, e, removedSet.has(e.recipeId)));
+        for (const id of addedIds) rows.push(buildSellerAddedRowNode(s.id, id));
     }
 
-    const rows = allRows.length === 0
-        ? '<tr><td colspan="6" class="buyer-empty-row">(no entries)</td></tr>'
-        : allRows.join('');
+    const card = cloneTemplate('tpl-seller-card');
+    card.dataset.sellerId = s.id;
+    card.querySelector('.buyer-faction').textContent = s.faction || '(other)';
+    card.querySelector('.buyer-label').textContent = s.label || s.id;
+    card.querySelector('.buyer-sub').textContent =
+        s.id + (s.entries ? '  -  ' + s.entries.length + ' entries' : '');
 
-    const editedCount = countEditedInSeller(s);
+    const editedCount  = countEditedInSeller(s);
     const removedCount = removedSet.size;
-    const addedCount = addedIds.length;
-    const changeBadge = (editedCount + removedCount + addedCount) === 0
-        ? ''
-        : ' <span class="buyer-change-badge">'
-        +   (editedCount  ? '<span class="badge edited">'  + editedCount  + ' edited</span>'  : '')
-        +   (removedCount ? '<span class="badge removed">' + removedCount + ' removed</span>' : '')
-        +   (addedCount   ? '<span class="badge added">'   + addedCount   + ' added</span>'   : '')
-        + '</span>';
+    const addedCount   = addedIds.length;
+    const badge = card.querySelector('.buyer-change-badge');
+    if (editedCount + removedCount + addedCount > 0) {
+        if (editedCount)  badge.appendChild(sellerBadge('edited',  editedCount  + ' edited'));
+        if (removedCount) badge.appendChild(sellerBadge('removed', removedCount + ' removed'));
+        if (addedCount)   badge.appendChild(sellerBadge('added',   addedCount   + ' added'));
+        badge.hidden = false;
+    }
 
-    const sub = s.id + (s.entries ? '  -  ' + s.entries.length + ' entries' : '');
-    return '<li class="buyer-card" data-seller-id="' + esc(s.id) + '">'
-         +   '<header class="buyer-header">'
-         +     '<div class="buyer-title">'
-         +       '<span class="buyer-faction">' + esc(s.faction || '(other)') + '</span>'
-         +       '<span class="buyer-label">' + esc(s.label || s.id) + '</span>'
-         +       changeBadge
-         +     '</div>'
-         +     '<span class="buyer-sub">' + esc(sub) + '</span>'
-         +   '</header>'
-         +   '<table class="buyer-table">'
-         +     '<thead><tr>'
-         +       '<th>Item</th>'
-         +       '<th class="num">Qty</th>'
-         +       '<th>Pay item</th>'
-         +       '<th class="num">Pay qty</th>'
-         +       '<th>Requirement</th>'
-         +       '<th class="buyer-row-actions">&nbsp;</th>'
-         +     '</tr></thead>'
-         +     '<tbody>' + rows + '</tbody>'
-         +   '</table>'
-         +   '<div class="buyer-card-footer">'
-         +     '<button class="buyer-add-btn primary" data-seller-add="' + esc(s.id) + '">Add Entry</button>'
-         +   '</div>'
-         + '</li>';
+    const tbody = card.querySelector('tbody');
+    if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.className = 'buyer-empty-row';
+        td.textContent = '(no entries)';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    } else {
+        const frag = document.createDocumentFragment();
+        for (const r of rows) frag.appendChild(r);
+        tbody.appendChild(frag);
+    }
+
+    card.querySelector('.buyer-add-btn').dataset.sellerAdd = s.id;
+    return card;
 }
 
 function countEditedInSeller(s) {
@@ -155,21 +150,84 @@ function countEditedInSeller(s) {
     return n;
 }
 
-function buildSellerMoveHtml(sellerId, recipeId) {
-    return '<button class="btn-link buyer-move" data-seller-move="'
-        + esc(sellerId) + '|' + esc(recipeId) + '|-1" title="Move up">&#x25B2;</button>'
-        + '<button class="btn-link buyer-move" data-seller-move="'
-        + esc(sellerId) + '|' + esc(recipeId) + '|1" title="Move down">&#x25BC;</button>';
+function sellerBadge(kind, text) {
+    const span = document.createElement('span');
+    span.className = 'badge ' + kind;
+    span.textContent = text;
+    return span;
 }
 
-function buildSellerEntryRowHtml(sellerId, e, removed) {
+function sellerActionBtn(extraClass, dataKey, dataVal, title, glyph) {
+    const btn = document.createElement('button');
+    btn.className = 'btn-link ' + extraClass;
+    btn.dataset[dataKey] = dataVal;
+    btn.title = title;
+    btn.textContent = glyph;
+    return btn;
+}
+
+function appendSellerMoveBtns(parent, sellerId, recipeId) {
+    parent.appendChild(sellerActionBtn(
+        'buyer-move', 'sellerMove', sellerId + '|' + recipeId + '|-1', 'Move up', '▲'));
+    parent.appendChild(sellerActionBtn(
+        'buyer-move', 'sellerMove', sellerId + '|' + recipeId + '|1', 'Move down', '▼'));
+}
+
+function configureSellerItemCell(td, recipeId, itemId, disabled) {
+    const item = itemId ? state.itemsById.get(itemId) : null;
+    const name = (item && item.meta && item.meta.name) || itemId || '(no item)';
+    if (item && item.icon) {
+        const img = document.createElement('img');
+        img.className = 'buyer-icon';
+        img.src = item.icon;
+        img.alt = '';
+        img.loading = 'lazy';
+        td.querySelector('.buyer-icon').replaceWith(img);
+    }
+    td.querySelector('.buyer-item-name').textContent = name;
+    const input = td.querySelector('.buyer-item-input');
+    input.value = itemId || '';
+    input.dataset.recipeId = recipeId;
+    if (disabled) input.disabled = true;
+}
+
+function setSellerNumInput(input, recipeId, value, disabled) {
+    input.value = String(value);
+    input.dataset.recipeId = recipeId;
+    if (disabled) input.disabled = true;
+}
+
+function buildSellerRowNode(recipeId, rowClass, itemId, itemCount, payItemId, payCount, requirement, disabled) {
+    const tr = cloneTemplate('tpl-seller-row');
+    tr.className = rowClass;
+    tr.dataset.recipeId = recipeId;
+
+    configureSellerItemCell(tr.querySelector('[data-cell="item"]'),    recipeId, itemId,    disabled);
+    configureSellerItemCell(tr.querySelector('[data-cell="payItem"]'), recipeId, payItemId, disabled);
+
+    const nums = tr.querySelectorAll('.buyer-num-input');
+    setSellerNumInput(nums[0], recipeId, itemCount, disabled);
+    setSellerNumInput(nums[1], recipeId, payCount,  disabled);
+
+    // Select markup comes from the requirement builder (single option-list source).
+    tr.querySelector('.buyer-req').innerHTML =
+        buildSellerRequirementSelectHtml(requirement, recipeId, disabled ? ' disabled' : '');
+    return tr;
+}
+
+function buildSellerUnresolvedRow(rowClass, recipeId, recipeText, hintText) {
+    const tr = cloneTemplate('tpl-seller-unresolved-row');
+    tr.className = rowClass;
+    if (recipeId != null) tr.dataset.recipeId = recipeId;
+    tr.querySelector('.buyer-recipe').textContent = recipeText;
+    tr.querySelector('.hint').textContent = hintText;
+    return tr;
+}
+
+function buildSellerEntryRowNode(sellerId, e, removed) {
     if (!e.resolved) {
-        return '<tr class="buyer-row unresolved">'
-             +   '<td colspan="6" class="buyer-unresolved">'
-             +     '<span class="buyer-recipe">' + esc(e.recipeId || '(unknown)') + '</span>'
-             +     ' <span class="hint">(recipe not found in vanilla extract)</span>'
-             +   '</td>'
-             + '</tr>';
+        return buildSellerUnresolvedRow('buyer-row unresolved', null,
+            e.recipeId || '(unknown)', '(recipe not found in vanilla extract)');
     }
 
     const ovr = (state.current && state.current.sellerRecipes
@@ -185,99 +243,42 @@ function buildSellerEntryRowHtml(sellerId, e, removed) {
         ? ovr.craftRequirement
         : (e.craftRequirement || 'None');
 
-    const moveHtml = removed ? '' : buildSellerMoveHtml(sellerId, e.recipeId);
-    const actionBtn = removed
-        ? '<button class="btn-link buyer-restore" data-seller-restore="' + esc(sellerId)
-            + '|' + esc(e.recipeId) + '" title="Restore">&#x21BA;</button>'
-        : (ovr
-            ? moveHtml
-                + '<button class="btn-link buyer-reset" data-seller-reset="' + esc(e.recipeId)
-                + '" title="Reset to vanilla">&#x21B6;</button>'
-                + '<button class="btn-link buyer-delete" data-seller-delete="' + esc(sellerId)
-                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>'
-            : moveHtml
-                + '<button class="btn-link buyer-delete" data-seller-delete="' + esc(sellerId)
-                + '|' + esc(e.recipeId) + '" title="Remove from list">&#x2715;</button>');
-
-    const disabledAttr = removed ? ' disabled' : '';
-    return '<tr class="' + rowClass + '" data-recipe-id="' + esc(e.recipeId) + '">'
-         +   buildSellerEditableItemCellHtml(e.recipeId, 'item', itemId, disabledAttr)
-         +   '<td class="num">'
-         +     '<input type="number" class="buyer-num-input" min="0"'
-         +       ' value="' + esc(String(itemCount)) + '"'
-         +       ' data-seller-field="itemCount" data-recipe-id="' + esc(e.recipeId) + '"'
-         +       disabledAttr + '>'
-         +   '</td>'
-         +   buildSellerEditableItemCellHtml(e.recipeId, 'payItem', payItemId, disabledAttr)
-         +   '<td class="num">'
-         +     '<input type="number" class="buyer-num-input" min="0"'
-         +       ' value="' + esc(String(payCount)) + '"'
-         +       ' data-seller-field="payCount" data-recipe-id="' + esc(e.recipeId) + '"'
-         +       disabledAttr + '>'
-         +   '</td>'
-         +   '<td class="buyer-req">' + buildSellerRequirementSelectHtml(requirement, e.recipeId, disabledAttr) + '</td>'
-         +   '<td class="buyer-row-actions">' + actionBtn + '</td>'
-         + '</tr>';
+    const tr = buildSellerRowNode(e.recipeId, rowClass, itemId, itemCount, payItemId, payCount, requirement, removed);
+    const actions = tr.querySelector('.buyer-row-actions');
+    if (removed) {
+        actions.appendChild(sellerActionBtn(
+            'buyer-restore', 'sellerRestore', sellerId + '|' + e.recipeId, 'Restore', '↺'));
+    } else {
+        appendSellerMoveBtns(actions, sellerId, e.recipeId);
+        if (ovr) {
+            actions.appendChild(sellerActionBtn(
+                'buyer-reset', 'sellerReset', e.recipeId, 'Reset to vanilla', '↶'));
+        }
+        actions.appendChild(sellerActionBtn(
+            'buyer-delete', 'sellerDelete', sellerId + '|' + e.recipeId, 'Remove from list', '✕'));
+    }
+    return tr;
 }
 
-function buildSellerAddedRowHtml(sellerId, recipeId) {
+function buildSellerAddedRowNode(sellerId, recipeId) {
     const ovr = (state.current && state.current.sellerRecipes
                  && state.current.sellerRecipes[recipeId]) || null;
     if (!ovr) {
-        return '<tr class="buyer-row added orphan" data-recipe-id="' + esc(recipeId) + '">'
-             +   '<td colspan="6" class="buyer-unresolved">'
-             +     '<span class="buyer-recipe">' + esc(recipeId) + '</span>'
-             +     ' <span class="hint">(added recipe has no edit-spec - profile corrupted)</span>'
-             +   '</td>'
-             + '</tr>';
+        return buildSellerUnresolvedRow('buyer-row added orphan', recipeId, recipeId,
+            '(added recipe has no edit-spec - profile corrupted)');
     }
     const itemId    = ovr.itemPath    ? assetPathToId(ovr.itemPath)    : '';
     const payItemId = ovr.payItemPath ? assetPathToId(ovr.payItemPath) : '';
     const itemCount = ovr.itemCount != null ? ovr.itemCount : 0;
     const payCount  = ovr.payCount  != null ? ovr.payCount  : 0;
     const requirement = ovr.craftRequirement != null ? ovr.craftRequirement : 'None';
-    return '<tr class="buyer-row added" data-recipe-id="' + esc(recipeId) + '">'
-         +   buildSellerEditableItemCellHtml(recipeId, 'item', itemId, '')
-         +   '<td class="num">'
-         +     '<input type="number" class="buyer-num-input" min="0"'
-         +       ' value="' + esc(String(itemCount)) + '"'
-         +       ' data-seller-field="itemCount" data-recipe-id="' + esc(recipeId) + '">'
-         +   '</td>'
-         +   buildSellerEditableItemCellHtml(recipeId, 'payItem', payItemId, '')
-         +   '<td class="num">'
-         +     '<input type="number" class="buyer-num-input" min="0"'
-         +       ' value="' + esc(String(payCount)) + '"'
-         +       ' data-seller-field="payCount" data-recipe-id="' + esc(recipeId) + '">'
-         +   '</td>'
-         +   '<td class="buyer-req">' + buildSellerRequirementSelectHtml(requirement, recipeId, '') + '</td>'
-         +   '<td class="buyer-row-actions">'
-         +     buildSellerMoveHtml(sellerId, recipeId)
-         +     '<button class="btn-link buyer-delete" data-seller-delete-added="'
-         +       esc(sellerId) + '|' + esc(recipeId) + '" title="Delete added entry">&#x2715;</button>'
-         +   '</td>'
-         + '</tr>';
-}
 
-function buildSellerEditableItemCellHtml(recipeId, field, itemId, disabledAttr) {
-    const item = itemId ? state.itemsById.get(itemId) : null;
-    const name = (item && item.meta && item.meta.name) || itemId || '(no item)';
-    const iconHtml = (item && item.icon)
-        ? '<img class="buyer-icon" src="' + esc(item.icon) + '" alt="" loading="lazy">'
-        : '<span class="buyer-icon buyer-icon-empty"></span>';
-    return '<td class="buyer-item">'
-         +   iconHtml
-         +   '<div class="buyer-item-edit">'
-         +     '<span class="buyer-item-name">' + esc(name) + '</span>'
-         +     '<input type="text" class="buyer-item-input"'
-         +       ' value="' + esc(itemId || '') + '"'
-         +       ' data-seller-picker-target="1"'
-         +       ' data-seller-field="' + esc(field) + '"'
-         +       ' data-recipe-id="' + esc(recipeId) + '"'
-         +       ' placeholder="Search items by name or id..."'
-         +       ' autocomplete="off"'
-         +       disabledAttr + '>'
-         +   '</div>'
-         + '</td>';
+    const tr = buildSellerRowNode(recipeId, 'buyer-row added', itemId, itemCount, payItemId, payCount, requirement, false);
+    const actions = tr.querySelector('.buyer-row-actions');
+    appendSellerMoveBtns(actions, sellerId, recipeId);
+    actions.appendChild(sellerActionBtn(
+        'buyer-delete', 'sellerDeleteAdded', sellerId + '|' + recipeId, 'Delete added entry', '✕'));
+    return tr;
 }
 
 function buildSellerRequirementSelectHtml(currentValue, recipeId, disabledAttr) {
@@ -309,10 +310,7 @@ function refreshSellerCard(sellerId) {
     if (!old) return;
     const seller = state.sellers.list.find(s => s.id === sellerId);
     if (!seller) return;
-    const wrap = document.createElement('div');
-    wrap.innerHTML = buildSellerCardHtml(seller);
-    const fresh = wrap.firstElementChild;
-    if (fresh) old.replaceWith(fresh);
+    old.replaceWith(buildSellerCardNode(seller));
 }
 
 function getOrCreateSellerRecipeOverride(recipeId, vanillaEntry) {

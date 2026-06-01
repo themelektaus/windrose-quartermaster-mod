@@ -40,10 +40,7 @@
     <ul id="buyers-list" class="buyers-list"></ul>
   </section>
 
-  <!-- Render templates. Cloned + configured in buyers.js (cloneTemplate).
-       Markup lives here; JS only sets values, text and data-* hooks. The
-       data-buyer-field / data-buyer-picker-target attributes are baked in
-       so the existing event-delegation in buyers.js keeps working. -->
+  <!-- Cloned + filled in buyers.js; data-buyer-* hooks drive the delegation. -->
   <template id="tpl-buyer-card">
     <li class="buyer-card">
       <header class="buyer-header">

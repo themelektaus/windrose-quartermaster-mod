@@ -39,4 +39,72 @@
     <div id="sellers-error" class="mods-error" hidden></div>
     <ul id="sellers-list" class="buyers-list"></ul>
   </section>
+
+  <!-- Cloned + filled in sellers.js; data-seller-* hooks drive the delegation. -->
+  <template id="tpl-seller-card">
+    <li class="buyer-card">
+      <header class="buyer-header">
+        <div class="buyer-title">
+          <span class="buyer-faction"></span>
+          <span class="buyer-label"></span>
+          <span class="buyer-change-badge" hidden></span>
+        </div>
+        <span class="buyer-sub"></span>
+      </header>
+      <table class="buyer-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Qty</th>
+            <th>Pay item</th>
+            <th class="num">Pay qty</th>
+            <th>Requirement</th>
+            <th class="buyer-row-actions">&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="buyer-card-footer">
+        <button class="buyer-add-btn primary" data-seller-add="">Add Entry</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="tpl-seller-row">
+    <tr class="buyer-row">
+      <td class="buyer-item" data-cell="item">
+        <span class="buyer-icon buyer-icon-empty"></span>
+        <div class="buyer-item-edit">
+          <span class="buyer-item-name"></span>
+          <input type="text" class="buyer-item-input" data-seller-picker-target="1"
+                 data-seller-field="item" placeholder="Search items by name or id..." autocomplete="off">
+        </div>
+      </td>
+      <td class="num">
+        <input type="number" class="buyer-num-input" min="0" data-seller-field="itemCount">
+      </td>
+      <td class="buyer-item" data-cell="payItem">
+        <span class="buyer-icon buyer-icon-empty"></span>
+        <div class="buyer-item-edit">
+          <span class="buyer-item-name"></span>
+          <input type="text" class="buyer-item-input" data-seller-picker-target="1"
+                 data-seller-field="payItem" placeholder="Search items by name or id..." autocomplete="off">
+        </div>
+      </td>
+      <td class="num">
+        <input type="number" class="buyer-num-input" min="0" data-seller-field="payCount">
+      </td>
+      <td class="buyer-req"></td>
+      <td class="buyer-row-actions"></td>
+    </tr>
+  </template>
+
+  <template id="tpl-seller-unresolved-row">
+    <tr class="buyer-row unresolved">
+      <td colspan="6" class="buyer-unresolved">
+        <span class="buyer-recipe"></span>
+        <span class="hint"></span>
+      </td>
+    </tr>
+  </template>
 </div>
