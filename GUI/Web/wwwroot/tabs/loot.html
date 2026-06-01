@@ -30,4 +30,92 @@
     </div>
     <ul id="lt-list" class="lt-list"></ul>
   </section>
+
+  <!-- Cloned + filled in loot.js; data-* hooks drive the lt-list delegation. -->
+  <template id="tpl-lt-row">
+    <li class="lt">
+      <div class="lt-header">
+        <span class="chevron"></span>
+        <span class="lt-id"></span>
+        <span class="lt-meta lt-meta-info"></span>
+        <span class="lt-meta lt-meta-badges"></span>
+      </div>
+      <div class="lt-body"></div>
+    </li>
+  </template>
+
+  <template id="tpl-lt-entry-row">
+    <div class="lt-entry">
+      <div class="placeholder-icon"></div>
+      <div class="target"><b></b><small></small></div>
+      <div class="value">
+        <label>Minimum</label>
+        <input type="number" class="num" data-edit-field="min">
+      </div>
+      <div class="value">
+        <label>Maximum</label>
+        <input type="number" class="num" data-edit-field="max">
+      </div>
+      <div class="value">
+        <label>Weight</label>
+        <input type="number" class="num" data-edit-field="weight">
+      </div>
+      <div class="row-actions">
+        <button type="button" class="danger" data-toggle-remove>⨉</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-lt-added-row">
+    <div class="lt-entry added">
+      <div class="placeholder-icon"></div>
+      <div class="target"><b></b><small></small></div>
+      <div class="value">
+        <label>Minimum</label>
+        <input type="number" class="num" data-added-field="min">
+      </div>
+      <div class="value">
+        <label>Maximum</label>
+        <input type="number" class="num" data-added-field="max">
+      </div>
+      <div class="value">
+        <label>Weight</label>
+        <input type="number" class="num" data-added-field="weight">
+      </div>
+      <div class="row-actions">
+        <button type="button" class="danger" data-delete-added>⨉</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-lt-add-form">
+    <div class="lt-entry added">
+      <div class="lt-add-form">
+        <div class="picker-row">
+          <select class="picker-type" data-add-form-type>
+            <option value="item">Item</option>
+            <option value="table">Sub-Table</option>
+            <option value="nodrop">No drop</option>
+          </select>
+          <input type="text" class="picker-target" placeholder="Search items by name or id..."
+                 data-add-form-target data-picker-mode="item" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="value">
+          <label>Minimum</label>
+          <input type="number" class="num" data-added-field="min">
+        </div>
+        <div class="value">
+          <label>Maximum</label>
+          <input type="number" class="num" data-added-field="max">
+        </div>
+        <div class="value">
+          <label>Weight</label>
+          <input type="number" class="num" data-added-field="weight">
+        </div>
+        <div class="row-actions">
+          <button type="button" class="danger" data-delete-added>⨉</button>
+        </div>
+      </div>
+    </div>
+  </template>
 </div>

@@ -10,19 +10,35 @@ function getLootGlobalForCategory(cat) {
 function renderLootGlobals() {
     const out = document.getElementById('loot-globals');
     if (!out) return;
-    const rows = [];
+    const frag = document.createDocumentFragment();
     for (const c of state.lootCategories) {
         const v = getLootGlobalForCategory(c.name);
-        rows.push(
-            '<span class="cat">' + esc(c.name) +
-                '<span class="cat-count">(' + c.count + ')</span></span>' +
-            '<input type="number" min="0" step="0.5" placeholder="1.0" ' +
-                'data-loot-cat="' + esc(c.name) + '" ' +
-                'value="' + (v != null ? esc(v) : '') + '">' +
-            '<button class="reset" type="button" data-reset-cat="' + esc(c.name) + '">x</button>'
-        );
+
+        const cat = document.createElement('span');
+        cat.className = 'cat';
+        cat.textContent = c.name;
+        const count = document.createElement('span');
+        count.className = 'cat-count';
+        count.textContent = '(' + c.count + ')';
+        cat.appendChild(count);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.step = '0.5';
+        input.placeholder = '1.0';
+        input.dataset.lootCat = c.name;
+        if (v != null) input.value = v;
+
+        const reset = document.createElement('button');
+        reset.className = 'reset';
+        reset.type = 'button';
+        reset.dataset.resetCat = c.name;
+        reset.textContent = 'x';
+
+        frag.append(cat, input, reset);
     }
-    out.innerHTML = rows.join('');
+    out.replaceChildren(frag);
 }
 
 function renderLootStatus() {
@@ -191,13 +207,18 @@ function renderLootTables() {
 
     const frag = document.createDocumentFragment();
     for (const lt of filtered) frag.appendChild(buildLtRow(lt));
-    ul.innerHTML = '';
-    ul.appendChild(frag);
+    ul.replaceChildren(frag);
+}
+
+function ltBadge(kind, text) {
+    const span = document.createElement('span');
+    span.className = 'lt-badge ' + kind;
+    span.textContent = text;
+    return span;
 }
 
 function buildLtRow(lt) {
-    const li = document.createElement('li');
-    li.className = 'lt';
+    const li = cloneTemplate('tpl-lt-row');
     if (!state.expandedLts.has(lt.id)) li.classList.add('collapsed');
     li.dataset.ltId = lt.id;
     if (computeLtChanged(lt))    li.classList.add('changed');
@@ -209,21 +230,23 @@ function buildLtRow(lt) {
     const addCount  = ovr && ovr.added   ? ovr.added.length   : 0;
     const mult      = getLootGlobalForCategory(lt.category);
 
-    const badges = [];
-    if (mult != null && mult !== 1) badges.push('×' + mult);
-    if (editCount > 0) badges.push('<span class="lt-badge edited">' + editCount + ' edited</span>');
-    if (remCount  > 0) badges.push('<span class="lt-badge removed">' + remCount + ' removed</span>');
-    if (addCount  > 0) badges.push('<span class="lt-badge added">' + addCount + ' added</span>');
+    const header = li.querySelector('.lt-header');
+    header.dataset.toggle = lt.id;
+    header.querySelector('.lt-id').textContent = lt.id;
+    header.querySelector('.lt-meta-info').textContent =
+        (lt.type || '') + ' · ' + (lt.entries ? lt.entries.length : 0) + ' entries';
 
-    const headerHtml =
-        '<div class="lt-header" data-toggle="' + esc(lt.id) + '">' +
-            '<span class="chevron"></span>' +
-            '<span class="lt-id">' + esc(lt.id) + '</span>' +
-            '<span class="lt-meta">' + esc(lt.type || '') + ' · ' + (lt.entries ? lt.entries.length : 0) + ' entries</span>' +
-            '<span class="lt-meta">' + badges.join(' ') + '</span>' +
-        '</div>';
+    const badgesEl = header.querySelector('.lt-meta-badges');
+    const parts = [];
+    if (mult != null && mult !== 1) parts.push(document.createTextNode('×' + mult));
+    if (editCount > 0) parts.push(ltBadge('edited',  editCount + ' edited'));
+    if (remCount  > 0) parts.push(ltBadge('removed', remCount  + ' removed'));
+    if (addCount  > 0) parts.push(ltBadge('added',   addCount  + ' added'));
+    parts.forEach((node, i) => {
+        if (i > 0) badgesEl.appendChild(document.createTextNode(' '));
+        badgesEl.appendChild(node);
+    });
 
-    li.innerHTML = headerHtml + '<div class="lt-body"></div>';
     if (state.expandedLts.has(lt.id)) {
         renderLtBody(li, lt);
     }
@@ -234,100 +257,117 @@ function renderLtBody(li, lt) {
     const body = li.querySelector('.lt-body');
     if (!body) return;
 
-    const rows = [];
+    const frag = document.createDocumentFragment();
 
     for (const e of lt.entries) {
-        rows.push(buildLtEntryRowHtml(lt, e, false));
+        frag.appendChild(buildLtEntryRowNode(lt, e, false));
     }
 
     const ovr = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
     if (ovr && ovr.added) {
         for (let i = 0; i < ovr.added.length; i++) {
-            rows.push(buildLtAddedRowHtml(lt, ovr.added[i], i, false));
+            frag.appendChild(buildLtAddedRowNode(lt, ovr.added[i], i, false));
         }
     }
 
-    rows.push(
-        '<div class="lt-add-row">' +
-            '<button type="button" class="add-btn" data-add-entry="' + esc(lt.id) + '">+ Add entry</button>' +
-        '</div>');
+    const addRow = document.createElement('div');
+    addRow.className = 'lt-add-row';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'add-btn';
+    addBtn.dataset.addEntry = lt.id;
+    addBtn.textContent = '+ Add entry';
+    addRow.appendChild(addBtn);
+    frag.appendChild(addRow);
 
-    body.innerHTML = rows.join('');
+    body.replaceChildren(frag);
 }
 
-function buildLtEntryRowHtml(lt, e, isReadonly) {
+// Fills the cloned target cell; opts.icon -> <img>, else a glyph placeholder.
+function configureLtTarget(row, opts) {
+    const iconEl = row.querySelector('.placeholder-icon');
+    if (opts.icon) {
+        const img = document.createElement('img');
+        img.src = opts.icon;
+        img.alt = '';
+        img.loading = 'lazy';
+        iconEl.replaceWith(img);
+    } else if (opts.glyphInSpan) {
+        const span = document.createElement('span');
+        span.textContent = opts.glyph;
+        iconEl.appendChild(span);
+    } else {
+        iconEl.textContent = opts.glyph;
+    }
+    const targetEl = row.querySelector('.target');
+    if (opts.subtable) targetEl.classList.add('subtable');
+    targetEl.querySelector('b').textContent = opts.bText;
+    targetEl.querySelector('small').textContent = opts.smallText;
+}
+
+function setLtNumInput(input, ltId, index, placeholder, value, disabled) {
+    input.placeholder = placeholder;
+    input.value = value;
+    input.dataset.ltId = ltId;
+    input.dataset.index = index;
+    if (disabled) input.disabled = true;
+}
+
+function buildLtEntryRowNode(lt, e, isReadonly) {
     const r = resolveLootEntry(lt, e);
-    const classes = ['lt-entry'];
-    if (r.removed) classes.push('removed');
-    if (r.edited)  classes.push('edited');
+    const row = cloneTemplate('tpl-lt-entry-row');
+    if (r.removed) row.classList.add('removed');
+    if (r.edited)  row.classList.add('edited');
+    row.dataset.ltId = lt.id;
+    row.dataset.vanillaIndex = e.index;
 
     const isItem  = !!e.lootItemId;
     const isTable = !!e.lootTableId;
     const item    = isItem ? state.itemsById.get(e.lootItemId) : null;
-    const targetHtml = buildEntryTargetHtml(e, item);
+    if (isItem) {
+        const name = (item && item.meta && item.meta.name) || e.lootItemId;
+        configureLtTarget(row, {
+            icon: item && item.icon ? item.icon : null, glyph: '?',
+            bText: name, smallText: e.lootItemId,
+        });
+    } else if (isTable) {
+        configureLtTarget(row, {
+            glyph: '▦', glyphInSpan: true, subtable: true,
+            bText: e.lootTableId, smallText: '(sub-table)',
+        });
+    } else {
+        configureLtTarget(row, { glyph: '·', bText: '(no drop)', smallText: '' });
+    }
 
     const ovr  = (state.current && state.current.lootOverrides && state.current.lootOverrides[lt.id]) || null;
     const edit = (ovr && ovr.entries && ovr.entries[String(e.index)]) || null;
     const minVal    = edit && edit.min    != null ? edit.min    : '';
     const maxVal    = edit && edit.max    != null ? edit.max    : '';
     const weightVal = edit && edit.weight != null ? edit.weight : '';
-
     const minPh = r.changedByMult ? r.min : e.min;
     const maxPh = r.changedByMult ? r.max : e.max;
 
-    const removeBtn = '<button type="button" class="danger" data-toggle-remove="' + esc(lt.id) + '" data-index="' + e.index + '"' +
-        (isReadonly ? ' disabled' : '') + '>⨉</button>';
+    const valDisabled = isReadonly || r.removed;
+    const inputs = row.querySelectorAll('[data-edit-field]');
+    setLtNumInput(inputs[0], lt.id, e.index, minPh,    minVal,    valDisabled);
+    setLtNumInput(inputs[1], lt.id, e.index, maxPh,    maxVal,    valDisabled);
+    setLtNumInput(inputs[2], lt.id, e.index, e.weight, weightVal, valDisabled);
 
-    return '<div class="' + classes.join(' ') + '" data-lt-id="' + esc(lt.id) + '" data-vanilla-index="' + e.index + '">' +
-        targetHtml +
-        '<div class="value">' +
-        '  <label>Minimum</label>' +
-        '  <input type="number" class="num" placeholder="' + minPh + '" value="' + esc(minVal) +
-            '" data-edit-field="min" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
-            (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="value">' +
-        '  <label>Maximum</label>' +
-        '  <input type="number" class="num" placeholder="' + maxPh + '" value="' + esc(maxVal) +
-            '" data-edit-field="max" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
-            (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="value">' +
-        '  <label>Weight</label>' +
-        '  <input type="number" class="num" placeholder="' + e.weight + '" value="' + esc(weightVal) +
-            '" data-edit-field="weight" data-lt-id="' + esc(lt.id) + '" data-index="' + e.index + '"' +
-            (isReadonly || r.removed ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="row-actions">' + removeBtn + '</div>' +
-    '</div>';
+    const removeBtn = row.querySelector('[data-toggle-remove]');
+    removeBtn.dataset.toggleRemove = lt.id;
+    removeBtn.dataset.index = e.index;
+    if (isReadonly) removeBtn.disabled = true;
+    return row;
 }
 
-function buildEntryTargetHtml(e, item) {
-    const isItem  = !!e.lootItemId;
-    const isTable = !!e.lootTableId;
-    if (isItem) {
-        const name = (item && item.meta && item.meta.name) || e.lootItemId;
-        const iconHtml = item && item.icon
-            ? '<img src="' + esc(item.icon) + '" alt="" loading="lazy">'
-            : '<div class="placeholder-icon">?</div>';
-        return iconHtml +
-            '<div class="target">' +
-                '<b>' + esc(name) + '</b>' +
-                '<small>' + esc(e.lootItemId) + '</small>' +
-            '</div>';
-    }
-    if (isTable) {
-        return '<div class="placeholder-icon"><span>▦</span></div>' +
-            '<div class="target subtable">' +
-                '<b>' + esc(e.lootTableId) + '</b>' +
-                '<small>(sub-table)</small>' +
-            '</div>';
-    }
-    return '<div class="placeholder-icon">·</div>' +
-        '<div class="target"><b>(no drop)</b><small></small></div>';
+function setLtAddedNumInput(input, ltId, addedIndex, value, disabled) {
+    input.value = value;
+    input.dataset.ltId = ltId;
+    input.dataset.addedIndex = addedIndex;
+    if (disabled) input.disabled = true;
 }
 
-function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
+function buildLtAddedRowNode(lt, addedEntry, addedIndex, isReadonly) {
     const a = addedEntry || {};
     const isItem    = !!(a.lootItem  && a.lootItem  !== 'None');
     const isTable   = !!(a.lootTable && a.lootTable !== 'None');
@@ -336,100 +376,66 @@ function buildLtAddedRowHtml(lt, addedEntry, addedIndex, isReadonly) {
     const inferredTableId = isTable ? lootTablePathToId(a.lootTable) : null;
     const item = inferredItemId ? state.itemsById.get(inferredItemId) : null;
 
-    let targetHtml;
-    if (isItem) {
-        const name = (item && item.meta && item.meta.name) || inferredItemId || '(item)';
-        const iconHtml = item && item.icon
-            ? '<img src="' + esc(item.icon) + '" alt="" loading="lazy">'
-            : '<div class="placeholder-icon">+</div>';
-        targetHtml = iconHtml +
-            '<div class="target">' +
-                '<b>' + esc(name) + '</b>' +
-                '<small>' + esc(a.lootItem) + '</small>' +
-            '</div>';
-    } else if (isTable) {
-        targetHtml = '<div class="placeholder-icon">▦</div>' +
-            '<div class="target subtable">' +
-                '<b>' + esc(inferredTableId || a.lootTable) + '</b>' +
-                '<small>(added sub-table)</small>' +
-            '</div>';
-    } else if (isNoDrop) {
-        targetHtml = '<div class="placeholder-icon">·</div>' +
-            '<div class="target">' +
-                '<b>(no drop)</b>' +
-                '<small>added empty slot</small>' +
-            '</div>';
-    } else {
-        return buildLtAddedFormHtml(lt, a, addedIndex, isReadonly);
+    if (!isItem && !isTable && !isNoDrop) {
+        return buildLtAddedFormNode(lt, a, addedIndex, isReadonly);
     }
 
-    return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
-        targetHtml +
-        '<div class="value">' +
-          '<label>Minimum</label>' +
-          '<input type="number" class="num" value="' + esc(a.min || 1) +
-            '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-            (isReadonly ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="value">' +
-          '<label>Maximum</label>' +
-          '<input type="number" class="num" value="' + esc(a.max || 1) +
-            '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-            (isReadonly ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="value">' +
-          '<label>Weight</label>' +
-          '<input type="number" class="num" value="' + esc(a.weight || 0) +
-            '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-            (isReadonly ? ' disabled' : '') + '>' +
-        '</div>' +
-        '<div class="row-actions">' +
-            '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                (isReadonly ? ' disabled' : '') + '>⨉</button>' +
-        '</div>' +
-    '</div>';
+    const row = cloneTemplate('tpl-lt-added-row');
+    row.dataset.ltId = lt.id;
+    row.dataset.addedIndex = addedIndex;
+
+    if (isItem) {
+        const name = (item && item.meta && item.meta.name) || inferredItemId || '(item)';
+        configureLtTarget(row, {
+            icon: item && item.icon ? item.icon : null, glyph: '+',
+            bText: name, smallText: a.lootItem,
+        });
+    } else if (isTable) {
+        configureLtTarget(row, {
+            glyph: '▦', subtable: true,
+            bText: inferredTableId || a.lootTable, smallText: '(added sub-table)',
+        });
+    } else {
+        configureLtTarget(row, { glyph: '·', bText: '(no drop)', smallText: 'added empty slot' });
+    }
+
+    const inputs = row.querySelectorAll('[data-added-field]');
+    setLtAddedNumInput(inputs[0], lt.id, addedIndex, a.min || 1, isReadonly);
+    setLtAddedNumInput(inputs[1], lt.id, addedIndex, a.max || 1, isReadonly);
+    setLtAddedNumInput(inputs[2], lt.id, addedIndex, a.weight || 0, isReadonly);
+
+    const delBtn = row.querySelector('[data-delete-added]');
+    delBtn.dataset.deleteAdded = lt.id;
+    delBtn.dataset.addedIndex = addedIndex;
+    if (isReadonly) delBtn.disabled = true;
+    return row;
 }
 
-function buildLtAddedFormHtml(lt, a, addedIndex, isReadonly) {
-    return '<div class="lt-entry added" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '">' +
-        '<div class="lt-add-form">' +
-            '<div class="picker-row">' +
-                '<select class="picker-type" data-add-form-type="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                    (isReadonly ? ' disabled' : '') + '>' +
-                    '<option value="item">Item</option>' +
-                    '<option value="table">Sub-Table</option>' +
-                    '<option value="nodrop">No drop</option>' +
-                '</select>' +
-                '<input type="text" class="picker-target" placeholder="Search items by name or id..."' +
-                    ' data-add-form-target="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                    ' data-picker-mode="item"' +
-                    ' autocomplete="off" spellcheck="false"' +
-                    (isReadonly ? ' disabled' : '') + '>' +
-            '</div>' +
-            '<div class="value">' +
-              '<label>Minimum</label>' +
-              '<input type="number" class="num" value="' + esc(a.min || 1) +
-                '" data-added-field="min" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                (isReadonly ? ' disabled' : '') + '>' +
-            '</div>' +
-            '<div class="value">' +
-              '<label>Maximum</label>' +
-              '<input type="number" class="num" value="' + esc(a.max || 1) +
-                '" data-added-field="max" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                (isReadonly ? ' disabled' : '') + '>' +
-            '</div>' +
-            '<div class="value">' +
-              '<label>Weight</label>' +
-              '<input type="number" class="num" value="' + esc(a.weight || 0) +
-                '" data-added-field="weight" data-lt-id="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                (isReadonly ? ' disabled' : '') + '>' +
-            '</div>' +
-            '<div class="row-actions">' +
-                '<button type="button" class="danger" data-delete-added="' + esc(lt.id) + '" data-added-index="' + addedIndex + '"' +
-                    (isReadonly ? ' disabled' : '') + '>⨉</button>' +
-            '</div>' +
-        '</div>' +
-    '</div>';
+function buildLtAddedFormNode(lt, a, addedIndex, isReadonly) {
+    const row = cloneTemplate('tpl-lt-add-form');
+    row.dataset.ltId = lt.id;
+    row.dataset.addedIndex = addedIndex;
+
+    const select = row.querySelector('[data-add-form-type]');
+    select.dataset.addFormType = lt.id;
+    select.dataset.addedIndex = addedIndex;
+    if (isReadonly) select.disabled = true;
+
+    const target = row.querySelector('[data-add-form-target]');
+    target.dataset.addFormTarget = lt.id;
+    target.dataset.addedIndex = addedIndex;
+    if (isReadonly) target.disabled = true;
+
+    const inputs = row.querySelectorAll('[data-added-field]');
+    setLtAddedNumInput(inputs[0], lt.id, addedIndex, a.min || 1, isReadonly);
+    setLtAddedNumInput(inputs[1], lt.id, addedIndex, a.max || 1, isReadonly);
+    setLtAddedNumInput(inputs[2], lt.id, addedIndex, a.weight || 0, isReadonly);
+
+    const delBtn = row.querySelector('[data-delete-added]');
+    delBtn.dataset.deleteAdded = lt.id;
+    delBtn.dataset.addedIndex = addedIndex;
+    if (isReadonly) delBtn.disabled = true;
+    return row;
 }
 
 function getOrCreateLootOverride(ltId) {
@@ -573,7 +579,7 @@ function refreshLtRow(ltId) {
 
 function populateLootCategoryFilter() {
     const cat = document.getElementById('lt-filter-category');
-    cat.innerHTML = '<option value="">All categories</option>';
+    cat.replaceChildren(new Option('All categories', ''));
     for (const c of state.lootCategories) {
         const o = document.createElement('option');
         o.value = c.name;
@@ -581,7 +587,7 @@ function populateLootCategoryFilter() {
         cat.appendChild(o);
     }
     const tp = document.getElementById('lt-filter-type');
-    tp.innerHTML = '<option value="">All types</option>';
+    tp.replaceChildren(new Option('All types', ''));
     for (const t of state.lootTypes) {
         const o = document.createElement('option');
         o.value = t; o.textContent = t;
