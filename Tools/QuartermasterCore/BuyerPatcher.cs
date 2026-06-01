@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static Windrose.Quartermaster.Core.R5Json;
 
 namespace Windrose.Quartermaster.Core
 {
@@ -17,8 +18,6 @@ namespace Windrose.Quartermaster.Core
 
         const string RecipeListsVanillaRoot = "R5/Plugins/R5BusinessRules/Content/RecipeLists";
         const string RecipesVanillaRoot     = "R5/Plugins/R5BusinessRules/Content/Recipes";
-
-        static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public BuyerPatchResult PatchToDirectory(
             string vanillaRecipeListsDir,
@@ -363,36 +362,6 @@ namespace Windrose.Quartermaster.Core
             return null;
         }
 
-        // Synthesized recipes: both fields always provided, written as a single-entry array.
-        static void SetTradeField(JsonObject root, string key, string itemPath, int count)
-        {
-            root[key] = new JsonArray(
-                new JsonObject
-                {
-                    ["Item"] = itemPath,
-                    ["Count"] = count,
-                });
-        }
-
-        // Sparse update for edited recipes: null itemPath / null count leaves that leaf alone.
-        static void UpdateTradeField(JsonObject root, string key, string itemPath, int? count)
-        {
-            if (!(root[key] is JsonArray arr) || arr.Count == 0)
-            {
-                if (string.IsNullOrEmpty(itemPath) || !count.HasValue) return;
-                root[key] = new JsonArray(
-                    new JsonObject
-                    {
-                        ["Item"] = itemPath,
-                        ["Count"] = count.Value,
-                    });
-                return;
-            }
-            if (!(arr[0] is JsonObject obj)) return;
-            if (!string.IsNullOrEmpty(itemPath)) obj["Item"] = itemPath;
-            if (count.HasValue) obj["Count"] = count.Value;
-        }
-
         static bool IsCustomRecipeId(string id)
         {
             return !string.IsNullOrEmpty(id)
@@ -405,70 +374,6 @@ namespace Windrose.Quartermaster.Core
             foreach (var kv in recipes)
                 if (kv.Value != null && kv.Value.IsCustom) return true;
             return false;
-        }
-
-        static string AssetPathToBasename(string assetPath)
-        {
-            if (string.IsNullOrEmpty(assetPath)) return assetPath;
-            var s = assetPath;
-            var dot = s.LastIndexOf('.');
-            var slash = s.LastIndexOf('/');
-            var cut = Math.Max(dot, slash);
-            return cut >= 0 && cut < s.Length - 1 ? s.Substring(cut + 1) : s;
-        }
-
-        // Order-sensitive: object keys must match in the same order too.
-        static bool DeepEquals(JsonNode a, JsonNode b)
-        {
-            if (a == null && b == null) return true;
-            if (a == null || b == null) return false;
-
-            if (a is JsonObject oa && b is JsonObject ob)
-            {
-                if (oa.Count != ob.Count) return false;
-                using var ea = oa.GetEnumerator();
-                using var eb = ob.GetEnumerator();
-                while (ea.MoveNext() && eb.MoveNext())
-                {
-                    if (ea.Current.Key != eb.Current.Key) return false;
-                    if (!DeepEquals(ea.Current.Value, eb.Current.Value)) return false;
-                }
-                return true;
-            }
-            if (a is JsonArray aa && b is JsonArray ab)
-            {
-                if (aa.Count != ab.Count) return false;
-                for (int i = 0; i < aa.Count; i++)
-                {
-                    if (!DeepEquals(aa[i], ab[i])) return false;
-                }
-                return true;
-            }
-            if (a is JsonValue va && b is JsonValue vb)
-            {
-                return va.ToJsonString() == vb.ToJsonString();
-            }
-            return false;
-        }
-
-        static byte[] SerializeWithTabsAndCrlf(JsonObject root)
-        {
-            using var ms = new MemoryStream();
-            var writerOptions = new JsonWriterOptions
-            {
-                Indented = true,
-                IndentCharacter = '\t',
-                IndentSize = 1,
-                NewLine = "\r\n",
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            };
-            using (var writer = new Utf8JsonWriter(ms, writerOptions))
-            {
-                root.WriteTo(writer);
-            }
-            ms.WriteByte((byte)'\r');
-            ms.WriteByte((byte)'\n');
-            return ms.ToArray();
         }
 
         sealed class RecipePathPair

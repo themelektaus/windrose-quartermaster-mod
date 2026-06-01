@@ -6,14 +6,13 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static Windrose.Quartermaster.Core.R5Json;
 
 namespace Windrose.Quartermaster.Core
 {
     public sealed class LootPatcher
     {
         const string LootTablesPathPrefix = "/R5BusinessRules/LootTables/";
-
-        static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         const string VanillaRoot = "R5/Plugins/R5BusinessRules/Content/LootTables";
 
@@ -242,60 +241,6 @@ namespace Windrose.Quartermaster.Core
                 ["ItemAttributeModifiers"] = new JsonArray(),
                 ["LootTable"] = e.LootTable ?? "None",
             };
-        }
-
-        // Order-sensitive: object keys must match in the same order too.
-        static bool DeepEquals(JsonNode a, JsonNode b)
-        {
-            if (a == null && b == null) return true;
-            if (a == null || b == null) return false;
-
-            if (a is JsonObject oa && b is JsonObject ob)
-            {
-                if (oa.Count != ob.Count) return false;
-                using var ea = oa.GetEnumerator();
-                using var eb = ob.GetEnumerator();
-                while (ea.MoveNext() && eb.MoveNext())
-                {
-                    if (ea.Current.Key != eb.Current.Key) return false;
-                    if (!DeepEquals(ea.Current.Value, eb.Current.Value)) return false;
-                }
-                return true;
-            }
-            if (a is JsonArray aa && b is JsonArray ab)
-            {
-                if (aa.Count != ab.Count) return false;
-                for (int i = 0; i < aa.Count; i++)
-                {
-                    if (!DeepEquals(aa[i], ab[i])) return false;
-                }
-                return true;
-            }
-            if (a is JsonValue va && b is JsonValue vb)
-            {
-                return va.ToJsonString() == vb.ToJsonString();
-            }
-            return false;
-        }
-
-        static byte[] SerializeWithTabsAndCrlf(JsonObject root)
-        {
-            using var ms = new MemoryStream();
-            var writerOptions = new JsonWriterOptions
-            {
-                Indented = true,
-                IndentCharacter = '\t',
-                IndentSize = 1,
-                NewLine = "\r\n",
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            };
-            using (var writer = new Utf8JsonWriter(ms, writerOptions))
-            {
-                root.WriteTo(writer);
-            }
-            ms.WriteByte((byte)'\r');
-            ms.WriteByte((byte)'\n');
-            return ms.ToArray();
         }
 
         static void ValidateProfile(Profile profile)

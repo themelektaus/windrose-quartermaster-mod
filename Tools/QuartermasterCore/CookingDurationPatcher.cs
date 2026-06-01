@@ -4,14 +4,13 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static Windrose.Quartermaster.Core.R5Json;
 
 namespace Windrose.Quartermaster.Core
 {
     public sealed class CookingDurationPatcher
     {
         const string RecipesVanillaRoot = "R5/Plugins/R5BusinessRules/Content/Recipes";
-
-        static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public sealed class FamilyMultipliers
         {
@@ -183,25 +182,6 @@ namespace Windrose.Quartermaster.Core
             return Math.Abs(d - Math.Round(d)) < 1e-9;
         }
 
-        static byte[] SerializeWithTabsAndCrlf(JsonObject root)
-        {
-            using var ms = new MemoryStream();
-            var writerOptions = new JsonWriterOptions
-            {
-                Indented = true,
-                IndentCharacter = '\t',
-                IndentSize = 1,
-                NewLine = "\r\n",
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            };
-            using (var writer = new Utf8JsonWriter(ms, writerOptions))
-            {
-                root.WriteTo(writer);
-            }
-            ms.WriteByte((byte)'\r');
-            ms.WriteByte((byte)'\n');
-            return ms.ToArray();
-        }
     }
 
     public sealed class CookingDurationPatchResult

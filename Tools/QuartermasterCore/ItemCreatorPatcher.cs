@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using static Windrose.Quartermaster.Core.R5Json;
 
 namespace Windrose.Quartermaster.Core
 {
@@ -178,26 +179,6 @@ namespace Windrose.Quartermaster.Core
                 return false;
             }
             return id.Length > 0 && id.Length <= 80;
-        }
-
-        static byte[] SerializeWithTabsAndCrlf(JsonObject root)
-        {
-            using var ms = new MemoryStream();
-            var writerOptions = new JsonWriterOptions
-            {
-                Indented = true,
-                IndentCharacter = '\t',
-                IndentSize = 1,
-                NewLine = "\r\n",
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            };
-            using (var writer = new Utf8JsonWriter(ms, writerOptions))
-            {
-                root.WriteTo(writer);
-            }
-            ms.WriteByte((byte)'\r');
-            ms.WriteByte((byte)'\n');
-            return ms.ToArray();
         }
 
     }
