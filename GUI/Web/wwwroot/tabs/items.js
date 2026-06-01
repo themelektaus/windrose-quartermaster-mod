@@ -8,40 +8,43 @@ function computeTarget(item) {
     const ov = overrides[item.id];
     if (ov && typeof ov.stackSize === 'number') {
         if (ov.stackSize === v) {
-            return { html: '<span class="skip">' + ov.stackSize + '</span>', changed: false, overridden: true, noChange: true, target: v };
+            return { display: ov.stackSize, strong: false, changed: false, overridden: true, noChange: true, target: v };
         }
-        return {
-            html: '<b>' + ov.stackSize + '</b>',
-            changed: true, overridden: true, target: ov.stackSize,
-        };
+        return { display: ov.stackSize, strong: true, changed: true, overridden: true, target: ov.stackSize };
     }
 
     const isPromotable = item.itemClass === 'Consumable'
         || item.itemType === 'Inventory.ItemType.Resource'
         || (item.itemClass === 'Default' && item.category === 'Resource');
     if (v <= 1 && !isPromotable) {
-        return {
-            html: '<span class="skip">1</span>',
-            changed: false, overridden: false, target: v,
-        };
+        return { display: 1, strong: false, changed: false, overridden: false, target: v };
     }
 
     if (typeof ss.absolute === 'number') {
         if (ss.absolute === v) {
-            return { html: '<span class="skip">0</span>', changed: false, overridden: false, noChange: true, target: v };
+            return { display: 0, strong: false, changed: false, overridden: false, noChange: true, target: v };
         }
-        return { html: '<b>' + ss.absolute + '</b>', changed: true, overridden: false, target: ss.absolute };
+        return { display: ss.absolute, strong: true, changed: true, overridden: false, target: ss.absolute };
     }
     if (typeof ss.multiplier === 'number') {
         let target = v * ss.multiplier;
         if (typeof ss.cap === 'number' && ss.cap > 0 && target > ss.cap) target = ss.cap;
         if (target === v) {
-            return { html: '<span class="skip">0</span>', changed: false, overridden: false, noChange: true, target: v };
+            return { display: 0, strong: false, changed: false, overridden: false, noChange: true, target: v };
         }
-        return { html: '<b>' + target + '</b>', changed: true, overridden: false, target };
+        return { display: target, strong: true, changed: true, overridden: false, target };
     }
 
-    return { html: '<span class="skip">' + v + '</span>', changed: false, overridden: false, target: v };
+    return { display: v, strong: false, changed: false, overridden: false, target: v };
+}
+
+function setComputeCell(el, vanillaStack, t) {
+    el.textContent = vanillaStack + ' → ';
+    const tag = t.strong ? 'b' : 'span';
+    const span = document.createElement(tag);
+    if (!t.strong) span.className = 'skip';
+    span.textContent = t.display;
+    el.appendChild(span);
 }
 
 function filterItems() {
@@ -75,42 +78,38 @@ function renderItems() {
 
     const frag = document.createDocumentFragment();
     for (const item of filtered) frag.appendChild(buildItemRow(item));
-    ul.innerHTML = '';
-    ul.appendChild(frag);
+    ul.replaceChildren(frag);
 }
 
 function buildItemRow(item) {
-    const li = document.createElement('li');
-    li.className = 'item';
+    const li = cloneTemplate('tpl-item-row');
     li.dataset.itemId = item.id;
 
     const target = computeTarget(item);
     if (target.changed)    li.classList.add('changed');
     if (target.overridden) li.classList.add('overridden');
 
-    const displayName = (item.meta && item.meta.name) || item.id;
-    const subtitle = (item.itemClass || '')
+    if (item.icon) {
+        const img = document.createElement('img');
+        img.src = item.icon;
+        img.loading = 'lazy';
+        img.alt = '';
+        li.querySelector('.placeholder-icon').replaceWith(img);
+    }
+
+    li.querySelector('.item-name').textContent = (item.meta && item.meta.name) || item.id;
+    li.querySelector('.item-sub').textContent = (item.itemClass || '')
         + (item.category ? ' · ' + item.category : '')
         + (item.rarity   ? ' · ' + item.rarity   : '');
+    li.querySelector('.item-desc').textContent = (item.meta && item.meta.description) || '';
 
-    const description = item.meta?.description ?? ``
+    setComputeCell(li.querySelector('.compute'), item.vanillaStack, target);
+
+    const input = li.querySelector('.override-input');
+    input.dataset.itemId = item.id;
     const ov = state.current && state.current.overrides && state.current.overrides[item.id];
-    const ovValue = ov && ov.stackSize != null ? ov.stackSize : '';
-
-    const iconHtml = item.icon
-        ? '<img src="' + esc(item.icon) + '" loading="lazy" alt="">'
-        : '<div class="placeholder-icon">?</div>';
-
-    li.innerHTML =
-        iconHtml +
-        '<div class="name">' +
-            '<b>' + esc(displayName) + '</b>' +
-            '<small>' + esc(subtitle) + '</small>' +
-            '<div>' + esc(description) + '</div>' +
-        '</div>' +
-        '<div class="compute">' + item.vanillaStack + ' → ' + target.html + '</div>' +
-        '<input type="number" class="override-input" data-item-id="' + esc(item.id) + '" ' +
-               'value="' + esc(ovValue) + '" placeholder="' + target.target + '" min="0" step="1">';
+    input.value = ov && ov.stackSize != null ? ov.stackSize : '';
+    input.placeholder = target.target;
     return li;
 }
 
@@ -124,7 +123,7 @@ function refreshRowInPlace(itemId) {
     row.classList.toggle('overridden', t.overridden);
     row.classList.toggle('noChange',   t.noChange);
     const compute = row.querySelector('.compute');
-    if (compute) compute.innerHTML = item.vanillaStack + ' → ' + t.html;
+    if (compute) setComputeCell(compute, item.vanillaStack, t);
 }
 
 function renderStatus() {
@@ -165,7 +164,7 @@ function setOverrideFromInput(itemId, rawValue) {
 function populateValueFilter(elId, key, allLabel) {
     const sel = document.getElementById(elId);
     const values = Array.from(new Set(state.items.map(i => i[key]).filter(x => x))).sort();
-    sel.innerHTML = '<option value="">' + esc(allLabel) + '</option>';
+    sel.replaceChildren(new Option(allLabel, ''));
     for (const v of values) {
         const o = document.createElement('option');
         o.value = v; o.textContent = v;
