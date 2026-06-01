@@ -10,33 +10,15 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Reads a MaterialInstanceConstant uasset/uexp pair (legacy format)
-    // and exposes its Scalar/Vector/Texture parameter blocks plus the
-    // parent master-material reference.
-    //
-    // Works on:
-    //   - Vanilla MIs after they've been extracted with retoc to-legacy
-    //   - User-cooked MIs from the UE-Editor (already legacy format)
-    //
-    // Does NOT work on raw Zen-format assets (e.g. files directly under
-    // Sources/Vanilla/...). For Vanilla inspection the caller must first
-    // run retoc to-legacy --filter <stem>.
-    //
-    // Reader pattern extracted from .build-tmp/mi-probe/Program.cs.
+    // Reads a legacy-format MaterialInstanceConstant uasset/uexp; fails on raw Zen-format assets (caller must retoc to-legacy first).
     public sealed class MaterialInstanceInspector
     {
-        // Serializes Usmap + UAsset reads. UAssetAPI is not thread-safe and
-        // `new Usmap(path)` opens the .usmap file with an exclusive handle,
-        // so two parallel inspect requests would otherwise collide with
-        // "file in use by another process". Lock is reentrant so
-        // CookedFolderInspector can hold it across an entire folder scan
-        // (mesh + MIs) without re-entrancy issues.
+        // Serializes Usmap+UAsset reads: UAssetAPI is not thread-safe and `new Usmap` opens the file exclusively. Reentrant so a caller can hold it across a whole folder scan.
         public static readonly object UsmapGate = new object();
 
         public string UsmapPath;
 
-        // Inspect a MI file. Returns null only if the file isn't a
-        // MaterialInstanceConstant; throws on unreadable input.
+        // Returns null only if the asset isn't a MaterialInstanceConstant; throws on unreadable input.
         public MaterialInstanceData Inspect(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath))
@@ -58,8 +40,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var mapping = new Usmap(UsmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mapping);
 
-            // Find the MaterialInstanceConstant export. We allow any name
-            // (the stem == filename minus .uasset for top-level exports).
             NormalExport miExport = null;
             foreach (var ex in asset.Exports)
             {
@@ -80,8 +60,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 Textures         = new List<MITextureParam>(),
             };
 
-            // Walk the export's properties looking for the three known
-            // parameter blocks and the parent reference.
             foreach (var prop in miExport.Data)
             {
                 var pname = prop.Name?.Value?.Value;
@@ -91,8 +69,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     var imp = ResolveImport(asset, op.Value);
                     if (imp != null)
                     {
-                        // Outer is normally the package import; its
-                        // ObjectName is the /Game/... path string.
                         result.ParentMaterialStem = imp.ObjectName?.Value?.Value;
                         if (imp.OuterIndex != null && imp.OuterIndex.Index < 0)
                         {
@@ -134,12 +110,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return result;
         }
 
-        // -----------------------------------------------------------------
-        // Per-entry readers. Each MI param entry is a Struct with at least
-        // ParameterInfo (which has Name) and ParameterValue. ExpressionGUID
-        // is also present but we don't surface it (caller never edits it,
-        // and we copy it through unchanged via the clone-then-patch flow).
-        // -----------------------------------------------------------------
         static MIScalarParam ReadScalarEntry(PropertyData item)
         {
             if (!(item is StructPropertyData entry) || entry.Value == null) return null;
@@ -234,8 +204,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return null;
         }
 
-        // Resolve an FPackageIndex to an Import entry. Returns null for
-        // export indices or out-of-bounds.
         static Import ResolveImport(UAsset asset, FPackageIndex idx)
         {
             if (idx == null || idx.Index >= 0) return null;
@@ -245,20 +213,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         }
     }
 
-    // -------------------------------------------------------------------
-    // Result types. These mirror what the GUI needs to render the dynamic
-    // Slot-UI: a list of named parameters per type, each with the current
-    // value (so we can pre-fill the input).
-    // -------------------------------------------------------------------
-
     public sealed class MaterialInstanceData
     {
-        public string AssetPath;             // absolute path the inspector read from
-        public string AssetStem;             // filename without .uasset
+        public string AssetPath;
+        public string AssetStem;
 
-        // Parent reference (the master material this MI inherits from).
-        // For MI_Paintings_01 this would be ParentMaterialStem="M_Object",
-        // ParentMaterialPath="/Game/Environment/Shaders/Objects/M_Object".
         public string ParentMaterialStem;
         public string ParentMaterialPath;
 
@@ -282,7 +241,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     public sealed class MITextureParam
     {
         public string Name;
-        public string TextureStem;   // e.g. "T_Paintings_01_A"
-        public string TexturePath;   // e.g. "/Game/Environment/.../T_Paintings_01_A"
+        public string TextureStem;
+        public string TexturePath;
     }
 }

@@ -1,12 +1,8 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Wraps `repak pack` as a subprocess. Defaults match every Windrose mod
-    // examined so far: MountPoint '../../../' lands pak entries at the game
-    // root, V8B is the format used by the current Windrose build (UE5.6).
     public sealed class PakBuilder
     {
         public string MountPoint = "../../../";
@@ -29,7 +25,6 @@ namespace Windrose.Quartermaster.Core
             if (!Directory.Exists(sourceDir))
                 throw new DirectoryNotFoundException("Source not found: " + sourceDir);
 
-            // Refuse silent destructive overwrite unless asked.
             if (File.Exists(outPakPath))
             {
                 if (!overwrite)
@@ -39,7 +34,6 @@ namespace Windrose.Quartermaster.Core
             var outDir = Path.GetDirectoryName(outPakPath);
             if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
 
-            // Sanity: empty source dirs produce a useless empty pak.
             var fileCount = 0;
             foreach (var _ in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
             {
@@ -52,31 +46,21 @@ namespace Windrose.Quartermaster.Core
             LogLine("repak pack --mount-point " + MountPoint + " --version " + Version
                     + " " + Quote(sourceDir) + " " + Quote(outPakPath));
 
-            var psi = new ProcessStartInfo
+            var result = ToolProcess.RunCapture(_repakExe, new[]
             {
-                FileName = _repakExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("pack");
-            psi.ArgumentList.Add("--mount-point"); psi.ArgumentList.Add(MountPoint);
-            psi.ArgumentList.Add("--version");     psi.ArgumentList.Add(Version);
-            psi.ArgumentList.Add(sourceDir);
-            psi.ArgumentList.Add(outPakPath);
+                "pack",
+                "--mount-point", MountPoint,
+                "--version", Version,
+                sourceDir,
+                outPakPath,
+            });
+            var stdout = result.Stdout;
+            var stderr = result.Stderr;
 
-            WineHelper.ApplyWine(psi);
-            var proc = Process.Start(psi);
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit();
-
-            if (proc.ExitCode != 0)
+            if (result.ExitCode != 0)
             {
                 throw new InvalidOperationException(
-                    "repak pack failed (exit " + proc.ExitCode + ")\n"
-                    + (string.IsNullOrEmpty(stderr) ? stdout : stderr));
+                    "repak pack failed (exit " + result.ExitCode + ")\n" + result.ErrOrOut);
             }
             if (!File.Exists(outPakPath))
             {

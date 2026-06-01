@@ -6,26 +6,6 @@ using System.Text.Json;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Clones a vanilla recipe JSON (e.g. DA_RD_BuildObject_Deco_Paintings_T02.json)
-    // into the build-tmp staging tree under a per-building stem, rewriting:
-    //
-    //   * RecipeCost  : replaced by the user-edited cost list (Item + Count)
-    //                   when the profile supplies one. Empty list / null
-    //                   on the profile = keep the vanilla defaults.
-    //   * RecipeTag   : forced to a per-building unique tag
-    //                   ("RecipeData.QM.<BuildingId>") so we don't collide
-    //                   with the vanilla recipe still in the game.
-    //
-    // Everything else (CraftRequirement, ComfortRequirements, UIData,
-    // CookingProcessDuration, ...) gets cloned through verbatim - we don't
-    // need to touch them, the vanilla parent has perfectly fine defaults.
-    //
-    // Output lands at
-    //   <stagingDir>/R5/Plugins/R5BusinessRules/Content/Recipes/Building/
-    //     Items/Decorations/DA_RD_Qm<BuildingId>.json
-    // which gets picked up by the existing repak.exe legacy-pak step
-    // (same pipeline path the BuildingItems.csv synthesis already uses
-    // - JSON/CSV/ini all ride in the legacy pak, not the IoStore composite).
     public sealed class RecipePatcher
     {
         public Action<string> Log;
@@ -54,28 +34,15 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             using var doc = JsonDocument.Parse(src);
             var root = doc.RootElement;
 
-            // Output file naming + per-building stem. Mirrors the
-            // DataAssetPatcher's pattern (DA_BI_<BuildingId>) so the
-            // file naming is predictable across both asset types.
-            // BuildingIds already carry the "QmBldg_" prefix, so we
-            // don't double-prefix here (avoiding DA_RD_QmQmBldg_*).
+            // BuildingIds already carry the "QmBldg_" prefix, so don't double-prefix.
             var outStem = "DA_RD_" + buildingId;
             var outFileName = outStem + ".json";
             var outAbs = Path.Combine(outputDir, outFileName);
             Directory.CreateDirectory(outputDir);
 
-            // Per-building RecipeTag. Vanilla tags follow
-            // "RecipeData.Deco.<Family>.T<Tier>.<Variant>" - we mirror the
-            // prefix but namespace under .QM so a future vanilla-tag rename
-            // doesn't collide. Tag must be unique across the loaded set
-            // (UE checks at GameplayTagsManager init); per-building id
-            // gives us that guarantee for free.
+            // Must be unique across the loaded set (UE checks at GameplayTagsManager init).
             var newRecipeTag = "RecipeData.QM." + buildingId;
 
-            // We rebuild the JSON object by walking the source's root
-            // properties. JsonDocument is read-only so we write through
-            // a Utf8JsonWriter; this preserves field order and saves a
-            // round-trip through a mutable POCO.
             var costEntries = userRecipeCost;
             bool costOverridden = costEntries != null;  // null = keep vanilla; empty list = explicit free
 
@@ -113,7 +80,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                             }
                             else
                             {
-                                // Vanilla pass-through.
                                 if (prop.Value.ValueKind == JsonValueKind.Array)
                                     keptVanillaRows = prop.Value.GetArrayLength();
                                 prop.Value.WriteTo(writer);
@@ -128,23 +94,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                             break;
 
                         case "UIData":
-                            // Override Name (and Description-shaped fields,
-                            // if the template uses one) with plain-string
-                            // FText carrying the user-supplied display text.
-                            // The vanilla UIData.Name is an FText.String-
-                            // TableEntry into "InventoryItems" using the
-                            // template's vanilla key - if we kept it
-                            // verbatim the build menu would show the
-                            // template's name (e.g. "Cups and Plates") for
-                            // every clone, regardless of what the user
-                            // typed. Plain string = FText.Base inline.
                             writer.WritePropertyName("UIData");
                             WriteUiDataWithUserText(writer, prop.Value, displayName, description);
                             break;
 
                         default:
-                            // Verbatim clone of every other top-level
-                            // field (CraftRequirement, etc).
                             prop.WriteTo(writer);
                             break;
                     }
@@ -171,11 +125,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             };
         }
 
-        // Reads the user-facing default RecipeCost rows from a vanilla
-        // recipe JSON. Used by the Buildings endpoint's inspect-recipe
-        // handler to pre-fill the cost editor when the user picks a
-        // template. Skips the full JSON-rewrite path - just an array
-        // walk + projection.
         public static List<(string ItemPath, int Count)> ReadDefaultRecipeCost(
             string vanillaRecipeJsonPath)
         {
@@ -203,7 +152,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return result;
         }
 
-        // Reads the vanilla RecipeTag string for diagnostics surface.
         public static string ReadVanillaRecipeTag(string vanillaRecipeJsonPath)
         {
             if (string.IsNullOrEmpty(vanillaRecipeJsonPath)) return "";
@@ -216,23 +164,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return name.GetString() ?? "";
         }
 
-        // Rewrites the UIData block, swapping any FText.StringTableEntry
-        // shape (= JSON object with TableId+Key) on the Name / Description
-        // fields with a plain string literal carrying user-supplied text.
-        // Plain strings are deserialized by UE as FText.Base (Namespace=""
-        // SourceString=value) - same shape vanilla items like DA_DID_Misc_
-        // EliaShell_T04 use for their ItemName. Other UIData fields
-        // (Image, RecipeType, LootTableUIData, ...) pass through verbatim.
-        //
-        // Empty user input keeps the vanilla field untouched (= template's
-        // name shows in the menu). This matches the per-field "leave blank
-        // = inherit from template" semantics the Item Creator follows.
+        // A plain string deserializes as FText.Base; the vanilla StringTableEntry shape would show the template's shared name instead.
         static void WriteUiDataWithUserText(Utf8JsonWriter writer, JsonElement uiData,
                                             string displayName, string description)
         {
             if (uiData.ValueKind != JsonValueKind.Object)
             {
-                // Defensive: malformed UIData passes through unchanged.
                 uiData.WriteTo(writer);
                 return;
             }
@@ -263,9 +200,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     public sealed class RecipePatchResult
     {
         public string OutputJsonPath;
-        public string OutputStem;      // "DA_RD_Qm<BuildingId>"
-        public string NewRecipeTag;    // "RecipeData.QM.<BuildingId>"
+        public string OutputStem;
+        public string NewRecipeTag;
         public int    RecipeCostRows;
-        public bool   CostOverridden;  // true = user-supplied list, false = vanilla pass-through
+        public bool   CostOverridden;
     }
 }

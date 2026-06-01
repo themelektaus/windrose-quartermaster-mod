@@ -6,20 +6,6 @@ using System.Linq;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Extracts the AES-encrypted Windrose-content prefixes from the vanilla
-    // pak via repak.exe. Replaces Library/Dump.ps1 +
-    // Dump-WindroseVanilla.ps1 - same repak invocation, same default
-    // paths, same "force overwrite" semantics.
-    //
-    // The list of prefixes to extract is read from VanillaSourceManifest -
-    // adding a new required vanilla artifact to that manifest automatically
-    // teaches both this dumper (what to unpack) and SetupRunner.Probe()
-    // (what to check) about it. No more "extracted by Run() but not
-    // checked by Probe()" drift (which previously left BuildingLimits as
-    // an unchecked dependency for the bell-limits patcher).
-    //
-    // Auto-resolves repak.exe (download on first use) and the vanilla pak
-    // (via Steam) when the corresponding inputs are null/empty.
     public sealed class VanillaDumper
     {
         readonly WindrosePaths _paths;
@@ -32,15 +18,11 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
-        // Optional explicit overrides; null/empty values are auto-resolved.
         public string VanillaPakOverride;
         public string RepakExeOverride;
         public string OutDirOverride;
-        // True == repak gets `-f` (overwrite existing files). Setup callers
-        // want this so repeated runs don't fail on stale output.
+        // repak -f (overwrite existing files).
         public bool Force = true;
-        // True == empty the OutDir before unpacking. Off by default; useful
-        // when the schema changed and you want a clean slate.
         public bool Clean;
 
         public DumpResult Run()
@@ -80,11 +62,6 @@ namespace Windrose.Quartermaster.Core
                 LogLine("OutDir emptied");
             }
 
-            // Manifest-driven: every required vanilla artifact is one
-            // manifest entry, and we unpack them in declaration order so
-            // the log reads as a stable progression. Adding a new entry
-            // to VanillaSourceManifest is the ONLY change needed to make
-            // both this dumper and SetupRunner.Probe() aware of it.
             foreach (var entry in VanillaSourceManifest.Entries)
             {
                 LogLine("Unpacking " + entry.Label + " from pak (" + entry.PakIncludePath + ")");
@@ -114,8 +91,7 @@ namespace Windrose.Quartermaster.Core
             if (Force) psi.ArgumentList.Add("-f");
             psi.ArgumentList.Add(vanillaPak);
 
-            // Display the same command without the AES key so logs are safe
-            // to share with users.
+            // Re-log the command with the AES key redacted so logs are shareable.
             LogLine("repak --aes-key <hidden> unpack -i " + includePrefix +
                     " -o \"" + outDir + "\"" + (Force ? " -f" : "") +
                     " \"" + vanillaPak + "\"");
@@ -134,11 +110,6 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Walks every manifest entry's on-disk landing spot and produces a
-        // per-category file count plus an overall total - same shape as
-        // the old hand-rolled version, just driven from the manifest now.
-        // Single-file entries (e.g. the CSV) contribute exactly one row
-        // to the breakdown so they remain visible as a heartbeat.
         DumpResult Statistics(string outDir)
         {
             int totalCount = 0;
@@ -146,12 +117,6 @@ namespace Windrose.Quartermaster.Core
 
             foreach (var entry in VanillaSourceManifest.Entries)
             {
-                // Resolve the on-disk path for this entry, respecting
-                // OutDirOverride. The manifest stores DiskPath as a func of
-                // WindrosePaths whose defaults point to _paths.Vanilla/...;
-                // when the caller redirected the dumper to a different
-                // outDir, rewrite the prefix so stats reflect what was
-                // actually written.
                 var canonical = entry.DiskPath(_paths);
                 var root = RelocateToOutDir(canonical, outDir);
 
@@ -180,16 +145,10 @@ namespace Windrose.Quartermaster.Core
             return new DumpResult { OutDir = outDir, FileCount = totalCount, ByCategory = byCategory };
         }
 
-        // When OutDirOverride is set, the manifest's canonical disk path
-        // (which is computed from _paths.Vanilla) points to the WRONG
-        // place. Rewrite the prefix so stats land on the actual extraction
-        // target. No-op when outDir == _paths.Vanilla (the production case).
         string RelocateToOutDir(string canonical, string outDir)
         {
             if (string.IsNullOrEmpty(canonical)) return canonical;
             var defaultRoot = _paths.Vanilla;
-            // Normalize trailing separators so the prefix-match is robust
-            // against minor casing/separator differences from Path.Combine.
             if (canonical.StartsWith(defaultRoot, StringComparison.OrdinalIgnoreCase))
             {
                 var tail = canonical.Substring(defaultRoot.Length).TrimStart(
@@ -199,9 +158,6 @@ namespace Windrose.Quartermaster.Core
             return canonical;
         }
 
-        // Walks one of the extracted prefix-trees and tallies a per-category
-        // count, prefixed with the tree label so InventoryItems and LootTables
-        // counters don't collide (e.g. "items/Food" vs "loot/Food").
         void CollectStatistics(string root, string treeLabel,
             Dictionary<string, int> byCategory, ref int totalCount)
         {
@@ -213,7 +169,7 @@ namespace Windrose.Quartermaster.Core
 
             var files = Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories).ToList();
             totalCount += files.Count;
-            var prefixLen = root.Length + 1; // skip the trailing separator
+            var prefixLen = root.Length + 1;
             foreach (var f in files)
             {
                 var rel = f.Length > prefixLen ? f.Substring(prefixLen) : Path.GetFileName(f);

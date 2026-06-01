@@ -12,52 +12,18 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Patches the PassiveReloadGPData.ReloadTime FloatProperty inside every
-    // player-firearm LogicParams DataAsset, multiplying it by a user-supplied
-    // scalar < 1.0 to shorten reload times. The structure is:
-    //
-    //   Default__DA_RangeWpn_*_LogicParams (NormalExport, R5RangeWeaponItemLogicParams)
-    //   + PassiveReloadGPData (StructProperty, R5RangeWeaponPassiveReloadParams)
-    //     + ReloadTime (FloatProperty, seconds)
-    //
-    // Vanilla reload times sit between 12 s (Pistol_Reliable) and 15 s
-    // (Musket_Infantry). The patcher applies the SAME multiplier to every
-    // tier so the user only needs one slider; per-variant tuning would
-    // require more UI for marginal gain.
-    //
-    // Workflow context (mirrors PickaxeRangePatcher):
-    //   game IoStore (.ucas)
-    //     -> retoc to-legacy   (Zen package -> Legacy .uasset+.uexp)
-    //     -> THIS CLASS        (multiply PassiveReloadGPData.ReloadTime)
-    //     -> retoc to-zen      (Legacy -> IoStore triplet)
     public sealed class RangedReloadPatcher
     {
-        // Bidirectional range: < 1.0 shortens reload (faster), > 1.0 lengthens
-        // it (harder gameplay). 1.0 = vanilla; the GUI null-collapses at 1.0.
         public const double MinMultiplier = 0.1;
         public const double MaxMultiplier = 3.0;
 
         public const string PassiveReloadGPDataProp = "PassiveReloadGPData";
         public const string ReloadTimeProp          = "ReloadTime";
 
-        // Filename stem -> virtual asset path. Covers every player firearm
-        // LogicParams variant present in 5.6.
-        //
-        // IMPORTANT: not every weapon family ships both _Base and _Advanced
-        // variants. The list below was verified against the live game paks
-        // via `retoc list` - assuming a symmetric Base+Advanced matrix is
-        // wrong and produced "retoc did not produce expected asset" errors.
-        // Total: 19 actual LogicParams (7 pistols + 6 muskets + 5 blunderbuss).
-        //   Pistols:     Blank_Base, Reliable_Base + Advanced, Rusty_Base,
-        //                DrakesDoom_Base + Advanced, Corrupted_Advanced
-        //   Muskets:     Blank_Base, Infantry_Base + Advanced,
-        //                Reliable_Base + Advanced, Sniper_Base + Advanced
-        //   Blunderbuss: Blank_Base, Reliable_Base + Advanced,
-        //                Dragonbreath_Base + Advanced
+        // Intentionally asymmetric: not every family ships both _Base and _Advanced. Do not fill in by assuming symmetry.
         public static readonly Dictionary<string, string> WeaponAssets =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                // ----- PISTOLS -----
                 { "DA_RangeWpn_Pistol_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Blank_Base/RangeWpn/DA_RangeWpn_Pistol_Blank_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Pistol_Reliable_Base_LogicParams",
@@ -73,7 +39,6 @@ namespace Windrose.Quartermaster.Core
                 { "DA_RangeWpn_Pistol_Corrupted_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_OffHand/Pistol_Corrupted_Advanced/RangeWpn/DA_RangeWpn_Pistol_Corrupted_Advanced_LogicParams.uasset" },
 
-                // ----- MUSKETS -----
                 { "DA_RangeWpn_Musket_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Blank_Base/RangeWpn/DA_RangeWpn_Musket_Blank_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Musket_Infantry_Base_LogicParams",
@@ -89,7 +54,6 @@ namespace Windrose.Quartermaster.Core
                 { "DA_RangeWpn_Musket_Sniper_Advanced_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Musket_Sniper_Advanced/RangeWpn/DA_RangeWpn_Musket_Sniper_Advanced_LogicParams.uasset" },
 
-                // ----- BLUNDERBUSS -----
                 { "DA_RangeWpn_Blunderbuss_Blank_Base_LogicParams",
                   "R5/Content/Gameplay/ItemsLogic/Weapon/Wpn_TwoHand/Blunderbuss_Blank_Base/RangeWpn/DA_RangeWpn_Blunderbuss_Blank_Base_LogicParams.uasset" },
                 { "DA_RangeWpn_Blunderbuss_Reliable_Base_LogicParams",
@@ -129,11 +93,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
-            // UE5.6 LogicParams DataAssets ship sub-component exports next to
-            // the Default__DA_*_C CDO (e.g. R5DrawWeaponTaskBase_0, ability
-            // task sub-objects). The first NormalExport is therefore not
-            // necessarily the CDO carrying PassiveReloadGPData - locate the
-            // right export by property presence instead of by index.
+            // The CDO is not necessarily the first NormalExport; locate it by PassiveReloadGPData presence.
             var passiveName = FName.FromString(asset, PassiveReloadGPDataProp);
             NormalExport target = null;
             int targetIndex = -1;

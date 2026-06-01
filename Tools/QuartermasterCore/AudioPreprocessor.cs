@@ -8,44 +8,14 @@ using System.Threading.Tasks;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Converts arbitrary user-uploaded audio (mp3 / ogg / flac / m4a /
-    // aac / opus / wav) into the strict 44.1 kHz stereo 16-bit PCM WAV
-    // the Bink encoder accepts. Used by the ship-music upload endpoint
-    // so users can drop common-format audio files instead of having to
-    // pre-convert with Audacity or ffmpeg themselves.
-    //
-    // Strategy:
-    //   - For .wav inputs that already match the target spec (44.1 kHz /
-    //     stereo / 16-bit PCM), skip ffmpeg entirely and just rename /
-    //     copy. Avoids the ~190 MB ffmpeg download on systems where users
-    //     only ever upload correctly-formatted WAVs.
-    //   - For everything else, shell out to ffmpeg.exe with
-    //     `-ar 44100 -ac 2 -sample_fmt s16` to force the target spec.
-    //     ffmpeg picks the right decoder from the input file's magic
-    //     bytes, so .mp3 named .opus still works.
-    //
-    // The preprocessor expects ffmpeg.exe to be already staged in the
-    // workspace root - it does NOT download on demand. ffmpeg is pulled
-    // in as a setup step (SetupRunner.Run -> "ffmpeg" step) so the
-    // ~190 MB download happens up-front during first-time setup rather
-    // than surprising the user mid-upload. If ffmpeg is missing here,
-    // we throw a user-readable error with a hint to re-run setup; the
-    // upload endpoint surfaces this as a 400 with the message intact.
     public sealed class AudioPreprocessor
     {
-        // File extensions we'll accept. Everything else gets a "this
-        // format isn't supported" error at the upload endpoint before
-        // we even invoke the preprocessor. The list mirrors what
-        // ffmpeg.exe's BtbN LGPL build can decode reliably (no exotic
-        // tracker formats, no MKV/MP4 video containers - audio-only).
         public static readonly HashSet<string> SupportedExtensions = new(
             StringComparer.OrdinalIgnoreCase)
         {
             ".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".opus",
         };
 
-        // True if `path` has an extension we route through the
-        // preprocessor. Filename-only check, doesn't open the file.
         public static bool IsSupportedExtension(string filename)
         {
             if (string.IsNullOrEmpty(filename)) return false;
@@ -53,8 +23,6 @@ namespace Windrose.Quartermaster.Core
             return !string.IsNullOrEmpty(ext) && SupportedExtensions.Contains(ext);
         }
 
-        // Human-readable list ("wav, mp3, ogg, flac, m4a, aac, opus")
-        // for error messages.
         public static string SupportedExtensionsList()
         {
             var sorted = new List<string>(SupportedExtensions);
@@ -64,26 +32,14 @@ namespace Windrose.Quartermaster.Core
             return string.Join(", ", sorted);
         }
 
-        // Result of a preprocess pass. WasTranscoded is true when
-        // ffmpeg actually ran; false when the input was already a
-        // matching WAV and we short-circuited. Used by the endpoint to
-        // surface "Converted from MP3" feedback in the upload response.
         public sealed class Result
         {
             public string OutputWavPath;
             public bool WasTranscoded;
-            public string SourceFormat; // file extension without the dot
+            public string SourceFormat;
         }
 
-        // Convert `sourcePath` into a target-spec WAV at `targetWavPath`,
-        // overwriting any existing file there. Returns metadata about
-        // what happened. Throws InvalidOperationException with a
-        // user-readable message on ffmpeg failure (stderr attached).
-        //
-        // The caller owns lifecycle of both paths: it picks where the
-        // source landed (typically a temp file) and where the cleaned
-        // WAV should end up (typically Profiles/<id>/ShipMusic/<slot>/
-        // audio.wav). We never delete the source.
+        // Never deletes sourcePath; overwrites targetWavPath.
         public static async Task<Result> PreprocessAsync(
             WindrosePaths paths,
             string sourcePath,
@@ -105,9 +61,6 @@ namespace Windrose.Quartermaster.Core
                     "Unsupported audio format: ." + ext + ". Allowed formats: "
                     + SupportedExtensionsList() + ".");
 
-            // Fast path: WAV input that already matches the target spec.
-            // Avoids the ffmpeg download on systems where users only
-            // upload pre-converted WAVs.
             if (string.Equals(ext, "wav", StringComparison.OrdinalIgnoreCase))
             {
                 if (TryShortCircuitWav(sourcePath, targetWavPath, log))
@@ -119,14 +72,8 @@ namespace Windrose.Quartermaster.Core
                         SourceFormat = ext,
                     };
                 }
-                // WAV but wrong spec - fall through to ffmpeg resample.
             }
 
-            // Locate the pre-staged ffmpeg.exe. The setup overlay's
-            // "ffmpeg" step puts it at paths.FfmpegPath; if the user
-            // skipped the step (or the download failed), we fail fast
-            // here with a clear hint rather than trying to download
-            // synchronously inside an HTTP upload handler.
             var ffmpeg = paths.FfmpegPath;
             if (!File.Exists(ffmpeg))
                 throw new InvalidOperationException(
@@ -137,18 +84,12 @@ namespace Windrose.Quartermaster.Core
                     + ".wav file (44.1 kHz / Stereo / 16-bit PCM) instead - that "
                     + "path does not need ffmpeg.");
 
-            // Ensure the target directory exists - the upload endpoint
-            // already does this, but the preprocessor is a public API
-            // and a caller that uses it from a script shouldn't have to
-            // remember.
             var targetDir = Path.GetDirectoryName(targetWavPath);
             if (!string.IsNullOrEmpty(targetDir))
                 Directory.CreateDirectory(targetDir);
 
-            // Atomic-ish write: ffmpeg into a sibling .tmp file, then
-            // overwrite. ffmpeg's own output is atomic per-frame, but
-            // a mid-encode crash would leave a half-written .wav at the
-            // final path otherwise.
+            // ffmpeg into a sibling temp, then promote, so a mid-encode
+            // crash can't leave a half-written WAV at the final path.
             var tempOut = targetWavPath + ".tmp-" + Guid.NewGuid().ToString("N") + ".wav";
             try
             {
@@ -162,19 +103,6 @@ namespace Windrose.Quartermaster.Core
                     RedirectStandardError = true,
                     CreateNoWindow = true,
                 };
-                // -y          overwrite output without prompting
-                // -nostdin    don't try to read from a terminal (defensive
-                //             for headless / service hosts)
-                // -loglevel error  silence the chatty banner; we want
-                //             only true errors on stderr
-                // -i <src>    input
-                // -vn         drop any embedded video / cover art tracks
-                // -ac 2       force stereo (downmix mono / 5.1)
-                // -ar 44100   force 44.1 kHz (resample if needed)
-                // -sample_fmt s16  force 16-bit PCM (truncate from 24/32)
-                // -f wav      force RIFF/WAVE output container even if
-                //             the user picked a non-.wav target name
-                // <dst>       output path
                 psi.ArgumentList.Add("-y");
                 psi.ArgumentList.Add("-nostdin");
                 psi.ArgumentList.Add("-loglevel"); psi.ArgumentList.Add("error");
@@ -196,17 +124,13 @@ namespace Windrose.Quartermaster.Core
                     };
                     p.Start();
                     p.BeginErrorReadLine();
-                    // Drain stdout to avoid back-pressure deadlock; ffmpeg
-                    // doesn't print to stdout in our config but the pipe
-                    // is open.
+                    // Drain stdout to avoid a full-pipe back-pressure deadlock.
                     _ = p.StandardOutput.ReadToEndAsync(ct);
                     await p.WaitForExitAsync(ct).ConfigureAwait(false);
 
                     if (p.ExitCode != 0)
                     {
                         var err = stderr.ToString().Trim();
-                        // Trim very long ffmpeg error dumps so the GUI's
-                        // toast doesn't become a wall of text.
                         if (err.Length > 800) err = err.Substring(0, 800) + " ...";
                         throw new InvalidOperationException(
                             "ffmpeg failed to convert ." + ext + " to WAV (exit "
@@ -219,11 +143,9 @@ namespace Windrose.Quartermaster.Core
                     throw new InvalidOperationException(
                         "ffmpeg reported success but produced no output WAV.");
 
-                // Promote temp -> final. Replace any leftover from a
-                // prior failed upload.
                 if (File.Exists(targetWavPath))
                 {
-                    try { File.Delete(targetWavPath); } catch { /* fall through */ }
+                    try { File.Delete(targetWavPath); } catch { }
                 }
                 File.Move(tempOut, targetWavPath);
 
@@ -240,17 +162,10 @@ namespace Windrose.Quartermaster.Core
             finally
             {
                 try { if (File.Exists(tempOut)) File.Delete(tempOut); }
-                catch { /* best-effort temp cleanup */ }
+                catch { }
             }
         }
 
-        // If `sourceWav` is already a 44.1 kHz stereo 16-bit PCM WAV,
-        // copy it to `targetWav` and return true. Anything else (wrong
-        // rate / channels / bit depth, non-PCM compression, malformed
-        // RIFF) returns false so the caller can fall back to ffmpeg
-        // resampling. We don't move-in-place because the source may be
-        // outside the profile's storage (e.g. an IFormFile-flushed
-        // temp file).
         static bool TryShortCircuitWav(string sourceWav, string targetWav, Action<string> log)
         {
             try
@@ -271,28 +186,12 @@ namespace Windrose.Quartermaster.Core
             }
             catch
             {
-                // Malformed WAV header etc. - let ffmpeg have a go at
-                // it; it's much more tolerant than WavInfo's strict
-                // RIFF reader.
             }
             return false;
         }
 
-        // Apply a uniform PCM gain to an existing 44.1 kHz / stereo /
-        // 16-bit WAV by running it through `ffmpeg -filter:a volume=X`.
-        // Used by the build pipeline to bake the user-set bonfire-music
-        // volume into the samples before binkaudioenc.exe consumes them.
-        //
-        // Returns the path of the produced WAV. If `gain` is essentially
-        // 1.0 (within tolerance) the source path is returned unchanged
-        // and no ffmpeg invocation happens. The caller is responsible
-        // for cleaning up the produced temp file when gain != 1.0;
-        // when gain == 1.0 the caller must NOT delete the returned path
-        // (it's the original input).
-        //
-        // gain < 0 is clamped to 0 (silence). gain > 1 is permitted -
-        // ffmpeg's `volume` filter will clip on int16 overflow which is
-        // the same behaviour as the in-engine Volume property.
+        // When gain ~= 1.0 returns sourceWavPath unchanged (caller must NOT
+        // delete it); otherwise returns a fresh temp WAV the caller owns.
         public static async Task<string> ApplyGainAsync(
             WindrosePaths paths,
             string sourceWavPath,
@@ -309,8 +208,6 @@ namespace Windrose.Quartermaster.Core
             if (gain < 0.0) gain = 0.0;
             if (Math.Abs(gain - 1.0) < 1e-4)
             {
-                // No-op: return the original path so the caller can keep
-                // using it directly without an unnecessary copy.
                 return sourceWavPath;
             }
 
@@ -321,9 +218,7 @@ namespace Windrose.Quartermaster.Core
                     + ffmpeg + ". Open the setup overlay and run the \"ffmpeg\" step "
                     + "(one-time ~190 MB download).");
 
-            // Format gain as invariant-culture decimal so ffmpeg parses
-            // it (the filter parser barfs on the German-locale comma
-            // separator otherwise).
+            // Invariant culture: ffmpeg's filter parser rejects a locale comma.
             var gainStr = gain.ToString("0.######",
                 System.Globalization.CultureInfo.InvariantCulture);
 
@@ -371,7 +266,7 @@ namespace Windrose.Quartermaster.Core
                     var err = stderr.ToString().Trim();
                     if (err.Length > 800) err = err.Substring(0, 800) + " ...";
                     try { if (File.Exists(tempOut)) File.Delete(tempOut); }
-                    catch { /* best-effort */ }
+                    catch { }
                     throw new InvalidOperationException(
                         "ffmpeg failed to apply volume=" + gainStr + " gain (exit "
                         + p.ExitCode + ")"
@@ -386,17 +281,6 @@ namespace Windrose.Quartermaster.Core
             return tempOut;
         }
 
-        // Synthesize a stereo / 44.1 kHz / 16-bit PCM silence WAV of the
-        // requested length via ffmpeg's `anullsrc` lavfi source. Used by
-        // the bonfire-music pipeline to provide a "mute vanilla" path
-        // even when the user hasn't uploaded a custom theme: the resolver
-        // detects Volume == 0 with no audio.wav present, calls this to
-        // produce a transient silence WAV, and feeds it through the same
-        // BinkAudio encode + SoundWave splice the upload path uses.
-        //
-        // durationSec must be > 0. Returned path is a freshly created
-        // temp file; the caller owns cleanup. Throws if ffmpeg is not
-        // installed (mirror of ApplyGainAsync's preflight).
         public static async Task<string> GenerateSilenceAsync(
             WindrosePaths paths,
             double durationSec,
@@ -463,7 +347,7 @@ namespace Windrose.Quartermaster.Core
                     var err = stderr.ToString().Trim();
                     if (err.Length > 800) err = err.Substring(0, 800) + " ...";
                     try { if (File.Exists(tempOut)) File.Delete(tempOut); }
-                    catch { /* best-effort */ }
+                    catch { }
                     throw new InvalidOperationException(
                         "ffmpeg failed to synthesize silence (exit "
                         + p.ExitCode + ")"

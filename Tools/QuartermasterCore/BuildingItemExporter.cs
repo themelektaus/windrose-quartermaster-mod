@@ -1,16 +1,3 @@
-// BuildingItemExporter: bulk-extracts every pak-internal virtual file whose
-// virtual path contains one of the configured substrings to a 1:1 layout
-// on disk. Powers the "Export" card in the Mods tab.
-//
-// Architecture mirrors IconExtractor (Tools/IconExtractor/IconExtractor.cs)
-// but extracts raw bytes per virtual file (GameFile.Read()) instead of
-// decoding UTexture2D to PNG. We need the raw uasset+uexp+ubulk triplets on
-// disk so the user can clone them in the UE editor.
-//
-// Re-runs are incremental: existing files with matching byte length are
-// skipped, so the second click is effectively a no-op once an export is
-// complete. To force a full re-extract the user deletes the OutDir manually.
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,10 +21,7 @@ namespace Windrose.Quartermaster.Core
         public string UsmapPath = string.Empty;
         public string GameVersion = "UE5_6";
 
-        // Pak-relative path substrings; any virtual file whose path contains
-        // one of these (case-insensitive) gets extracted. Matching is
-        // substring-based so we don't have to know the exact pak-internal
-        // prefix convention ("Game/Content/" vs "R5/Content/" vs leading slash).
+        // Substring (not prefix) match so we don't depend on the pak-internal prefix convention.
         public List<string> IncludeSubstrings = new List<string>();
     }
 
@@ -105,9 +89,7 @@ namespace Windrose.Quartermaster.Core
             Out("[OK] Usmap loaded");
             provider.Initialize();
 
-            // Submit the AES key for the zero-guid (default) and every
-            // distinct GUID present on the unloaded readers (UE5 IoStore
-            // can assign different GUIDs per .utoc even with the same key).
+            // UE5 IoStore can assign different GUIDs per .utoc even with the same key, so submit it for each.
             var aes = new FAesKey(a.AesKey);
             var seenGuids = new HashSet<FGuid> { new FGuid() };
             foreach (var v in provider.UnloadedVfs) seenGuids.Add(v.EncryptionKeyGuid);
@@ -116,7 +98,6 @@ namespace Windrose.Quartermaster.Core
             var mounted = provider.Mount();
             Out("[OK] Provider ready: " + provider.Files.Count + " virtual files (mounted +" + mounted + ")");
 
-            // Normalize needles to forward-slash style + case-fold prep work.
             var needles = a.IncludeSubstrings
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => s.Replace('\\', '/'))
@@ -124,7 +105,6 @@ namespace Windrose.Quartermaster.Core
             Out("[..] Filter substrings (" + needles.Length + "):");
             foreach (var n in needles) Out("       " + n);
 
-            // Bucket matches per needle so the progress log stays informative.
             var perNeedle = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var n in needles) perNeedle[n] = 0;
 
@@ -149,8 +129,6 @@ namespace Windrose.Quartermaster.Core
             int written = 0, skipped = 0, failed = 0;
             long totalBytes = 0;
 
-            // ~20 progress lines across the whole run so the log doesn't
-            // drown the user but they can tell the export is alive.
             int progressEvery = Math.Max(1, matchedFiles.Count / 20);
             int processed = 0;
             foreach (var kv in matchedFiles)
@@ -161,9 +139,7 @@ namespace Windrose.Quartermaster.Core
                 {
                     if (File.Exists(outPath))
                     {
-                        // Incremental: trust on-disk file if size matches.
-                        // Cheap soft-validity check; users wanting a full
-                        // re-extract delete the OutDir manually.
+                        // Incremental skip: trust an existing file when its size matches (cheap soft-validity check).
                         var fi = new FileInfo(outPath);
                         if (fi.Length == kv.Value.Size)
                         {
@@ -207,14 +183,6 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Mirror of IconExtractor.EnsureOodle - duplicated here so an Export
-        // run on a fresh install (where the user never opened the Items tab
-        // and thus IconExtractor never primed Oodle) still works end-to-end.
-        // OodleHelper.Initialize is idempotent so calling it twice is fine.
-        //
-        // Native sidecar DLLs land in WindrosePaths.ResolveNativeDllDir() so
-        // they live alongside the rest of the data root (dxgi.dll / *.usmap /
-        // Profiles / Icons) instead of next to the EXE - see NativeDllDir.
         static void EnsureOodle()
         {
             var here = WindrosePaths.ResolveNativeDllDir();

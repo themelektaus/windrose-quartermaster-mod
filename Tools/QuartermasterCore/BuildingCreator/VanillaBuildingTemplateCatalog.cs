@@ -12,43 +12,7 @@ using CUE4Parse.UE4.Versions;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Indexes all Vanilla BuildingItem DataAsset files (DA_BI_*.uasset)
-    // under /Game/Gameplay/Building/ - the donor pool for the dynamic
-    // template picker (Etappe I).
-    //
-    // What this catalog gives the GUI:
-    //   - id          stable identifier (the UE virtual /Game/... path)
-    //   - displayName file stem ("DA_BI_FloorTorch_01") - the user-readable
-    //                 label in the picker; not localized
-    //   - category    parent-folder name ("BuildingDecoration",
-    //                 "BuildingPoi", "BuildingCrafts", ...) for the
-    //                 picker's category filter
-    //   - packagePath same as id (kept separate so callers don't have to
-    //                 guess the field semantics)
-    //
-    // What this catalog does NOT give:
-    //   - Mesh / Icon / Recipe asset refs
-    //   - FText name + description keys
-    //   - The actual Vanilla DA class (R5BuildingItem vs R5BuildingBrush)
-    //
-    // Those come from VanillaBuildingTemplateInspector (Etappe I.2),
-    // which loads the individual DA via CUE4Parse on-demand. This split
-    // keeps the catalog cheap to build (path enumeration only) so the
-    // GUI search-box stays responsive even with ~850 entries.
-    //
-    // Heuristic filter:
-    //   - stem starts with "DA_BI_" (uppercase prefix is the Vanilla
-    //     convention - DA = DataAsset, BI = BuildingItem)
-    //   - parent folder is NOT "BuildingBrushes" / "Houses" (those
-    //     contain Brush_*.uasset files which are R5BuildingBrush class -
-    //     handled by the H1 tab-routing but not cloneable as Item
-    //     templates)
-    //   - path lives under "/Game/Gameplay/Building/"
-    //
-    // The class-check (R5BuildingItem vs others) happens later in the
-    // inspector - if the inspector finds a Brush class on a stem-matched
-    // DA the GUI surfaces it as an inspect-time error so the user knows
-    // which template to avoid.
+    // Indexes vanilla DA_BI_* building DataAssets by path only (cheap); per-DA metadata comes from VanillaBuildingTemplateInspector on demand.
     public sealed class VanillaBuildingTemplateCatalog
     {
         public string PaksDir;
@@ -59,16 +23,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         readonly object _gate = new object();
         bool _built;
         List<VanillaBuildingTemplateEntry> _entries;
-        // The catalog keeps the CUE4Parse provider alive after the path
-        // scan so the per-template Inspector (Etappe I.2) can share the
-        // same mounted Vfs instead of building a second one. The cost is
-        // one mount per process lifetime instead of one per inspect call.
+        // Kept alive after the path scan so the inspector shares one mounted Vfs instead of remounting per inspect.
         DefaultFileProvider _provider;
 
-        // Read-only access to the mounted provider. Available after the
-        // first read of any indexing API (Search/All/GetById). The
-        // VanillaBuildingTemplateInspector uses this to LoadPackage()
-        // each picked DA on demand.
         public DefaultFileProvider Provider
         {
             get
@@ -87,8 +44,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // Distinct category-folder names (BuildingDecoration, BuildingPoi,
-        // ...) for the GUI filter dropdown. Returned in stable sort order.
         public IReadOnlyList<string> Categories
         {
             get
@@ -129,9 +84,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 .ToList();
         }
 
-        // Lookup by id (= UE /Game/... path). Used at build-time when a
-        // building's TemplateId references a Vanilla DA - the patcher
-        // hands the entry to the inspector to read metadata.
         public VanillaBuildingTemplateEntry GetById(string id)
         {
             if (string.IsNullOrWhiteSpace(id)) return null;
@@ -199,12 +151,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             LogLine("[building-catalog] provider mounted: " + provider.Files.Count
                 + " virtual files (+" + mounted + " vfs)");
 
-            // Keep the provider alive for downstream inspectors.
             _provider = provider;
 
-            // Folder names to exclude from the catalog. These contain
-            // R5BuildingBrush assets (Brush_*.uasset), not R5BuildingItem,
-            // so cloning them as Item templates would fail at game-load.
+            // These folders hold R5BuildingBrush assets, not R5BuildingItem; cloning them as Item templates fails at game-load.
             var excludedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "BuildingBrushes",
@@ -220,7 +169,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 var key = kv.Key.Replace('\\', '/');
                 if (!key.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)) continue;
 
-                // Restrict to the Gameplay/Building tree.
                 if (key.IndexOf(gameplayBuildingMarker, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
                 int lastSlash = key.LastIndexOf('/');
@@ -229,9 +177,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 var stem = fileName.Substring(0, fileName.Length - ".uasset".Length);
 
-                // Parent folder = the segment between the second-last and
-                // last slash. Used both for the excluded-folder filter and
-                // for the GUI category facet.
                 string parentFolder = "";
                 if (lastSlash > 0)
                 {
@@ -276,8 +221,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return "/Game" + pakInternal.Substring(idx + contentMarker.Length - 1);
         }
 
-        // Resolves the cache dir via WindrosePaths so the download lands in
-        // the data root rather than the EXE folder (see NativeDllDir).
         void EnsureOodle()
         {
             var here = WindrosePaths.ResolveNativeDllDir();
@@ -299,15 +242,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         void LogLine(string msg) { if (Log != null) Log(msg); }
     }
 
-    // Single catalog entry. Lightweight - no asset bytes touched during
-    // catalog build, just path metadata. Detailed introspection happens
-    // in VanillaBuildingTemplateInspector (Etappe I.2).
     public sealed class VanillaBuildingTemplateEntry
     {
-        public string Id;               // = PackagePath, the GUI's stable handle
-        public string DisplayName;      // file stem ("DA_BI_FloorTorch_01")
-        public string Category;         // parent folder ("BuildingDecoration")
-        public string PackagePath;      // "/Game/Gameplay/Building/.../DA_BI_..."
-        public string PakRelativePath;  // "R5/Content/Gameplay/.../DA_BI_..." (no extension)
+        public string Id;               // = PackagePath
+        public string DisplayName;
+        public string Category;
+        public string PackagePath;
+        public string PakRelativePath;
     }
 }

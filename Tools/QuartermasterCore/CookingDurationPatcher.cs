@@ -7,42 +7,12 @@ using System.Text.Json.Nodes;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Patches R5BLRecipeData.CookingProcessDuration (top-level integer/float)
-    // on every recipe whose family multiplier is non-null in
-    // profile.Globals.ProductionTimes.
-    //
-    // Vanilla CookingProcessDuration distribution (counts from
-    // Sources/Vanilla/.../Recipes/ on 5.6):
-    //   1644 recipes -> 0    (trade-only, instant settlement; we skip these)
-    //    390 recipes -> 1    (trivial-fast recipes; skipped by default)
-    //    148 recipes -> 4200 (Trade Outpost NPC order wait, ~1h10)
-    //     25 recipes -> 1800 (kiln/tannery/long-furnace runs)
-    //     ...        -> mixed (0.5, 10, 30, 45, 90 etc.)
-    //
-    // The patcher only TOUCHES recipes whose family is active AND whose
-    // vanilla duration is greater than zero. Vanilla=0 ("instant") recipes
-    // are left at zero - multiplying by 0.5 still yields 0 anyway.
-    //
-    // Conflict-merge: the BuyerPatcher and SellerPatcher write their
-    // recipe edits into the same tmpDir tree we write into. If a recipe's
-    // output file already exists (because Buyer/Seller edited it), the
-    // patcher loads THAT file as the baseline instead of vanilla, applies
-    // the duration multiplier, and writes the merged result back. This
-    // preserves the buyer/seller cost/result edits while ALSO patching
-    // the duration.
-    //
-    // Output formatting matches vanilla: tab indent (size 1), CRLF line
-    // endings, trailing CRLF.
     public sealed class CookingDurationPatcher
     {
-        // In-pak prefix (relative to repak's root) where patched recipe
-        // files land. Mirrors the layout BuyerPatcher uses.
         const string RecipesVanillaRoot = "R5/Plugins/R5BusinessRules/Content/Recipes";
 
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
-        // Per-family multiplier table. null = family inactive (skip every
-        // recipe of that family).
         public sealed class FamilyMultipliers
         {
             public double? Smelting;
@@ -112,9 +82,7 @@ namespace Windrose.Quartermaster.Core
                     Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var outPath = Path.Combine(recipesOutRoot, rel);
 
-                // If BuyerPatcher / SellerPatcher already wrote this file,
-                // load it as the baseline so we preserve their edits.
-                // Otherwise load vanilla.
+                // If a Buyer/Seller patcher already wrote this output, load it as the baseline so their edits survive; else load vanilla.
                 bool mergedWithTrade = File.Exists(outPath);
                 var sourcePath = mergedWithTrade ? outPath : vanillaPath;
 
@@ -131,9 +99,6 @@ namespace Windrose.Quartermaster.Core
                     continue;
                 }
 
-                // Read vanilla duration. If the field is missing or zero,
-                // skip - scaling 0 still gives 0 and patching it just to
-                // re-emit the file would bloat the pak.
                 if (!(root["CookingProcessDuration"] is JsonValue durVal))
                 {
                     result.Skipped++;
@@ -153,7 +118,6 @@ namespace Windrose.Quartermaster.Core
                     continue;
                 }
 
-                // Classify the recipe and look up its family multiplier.
                 var family = RecipeFamilyClassifier.Classify(root, stem);
                 var mul = families.Get(family);
                 if (!mul.HasValue || Math.Abs(mul.Value - 1.0) < 1e-9)
@@ -163,16 +127,9 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 var effective = vanillaDur * mul.Value;
-                // Floor at 0.1s. Below that the engine treats it as
-                // instant anyway; using exact zero would change semantics
-                // (vanilla=0 means "instant trade settle", which the
-                // gameplay code branches on).
+                // Floor at 0.1, never exactly 0: gameplay branches on duration==0 as "instant trade settle".
                 if (effective < 0.1) effective = 0.1;
 
-                // Preserve original numeric shape when possible: if the
-                // vanilla value was an integer, emit an integer; otherwise
-                // emit a double rounded to one decimal so JSON output
-                // stays compact and readable.
                 JsonValue newVal;
                 if (IsWholeNumber(vanillaDur) && IsWholeNumber(effective))
                     newVal = JsonValue.Create((long)Math.Round(effective));
@@ -195,7 +152,6 @@ namespace Windrose.Quartermaster.Core
                     EffectiveDuration = effective,
                 });
 
-                // Family-level aggregates for the build response.
                 CookingFamilySummary summary;
                 if (!result.FamilySummaries.TryGetValue(family, out summary))
                 {

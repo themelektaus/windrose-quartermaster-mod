@@ -8,61 +8,16 @@ using System.Text.Json.Nodes;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Reads vanilla R5BLRecipeList + R5BLRecipeData JSONs and writes a
-    // parallel directory containing:
-    //   * the RecipeLists that had refs added/removed (BuyerLists override)
-    //   * the Recipes that were edited (BuyerRecipes with IsCustom=false)
-    //   * brand-new "QM_Custom_*" Recipes (BuyerRecipes with IsCustom=true)
-    //     placed at Recipes/Custom/QM_Custom_<id>.json
-    //
-    // Output dir mirrors the in-pak layout
-    // (R5/Plugins/R5BusinessRules/Content/{RecipeLists,Recipes}/...) so it
-    // can be co-packed with StackPatcher / LootPatcher output by repak.
-    //
-    // Resolver rule per BuyerRecipes entry:
-    //   1. IsCustom=true              -> synthesize a fresh JSON cloned from
-    //                                     an internal template, set the 4
-    //                                     trade fields + a RecipeTag derived
-    //                                     from the custom id
-    //   2. IsCustom=false             -> load the vanilla recipe matching
-    //                                     basename, patch the 4 fields
-    //                                     in-place, write
-    //
-    // Resolver rule per BuyerLists entry:
-    //   * iterate vanilla refs, drop any whose basename is in
-    //     RemovedRecipeIds
-    //   * append entries for each id in AddedRecipeIds:
-    //       "QM_Custom_*"           -> /R5BusinessRules/Recipes/Custom/<id>.<id>
-    //       any other vanilla base  -> looked up via the basename->path map
-    //                                  built at start (skipped with a
-    //                                  warning if not found)
-    //
-    // After applying the override, the patcher deep-compares against vanilla
-    // and skips writing files that turned out identical (idempotent edits
-    // do not bloat the pak).
-    //
-    // Output formatting matches vanilla: tab indent (size 1), CRLF line
-    // endings, trailing CRLF. Field order is preserved by patching the
-    // existing JsonNode tree in-place (only the leaves change) so the
-    // sequence the engine expects is never disturbed.
     public sealed class BuyerPatcher
     {
-        // Asset paths referencing recipes/items use these prefixes.
         const string RecipesPathPrefix = "/R5BusinessRules/Recipes/";
 
-        // Synthetic recipes get filed here so they never collide with
-        // vanilla refs. Frontend already enforces the "QM_Custom_" prefix
-        // on the recipeId so this folder only ever holds our own output.
         const string CustomRecipesFolder = "Custom";
         const string CustomRecipeIdPrefix = "QM_Custom_";
 
-        // The repak-mountable in-pak tree mirrors these subpaths under the
-        // output dir. We strip these prefixes when computing keys / refs.
         const string RecipeListsVanillaRoot = "R5/Plugins/R5BusinessRules/Content/RecipeLists";
         const string RecipesVanillaRoot     = "R5/Plugins/R5BusinessRules/Content/Recipes";
 
-        // No-BOM UTF-8; line endings handled manually because we pin
-        // CRLF to match vanilla regardless of host platform.
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public BuyerPatchResult PatchToDirectory(
@@ -84,40 +39,20 @@ namespace Windrose.Quartermaster.Core
             var listOverrides = profile.BuyerLists ?? new Dictionary<string, BuyerListOverride>(0);
             var recipeOverrides = profile.BuyerRecipes ?? new Dictionary<string, BuyerRecipeOverride>(0);
 
-            // Build a basename->(assetPath, jsonPath) lookup over the
-            // vanilla recipes once. The patcher needs it for both:
-            //   * resolving AddedRecipeIds to a full asset path when
-            //     rewriting a RecipeList, AND
-            //   * locating the on-disk file for IsCustom=false recipe edits.
-            // Skipping the scan when no buyer config is set is the caller's
-            // job (see BuildPipeline.HasBuyerConfiguration).
             var recipeMap = BuildVanillaRecipeMap(vanillaRecipesDir);
 
-            // Pick one vanilla PlayerSells recipe as the template for any
-            // custom recipes we have to synthesize. Snapshotting the actual
-            // game shape (with all the obscure fields the engine expects)
-            // is far more robust than hand-rolling a "minimal" JSON that
-            // happens to validate today but breaks at the next content patch.
             JsonObject customTemplate = null;
             if (HasAnyCustomRecipe(recipeOverrides))
             {
                 customTemplate = LoadCustomRecipeTemplate(recipeMap, result);
                 if (customTemplate == null)
                 {
-                    // The user asked to add a custom recipe but vanilla
-                    // shipped no PlayerSells template - leave a warning
-                    // and skip the custom output. Other patcher work
-                    // (vanilla edits, list mods that reference vanilla
-                    // recipes only) is still emitted.
                     result.Warnings.Add(
                         "No vanilla PlayerSells recipe found to clone as a custom template - "
                         + "synthesized recipes will be skipped.");
                 }
             }
 
-            // 1. Recipe-level edits + custom recipe synthesis. Each entry
-            //    in BuyerRecipes lives in its OWN output file (Recipes/...),
-            //    independent of which RecipeLists eventually reference it.
             foreach (var kv in recipeOverrides)
             {
                 result.RecipesScanned++;
@@ -161,9 +96,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // 2. RecipeList-level edits. Each entry in BuyerLists rewrites
-            //    exactly one RecipeList JSON; non-modified vanilla refs are
-            //    preserved bit-for-bit.
             foreach (var kv in listOverrides)
             {
                 result.ListsScanned++;
@@ -181,12 +113,6 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
-        // Walk the vanilla recipes tree once and build a basename ->
-        // (assetPath, on-disk-path) map. The basename is what BuyerRecipes
-        // / BuyerLists key against, so we need O(1) resolution at patch
-        // time. Duplicate basenames across folders would clash - the
-        // current vanilla tree doesn't have any so we just warn and keep
-        // the first occurrence.
         Dictionary<string, RecipePathPair> BuildVanillaRecipeMap(string vanillaRecipesDir)
         {
             var map = new Dictionary<string, RecipePathPair>(StringComparer.OrdinalIgnoreCase);
@@ -197,7 +123,6 @@ namespace Windrose.Quartermaster.Core
                 if (string.IsNullOrEmpty(basename)) continue;
                 if (map.ContainsKey(basename)) continue;
 
-                // The asset path mirrors the on-disk subpath under Recipes/.
                 var rel = path.Substring(rootFull.Length).TrimStart(
                     Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var relForward = rel.Replace(Path.DirectorySeparatorChar, '/')
@@ -210,18 +135,10 @@ namespace Windrose.Quartermaster.Core
             return map;
         }
 
-        // Snapshot a vanilla PlayerSells recipe to use as the structural
-        // template for custom recipes. Loads the first match found in the
-        // vanilla recipe map; the four trade fields will be overwritten
-        // per-recipe anyway, so the choice of source doesn't matter as
-        // long as it has the right $type.
         JsonObject LoadCustomRecipeTemplate(
             Dictionary<string, RecipePathPair> recipeMap,
             BuyerPatchResult result)
         {
-            // Stable picking order: any "*_Sell" recipe wins over any
-            // other so the template's RecipeTag follows the PlayerSell
-            // naming convention.
             var candidate = recipeMap
                 .Where(kv => kv.Key.IndexOf("_Sell", StringComparison.OrdinalIgnoreCase) >= 0)
                 .Select(kv => kv.Value.JsonPath)
@@ -242,33 +159,19 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Writes a fresh Recipes/Custom/<id>.json based on the template.
-        // The template's structure is preserved exactly; we only overwrite
-        // the trade quartet + RecipeTag (so the tag stays unique per
-        // recipe, otherwise the engine would dedupe them at runtime).
         void WriteCustomRecipe(string outDir, string recipeId,
             BuyerRecipeOverride ovr, JsonObject template, BuyerPatchResult result)
         {
-            // DeepClone so multiple custom recipes share the same template
-            // but never accidentally share mutated leaves.
             var root = (JsonObject)template.DeepClone();
 
             SetTradeField(root, "RecipeCost",   ovr.ItemPath,    ovr.ItemCount.Value);
             SetTradeField(root, "RecipeResult", ovr.PayItemPath, ovr.PayCount.Value);
 
-            // Reputation gate: empty/null override -> "None" (vanilla
-            // PlayerSells recipes ship with "None" anyway, so this matches
-            // the default). Non-empty -> the dropdown asset path the user
-            // picked (the frontend stores the full
-            // /R5BusinessRules/.../DA_Requirement_<faction>_<n>.<...> form).
             root["CraftRequirement"] = string.IsNullOrEmpty(ovr.CraftRequirement)
                 ? "None"
                 : ovr.CraftRequirement;
 
-            // Give the synthesized recipe a unique tag so the engine treats
-            // each one as a distinct trade. Format mirrors the vanilla
-            // namespace (RecipeData.Trade.PlayerSell.<group>.<name>) so
-            // anything that filters by tag prefix still groups them in.
+            // Unique tag per recipe so the engine treats each as a distinct trade.
             if (root["RecipeTag"] is JsonObject tagObj)
             {
                 tagObj["TagName"] = "RecipeData.Trade.PlayerSell.QmCustom." + recipeId;
@@ -281,11 +184,6 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
-            // Wipe any UIData.Name carried over from the template (it
-            // referenced a localization key that doesn't apply to us) and
-            // null out the image so the engine falls back to the item's
-            // own icon - the user picked an item, so its display already
-            // works.
             if (root["UIData"] is JsonObject uiObj)
             {
                 uiObj["Name"] = string.Empty;
@@ -302,8 +200,6 @@ namespace Windrose.Quartermaster.Core
             result.WrittenRecipes.Add("Custom/" + recipeId);
         }
 
-        // Loads a vanilla recipe, applies the sparse field overrides, and
-        // writes the result if anything actually changed.
         void PatchVanillaRecipe(string vanillaRecipesDir, string outDir,
             string recipeId, string vanillaJsonPath, BuyerRecipeOverride ovr,
             BuyerPatchResult result)
@@ -321,7 +217,6 @@ namespace Windrose.Quartermaster.Core
                 return;
             }
 
-            // Snapshot for the change-detection comparison.
             var before = root.DeepClone();
 
             if (!string.IsNullOrEmpty(ovr.ItemPath) || ovr.ItemCount.HasValue)
@@ -329,11 +224,7 @@ namespace Windrose.Quartermaster.Core
             if (!string.IsNullOrEmpty(ovr.PayItemPath) || ovr.PayCount.HasValue)
                 UpdateTradeField(root, "RecipeResult", ovr.PayItemPath, ovr.PayCount);
 
-            // CraftRequirement: null = leave vanilla alone (don't touch),
-            // any non-null value (including the literal "None") overrides.
-            // Storing "None" is how the frontend clears a requirement -
-            // the on-disk JSON keeps the field, just with the no-gate
-            // sentinel the engine recognises.
+            // null = leave vanilla untouched; any value (incl. "None") overrides.
             if (ovr.CraftRequirement != null)
             {
                 root["CraftRequirement"] = ovr.CraftRequirement;
@@ -345,8 +236,6 @@ namespace Windrose.Quartermaster.Core
                 return;
             }
 
-            // Output mirrors the vanilla on-disk subpath so the in-pak
-            // layout is identical.
             var rel = vanillaJsonPath.Substring(Path.GetFullPath(vanillaRecipesDir).Length).TrimStart(
                 Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var outPath = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules", "Content",
@@ -358,16 +247,11 @@ namespace Windrose.Quartermaster.Core
             result.WrittenRecipes.Add(recipeId);
         }
 
-        // Rewrites RecipeList[] for one buyer/seller list. Vanilla refs not
-        // in RemovedRecipeIds survive in their original order; new refs are
-        // appended at the end.
         void PatchRecipeList(string vanillaRecipeListsDir, string outDir,
             string listId, BuyerListOverride ovr,
             Dictionary<string, RecipePathPair> recipeMap,
             BuyerPatchResult result)
         {
-            // Resolve the on-disk path for the list from its id (the id
-            // already matches the relative path used by /api/buyers).
             var vanillaListPath = Path.Combine(vanillaRecipeListsDir,
                 listId.Replace('/', Path.DirectorySeparatorChar) + ".json");
             if (!File.Exists(vanillaListPath))
@@ -399,9 +283,7 @@ namespace Windrose.Quartermaster.Core
             var newArr = new JsonArray();
             if (ovr.RecipeOrder != null)
             {
-                // Definitive-order mode: output exactly what RecipeOrder says.
-                // Vanilla IDs not listed are implicitly dropped; custom IDs are
-                // placed at their specified position.
+                // Definitive order: vanilla IDs not listed are dropped.
                 foreach (var id in ovr.RecipeOrder)
                 {
                     if (string.IsNullOrEmpty(id)) continue;
@@ -418,7 +300,6 @@ namespace Windrose.Quartermaster.Core
             }
             else
             {
-                // Legacy mode: vanilla refs minus removed, then appended ids.
                 var removed = ovr.RemovedRecipeIds != null
                     ? new HashSet<string>(ovr.RemovedRecipeIds, StringComparer.OrdinalIgnoreCase)
                     : null;
@@ -470,15 +351,11 @@ namespace Windrose.Quartermaster.Core
             result.WrittenLists.Add(listId);
         }
 
-        // Either a "QM_Custom_*" id (synthetic - the patcher knows where to
-        // file it) or a vanilla basename (looked up via the map). Returns
-        // null on unknown vanilla ids so the caller can warn.
         static string ResolveAddedRecipeAssetPath(string id,
             Dictionary<string, RecipePathPair> recipeMap)
         {
             if (IsCustomRecipeId(id))
             {
-                // Convention chosen by the patcher itself.
                 return RecipesPathPrefix + CustomRecipesFolder + "/" + id + "." + id;
             }
             if (recipeMap.TryGetValue(id, out var pair))
@@ -486,10 +363,7 @@ namespace Windrose.Quartermaster.Core
             return null;
         }
 
-        // Replaces the Item + Count on a RecipeCost / RecipeResult array
-        // for SYNTHESIZED recipes - both fields are always provided so we
-        // can write a clean single-entry array even if the template had
-        // multiple entries (which trade recipes never do, but be defensive).
+        // Synthesized recipes: both fields always provided, written as a single-entry array.
         static void SetTradeField(JsonObject root, string key, string itemPath, int count)
         {
             root[key] = new JsonArray(
@@ -500,17 +374,11 @@ namespace Windrose.Quartermaster.Core
                 });
         }
 
-        // Sparse update for EDITED recipes - keeps every other field on the
-        // first entry (rare but possible: future engine versions might add
-        // schema fields to the cost/result entry). null itemPath / null
-        // count = leave that side of the leaf alone.
+        // Sparse update for edited recipes: null itemPath / null count leaves that leaf alone.
         static void UpdateTradeField(JsonObject root, string key, string itemPath, int? count)
         {
             if (!(root[key] is JsonArray arr) || arr.Count == 0)
             {
-                // Vanilla didn't have the field array - synthesize a fresh
-                // one. Without both fields set, we don't actually know what
-                // to write, so bail.
                 if (string.IsNullOrEmpty(itemPath) || !count.HasValue) return;
                 root[key] = new JsonArray(
                     new JsonObject
@@ -539,10 +407,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // /R5BusinessRules/Recipes/A/B/Name.Name -> "Name"
-        // Mirrors how AssetPathToId is computed elsewhere; rightmost name
-        // segment regardless of whether the ref uses "/Path/Name" or
-        // "/Path/Name.Name" form.
         static string AssetPathToBasename(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath)) return assetPath;
@@ -553,8 +417,7 @@ namespace Windrose.Quartermaster.Core
             return cut >= 0 && cut < s.Length - 1 ? s.Substring(cut + 1) : s;
         }
 
-        // JSON arrays are order-sensitive; objects must have the same keys
-        // in the same order with deep-equal values.
+        // Order-sensitive: object keys must match in the same order too.
         static bool DeepEquals(JsonNode a, JsonNode b)
         {
             if (a == null && b == null) return true;
@@ -588,9 +451,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Tab-indent (size 1), CRLF line endings, trailing CRLF. Matches
-        // the format LootPatcher emits so all patched JSONs share one
-        // canonical shape inside the pak.
         static byte[] SerializeWithTabsAndCrlf(JsonObject root)
         {
             using var ms = new MemoryStream();
@@ -613,22 +473,22 @@ namespace Windrose.Quartermaster.Core
 
         sealed class RecipePathPair
         {
-            public string AssetPath;   // /R5BusinessRules/Recipes/.../Name.Name
-            public string JsonPath;    // absolute on-disk path
+            public string AssetPath;
+            public string JsonPath;
         }
     }
 
     public sealed class BuyerPatchResult
     {
         public int RecipesScanned;
-        public int RecipesEdited;     // vanilla recipe patched + written
-        public int RecipesAdded;      // synthesized "QM_Custom_*" written
+        public int RecipesEdited;
+        public int RecipesAdded;
         public int ListsScanned;
         public int ListsWritten;
-        public int RefsAdded;         // total recipe refs appended across all lists
-        public int RefsRemoved;       // total recipe refs stripped across all lists
-        public int UnchangedSkip;     // override resolved to vanilla shape
-        public int NoSchema;          // root not a JsonObject / wrong type
+        public int RefsAdded;
+        public int RefsRemoved;
+        public int UnchangedSkip;
+        public int NoSchema;
 
         public List<string> WrittenRecipes = new List<string>();
         public List<string> WrittenLists   = new List<string>();

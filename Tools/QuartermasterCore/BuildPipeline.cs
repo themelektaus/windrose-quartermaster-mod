@@ -8,64 +8,6 @@ using Windrose.Quartermaster.Core.Deploy;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Orchestrates the full build for a given Profile:
-    //   Vanilla/  --(StackPatcher)-->  .build-tmp/<profile-id>/  --(PakBuilder)-->  Builds/<name>_P.pak
-    //
-    // The temp directory is wiped before patching and (by default) deleted
-    // after a successful pack - callers can opt into keepTemp=true for
-    // post-mortem debugging.
-    //
-    // The build can produce up to TWO IoStore triplets next to the main pak:
-    //
-    //   1. Composite triplet  Quartermaster_<name>_P.{ucas,utoc}  (+ stub .pak
-    //      OR full .pak from the main pakbuild). Built via retoc to-legacy +
-    //      AfterExtract patches + retoc to-zen by IoStoreCompositeBuilder.
-    //      Carries the Pickup and NoSmoke features.
-    //
-    //   2. Raw companion  Quartermaster_<name>_Raw_P.{pak,ucas,utoc} -
-    //      a SECOND mount-point separate from the composite, holding
-    //      features that can't go through retoc to-zen. Two paths
-    //      contribute here:
-    //        - Stability: retoc unpack-raw + byte-level patches on raw
-    //          zen chunks + retoc pack-raw -> .ucas + .utoc. Lives here
-    //          because to-zen produces game-incompatible output for the
-    //          vanilla DA_BI* class (R5CollisionApproximation uses a
-    //          custom C++ Serialize() that breaks under unversioned <->
-    //          versioned round-tripping).
-    //        - Minimap: a vanilla R5/Config/DefaultR5MapSettings.ini
-    //          extracted via AES-keyed repak unpack, scaled by a
-    //          user-supplied multiplier, re-packed via repak pack -> .pak.
-    //          Lives here because the .ini lands in the PakFile subsystem
-    //          (not IoStore) and retoc to-zen silently drops non-asset
-    //          files. The PakFile + IoStore backends mount independently
-    //          under the same basename so both can coexist in one container.
-    //
-    //      Layout is adaptive:
-    //        - Stability + Minimap -> real .pak (minimap INI) + real .ucas/.utoc (stability)
-    //        - Stability only      -> 347-byte stub .pak + real .ucas/.utoc
-    //        - Minimap only        -> real .pak ONLY (no .ucas/.utoc emitted)
-    //
-    // Composite sources today:
-    //   - Pickup:  vanilla GA_Loot_AutoPickup Blueprint extracted via
-    //              retoc to-legacy and patched in-place via UAssetAPI to
-    //              add a serialized MagnetRadius FloatProperty.
-    //   - NoSmoke: self-bakes vanilla Niagara assets (FX_Bonefire/Campfire/
-    //              Furnace/Kiln) and patches every EmitterHandle.bIsEnabled
-    //              to false to silence the smoke / flame particle systems.
-    //              Three independent toggles map to three asset groups.
-    //   - Bonfire: scales the two influence floats on
-    //              DA_BI_Utilities_BuildingCenterT01.uasset by a user
-    //              multiplier (vanilla 5000/3000 -> 5000*M/3000*M), so the
-    //              "you can build here" zone around a placed building
-    //              center grows linearly. Single-asset byte patch on
-    //              RawExport.Data inside UAssetAPI, then re-emitted as
-    //              legacy uasset+uexp for the composite's to-zen step.
-    //
-    // The composite triplet shares the basename of the main pak so UE5
-    // mounts them as one logical mod. The raw companion has its own
-    // basename (..._Raw_P) and gets recognised as a companion by
-    // ModsEndpoint so it aggregates back into a single logical mod in
-    // the UI.
     public sealed class BuildPipeline
     {
         readonly WindrosePaths _paths;
@@ -86,53 +28,16 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
-        // When set, overrides the default ${ModRoot}/Builds output target.
-        // The GUI sets this to Windrose's ~mods/ folder so a successful
-        // build lands directly in the location the engine reads from. CLI
-        // smoke tests leave this null so they keep landing in Builds/ and
-        // never touch the live game install.
         public string OutputDir;
 
-        // Optional locator for the live game's Paks/ directory. Required
-        // for builds that activate any IoStore feature (pickup-radius,
-        // no-smoke, or building-stability). retoc's to-legacy + unpack-raw
-        // both read directly from the game's IoStore containers. The GUI
-        // wires this to SteamLocator.FindVanillaPaksDir; CLI smoke tests
-        // leave it null since CLI builds never enable IoStore features.
         public Func<string> GamePaksDirProvider;
 
-        // Etappe I: when set, the pipeline resolves building templateIds
-        // (Vanilla DA virtual paths) through this catalog. The Web layer
-        // wires its shared VanillaBuildingTemplateCatalog instance
-        // in before calling Build(); CLI smoke tests leave it null and
-        // get the legacy hardcoded-factory behavior.
         public VanillaBuildingTemplateCatalog BuildingTemplateCatalog;
 
-        // Filename of the game container that ships the DA_BI* DataAssets
-        // (the ones BuildingStabilityPatcher operates on). retoc unpack-raw
-        // takes a specific .utoc file rather than a Paks directory, so we
-        // need to know which container to point it at. pakchunk0_s3 has
-        // been stable across Windrose 5.6 patches; if it ever moves we'll
-        // see "no DA_BI assets in chunk manifest" in the build log.
         public const string StabilityContainerFilename = "pakchunk0_s3-Windows.utoc";
 
-        // Suffix appended to the safe profile name to derive the raw
-        // companion triplet's basename. The "_P" terminator makes UE5
-        // recognise it as a mod container at mount time. ModsEndpoint uses
-        // the same constant to aggregate the raw companion back into the
-        // parent mod's list entry.
-        //
-        // "Raw" because the contained payloads bypass retoc's to-zen step
-        // (stability bytes-patches raw zen chunks, minimap ships a loose
-        // config .ini through the PakFile subsystem) - the basename is a
-        // single landing pad for whichever subset of those features the
-        // profile activates.
         public const string RawCompanionSuffix = "_Raw_P";
 
-        // Vanilla MagnetRadius value (cm) the patcher multiplies against
-        // to derive the patched value. 400cm = 4m is the Windrose 5.6
-        // baseline; broken out as a constant so a future game patch
-        // could be handled without touching call sites everywhere.
         public const float VanillaMagnetRadius = 400f;
 
         public BuildPipeline(WindrosePaths paths)
@@ -169,23 +74,10 @@ namespace Windrose.Quartermaster.Core
             var pakName = "Quartermaster_" + safeName + "_P.pak";
             var outDir = !string.IsNullOrEmpty(OutputDir) ? OutputDir : _paths.Builds;
             var outPakPath = Path.Combine(outDir, pakName);
-            // Base name (no extension) shared by the main pak and the
-            // pickup-radius IoStore companions (.ucas/.utoc). UE5 mounts
-            // .pak/.ucas/.utoc with a matching basename as one logical
-            // container, so consolidating under one prefix lets us ship
-            // a single mod that combines JSON patches AND the patched
-            // Blueprint - instead of the two separate "main" + "_PickupRadius"
-            // mods we used to produce.
             var sharedBaseName = "Quartermaster_" + safeName + "_P";
             var sharedUcasPath = Path.Combine(outDir, sharedBaseName + ".ucas");
             var sharedUtocPath = Path.Combine(outDir, sharedBaseName + ".utoc");
 
-            // Raw companion lives in a SEPARATE triplet (see class header
-            // for why). Same out-dir, distinct basename so UE mounts both as
-            // independent containers but ModsEndpoint aggregates them
-            // back into one logical "Quartermaster_<name>" row in the
-            // mods list. Carries whichever subset of {stability, minimap}
-            // the profile activates - see BuildRawCompanion for layout.
             var rawBaseName = "Quartermaster_" + safeName + RawCompanionSuffix;
             var rawPakPath  = Path.Combine(outDir, rawBaseName + ".pak");
             var rawUcasPath = Path.Combine(outDir, rawBaseName + ".ucas");
@@ -195,16 +87,10 @@ namespace Windrose.Quartermaster.Core
 
             try
             {
-                // Wipe the temp dir before patching: a stale tree from a
-                // previous run could otherwise leak files into the new pak.
                 if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, true);
 
-                // Pre-clear stale outputs at the target paths. Without this,
-                // a previous build that produced .ucas/.utoc would leave
-                // them lingering when the user disables pickup-radius for
-                // the next build - and stale IoStore companions would
-                // still get mounted by the engine. Done before any work
-                // so a half-finished build leaves the user no worse off.
+                // Pre-clear stale outputs so disabling a feature doesn't leave
+                // its old IoStore companions to be mounted by the engine.
                 if (Directory.Exists(outDir))
                 {
                     foreach (var p in new[]
@@ -217,13 +103,6 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
-                // The two patchers write into the SAME temp directory but
-                // into disjoint subtrees (InventoryItems/ vs LootTables/),
-                // so they can't collide. After both run, repak packs the
-                // merged tree as a single .pak.
-                // StackPatcher writes into the InventoryItems subtree to
-                // mirror the in-pak path (and to avoid scanning LootTables/
-                // for MaxCountInSlot that's never going to be there).
                 var tmpInvDir = Path.Combine(tmpDir, "R5", "Plugins",
                     "R5BusinessRules", "Content", "InventoryItems");
                 LogLine("Patching vanilla items -> " + tmpInvDir);
@@ -250,9 +129,6 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in lootResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                // Fast-travel-bell + signal-fire caps. Tiny JSON config
-                // patch (~700 B input, one file) - ships inside the main
-                // Pak1 alongside the item / loot patches, no IoStore step.
                 BellLimitsPatchResult bellResult = null;
                 if (HasBellLimitsConfiguration(profile))
                 {
@@ -279,10 +155,6 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
-                // Buyer trade-list edits (PlayerSells side). Writes into the
-                // same tmpDir tree but under disjoint subpaths (Recipes/ +
-                // RecipeLists/) so it composes cleanly with the other
-                // patchers' output for a single repak invocation.
                 BuyerPatchResult buyerResult = null;
                 if (HasBuyerConfiguration(profile))
                 {
@@ -298,14 +170,6 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in buyerResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                // Seller trade-list edits (PlayerBuys side). Independent of
-                // Buyer* but writes into the SAME tmpDir tree - both patchers
-                // produce disjoint files (PlayerSells/* vs PlayerBuys/*
-                // RecipeLists, vanilla recipes never overlap between the two
-                // tabs because *_Sell and *_Buy basenames are distinct, and
-                // custom recipes use disjoint prefixes "QM_Custom_*" vs
-                // "QM_SCustom_*"). The Custom/ folder is shared and the two
-                // sets coexist cleanly.
                 SellerPatchResult sellerResult = null;
                 if (HasSellerConfiguration(profile))
                 {
@@ -321,16 +185,8 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in sellerResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                // Crop-growth + cooking-duration patches. Both ship JSON
-                // DataAssets inside the same main pak as the other JSON
-                // patchers (no IoStore step needed).
-                //
-                // CropGrowth runs independently: writes new DA_Crop_*.json
-                // files under Farming/Crops/ with a scaled GrowthDuration.
-                //
-                // CookingDuration runs AFTER Buyer/Seller so it can merge
-                // its CookingProcessDuration edit into a recipe file the
-                // trade patchers already touched (preserving both edits).
+                // CookingDuration must run after Buyer/Seller to merge its edit
+                // into a recipe file the trade patchers may already have touched.
                 CropGrowthPatchResult cropGrowthResult = null;
                 double cropGrowthMul = ResolveCropGrowthMultiplier(profile);
                 bool cropGrowthActive = cropGrowthMul > 0.0 && Math.Abs(cropGrowthMul - 1.0) > 1e-9;
@@ -361,22 +217,12 @@ namespace Windrose.Quartermaster.Core
                             + cookingDurationResult.Skipped + " skipped)");
                 }
 
-                // Resolve which CustomItems will get a baked custom icon
-                // BEFORE running the item-creator patcher: the patcher
-                // needs to know whether to point each item's ItemTexture
-                // at the synthesized Custom/T_QmCustomIcon_<id> asset
-                // (only valid if the PNG actually exists on disk and
-                // will get baked) or fall back to the template icon.
-                // Doing it in this order keeps the JSON-on-disk side
-                // and the texture-on-disk side in lockstep.
+                // Resolve bake jobs before the item-creator patcher: it needs to
+                // know whether each item's ItemTexture points at a baked icon.
                 var iconBakeJobs = ResolveIconBakeJobs(profile);
                 var bakeableItemIds = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var j in iconBakeJobs) bakeableItemIds.Add(j.ItemId);
 
-                // Item Creator: user-defined custom items synthesized from
-                // vanilla templates. Lands under InventoryItems/Custom/ +
-                // emits an extended copy of InventoryItems.csv (the FText
-                // string-table the synthesized JSONs reference).
                 ItemCreatorPatchResult itemCreatorResult = null;
                 if (HasCustomItemsConfiguration(profile))
                 {
@@ -389,31 +235,10 @@ namespace Windrose.Quartermaster.Core
                     foreach (var w in itemCreatorResult.Warnings) LogLine("  warn: " + w);
                 }
 
-                // Custom Buildings: user-defined buildings (e.g. a floor
-                // torch with custom flame VFX). Each building's user-
-                // cooked mesh + icon + textures get staged into the mod-
-                // pak's output namespace (WindrosePaths.ModItems-
-                // PackagePath), the per-slot Vanilla MIs get cloned +
-                // retargeted at the user's textures, and the per-building
-                // Vanilla DA gets renamed to DA_BI_<BuildingId>. The
-                // cloned MI / DA / mesh refs
-                // get wired together via NameMap rewrites done by
-                // DataAssetPatcher.
-                //
-                // NOTE: building assets MUST end up in the IoStore composite
-                // triplet (.ucas/.utoc), NOT the legacy .pak. UE5 IoStore
-                // resolves LoadPackage() lookups via the global package
-                // index built from .utoc files - new asset paths in a
-                // legacy .pak get mounted but stay invisible to LoadPackage.
-                // That's why we defer the actual patcher call into
-                // BuildIoStoreComposite() as a pre-staged source - it
-                // writes building bytes into the composite's staging tree
-                // which then goes through retoc to-zen at the end.
-                //
-                // Output: the in-pak assets the DLL inject pipeline targets
-                // at runtime - the per-profile qm_items_<safeName>.json next
-                // to dxgi.dll picks them up via the GameDeployer hook AFTER
-                // the pak is built.
+                // Building assets MUST end up in the IoStore composite triplet,
+                // not the legacy .pak: new asset paths are only resolvable via
+                // the IoStore global index. The patcher call is deferred into
+                // BuildIoStoreComposite as a pre-staged source.
                 List<BuildingPatchResult> buildingResults = null;
                 bool buildingsActive = HasCustomBuildingsConfiguration(profile);
 
@@ -431,15 +256,6 @@ namespace Windrose.Quartermaster.Core
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
                     + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
-                    // Custom buildings: every non-skeleton building gets a
-                    // BuildingItems.csv row, which lives in the legacy
-                    // main pak (NOT the IoStore composite). Bumping
-                    // totalWritten ensures the main pak builds so the
-                    // CSV is packed alongside the rewritten DA in the
-                    // composite. Without this, a "buildings only" profile
-                    // would write the CSV to tmpDir but never package it,
-                    // and the FText key rewrite would resolve to nothing
-                    // in-game.
                     + CountBuildableBuildings(profile);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
@@ -460,33 +276,17 @@ namespace Windrose.Quartermaster.Core
                 bool bonfireMusicActive = bonfireMusicJob != null;
                 var shipMusicAddJobs = ResolveShipMusicAddJobs(profile);
                 bool shipMusicAddActive = shipMusicAddJobs.Count > 0;
-                // Exclusions of vanilla shanty slots (Profile.Globals.ShipMusic
-                // .ExcludedSlots). Resolved to 0-based indices into the
-                // DA's Shanty.Cues array via ShipMusicSlots.All position.
                 var shipMusicExcludedIndices = ResolveShipMusicExcludedIndices(profile);
                 bool shipMusicExcludesActive = shipMusicExcludedIndices.Count > 0;
-                // Combined DA-patch activity: any time we need to rewrite
-                // the four DA_<ShipType>_AudioParams DataAssets - either to
-                // append new slots or to remove vanilla ones.
                 bool shipMusicDaActive = shipMusicAddActive || shipMusicExcludesActive;
                 var lightingJobs = ResolveLightingJobs(profile);
                 bool lightingActive = lightingJobs.Count > 0;
-                // iconBakeJobs was resolved earlier (before ItemCreator);
-                // re-derive activity flag from the same list so the
-                // composite path knows whether to add the icons source.
                 bool iconsActive = iconBakeJobs.Count > 0;
                 bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
-                    // If the profile carries CustomBuildings that all got
-                    // skeleton-filtered (HasCustomBuildingsConfiguration
-                    // requires Id+TemplateId+AssetPrefix+CookedFolderPath
-                    // +MeshStem), surface WHICH fields are missing per
-                    // building - otherwise the user sees a generic "no
-                    // changes" error even though they clearly added a
-                    // building card. Same gate as the Has* check + the
-                    // PatchCustomBuildings loop so the diagnostic stays
-                    // in sync if either is loosened later.
+                    // Surface which fields are missing when all buildings were
+                    // skeleton-filtered, instead of a generic "no changes".
                     var skeleton = DescribeSkeletonBuildings(profile);
                     if (skeleton != null)
                     {
@@ -498,17 +298,8 @@ namespace Windrose.Quartermaster.Core
                     throw new InvalidOperationException("Profile produces no changes - nothing to pack.");
                 }
 
-                // Build IoStore composite triplet FIRST (into a staging
-                // dir), so that when repak runs afterwards it overwrites
-                // the tiny .pak stub retoc produces with the real Pak1
-                // content. The .ucas / .utoc are then copied to outDir
-                // under the shared basename, sharing the prefix with the
-                // main pak.
-                //
-                // For IoStore-only builds (no item/loot/bell changes),
-                // repak is skipped entirely and we copy all three triplet
-                // files (including the stub .pak) to outDir - the engine
-                // still needs the .pak as the IoStore container's marker.
+                // Build the IoStore composite first, so a later repak overwrites
+                // retoc's .pak stub with the real Pak1 content.
                 PickupTripletResult pickupResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
@@ -549,11 +340,6 @@ namespace Windrose.Quartermaster.Core
                     buildingResults = compositeResult.Buildings;
                 }
 
-                // Raw companion is independent of the composite (see
-                // class header). Built only when at least one of its
-                // member features (stability / minimap) is on; goes to
-                // its own _Raw_P basename. ModsEndpoint recognises the
-                // suffix and treats both containers as one logical mod.
                 BuildingStabilityResult stabilityResult = null;
                 MinimapRangeResult minimapResult = null;
                 if (stabilityActive || minimapActive)
@@ -566,16 +352,8 @@ namespace Windrose.Quartermaster.Core
 
                 PakBuildResult pakResult = null;
                 string pakPath = null;
-                // totalWritten is a predictive counter - e.g.
-                // CountBuildableBuildings assumes every valid building
-                // contributes a BuildingItems.csv row, but the CSV
-                // synthesizer silently skips when no FText keys are
-                // committed / display names are blank, and the recipe
-                // patcher skips when the template carries no
-                // VanillaRecipeJsonPath. Result: totalWritten > 0 yet
-                // tmpDir empty -> repak refuses to pack ("Source folder
-                // is empty"). Verify actual file presence in tmpDir
-                // before invoking repak.
+                // totalWritten is only predictive; verify real files exist
+                // before repak (it refuses to pack an empty source folder).
                 bool tmpHasFiles = totalWritten > 0
                     && Directory.Exists(tmpDir)
                     && Directory.EnumerateFiles(tmpDir, "*", SearchOption.AllDirectories).Any();
@@ -589,10 +367,6 @@ namespace Windrose.Quartermaster.Core
                     Directory.CreateDirectory(outDir);
                     var builder = new PakBuilder(repakExe);
                     builder.Log = Log;
-                    // repak builds tmpDir recursively. The pickup-triplet
-                    // staging is in tmpDir/_pickup-out/ which would leak
-                    // its retoc artefacts into the main pak. Skip the
-                    // staging tree when building.
                     pakResult = builder.Build(tmpDir, outPakPath, overwrite: true);
                     pakPath = outPakPath;
 
@@ -602,11 +376,6 @@ namespace Windrose.Quartermaster.Core
                 }
                 else if (totalWritten > 0)
                 {
-                    // Predictive counter was optimistic but every
-                    // contributing patcher hit its skip branch.
-                    // Whatever changes the profile carries land in the
-                    // IoStore composite (if active) or nowhere - main
-                    // pak is genuinely empty, skip it.
                     LogLine("No legacy-pak content produced (predictive counters were optimistic) - main pak skipped.");
                 }
                 else if (!ioStoreActive)
@@ -614,27 +383,16 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
-                // GameDeployer: write qm_items_<profile>.json + (if needed)
-                // install dxgi.dll into the game's Binaries/Win64. Idempotent
-                // and narrow - only this folder is touched, the pak triple was
-                // already shipped to ~mods/ via OutputDir. Per Variant C
-                // (PENDING.md #13): DLL stays permanently once installed;
-                // missing per-profile JSON makes that profile contribute
-                // nothing without uninstalling the DLL. We only touch the
-                // game folder when the user has actually used the buildings
-                // feature - never silently inject our DLL into a stack/loot-
-                // only profile.
+                // Only touch the game folder when the buildings feature was
+                // used - never inject the DLL for a stack/loot-only profile.
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
                 if (buildingsCount > 0)
                 {
                     LogLine("Deploying DLL + qm_items_" + safeName + ".json to game Binaries/Win64");
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
-                    // EnsureDllInstalled returns false on non-Windows
-                    // platforms (Steam Deck/Linux) - the inject mechanism
-                    // is Windows-PE only. We skip the JSON write too so we
-                    // don't leave an orphaned config sitting in Win64 with
-                    // no DLL to read it. Pak still ships normally.
+                    // EnsureDllInstalled returns false on non-Windows; skip the
+                    // JSON write too so no orphaned config is left in Win64.
                     if (deployer.EnsureDllInstalled())
                     {
                         deployer.WriteItemsJson(safeName, buildingResults);
@@ -642,39 +400,22 @@ namespace Windrose.Quartermaster.Core
                 }
                 else
                 {
-                    // User has no buildings in this profile now - if DLL was
-                    // previously deployed AND we left a per-profile JSON
-                    // behind, delete it so the DLL stops injecting stale
-                    // items on next start. Other profiles' JSONs stay
-                    // untouched (they belong to other paks in ~mods/).
-                    // If DLL was never deployed: skip entirely, never
-                    // invasively touch the game folder.
+                    // No buildings now: if the DLL was previously deployed,
+                    // delete this profile's JSON so it stops injecting stale
+                    // items. Never touch the game folder if no DLL exists.
                     try
                     {
                         var deployer = new GameDeployer(_paths.ModRoot);
                         deployer.Log = Log;
                         if (File.Exists(deployer.TargetDllPath()))
                         {
-                            // WriteItemsJson with an empty list deletes the
-                            // per-profile JSON (no orphan empty entry in
-                            // the DLL's scan).
+                            // Empty list deletes the per-profile JSON.
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
-
-                            // If this was the user's last buildings profile,
-                            // the JSON delete leaves Win64 with zero
-                            // qm_items_*.json files - meaning the DLL has
-                            // nothing to inject anymore. Remove the DLL pair
-                            // so we don't leave an idle inject in the game
-                            // folder. No-op when other profiles still have
-                            // JSONs alongside.
                             deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }
                     catch (Exception ex)
                     {
-                        // Locating the game folder is optional here - if it
-                        // fails we just skip the cleanup. The user can run
-                        // CleanupGame manually.
                         LogLine("Warning: skipped per-profile JSON cleanup (game folder lookup failed): " + ex.Message);
                     }
                 }
@@ -725,8 +466,6 @@ namespace Windrose.Quartermaster.Core
                         try { Directory.Delete(dir, true); }
                         catch (Exception ex)
                         {
-                            // Failure to clean up is annoying but not fatal,
-                            // surface it in the log so the user can clean by hand.
                             LogLine("Warning: temp dir cleanup failed for " + dir + ": " + ex.Message);
                         }
                     }
@@ -734,25 +473,6 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Builds the IoStore composite triplet (.ucas/.utoc + .pak stub)
-        // for whichever IoStore features the profile activated, and
-        // publishes the result to outDir under the shared basename
-        // Quartermaster_<safeName>_P.*.
-        //
-        // Publishing rules:
-        //   - Always copy .ucas + .utoc (the IoStore payload).
-        //   - Copy the .pak only when no main pak is being built; if
-        //     mainPakWillBeBuilt=true, the subsequent repak step writes
-        //     the real Pak1 content at the same path and the stub would
-        //     just be overwritten anyway.
-        //
-        // The retoc work happens in <_paths.BuildTmp>/<profileId>__iostore/
-        // - a SIBLING of the JSON-patch tmpDir, NOT a child. If we put it
-        // inside tmpDir, repak's recursive scan would sweep the retoc
-        // artefacts into the main pak.
-        //
-        // Surfaces a clear error if the GUI didn't supply a paks-dir
-        // locator - CLI builds can't enable IoStore features today.
         BuildIoStoreCompositeOutput BuildIoStoreComposite(
             Profile profile, string outDir,
             double pickupMultiplier, bool pickupActive,
@@ -790,17 +510,14 @@ namespace Windrose.Quartermaster.Core
 
             Directory.CreateDirectory(outDir);
 
-            // IoStore work area: sibling of tmpDir (so repak's recursive
-            // scan doesn't leak retoc artefacts into the main pak). Wiped
-            // at the start of each build the same way tmpDir is.
+            // Sibling of tmpDir so repak's recursive scan can't sweep retoc
+            // artefacts into the main pak.
             var iostoreRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__iostore");
             if (Directory.Exists(iostoreRoot)) Directory.Delete(iostoreRoot, true);
             Directory.CreateDirectory(iostoreRoot);
             var stagingBase = Path.Combine(iostoreRoot, "out", sharedBaseName);
             var legacyTmp = Path.Combine(iostoreRoot, "legacy");
 
-            // Compose the source list. Order matters only for log
-            // readability - retoc deals with the merged tree at the end.
             var sources = new List<IoStoreCompositeSource>();
             PickupBlueprintPatchResult pickupPatchResult = null;
             float magnetRadius = 0f;
@@ -842,12 +559,6 @@ namespace Windrose.Quartermaster.Core
             BonfireRadiusPatchResult bonfirePatchResult = null;
             if (bonfireActive)
             {
-                // Vanilla DA_BI_Utilities_BuildingCenterT01 ships with
-                // serialized InfluenceRadius=5000 + InfluenceHeight=3000
-                // floats inside its RawExport.Data; we overwrite both with
-                // user*5000 and user*3000 directly in the byte stream so
-                // the patch never has to interpret the trailing
-                // R5CollisionApproximation custom-Serialize tail.
                 var usmapPath = UsmapLocator.Find(_paths.ModRoot);
                 LogLine("Bonfire source: vanilla "
                         + BonfireRadiusPatcher.AssetFilterStem
@@ -880,13 +591,6 @@ namespace Windrose.Quartermaster.Core
                 });
             }
 
-            // Pickaxe-range: patches TraceScaleModifier on every pickaxe tier
-            // (4 InstanceParams DataAssets). Each tier rides as an individual
-            // source so retoc to-legacy's --filter targets just that file -
-            // grouping all four under one source would also work (retoc OR-
-            // matches repeated --filter flags) but separating them keeps the
-            // build log self-explanatory: one log line per tier showing the
-            // before/after TraceScaleModifier value.
             var pickaxePatchResults = new List<PickaxeRangePatchResult>();
             if (pickaxeActive)
             {
@@ -896,10 +600,6 @@ namespace Windrose.Quartermaster.Core
                         + ", " + PickaxeRangePatcher.TierAssets.Count + " tier"
                         + (PickaxeRangePatcher.TierAssets.Count == 1 ? "" : "s") + ")");
 
-                // One filter per tier; one AfterExtract callback per source.
-                // Capturing the stem+vpath in a local prevents the lambda
-                // from closing over the loop variable's identity (subtle
-                // bug-trap if foreach captures the same slot in older C#).
                 foreach (var kv in PickaxeRangePatcher.TierAssets)
                 {
                     var stem = kv.Key;
@@ -930,11 +630,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Lighting: one IoStoreCompositeSource per light source whose
-            // effective multiplier resolves to != 1.0 (see ResolveLightingJobs).
-            // Each light's AttenuationRadius FloatProperty is rewritten via
-            // UAssetAPI - same pattern as PickaxeRange, just iterating the
-            // light registry instead of pickaxe tiers.
             var lightingPatchResults = new List<LightingPatchResult>();
             if (lightingJobs != null && lightingJobs.Count > 0)
             {
@@ -972,12 +667,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Cooldowns: one IoStoreCompositeSource per asset job. Each job
-            // carries its family, asset stem/virtual-path, multiplier, and
-            // which patch shape to apply (ScalableFloat duration vs top-level
-            // Magnitude vs PassiveReload vs ShipCannon battery walk).
-            // Separating one source per asset keeps the build log
-            // self-explanatory and matches the per-tier layout of pickaxe.
             var cooldownPatchResults = new List<CooldownJobResult>();
             if (cooldownJobs != null && cooldownJobs.Count > 0)
             {
@@ -1013,13 +702,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Ship music: each replaced shanty slot is a "pre-staged"
-            // source - we don't run retoc to-legacy at all because the
-            // user's UE5-Editor-cooked SoundWave triplet already IS the
-            // legacy bytes. The AfterExtract callback copies the user's
-            // uasset+uexp+ubulk into the staging tree and re-writes the
-            // NameMap entries so the engine resolves the file under the
-            // vanilla slot's asset path.
             var shipMusicPatchResults = new List<ShipMusicPatchResult>();
             if (shipMusicJobs != null && shipMusicJobs.Count > 0)
             {
@@ -1043,9 +725,7 @@ namespace Windrose.Quartermaster.Core
                     sources.Add(new IoStoreCompositeSource
                     {
                         Name = "ship-music:" + localJob.Slot.Stem,
-                        // InputDir intentionally null - this source is
-                        // pre-staged via the callback below; the builder
-                        // skips retoc to-legacy entirely for it.
+                        // null InputDir = pre-staged via callback; builder skips retoc to-legacy.
                         InputDir = null,
                         AfterExtract = stagingDir =>
                         {
@@ -1064,27 +744,8 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
 
-                // Override-slot absolute-volume patcher: for every
-                // shipMusicJob whose UserVolume != 0.45 (= "vanilla
-                // unchanged", matches the VoicePlayer baseline that
-                // drives the GUI's default slider position), pull the 4
-                // vanilla cue variants (Large/Medium/Small VoicePlayer
-                // + NoPlayer) and overwrite each cue's VolumeMultiplier
-                // with the user-supplied absolute value. The cues keep
-                // their vanilla NameMap / FolderName, so the mod-pak
-                // overrides them at their original /Game/Audio/Game/
-                // Music/Shanti/.../CUE_Shanti_<n>_*.uasset paths - no DA
-                // modification needed.
-                //
-                // 0.001 tolerance avoids triggering the override for a
-                // slider that effectively equals 0.45 due to UI rounding.
-                // NoPlayer's vanilla 0.5 falls outside this tolerance,
-                // so when the user actually picks the default 45% slot
-                // we still skip cue extraction (NoPlayer stays at its
-                // pristine 0.5). The instant the user nudges the slider
-                // off 45%, all four variants get overwritten to the new
-                // absolute value - intentional: one slider per slot
-                // controls the whole flavor quartet.
+                // Slots whose volume differs from the 0.45 "vanilla unchanged"
+                // baseline get all 4 cue variants overwritten to the absolute value.
                 var volJobs = new List<ShipMusicJob>();
                 const double VanillaVoicePlayerVolume = 0.45;
                 foreach (var j in shipMusicJobs)
@@ -1093,10 +754,7 @@ namespace Windrose.Quartermaster.Core
                 }
                 if (volJobs.Count > 0)
                 {
-                    // Build the slot-index ? job map so we can resolve
-                    // the cue stem ? user multiplier in the callback.
-                    // ShipMusicSlots.All is positional; CUE index is
-                    // (1-based) position+1.
+                    // ShipMusicSlots.All is positional; CUE index is position+1 (1-based).
                     var volByCueIdx = new Dictionary<int, double>();
                     var filterStems = new List<string>();
                     foreach (var j in volJobs)
@@ -1110,8 +768,6 @@ namespace Windrose.Quartermaster.Core
                         }
                         int cueIdx = pos0 + 1;
                         volByCueIdx[cueIdx] = j.UserVolume;
-                        // Filter stems for retoc to-legacy. Two-digit pad
-                        // not needed - the file names use "01".."10".
                         string n = cueIdx.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
                         filterStems.Add("CUE_Shanti_" + n + "_Large_VoicePlayer");
                         filterStems.Add("CUE_Shanti_" + n + "_Medium_VoicePlayer");
@@ -1142,9 +798,6 @@ namespace Windrose.Quartermaster.Core
                                     double userVol = kv.Value;
                                     string n = cueIdx.ToString("00",
                                         System.Globalization.CultureInfo.InvariantCulture);
-                                    // Iterate the 4 flavors. Paths derived
-                                    // from the same constants the AddCueCloner
-                                    // uses (CueRelDir + the slot-specific stem).
                                     foreach (var f in ShipMusicAddPipelineHelper.Flavors)
                                     {
                                         string stem = f == "NoPlayer"
@@ -1170,15 +823,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // Bonfire-music ("The Hearth") replacement: single-slot
-            // SWAV swap for SWAV_Music_BuildingCenter_v3. Re-uses the
-            // ShipMusicPatcher (the patcher only cares about a SlotInfo
-            // with Stem + VirtualUassetPath) so the WAV -> BinkAudio ->
-            // SoundWave-template pipeline is identical to the shanty
-            // replacements above. The MetaSound that references the
-            // SWAV (MS_Music_BuildingCenter) and the MIX snapshot are
-            // left untouched - swapping the SWAV bytes propagates
-            // automatically through the MetaSound graph.
             ShipMusicPatchResult bonfireMusicPatchResult = null;
             if (bonfireMusicJob != null)
             {
@@ -1217,29 +861,16 @@ namespace Windrose.Quartermaster.Core
                 sources.Add(new IoStoreCompositeSource
                 {
                     Name = "bonfire-music",
-                    // Pre-staged via the callback below; no retoc to-legacy
-                    // sweep needed (same pattern as the shanty SWAV jobs).
+                    // null InputDir = pre-staged via callback; builder skips retoc to-legacy.
                     InputDir = null,
                     AfterExtract = stagingDir =>
                     {
-                        // Either bake the user volume into the staged WAV
-                        // via a pre-encode ffmpeg gain pass, or synthesize
-                        // a silence WAV from scratch when the user dialed
-                        // Volume=0 without an upload. Both cases produce a
-                        // transient temp WAV that gets cleaned up below;
-                        // the no-op gain path (Volume=1) short-circuits
-                        // and reuses the staged user WAV directly.
                         string wavForEncode = null;
                         string tempWav = null;
                         try
                         {
                             if (localJob.IsSynthesizedSilence)
                             {
-                                // 4 seconds is plenty - the MetaSound
-                                // loops the buffer in-engine, so even a
-                                // short silence buffer gives the player
-                                // uninterrupted quiet inside the comfort
-                                // zone.
                                 wavForEncode = AudioPreprocessor.GenerateSilenceAsync(
                                     localPaths,
                                     4.0,
@@ -1279,26 +910,15 @@ namespace Windrose.Quartermaster.Core
                             if (tempWav != null)
                             {
                                 try { File.Delete(tempWav); }
-                                catch { /* best-effort temp cleanup */ }
+                                catch { }
                             }
                         }
                     },
                 });
             }
 
-            // Ship-music DA rewrite: covers two distinct features that
-            // touch the same four DA_<ShipType>_AudioParams DataAssets and
-            // therefore share one composite source (last-write-wins-style
-            // collisions would otherwise be a footgun):
-            //
-            //   * ADD: extends Shanty.Cues with N user tracks (slots 11..)
-            //   * EXCLUDE: removes a subset of the 10 vanilla slots from
-            //     the rotation by dropping their Cues entries.
-            //
-            // The combined patch runs even with exclude-only profiles
-            // (no SWAV / cue-clone sources, only the DA rewrite). The
-            // SWAV pre-staging + cue-clone steps only fire when there are
-            // user tracks to add.
+            // ADD and EXCLUDE both rewrite the same DA_<ShipType>_AudioParams,
+            // so they share one source to avoid clobbering each other.
             var shipMusicAddTrackResults = new List<ShipMusicAddTrackResult>();
             bool hasShipMusicAdd = shipMusicAddJobs != null && shipMusicAddJobs.Count > 0;
             bool hasShipMusicExcludes = shipMusicExcludedIndices != null && shipMusicExcludedIndices.Count > 0;
@@ -1333,8 +953,6 @@ namespace Windrose.Quartermaster.Core
                             + string.Join(", ", shipMusicExcludedIndices.OrderBy(i => i)) + ")");
                 }
 
-                // Per-track placeholder result (we mutate it as the
-                // SWAV-build + cue-clone + DA-patch steps run).
                 if (hasShipMusicAdd) foreach (var job in shipMusicAddJobs)
                 {
                     shipMusicAddTrackResults.Add(new ShipMusicAddTrackResult
@@ -1346,11 +964,6 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
 
-                // One pre-staged SWAV source per added track. We fake an
-                // on-the-fly ShipMusicSlots.SlotInfo with the desired
-                // SWAV stem and virtual path so PatchFromWav drops the
-                // SoundWave triplet at the correct /Game/Audio/Game/Music/
-                // Shanti/SWAV/SWAV_Shanti_<TrackKey>(.uasset/.uexp).
                 if (hasShipMusicAdd) for (int i = 0; i < shipMusicAddJobs.Count; i++)
                 {
                     var localJob = shipMusicAddJobs[i];
@@ -1388,18 +1001,6 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
 
-                // Shared cue-clone + DA-patch source. One retoc to-legacy
-                // call pulls the 4 vanilla DAs + 4 vanilla cue templates
-                // in a single pass; AfterExtract iterates the added
-                // tracks and:
-                //   1. clones 4 cues per track (Large/Medium/Small/NoPlayer)
-                //   2. deletes the 4 vanilla cue templates (we don't want
-                //      our mod-pak to ship them back unchanged)
-                //   3. patches each DA with the slot refs for all tracks
-                // Capture the local activation flags + indices into closure
-                // copies so the AfterExtract callback (which fires later
-                // during composite execution) doesn't accidentally read
-                // mutated outer state.
                 bool hasAddLocal = hasShipMusicAdd;
                 bool hasExclLocal = hasShipMusicExcludes;
                 var excludedSet = hasExclLocal
@@ -1415,9 +1016,6 @@ namespace Windrose.Quartermaster.Core
                         var cueCloner = new ShipMusicAddCueCloner { Log = Log };
                         var daPatcher = new ShipMusicAddDaPatcher { Log = Log };
 
-                        // Per-flavor vanilla template absolute paths in
-                        // the staging tree. Only populated for add-builds -
-                        // exclude-only builds don't filter cue templates.
                         var vanillaCues = new Dictionary<string, string>();
                         if (hasAddLocal) foreach (var f in ShipMusicAddPipelineHelper.Flavors)
                         {
@@ -1432,7 +1030,6 @@ namespace Windrose.Quartermaster.Core
                             vanillaCues[f] = abs;
                         }
 
-                        // Per-DA absolute paths.
                         var daAbs = new Dictionary<string, string>();
                         foreach (var da in ShipMusicAddPipelineHelper.DaStems)
                         {
@@ -1446,22 +1043,13 @@ namespace Windrose.Quartermaster.Core
                             daAbs[da] = abs;
                         }
 
-                        // Per track: clone the 4 cue variants. The cloner
-                        // needs the user audio's playback length to write
-                        // SoundCue.Duration in the minimal-cue surgery.
-                        // The SWAV source above already populated
-                        // trackRes.DurationSeconds, but composite sources
-                        // may run out of order, so we read the WAV directly
-                        // (cheap - WavInfo is a header parse, not a decode).
                         if (hasAddLocal) for (int i = 0; i < shipMusicAddJobs.Count; i++)
                         {
                             var job = shipMusicAddJobs[i];
                             var trackRes = shipMusicAddTrackResults[i];
 
-                            // Resolve audio duration. Prefer the value the
-                            // SWAV source already wrote (it post-Bink-encode
-                            // already, so an authoritative figure); fall
-                            // back to a fresh WavInfo read.
+                            // Prefer the SWAV source's value; fall back to a fresh
+                            // WavInfo read since composite sources may run out of order.
                             float audioDur = trackRes.DurationSeconds;
                             if (audioDur <= 0f)
                             {
@@ -1495,9 +1083,7 @@ namespace Windrose.Quartermaster.Core
                             trackRes.CueStemsCreated = createdCues;
                         }
 
-                        // Delete vanilla cue templates from staging so they
-                        // don't ship in the mod-pak. (No-op for exclude-only
-                        // builds since vanillaCues is empty.)
+                        // Delete vanilla cue templates so they don't ship in the mod-pak.
                         foreach (var kv in vanillaCues)
                         {
                             var uassetAbs = kv.Value;
@@ -1506,12 +1092,6 @@ namespace Windrose.Quartermaster.Core
                             if (File.Exists(uexpAbs))   File.Delete(uexpAbs);
                         }
 
-                        // Patch each DA with the combined exclude+append
-                        // operation. The voice-flavor differs per DA
-                        // (Large/Medium/Small); NoPlayer is shared.
-                        // SlotRef[i] for a given DA mirrors the new cue
-                        // stems we just created above. Empty slot-ref list
-                        // is fine (exclude-only path).
                         foreach (var da in ShipMusicAddPipelineHelper.DaStems)
                         {
                             var voiceFlavor = ShipMusicAddPipelineHelper.VoiceFlavorForDa(da);
@@ -1529,12 +1109,6 @@ namespace Windrose.Quartermaster.Core
             NoSmokeResult noSmokeOut = null;
             if (noSmokeCategories != null && noSmokeCategories.Count > 0)
             {
-                // Self-bake: collect every Niagara asset in the active
-                // categories, pull them in a single retoc to-legacy call
-                // (multi --filter), then patch each one's NiagaraSystem
-                // export to disable every emitter handle. The composite
-                // builder picks them up from the shared staging tree
-                // along with any other sources.
                 var usmapPath = UsmapLocator.Find(_paths.ModRoot);
                 var assetPaths = new List<string>();
                 var filterStems = new List<string>();
@@ -1591,13 +1165,6 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
-            // Icon-bake source: pulls the vanilla Piastre Texture2D as a
-            // template, then synthesises a fresh T_QmCustomIcon_<id> for
-            // every CustomItem with an uploaded PNG. UAssetAPI rewrites
-            // the FName slots so the new asset lives at .../Custom/<id>
-            // (a brand-new asset path, not an override of the Piastre).
-            // The template files themselves are removed from staging
-            // afterwards so to-zen doesn't repackage vanilla bytes.
             List<IconBakerPatcher.BakeResult> iconResults = null;
             if (iconBakeJobs != null && iconBakeJobs.Count > 0)
             {
@@ -1613,10 +1180,7 @@ namespace Windrose.Quartermaster.Core
                     {
                         var baker = new IconBakerPatcher { Log = Log };
                         iconResults = baker.Bake(stagingDir, iconBakeJobs);
-                        // Remove the unmodified template from staging so
-                        // to-zen doesn't ship a duplicate of vanilla
-                        // (which would then OVERRIDE the vanilla Piastre,
-                        // exactly what we don't want).
+                        // Remove the template so to-zen doesn't ship it and override the vanilla asset.
                         baker.RemoveTemplateFromStaging(stagingDir);
                         foreach (var r in iconResults)
                         {
@@ -1628,17 +1192,6 @@ namespace Windrose.Quartermaster.Core
                 });
             }
 
-            // Buildings: pre-staged source (InputDir = null) - the
-            // BuildingPatcher already handles its own retoc-to-legacy
-            // extraction of the Vanilla DA/MI internally, then writes the
-            // patched bytes (user-cooked mesh + icon + textures + cloned
-            // MIs + cloned DA) directly into stagingDir at the mod-pak's
-            // output namespace (WindrosePaths.ModItemsPackagePath). These
-            // need to land in the IoStore .ucas/.utoc - LoadPackage on the
-            // emitted DA path (e.g. "<ModItemsPackagePath>DA_BI_<id>") only
-            // resolves when the package is in the IoStore global index, not
-            // in a legacy .pak. New asset paths (vs DT overrides) MUST go
-            // through retoc to-zen.
             List<BuildingPatchResult> buildingResults = null;
             if (buildingsActive)
             {
@@ -1650,7 +1203,7 @@ namespace Windrose.Quartermaster.Core
                 sources.Add(new IoStoreCompositeSource
                 {
                     Name = "buildings",
-                    // No InputDir - patcher writes directly into stagingDir.
+                    // null InputDir = pre-staged; patcher writes directly into stagingDir.
                     InputDir = null,
                     AfterExtract = stagingDir =>
                     {
@@ -1674,12 +1227,6 @@ namespace Windrose.Quartermaster.Core
                         _blueprintPatcher.AesKey = WindroseGameSecrets.AesKey;
                         _blueprintPatcher.TempDir = buildingTmp;
 
-                        // Audio Phase B: stager for per-building user-WAV
-                        // -> SWAV + looping Cue. Wired identically to the
-                        // blueprintPatcher (shares the same retoc / usmap /
-                        // vanilla refs); the call site below only invokes
-                        // it when ComponentPresetId=="audio" AND the
-                        // building has a user-uploaded audio file present.
                         _audioStager.Log = Log;
                         _audioStager.RetocExe = retocExe;
                         _audioStager.UsmapPath = usmapPath;
@@ -1690,18 +1237,8 @@ namespace Windrose.Quartermaster.Core
                         _audioStager.SwavTemplateUasset = _paths.ShipMusicTemplateUasset;
                         _audioStager.SwavTemplateUexp   = _paths.ShipMusicTemplateUexp;
 
-                        // Pre-flight tooling check for buildings with the
-                        // Audio component preset + a user-uploaded audio
-                        // file: mirrors the ship-music-add pre-flight at
-                        // the top of Build(). The historical inner try-
-                        // catch around _audioStager.Stage() used to swallow
-                        // missing-encoder errors as a "warn:" line and
-                        // silently fall back to the vanilla Tick-Tack loop -
-                        // a published EXE without the embedded encoder
-                        // would build "successfully" with the wrong audio.
-                        // We now hard-fail upfront if the tooling is
-                        // missing so the user sees the cause instead of
-                        // hunting a silent substitution ingame.
+                        // Pre-flight: hard-fail upfront when a building wants Audio
+                        // but the encoder/templates are missing, rather than later.
                         bool hasBuildingAudio = false;
                         if (profile.CustomBuildings != null)
                         {
@@ -1734,52 +1271,19 @@ namespace Windrose.Quartermaster.Core
                                     + " (used by the Building Audio stager).");
                         }
 
-                        // Stage the shipped VT default textures once per
-                        // build, regardless of which buildings reference
-                        // them. Canonical stem list: DefaultTextureProvider.Stems.
-                        // Cost is ~9 KB total cooked bytes; the upside is
-                        // that the per-slot texture dropdowns can offer
-                        // these stems as an "always available" group
-                        // without the user having to cook them into
-                        // their own UE project. Skip-if-exists inside
-                        // the provider preserves any user-cooked
-                        // override with the same stem (rare but allowed).
                         LogLine("Buildings: staging shared default textures");
                         DefaultTextureProvider.StageInto(_paths, stagingItemsDir, usmapPath, Log);
 
-                        // Etappe J v3: flame BP clones are PER BUILDING
-                        // (not shared per preset). Each building gets its
-                        // own BP_QmFlaming_<BuildingId> with the vanilla
-                        // mesh ref baked into the BP's StaticMeshComponent
-                        // SCS-Node default rewritten to its own user mesh.
-                        // The shared-per-preset v1/v2 approach left every
-                        // flame-enabled building rendering the vanilla
-                        // torch mesh on top of the user mesh.
-                        // The actual Stage() call happens inside the
-                        // per-building loop below (after BuildBuildingInputs
-                        // so we know inputs.MeshStem).
                         var stagedComponentBuildings =
                             new Dictionary<string, BlueprintStageResult>(StringComparer.OrdinalIgnoreCase);
 
                         buildingResults = new List<BuildingPatchResult>();
-                        // Track which building first claimed a given mesh
-                        // file (keyed by staging filename = MeshStem). The
-                        // Per-Building patch in-place edits its mesh in
-                        // staging to point at MI_<BuildingId>_slot* clones;
-                        // if a second building tried to patch the same
-                        // staged mesh file, the first building's slot
-                        // refs would be silently overwritten. Skip-if-
-                        // exists in StageCookedAssets stops the re-copy,
-                        // but a duplicate MeshStem is a logical conflict
-                        // the user must resolve (or, more typically, a
-                        // copy-paste mistake in the GUI). We warn loudly
-                        // and skip the duplicate so the first building
-                        // wins deterministically.
+                        // Two buildings sharing a MeshStem would clobber each
+                        // other's slot refs in staging; first owner wins.
                         var meshOwner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var b in profile.CustomBuildings)
                         {
                             if (b == null) continue;
-                            // Skeleton gate - same as HasCustomBuildingsConfiguration.
                             if (string.IsNullOrWhiteSpace(b.Id)) continue;
                             if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
                             if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
@@ -1805,50 +1309,12 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
-                            // Etappe J / Audio extension: when a component
-                            // preset is selected on this building, override
-                            // the user-picked template with the preset's
-                            // source-DA refs (e.g. DA_BI_FloorTorch for
-                            // "torch", DA_BI_PendulumClockT04_01 for
-                            // "audio"). This is required because
-                            // R5BuildingItem DAs that ship without ItemClass
-                            // set (like DecorativeFood_01) leave no FName
-                            // entries we could redirect to our cloned BP -
-                            // and we can't byte-inject a missing ItemClass
-                            // property because of the CollisionApproximation
-                            // custom-serializer.
-                            //
-                            // The building inherits the source DA's gameplay
-                            // behaviour (snap rules, GameplayTag, recipe
-                            // class). The user's mesh/icon stems are still
-                            // substituted via the regular NameMap-rewrite
-                            // pass. ItemClass FName entries get retargeted
-                            // via inputs.ExtraDaNameMapRewrites (set below).
+                            // A component preset overrides the user-picked template
+                            // with the preset's source-DA refs.
                             var bldComponentPreset = ComponentPresetCatalog.Resolve(b.ComponentPresetId);
 
-                            // Socket-driven component placement.
-                            //
-                            // Flame preset: REQUIRES a socket on the user
-                            // mesh - the flame FX + light need a position
-                            // anchor, and skipping the entire preset when
-                            // none is found prevents flame ending up at the
-                            // mesh's origin (= ground for floor decorations,
-                            // wrong place for wall decorations).
-                            //
-                            // Audio preset: socket is OPTIONAL. If a socket
-                            // exists, the AudioComponent is positioned at
-                            // it (useful when the user wants the audio to
-                            // emanate from a specific spot). If no socket
-                            // exists, the AudioComponent stays at the BP's
-                            // vanilla RelativeLocation - still functional
-                            // (audio plays from building origin).
-                            //
-                            // Multi-socket fan-out across all sockets was
-                            // tried in J v5 but UE crashed at load time on
-                            // cloned NiagaraComponent exports (UAssetAPI's
-                            // NiagaraVariableWithOffsetPropertyData is
-                            // incomplete). Rolled back to single-socket:
-                            // additional sockets are ignored.
+                            // Flame requires a socket (skipped without one); Audio's
+                            // socket is optional. Only the first socket is used.
                             StaticMeshSocketReader.Socket bldComponentSocket = null;
                             if (bldComponentPreset != null)
                             {
@@ -1877,7 +1343,7 @@ namespace Windrose.Quartermaster.Core
                                         + "' set but mesh '" + b.MeshStem
                                         + "' has no sockets - skipping preset for this building"
                                         + " (add at least one socket to the mesh to enable flame placement)");
-                                    bldComponentPreset = null; // disable preset for this building
+                                    bldComponentPreset = null;
                                 }
                                 else
                                 {
@@ -1903,18 +1369,8 @@ namespace Windrose.Quartermaster.Core
                                 continue;
                             }
 
-                            // Audio Phase B: hard-fail audio staging.
-                            // Runs BEFORE the BP-staging try block so any
-                            // error (encoder missing, donor drift, NameMap
-                            // rewrite incomplete) propagates up and kills
-                            // the build - rather than getting swallowed by
-                            // the outer "BP staging failed" handler and
-                            // silently substituting the vanilla Tick-Tack
-                            // loop for the user's uploaded audio. The
-                            // pre-flight check above already verified
-                            // encoder + templates exist when any building
-                            // wants audio, so a throw here means a real
-                            // problem the user needs to see.
+                            // Runs before the BP-staging try block so audio errors
+                            // propagate instead of being swallowed by its catch.
                             BuildingAudioStageResult bldAudioStage = null;
                             if (bldComponentPreset != null
                                 && bldComponentPreset.Kind == ComponentPresetKind.Audio)
@@ -1946,10 +1402,8 @@ namespace Windrose.Quartermaster.Core
                                 }
                             }
 
-                            // Per-building BP clone (must run before the DA
-                            // patcher because inputs.ExtraDaNameMapRewrites
-                            // is populated from the cloned BP stem the
-                            // Stage() call produces).
+                            // Must run before the DA patcher: it populates
+                            // inputs.ExtraDaNameMapRewrites from the cloned BP stem.
                             BlueprintStageResult bldBpStage = null;
                             if (bldComponentPreset != null)
                             {
@@ -1958,12 +1412,6 @@ namespace Windrose.Quartermaster.Core
                                     var userMeshStem = inputs.MeshStem;
                                     var userMeshPath = WindrosePaths.ModItemsPackagePath + userMeshStem;
 
-                                    // Pass the single picked socket to the
-                                    // patcher; it overwrites RelativeLocation
-                                    // / Rotation / Scale3D on the BP's
-                                    // vanilla component templates in-place
-                                    // (Niagara + Light + Audio for Flame;
-                                    // Audio only for Audio preset).
                                     bldBpStage = _blueprintPatcher.Stage(
                                         bldComponentPreset, b.Id, userMeshStem, userMeshPath, stagingItemsDir,
                                         bldComponentSocket, bldAudioStage);
@@ -1971,10 +1419,8 @@ namespace Windrose.Quartermaster.Core
                                     foreach (var w in bldBpStage.Warnings ?? new List<string>())
                                         LogLine("  warn: component BP '" + b.Id + "': " + w);
 
-                                    // Wire ExtraDaNameMapRewrites: redirect
-                                    // the cloned DA's ItemClass FName entries
-                                    // (vanilla BP path + "_C" class name) to
-                                    // this building's per-building BP clone.
+                                    // Redirect the cloned DA's ItemClass FName entries
+                                    // to this building's per-building BP clone.
                                     inputs.ExtraDaNameMapRewrites = new Dictionary<string, string>(StringComparer.Ordinal);
                                     if (!string.IsNullOrEmpty(bldComponentPreset.SourceVanillaItemClassPath))
                                     {
@@ -2000,12 +1446,6 @@ namespace Windrose.Quartermaster.Core
                             buildingResults.Add(result);
                             foreach (var w in result.Warnings) LogLine("  warn: " + w);
 
-                            // Surface a confirmation line in the build log
-                            // when the per-building BP clone landed AND the
-                            // DA NameMap rewrites for ItemClass fired (the
-                            // actual rewriting happens inside DataAssetPatcher
-                            // via inputs.ExtraDaNameMapRewrites - no second
-                            // open/write pass needed).
                             if (bldComponentPreset != null && bldBpStage != null)
                             {
                                 LogLine("  [" + bldComponentPreset.Kind + "] DA ItemClass redirected via NameMap -> "
@@ -2021,15 +1461,6 @@ namespace Windrose.Quartermaster.Core
                                 LogLine("  warn: " + result.Warnings[^1]);
                             }
 
-                            // Etappe H2: emit the cloned recipe JSON
-                            // (RecipeCost + per-building RecipeTag). The
-                            // file lands under the same plugin-relative
-                            // path the building DA references after the
-                            // NameMap rewrite committed by Step 6 above,
-                            // so it gets picked up automatically by the
-                            // legacy-pak step (same as BuildingItems.csv).
-                            // Recipe linkage is optional (defensive against
-                            // future template variants without a recipe).
                             if (!string.IsNullOrEmpty(template.VanillaRecipeJsonPath))
                             {
                                 try
@@ -2056,14 +1487,7 @@ namespace Windrose.Quartermaster.Core
                                 }
                                 catch (Exception ex)
                                 {
-                                    // Non-fatal: building still ships, but
-                                    // the DA will reference a recipe stem
-                                    // that doesn't exist in the pak. UE
-                                    // logs a soft warning at load time
-                                    // ("LoadPackage: SkipPackage: ...
-                                    // DA_RD_Qm<BuildingId>") and the
-                                    // building becomes uncraftable. Surface
-                                    // loud so the user notices.
+                                    // Non-fatal: building ships but becomes uncraftable.
                                     result.Warnings.Add(
                                         "Recipe patch failed for '" + b.Id + "': " + ex.Message);
                                     LogLine("  warn: " + result.Warnings[^1]);
@@ -2071,18 +1495,6 @@ namespace Windrose.Quartermaster.Core
                             }
                         }
                         LogLine("Patched buildings: " + buildingResults.Count + " written");
-
-                        // No per-profile BuildingItems CSV anymore. Display
-                        // name + description ship inline in the building DA
-                        // as plain-string FText (HistoryType=Base). The
-                        // Windrose CSV loader only registers the two
-                        // vanilla CSVs by hardcoded name - any per-profile
-                        // CSV in the pak would land on disk but never be
-                        // mounted as a StringTable, so every FText.String-
-                        // TableEntry lookup against it would resolve to
-                        // <MISSING_STRING>. Plain-string FText sidesteps
-                        // the loader entirely (see FTextKeyRewriter
-                        // PatchInlineDisplayText for the binary rewrite).
                     },
                 });
             }
@@ -2100,9 +1512,6 @@ namespace Windrose.Quartermaster.Core
                 Sources = sources,
             });
 
-            // Publish to outDir under the shared basename. .ucas + .utoc
-            // always, .pak only if the main pipeline isn't going to write
-            // a real Pak1 there afterwards.
             var finalPak  = Path.Combine(outDir, sharedBaseName + ".pak");
             var finalUcas = Path.Combine(outDir, sharedBaseName + ".ucas");
             var finalUtoc = Path.Combine(outDir, sharedBaseName + ".utoc");
@@ -2194,8 +1603,6 @@ namespace Windrose.Quartermaster.Core
             }
 
             ShipMusicAddResult shipMusicAddOut = null;
-            // Report whenever the DA-rewrite ran - either because tracks were
-            // added or vanilla slots were excluded.
             bool hasShipMusicAddOut = shipMusicAddTrackResults.Count > 0
                                    || (shipMusicExcludedIndices != null && shipMusicExcludedIndices.Count > 0);
             if (hasShipMusicAddOut)
@@ -2257,8 +1664,6 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Internal carrier so BuildIoStoreComposite can return all
-        // feature-specific result objects to the caller without a tuple.
         sealed class BuildIoStoreCompositeOutput
         {
             public PickupTripletResult Pickup;
@@ -2274,9 +1679,6 @@ namespace Windrose.Quartermaster.Core
             public List<BuildingPatchResult> Buildings;
         }
 
-        // Counts the building entries that pass the skeleton gate so we
-        // can log a meaningful "Buildings source: N building(s)" line
-        // before the patcher runs in the AfterExtract callback.
         static int CountBuildableBuildings(Profile profile)
         {
             if (profile.CustomBuildings == null) return 0;
@@ -2294,13 +1696,6 @@ namespace Windrose.Quartermaster.Core
             return n;
         }
 
-        // Walks profile.CustomItems and produces one IconBakerPatcher.BakeJob
-        // per item that has an uploaded PNG (IconPath set + the file
-        // exists on disk under Profiles/<profileId>/Icons/). Items with
-        // a configured-but-missing PNG surface a build-log warning and
-        // get skipped (the baked-asset reference would be a dangling
-        // pointer otherwise, which the engine renders as a broken
-        // checkered icon ingame).
         List<IconBakerPatcher.BakeJob> ResolveIconBakeJobs(Profile profile)
         {
             var jobs = new List<IconBakerPatcher.BakeJob>();
@@ -2313,8 +1708,7 @@ namespace Windrose.Quartermaster.Core
                 if (string.IsNullOrWhiteSpace(ci.Id)) continue;
                 if (string.IsNullOrWhiteSpace(ci.IconPath)) continue;
 
-                // IconPath is a basename only (the upload endpoint enforces
-                // "<itemId>.png"); rebuild the absolute path here.
+                // IconPath is a basename only; rebuild the absolute path.
                 var absPath = Path.Combine(iconsDir, ci.IconPath);
                 if (!File.Exists(absPath))
                 {
@@ -2332,20 +1726,6 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
-        // Builds the raw companion under <rawBaseName>.{pak[,ucas,utoc]},
-        // carrying whichever subset of {stability, minimap} the profile
-        // activated. Adaptive layout - emitted files depend on inputs:
-        //
-        //   stability && minimap  -> .pak (minimap INI) + .ucas/.utoc (stability)
-        //   stability only        -> 347-byte stub .pak + .ucas/.utoc
-        //   minimap only          -> .pak (minimap INI) ONLY, no .ucas/.utoc
-        //
-        // The raw companion is INDEPENDENT of the composite triplet
-        // because (a) the retoc paths it uses for stability (unpack-raw
-        // + pack-raw) produce IoStore container bytes incompatible with
-        // the composite's to-zen output, and (b) minimap ships a loose
-        // .ini file in the PakFile subsystem which to-zen would silently
-        // drop. See class header for the full reasoning.
         BuildRawCompanionOutput BuildRawCompanion(
             Profile profile, string outDir, string rawBaseName,
             bool stabilityActive, bool minimapActive, double minimapMultiplier)
@@ -2359,23 +1739,14 @@ namespace Windrose.Quartermaster.Core
 
             Directory.CreateDirectory(outDir);
 
-            // Raw work area. Sibling of tmpDir + iostore dir so a single
-            // keepTemp=false run can wipe all three independently.
             var rawRoot = Path.Combine(_paths.BuildTmp, profile.Id + "__raw");
             if (Directory.Exists(rawRoot)) Directory.Delete(rawRoot, true);
             Directory.CreateDirectory(rawRoot);
 
-            // Resolve outputs eagerly so cleanup paths can always reach them.
             var finalPak  = Path.Combine(outDir, rawBaseName + ".pak");
             var finalUcas = Path.Combine(outDir, rawBaseName + ".ucas");
             var finalUtoc = Path.Combine(outDir, rawBaseName + ".utoc");
 
-            // 1. STABILITY: when active, builds the .ucas/.utoc payload
-            //    via retoc unpack-raw + byte-patch + retoc pack-raw, plus
-            //    an empty stub .pak to use IF minimap isn't going to
-            //    supply a real one. The .pak path here is a temporary
-            //    location inside rawRoot; the final pak copy is decided
-            //    after step 2 runs.
             BuildingStabilityResult stabilityResult = null;
             string srcUcas = null, srcUtoc = null, stubPak = null;
             if (stabilityActive)
@@ -2385,10 +1756,7 @@ namespace Windrose.Quartermaster.Core
                     out srcUcas, out srcUtoc, out stubPak);
             }
 
-            // 2. MINIMAP: when active, lazy-extracts the vanilla
-            //    DefaultR5MapSettings.ini, scales the four reveal-range
-            //    floats by `multiplier`, and repaks the result into a
-            //    real .pak. This .pak displaces any stub from step 1.
+            // Minimap's real .pak displaces any stub from the stability step.
             MinimapRangeResult minimapResult = null;
             string srcRealPak = null;
             if (minimapActive)
@@ -2398,15 +1766,10 @@ namespace Windrose.Quartermaster.Core
                     out srcRealPak);
             }
 
-            // 3. PUBLISH: copy the resolved files into outDir under the
-            //    raw basename. Adaptive: stub .pak is used only when no
-            //    real minimap pak exists; .ucas/.utoc are emitted only
-            //    when stability provided them.
+            // Stub .pak is used only when no real minimap pak exists.
             var publishedPak = srcRealPak ?? stubPak;
             if (publishedPak == null)
             {
-                // Both features somehow produced nothing - shouldn't
-                // happen because we required at least one active above.
                 throw new InvalidOperationException(
                     "Raw companion produced no .pak - internal pipeline error.");
             }
@@ -2422,8 +1785,6 @@ namespace Windrose.Quartermaster.Core
                 finalUtocSize = new FileInfo(finalUtoc).Length;
             }
 
-            // Reflect the published paths onto the per-feature results
-            // so callers see "where on disk did my feature land".
             if (stabilityResult != null)
             {
                 stabilityResult.PakPath  = finalPak;
@@ -2439,8 +1800,6 @@ namespace Windrose.Quartermaster.Core
                 minimapResult.PakSize = finalPakSize;
             }
 
-            // Single combined log line so the build log stays readable
-            // regardless of which subset is active.
             var emittedFiles = ".pak"
                 + (finalUcasSize > 0 ? ",ucas" : "")
                 + (finalUtocSize > 0 ? ",utoc" : "");
@@ -2458,12 +1817,6 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Inner stability builder: runs the retoc unpack-raw + to-legacy
-        // + BuildingStabilityPatcher + pack-raw pipeline inside rawRoot,
-        // and produces the source paths for .pak/.ucas/.utoc that the
-        // caller then publishes. Splits the pak source: srcStubPak is
-        // the 347-byte empty marker; the caller may opt to use a real
-        // pak instead (when minimap is also active).
         BuildingStabilityResult BuildStabilityInsideRawRoot(
             Profile profile, string rawRoot, string rawBaseName,
             out string srcUcas, out string srcUtoc, out string srcStubPak)
@@ -2501,11 +1854,6 @@ namespace Windrose.Quartermaster.Core
             var outBase   = Path.Combine(rawRoot, "stability-out", rawBaseName);
             Directory.CreateDirectory(Path.GetDirectoryName(outBase));
 
-            // Step 1: unpack-raw the container that ships DA_BIs into
-            // <rawDir>/chunks + <rawDir>/manifest.json. Includes EVERY
-            // chunk in pakchunk0_s3 (assets + their dependency textures,
-            // materials, meshes) - we filter down to just the 787 DA_BI
-            // chunks in step 3.
             LogLine("retoc unpack-raw: " + StabilityContainerFilename + " -> " + rawDir);
             RunRetoc(retocExe, new[] { "unpack-raw", stabUtocSrc, rawDir });
 
@@ -2518,10 +1866,8 @@ namespace Windrose.Quartermaster.Core
                     + " - expected chunks/ directory + manifest.json sibling.");
             }
 
-            // Step 2: pull the 862 vanilla DA_BIs as legacy uasset/uexp
-            // pairs into a separate staging dir. These are used ONLY to
-            // probe IntegritySettings byte patterns; we never round-trip
-            // them through to-zen (that's the path that crashes the game).
+            // These legacy pairs only probe byte patterns; never round-trip them
+            // through to-zen (that output crashes the game for this class).
             LogLine("retoc to-legacy --filter " + BuildingStabilityPatcher.AssetFilterStem
                     + " -> " + legacyDir);
             RunRetoc(retocExe, new[]
@@ -2530,8 +1876,6 @@ namespace Windrose.Quartermaster.Core
                 "--filter", BuildingStabilityPatcher.AssetFilterStem,
             });
 
-            // Step 3: byte-patch every supported DA_BI* chunk + drop the
-            // 75 excluded assets from the chunk set and the manifest.
             LogLine("Stability: patching IntegritySettings in zen chunks");
             var patcher = new BuildingStabilityPatcher { Log = Log };
             var assetResults = patcher.PatchChunks(
@@ -2547,11 +1891,8 @@ namespace Windrose.Quartermaster.Core
             LogLine("Stability: patched=" + patched + ", skipped=" + skipped
                     + ", excluded=" + excluded);
 
-            // Step 4: re-pack the (now filtered + patched) chunk set into
-            // an IoStore container. pack-raw produces ONLY .ucas + .utoc
-            // (it doesn't emit a .pak marker like to-zen does). UE5 needs
-            // the .pak as a "this is an IoStore mod" marker at mount time,
-            // so we generate the marker separately in step 5.
+            // pack-raw emits only .ucas/.utoc; UE5 needs a .pak mount marker,
+            // synthesized separately below.
             LogLine("retoc pack-raw: " + rawDir + " -> " + outBase + ".utoc");
             RunRetoc(retocExe, new[] { "pack-raw", rawDir, outBase + ".utoc" });
 
@@ -2563,18 +1904,8 @@ namespace Windrose.Quartermaster.Core
                     "retoc pack-raw reported success but .ucas/.utoc missing under " + outBase);
             }
 
-            // Step 5: synthesise the empty pak marker via retoc to-zen on
-            // an empty input dir. to-zen always emits a 347-byte stub .pak
-            // alongside its real .ucas/.utoc; we discard the latter and
-            // reuse only the .pak. The stub is deterministic + content-
-            // independent (UE accepts it as a generic IoStore mod marker
-            // pointing at any same-version companion .ucas/.utoc), so
-            // bytes from an "empty container" stub work just as well as
-            // bytes from a "full container" stub.
-            //
-            // If the caller goes on to build a real minimap pak, it'll
-            // displace this stub; the stub itself is only published when
-            // minimap is inactive.
+            // Synthesize the .pak marker via to-zen on an empty dir; its stub
+            // .pak works as a generic marker for any same-version companion.
             var stubInputDir = Path.Combine(rawRoot, "stub-input");
             var stubOutDir   = Path.Combine(rawRoot, "stub-out");
             Directory.CreateDirectory(stubInputDir);
@@ -2596,27 +1927,16 @@ namespace Windrose.Quartermaster.Core
             {
                 Enabled = true,
                 AssetResults = assetResults,
-                // Final paths/sizes are filled in by the caller after
-                // publishing.
             };
         }
 
-        // Inner minimap builder: ensures the vanilla INI is in cache,
-        // runs MinimapRangePatcher to scale the four reveal-range fields,
-        // and invokes repak.exe to pack a single-file V8B .pak under
-        // rawRoot. Returns the source pak path through srcRealPak so
-        // the caller can publish it.
         MinimapRangeResult BuildMinimapPakInsideRawRoot(
             Profile profile, string rawRoot, string rawBaseName, double multiplier,
             out string srcRealPak)
         {
-            // Lazy-extract or hit the cache for the vanilla baseline.
-            // The extractor logs whether it had to run repak unpack.
             var configExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
             var vanillaIniPath = configExtractor.EnsureMapSettings();
 
-            // Stage the patched INI under the in-pak path the game
-            // expects (R5/Config/DefaultR5MapSettings.ini).
             var minimapStageRoot = Path.Combine(rawRoot, "minimap-stage");
             var stagedIni = Path.Combine(minimapStageRoot,
                 "R5", "Config", "DefaultR5MapSettings.ini");
@@ -2640,55 +1960,25 @@ namespace Windrose.Quartermaster.Core
                 Enabled = true,
                 Multiplier = multiplier,
                 Patch = minimapPatch,
-                // PakPath / PakSize are filled in by the caller after
-                // publishing (they refer to the final outDir path, not
-                // the staging path).
             };
         }
 
-        // Internal carrier so BuildRawCompanion can return both feature
-        // result objects from one method without inventing a tuple type.
         sealed class BuildRawCompanionOutput
         {
             public BuildingStabilityResult Stability;
             public MinimapRangeResult Minimap;
         }
 
-        // Direct retoc invocation for the stability flow (which uses
-        // unpack-raw + pack-raw instead of going through the
-        // IoStoreCompositeBuilder). Same process semantics as the
-        // builder's RunRetoc - stdout/stderr captured, non-zero exit
-        // raises an InvalidOperationException with the stderr text.
         void RunRetoc(string retocExe, string[] args)
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = retocExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            foreach (var a in args) psi.ArgumentList.Add(a);
-
-            WineHelper.ApplyWine(psi);
-            var proc = System.Diagnostics.Process.Start(psi);
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit();
-
-            if (proc.ExitCode != 0)
+            var r = ToolProcess.RunCapture(retocExe, args);
+            if (r.ExitCode != 0)
             {
                 throw new InvalidOperationException(
-                    "retoc " + args[0] + " failed (exit " + proc.ExitCode + ")\n"
-                    + (string.IsNullOrEmpty(stderr) ? stdout : stderr));
+                    "retoc " + args[0] + " failed (exit " + r.ExitCode + ")\n" + r.ErrOrOut);
             }
         }
 
-        // Resolves the effective multiplier the build should use, with the
-        // "no pickup mod" sentinel (0 or 1.0) collapsed to 1.0. Centralized
-        // here so the readiness check, the activation flag, and the actual
-        // patch all see the same number.
         static double ResolvePickupMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.PickupRadius == null) return 1.0;
@@ -2697,9 +1987,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // True when the profile asks to enable the building-stability
-        // single-toggle. False (or null/missing) means no stability
-        // assets ship for this profile.
         static bool ResolveStabilityEnabled(Profile profile)
         {
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;
@@ -2707,10 +1994,6 @@ namespace Windrose.Quartermaster.Core
             return bs.Enabled.GetValueOrDefault(false);
         }
 
-        // Resolves the effective minimap-range multiplier. 1.0 (default)
-        // means "no minimap pak ships" - same null/1.0 collapse pattern as
-        // pickup-radius, so the readiness check, the activation flag, and
-        // the patcher all see the same number.
         static double ResolveMinimapMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.MinimapRange == null) return 1.0;
@@ -2719,9 +2002,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Resolves the effective bonfire / building-center influence
-        // multiplier. 1.0 (default) means "no bonfire patch ships" - same
-        // null/1.0 collapse pattern as pickup-radius and minimap.
         static double ResolveBonfireMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.BonfireRadius == null) return 1.0;
@@ -2730,10 +2010,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Resolves the effective pickaxe-range multiplier (applied to each
-        // tier's TraceScaleModifier). 1.0 (default) means "no pickaxe patch
-        // ships" - same null/1.0 collapse pattern as the other multiplier
-        // globals.
         static double ResolvePickaxeRangeMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.PickaxeRange == null) return 1.0;
@@ -2742,10 +2018,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Resolves the OverallMultiplier the Lighting global is configured
-        // with. 1.0 = vanilla baseline. Used by ResolveLightingJobs to fill
-        // in any per-light slot whose override is null or 1.0, and surfaced
-        // in the build result for the response log.
         static double ResolveLightingOverallMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.Lighting == null) return 1.0;
@@ -2754,12 +2026,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Resolves the per-light multiplier the build should use for `stem`,
-        // applying the precedence rule documented on LightingGlobal:
-        //   - override != null AND != 1.0 -> override
-        //   - otherwise -> OverallMultiplier
-        // 1.0 means "skip this light" - the caller filters those out before
-        // adding a source.
         static double ResolveLightingMultiplierFor(Profile profile, string stem)
         {
             if (profile.Globals == null || profile.Globals.Lighting == null) return 1.0;
@@ -2771,9 +2037,7 @@ namespace Windrose.Quartermaster.Core
                 {
                     if (string.Equals(kv.Key, stem, StringComparison.OrdinalIgnoreCase))
                     {
-                        // 1.0 override collapses to "no override" so the
-                        // overall still applies. This is how the GUI signals
-                        // "this light follows the overall slider".
+                        // A 1.0 override means "follow the overall multiplier".
                         if (Math.Abs(kv.Value - 1.0) > 1e-9) return kv.Value;
                         break;
                     }
@@ -2782,11 +2046,6 @@ namespace Windrose.Quartermaster.Core
             return overall;
         }
 
-        // Walks LightingPatcher.Lights and yields one LightingJob per
-        // entry whose effective multiplier resolves to != 1.0 (vanilla).
-        // The build pipeline turns each job into a separate
-        // IoStoreCompositeSource so the build log stays self-explanatory
-        // (one line per patched light).
         static List<LightingJob> ResolveLightingJobs(Profile profile)
         {
             var jobs = new List<LightingJob>();
@@ -2802,9 +2061,6 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
-        // Resolves the effective crop-growth multiplier (applied to every
-        // DA_Crop_*.json's GrowthDuration). 1.0 = no crop-growth patch
-        // ships.
         static double ResolveCropGrowthMultiplier(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
@@ -2813,12 +2069,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Resolves the active cooking-duration family multipliers. Returns
-        // a populated FamilyMultipliers struct even when the user has only
-        // some families active (per-family null collapse happens inside
-        // the patcher). Returns null only when the whole ProductionTimes
-        // block is absent (so the build can skip the patcher entirely
-        // for stack/loot/cooldown-only profiles).
         static CookingDurationPatcher.FamilyMultipliers ResolveCookingFamilies(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
@@ -2837,12 +2087,6 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Resolves the active set of cooldown patch jobs. Each entry pairs
-        // an asset (stem + virtual path) with the multiplier to apply and
-        // the patch shape to use. 8 family multipliers fan out into 1..N
-        // jobs per family (Elixir = 1 asset, ShipRepairKit = 2, RangedReload
-        // = ~20, ShipCannon = ~8). Returns an empty list when every family
-        // is null or at 1.0 (vanilla).
         static List<CooldownJob> ResolveCooldownJobs(Profile profile)
         {
             var jobs = new List<CooldownJob>();
@@ -2910,20 +2154,11 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
-        // A multiplier counts as "active" when it's set AND not vanilla.
-        // Same 1e-9 epsilon as the other multiplier globals.
         static bool HasCooldownMultiplier(double? m)
         {
             return m.HasValue && Math.Abs(m.Value - 1.0) > 1e-9;
         }
 
-        // Resolves the active ship-music replacement slots. Walks the
-        // profile's per-slot dict, validates each entry against the
-        // ShipMusicSlots catalog (rejecting tampered profiles with
-        // unknown stems), and checks that the audio.wav file actually
-        // exists on disk. Missing WAVs are logged and skipped - the
-        // slot falls back to vanilla. Empty list = no ship-music
-        // source contributes to the IoStore composite.
         List<ShipMusicJob> ResolveShipMusicJobs(Profile profile)
         {
             var jobs = new List<ShipMusicJob>();
@@ -2954,34 +2189,19 @@ namespace Windrose.Quartermaster.Core
                     Slot = slot,
                     UserWavPath = userWav,
                     OriginalFilename = ov.OriginalFilename,
-                    // null -> 0.45 (= vanilla VoicePlayer baseline, build
-                    // pipeline skips cue patching at this value).
-                    // Otherwise we pass the raw absolute value through;
-                    // the patcher clamps to [0.0, 1.0].
+                    // null -> 0.45 = vanilla baseline (pipeline skips cue patching at this value).
                     UserVolume = ov.Volume.HasValue ? ov.Volume.Value : 0.45,
                 });
             }
             return jobs;
         }
 
-        // Resolves the single bonfire-music ("The Hearth") replacement
-        // slot. Returns null when:
-        //   - profile has no BonfireMusic global, OR
-        //   - the audio.wav file is missing on disk (logs a warning so
-        //     the user notices their setup is half-configured).
-        // Otherwise returns one BonfireMusicJob pointing at the on-disk
-        // WAV. The build pipeline activates the bonfire-music source
-        // whenever this returns non-null.
         BonfireMusicJob ResolveBonfireMusicJob(Profile profile)
         {
             var bm = profile.Globals != null ? profile.Globals.BonfireMusic : null;
             if (bm == null) return null;
 
-            // Volume = null preserves the vanilla loudness (treated as
-            // 1.0 here). The patcher applies the gain as a pre-encode
-            // ffmpeg filter so volume=0 produces digital silence -
-            // effectively a mute toggle without having to bypass the
-            // bonfire-music swap entirely.
+            // null -> 1.0 (vanilla loudness); 0 produces digital silence (mute).
             double vol = bm.Volume ?? 1.0;
             if (vol < 0.0) vol = 0.0;
             if (vol > 1.0) vol = 1.0;
@@ -2992,17 +2212,6 @@ namespace Windrose.Quartermaster.Core
 
             if (!hasUserWav)
             {
-                // No upload on disk - two interesting sub-cases:
-                //   1) The profile knows about a prior upload by name
-                //      (OriginalFilename set). The bytes are gone, so
-                //      we fall back to vanilla and warn.
-                //   2) The profile carries no filename, the slider was
-                //      just dialed to 0%. That's the explicit
-                //      "mute vanilla 'The Hearth'" request - we
-                //      synthesize a silence WAV at build time so the
-                //      SWAV swap still happens, producing silent
-                //      playback. Volume == 1.0 with no upload is a
-                //      no-op (vanilla plays untouched).
                 bool hasFilename = !string.IsNullOrEmpty(bm.OriginalFilename);
                 bool wantsMute = vol <= 1e-4;
                 if (hasFilename)
@@ -3014,15 +2223,9 @@ namespace Windrose.Quartermaster.Core
                 }
                 if (!wantsMute)
                 {
-                    // No upload + non-zero volume = nothing useful to
-                    // do. Vanilla "The Hearth" plays at its normal
-                    // level.
                     return null;
                 }
-                // Mute path: signal the build block to synthesize a
-                // silence WAV. UserVolume is irrelevant here (silence
-                // times any gain is still silence) but we propagate
-                // the 0.0 for consistent build-log output.
+                // Mute with no upload: synthesize silence at build time.
                 return new BonfireMusicJob
                 {
                     UserWavPath = null,
@@ -3041,11 +2244,6 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Resolves added-track jobs (extends shanty roster beyond vanilla 10).
-        // Each entry in profile.Globals.ShipMusicAdd.Tracks consumes one
-        // free slot starting at index 11; missing audio.wav or unsafe
-        // TrackKey causes the entry to be skipped with a log line.
-        // Empty list = no ship-music-add source contributes.
         List<ShipMusicAddJob> ResolveShipMusicAddJobs(Profile profile)
         {
             var jobs = new List<ShipMusicAddJob>();
@@ -3085,11 +2283,7 @@ namespace Windrose.Quartermaster.Core
                     UserWavPath = userWav,
                     Title = t.Title,
                     OriginalFilename = t.OriginalFilename,
-                    // null -> 0.45 (= absolute VolumeMultiplier matching
-                    // the vanilla VoicePlayer baseline; new tracks
-                    // therefore play at parity with the typical vanilla
-                    // shanty out of the box). The patcher clamps to
-                    // [0.0, 1.0].
+                    // null -> 0.45 = vanilla baseline volume.
                     UserVolume = t.Volume.HasValue ? t.Volume.Value : 0.45,
                 });
                 nextIndex++;
@@ -3097,15 +2291,7 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
-        // Resolves the user-excluded vanilla shanty slots into 0-based
-        // positions in the DA's Shanty.Cues array. Order of the
-        // ShipMusicSlots.All registry is the authoritative slot index
-        // mapping (see ShipMusicSlots.cs: All[0] = CUE_Shanti_01 vanilla,
-        // [1] = CUE_Shanti_02, ..., [9] = CUE_Shanti_10).
-        //
-        // Unknown stems in the profile (e.g. a typo or a leftover from an
-        // older mod registry) get skipped with a log line - we don't want
-        // to crash a build over a stale-config string.
+        // ShipMusicSlots.All position is the authoritative slot index.
         HashSet<int> ResolveShipMusicExcludedIndices(Profile profile)
         {
             var result = new HashSet<int>();
@@ -3113,8 +2299,6 @@ namespace Windrose.Quartermaster.Core
             var excluded = sm != null ? sm.ExcludedSlots : null;
             if (excluded == null || excluded.Count == 0) return result;
 
-            // Build a stem->index map from ShipMusicSlots.All. Case-insensitive
-            // mirrors how Songs is keyed too.
             var stemToIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < ShipMusicSlots.All.Count; i++)
                 stemToIndex[ShipMusicSlots.All[i].Stem] = i;
@@ -3177,7 +2361,6 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Diagnostic helper for the build log.
         static int CountCooldownFamilies(List<CooldownJob> jobs)
         {
             var set = new HashSet<string>(StringComparer.Ordinal);
@@ -3185,9 +2368,6 @@ namespace Windrose.Quartermaster.Core
             return set.Count;
         }
 
-        // Dispatches a single cooldown job to the right patcher and returns
-        // a uniform result envelope. Encapsulates the per-shape patcher
-        // construction so the source-loop stays compact.
         CooldownJobResult RunCooldownJob(CooldownJob job, string legacyAssetPath, string usmapPath)
         {
             switch (job.Shape)
@@ -3262,10 +2442,6 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Returns the list of NoSmoke categories the profile has actively
-        // enabled (in declaration order: Campfire, Furnace, Kiln). Empty
-        // list means no NoSmoke source contributes to the IoStore composite.
-        // Categories with null/false flags are omitted.
         static List<NoSmokeCategory> ResolveNoSmokeCategories(Profile profile)
         {
             var result = new List<NoSmokeCategory>();
@@ -3277,10 +2453,6 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
-        // True when the profile actually configures the loot domain,
-        // either via a per-bucket multiplier or per-LT override. Lets the
-        // pipeline skip the loot patch step entirely for stack-only
-        // profiles.
         static bool HasLootConfiguration(Profile profile)
         {
             if (profile.LootOverrides != null && profile.LootOverrides.Count > 0) return true;
@@ -3293,10 +2465,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // True when the profile defines at least one CustomItem with a
-        // non-empty Id + TemplateId. Lets the pipeline skip the patcher
-        // entirely for profiles that haven't touched the Item Creator
-        // tab (the common case).
         static bool HasCustomItemsConfiguration(Profile profile)
         {
             var customs = profile.CustomItems;
@@ -3310,13 +2478,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // True when the profile has at least one CustomBuilding with the
-        // minimum fields populated (Id, TemplateId, CookedFolderPath,
-        // MeshStem). AssetPrefix is derived from MeshStem so it isn't
-        // gated separately. Skeleton entries (e.g. a "New Building"
-        // card without a cooked folder yet) get filtered so the patch
-        // step doesn't try to extract a non-existent template or walk
-        // a missing folder.
         static bool HasCustomBuildingsConfiguration(Profile profile)
         {
             var buildings = profile.CustomBuildings;
@@ -3328,22 +2489,12 @@ namespace Windrose.Quartermaster.Core
                 if (string.IsNullOrWhiteSpace(b.TemplateId)) continue;
                 if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) continue;
                 if (string.IsNullOrWhiteSpace(b.MeshStem)) continue;
-                // Resolved prefix must end up non-empty (covers the case
-                // where MeshStem is e.g. just "_01" and DeriveAssetPrefix
-                // would return "").
                 if (string.IsNullOrWhiteSpace(b.ResolveAssetPrefix())) continue;
                 return true;
             }
             return false;
         }
 
-        // Diagnostic counterpart to HasCustomBuildingsConfiguration. Returns
-        // a human-readable multi-line list of buildings that were dropped by
-        // the skeleton gate AND why (which required field was empty). Used
-        // by the "nothing to pack" error path so the user knows which card
-        // to fix instead of seeing a generic "no changes" message. Returns
-        // null when no buildings at all are present (then the regular
-        // "no changes" wording applies).
         static string DescribeSkeletonBuildings(Profile profile)
         {
             var buildings = profile.CustomBuildings;
@@ -3359,13 +2510,10 @@ namespace Windrose.Quartermaster.Core
                 if (string.IsNullOrWhiteSpace(b.TemplateId))       missing.Add("templateId");
                 if (string.IsNullOrWhiteSpace(b.CookedFolderPath)) missing.Add("cookedFolderPath");
                 if (string.IsNullOrWhiteSpace(b.MeshStem))         missing.Add("meshStem");
-                // No separate "assetPrefix missing" entry: empty prefix
-                // implies empty MeshStem here (the derive only returns ""
-                // when its input was unusable).
                 if (!string.IsNullOrWhiteSpace(b.MeshStem)
                     && string.IsNullOrWhiteSpace(b.ResolveAssetPrefix()))
                     missing.Add("meshStem (cannot derive asset prefix from this stem)");
-                if (missing.Count == 0) continue; // building is fine, must be a different cause
+                if (missing.Count == 0) continue;
                 skeletonCount++;
                 var label = !string.IsNullOrWhiteSpace(b.Name) ? b.Name
                           : !string.IsNullOrWhiteSpace(b.Id)   ? b.Id
@@ -3376,36 +2524,11 @@ namespace Windrose.Quartermaster.Core
             return skeletonCount > 0 ? sb.ToString().TrimEnd('\n') : null;
         }
 
-        // Per-building patch loop has moved into BuildIoStoreComposite as
-        // a pre-staged source (see "Buildings source" block) so the patched
-        // bytes land in the IoStore staging tree and end up in the
-        // .ucas/.utoc triplet rather than the legacy .pak. New asset paths
-        // (vs DT overrides) are only resolvable via the IoStore global
-        // index, which is rebuilt from .utoc on mount - legacy paks mount
-        // but don't contribute new package paths to LoadPackage().
-        //
-        // BuildBuildingInputs() + ResolveBuildingTemplate() helpers remain
-        // below because the composite source's AfterExtract callback uses
-        // them; the only thing that moved is the orchestration loop itself.
-
-        // Maps a template id (string in the profile) to a concrete
-        // BuildingTemplate. Templates only define gameplay-side properties
-        // (DA parent, mesh/icon donors, category tag) - material slots
-        // come from the user's cooked mesh, not the template, since
-        // Etappe G.
-        //
-        // The templateId is a Vanilla DA virtual path
-        // "/Game/Gameplay/Building/.../DA_BI_*" - resolved through the
-        // BuildingTemplateCatalog + VanillaBuildingTemplateInspector
-        // (Etappe I.2). The catalog must be set (Web layer does this);
-        // CLI smoke tests without a catalog skip building resolution
-        // with a clear warning.
         BuildingTemplate ResolveBuildingTemplate(string templateId)
         {
             if (string.IsNullOrWhiteSpace(templateId)) return null;
             var trimmed = templateId.Trim();
 
-            // Vanilla DA path form - look it up in the catalog.
             if (BuildingTemplateCatalog == null)
             {
                 LogLine("  warn: templateId='" + trimmed + "' looks like a Vanilla DA path"
@@ -3445,21 +2568,8 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Translates the persisted CustomBuilding profile entry into the
-        // BuildingPatcher's input bundle (Etappe G mesh-driven).
-        //
-        // Reads the user-cooked mesh via CookedFolderInspector to learn
-        // the slot list + per-slot user-MI refs, then merges the
-        // Profile's CustomBuildingSlot dict on top for the per-param
-        // overrides. Slot dict keys may be either the slot index as a
-        // string ("0", "1") or the slot name ("WorldGridMaterial") -
-        // the GUI defaults to index, but either works.
-        // Etappe H2: convert the profile's RecipeCost list (or null
-        // for "use vanilla defaults") into the patcher's tuple-list
-        // shape. Returns null for null/empty-or-skeleton input so the
-        // RecipePatcher's "null = pass-through" semantics kick in;
-        // returns an empty list iff the user explicitly cleared the
-        // cost editor and saved the empty state (engine accepts that).
+        // null rows -> null (RecipePatcher treats as pass-through to vanilla);
+        // an empty list means the user explicitly cleared the cost editor.
         static List<(string ItemPath, int Count)> ToTupleList(List<RecipeCostEntry> rows)
         {
             if (rows == null) return null;
@@ -3475,13 +2585,6 @@ namespace Windrose.Quartermaster.Core
 
         static BuildingInputs BuildBuildingInputs(CustomBuilding b, BuildingTemplate template, string usmapPath, WindrosePaths paths, string profileId, Action<string> log)
         {
-            // Resolve profile-relative folder strings (e.g. CookedFolderPath
-            // = "MyPainting" -> <Profiles>/<profileId>/MyPainting) once
-            // here, then thread the absolute path through both the
-            // inspector AND BuildingInputs so every downstream
-            // Directory.GetFiles/Path.Combine sees a usable absolute
-            // path. The user-typed value in the profile JSON is left
-            // untouched - this is on-the-fly resolution only.
             var resolvedCookedFolder = paths.ResolveProfileRelativeFolder(profileId, b.CookedFolderPath);
 
             var inspector = new CookedFolderInspector
@@ -3497,10 +2600,6 @@ namespace Windrose.Quartermaster.Core
             var inputs = new BuildingInputs
             {
                 BuildingId        = b.Id,
-                // ResolveAssetPrefix() falls back to the value derived
-                // from MeshStem when b.AssetPrefix is empty - covers the
-                // case where the profile was loaded from disk without
-                // going through the GUI save pipe that does the migrate.
                 AssetPrefix       = b.ResolveAssetPrefix(),
                 CookedFolderPath  = resolvedCookedFolder,
                 MeshStem          = b.MeshStem,
@@ -3510,21 +2609,11 @@ namespace Windrose.Quartermaster.Core
                 MeshSlots         = new List<MeshSlotInput>(),
             };
 
-            // Etappe J v3: the flame-preset ExtraDaNameMapRewrites used
-            // to be wired here, but since BP-Clones are now per-building
-            // (each with its own user-mesh rewrite), the cloned BP stem
-            // is only known AFTER BlueprintPatcher.Stage() runs in the
-            // main loop. The caller wires inputs.ExtraDaNameMapRewrites
-            // there instead.
-
             foreach (var s in inspection.MeshSlots)
             {
                 CustomBuildingSlot ov = null;
                 if (b.Slots != null)
                 {
-                    // GUI persists by index string ("0", "1"). Fall back
-                    // to the slot name for robustness against future GUI
-                    // changes.
                     if (!b.Slots.TryGetValue(s.Index.ToString(System.Globalization.CultureInfo.InvariantCulture), out ov)
                         && !b.Slots.TryGetValue(s.SlotName ?? "", out ov))
                     {
@@ -3548,10 +2637,6 @@ namespace Windrose.Quartermaster.Core
             return inputs;
         }
 
-        // True when the profile has any buyer (PlayerSells) trade-list edit
-        // - either a recipe override (vanilla edit or synthesized custom) or
-        // a per-list add/remove of recipe refs. Lets the pipeline skip the
-        // BuyerPatcher entirely for stack/loot-only profiles.
         static bool HasBuyerConfiguration(Profile profile)
         {
             if (profile.BuyerRecipes != null && profile.BuyerRecipes.Count > 0) return true;
@@ -3568,7 +2653,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Same test for the seller side (PlayerBuys lists).
         static bool HasSellerConfiguration(Profile profile)
         {
             if (profile.SellerRecipes != null && profile.SellerRecipes.Count > 0) return true;
@@ -3585,10 +2669,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // True when the profile asks for at least one bell-or-signal-fire
-        // cap that differs from vanilla. Lets the pipeline skip the patch
-        // step (and its file-existence check on VanillaBuildingLimits)
-        // for the common case where no bell config is set.
         static bool HasBellLimitsConfiguration(Profile profile)
         {
             var b = profile.Globals != null ? profile.Globals.FastTravelBells : null;
@@ -3600,10 +2680,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Profile.Name -> filename component for "Quartermaster_<name>_P.pak".
-        // Stay strict (alnum + dash + underscore) so the pak filename works
-        // on every Windows / Linux server config the user might drop it on.
-        // Spaces collapse to dashes; other chars are dropped.
         public static string SanitizeForFileName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "Untitled";
@@ -3613,7 +2689,6 @@ namespace Windrose.Quartermaster.Core
                 if (char.IsLetterOrDigit(c) || c == '-' || c == '_') sb.Append(c);
                 else if (c == ' ') sb.Append('-');
             }
-            // Collapse runs of dashes / underscores to a single one for tidiness.
             var raw = sb.ToString();
             if (string.IsNullOrEmpty(raw)) return "Untitled";
             var collapsed = new StringBuilder(raw.Length);
@@ -3637,124 +2712,36 @@ namespace Windrose.Quartermaster.Core
     {
         public Profile Profile;
         public PatchResult PatchResult;
-        public LootPatchResult LootPatchResult;   // null if profile has no loot config
-        public BellLimitsPatchResult BellLimitsResult; // null if profile has no bell config
-        public BuyerPatchResult BuyerPatchResult; // null if profile has no buyer (PlayerSells) edits
-        public SellerPatchResult SellerPatchResult; // null if profile has no seller (PlayerBuys) edits
-        // Item Creator (custom items synthesized from vanilla templates).
-        // null when the profile has no CustomItems. When non-null,
-        // ItemsWritten counts the new JSONs that landed under the
-        // Custom/ subfolder; CsvRowsAppended counts the (ItemName +
-        // ItemDescription) string-table rows appended to the modded
-        // InventoryItems.csv.
+        public LootPatchResult LootPatchResult;
+        public BellLimitsPatchResult BellLimitsResult;
+        public BuyerPatchResult BuyerPatchResult;
+        public SellerPatchResult SellerPatchResult;
         public ItemCreatorPatchResult ItemCreatorResult;
-        public PakBuildResult PakResult;          // null if pickup-only build (no item/loot changes)
-        public string PakPath;                    // null if pickup-only build
-        // The freshly built pickup-radius IoStore triplet, or null if the
-        // profile didn't request a pickup mod (or set multiplier == 1.0).
+        public PakBuildResult PakResult;
+        public string PakPath;
         public PickupTripletResult PickupResult;
-        // The user-facing scalar that produced the triplet (e.g. 2.0,
-        // 1.5, ...). null when no pickup triplet was built.
         public double? PickupMultiplier;
-        // Building-stability inclusion result. null when the profile
-        // didn't enable the toggle. When non-null, the .ucas/.utoc
-        // already shipped under PickupResult's paths (or the standalone
-        // shared basename if pickup was off and stability was the only
-        // IoStore source).
         public BuildingStabilityResult StabilityResult;
-        // NoSmoke inclusion result. null when no NoSmoke category was
-        // active. When non-null, lists which categories were enabled and
-        // per-asset patch counts (handles flipped from enabled to
-        // disabled). The .ucas/.utoc payload is part of the same shared
-        // IoStore triplet as Pickup / Stability.
         public NoSmokeResult NoSmokeResult;
-        // Minimap-range inclusion result. null when the profile didn't
-        // configure a multiplier or set it to 1.0 (vanilla). When non-
-        // null, carries the effective scaled values and the .pak the
-        // ini-patch was shipped in (shared with stability's pak when
-        // both features are active).
         public MinimapRangeResult MinimapResult;
-        // Bonfire / building-center influence-radius inclusion result.
-        // null when the profile didn't configure a multiplier or set it
-        // to 1.0 (vanilla). When non-null, the patched DA_BI_Utilities_
-        // BuildingCenterT01 is part of the same shared IoStore triplet
-        // as Pickup / NoSmoke (sharedBaseName.ucas/utoc).
         public BonfireRadiusResult BonfireResult;
-        // Pickaxe-range inclusion result. null when the profile didn't
-        // configure a multiplier or set it to 1.0 (vanilla). When non-
-        // null, carries one PickaxeRangePatchResult per pickaxe tier
-        // patched (currently 4) plus the published triplet paths the
-        // patched DataAssets ride inside (sharedBaseName.ucas/utoc).
         public PickaxeRangeResult PickaxeRangeResult;
-        // Cooldown patches inclusion result. null when no cooldown family
-        // was activated (every multiplier null or 1.0). When non-null,
-        // carries one CooldownJobResult per patched asset (1..N per
-        // activated family) plus the shared triplet paths.
         public CooldownsResult CooldownsResult;
-        // Ship-music slot replacement result. null when the profile didn't
-        // configure any custom shanties (or all configured slots were
-        // missing their on-disk triplets). When non-null, carries one
-        // ShipMusicPatchResult per replaced slot plus the shared triplet
-        // paths.
         public ShipMusicResult ShipMusicResult;
-        // Ship-music ADD result (extends the shanty roster beyond the
-        // vanilla 10 by patching DA_<ShipType>_AudioParams and packing
-        // new SoundCue + SoundWave assets). null when no added tracks
-        // are configured; when non-null carries one
-        // ShipMusicAddTrackResult per added track plus the shared
-        // triplet paths.
         public ShipMusicAddResult ShipMusicAddResult;
-        // Bonfire-music ("The Hearth") replacement result. null when the
-        // profile didn't configure a custom hearth theme (or the on-disk
-        // audio.wav was missing). When non-null, carries the single
-        // ShipMusicPatchResult for the replaced SWAV_Music_BuildingCenter_v3
-        // plus the shared triplet paths.
         public BonfireMusicResult BonfireMusicResult;
-        // Light-radius (AttenuationRadius) patch inclusion result. null
-        // when no light source has an effective multiplier != 1.0. When
-        // non-null, carries one LightingPatchResult per patched light
-        // blueprint plus the shared triplet paths and the OverallMultiplier
-        // value the build was using as fallback for unset per-light overrides.
         public LightingResult LightingResult;
-        // Crop-growth patch inclusion result. null when the profile didn't
-        // configure a CropGrowthMultiplier or set it to 1.0 (vanilla). When
-        // non-null, carries the per-crop ticks before/after for the build
-        // log. The patched DA_Crop_*.json files ride in the main pak
-        // alongside the other JSON-patcher output.
         public CropGrowthPatchResult CropGrowthResult;
-        // Recipe cooking-duration patch result. null when no family
-        // multiplier was set (or all are 1.0). When non-null, carries
-        // the per-recipe patches grouped by family - lets the build
-        // response render "DONE - smelting: 0.5x; 10 recipes; ~4200 -> ~2100"
-        // style lines.
         public CookingDurationPatchResult CookingDurationResult;
-        // Custom-building patch results, one per CustomBuilding in the
-        // profile. null when the profile has no CustomBuildings. Each
-        // entry carries the patched asset stems + warnings; the GameDeployer
-        // step turns this list into the per-profile qm_items_<safeName>.json
-        // the DLL merges at startup.
         public List<BuildingPatchResult> BuildingResults;
         public string TmpDir;
         public bool Success;
     }
 
-    // Standalone summary of "stability got included in this build". Kept
-    // separate from PickupTripletResult so the caller can report the two
-    // features independently in the response payload.
-    //
-    // AssetResults is populated with one entry per DA_BI_*.uasset the
-    // patcher saw. Patched=true entries are the assets whose
-    // IntegritySettings floats were overwritten; Patched=false entries
-    // are skipped assets (no IntegritySettings property, etc.). The
-    // single-toggle UI only cares about Enabled, but downstream callers
-    // (build response / log) can roll up the counts.
     public sealed class BuildingStabilityResult
     {
         public bool Enabled;
         public List<BuildingStabilityAssetResult> AssetResults;
-        // Paths to the published stability companion triplet under outDir.
-        // The stability triplet always ships as a full triplet (pak + ucas
-        // + utoc), independent of the main pak / composite triplet.
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
@@ -3763,10 +2750,6 @@ namespace Windrose.Quartermaster.Core
         public long UtocSize;
     }
 
-    // Standalone summary of "no-smoke patches got included in this build".
-    // Carries the active categories plus per-asset patch counts so the
-    // build response can attribute totals back to the user-visible
-    // toggles ("3 campfires patched, 11+8 emitter handles silenced", ...).
     public sealed class NoSmokeResult
     {
         public List<NoSmokeCategory> Categories;
@@ -3775,22 +2758,11 @@ namespace Windrose.Quartermaster.Core
 
     public sealed class NoSmokeAssetResult
     {
-        // Virtual content path of the patched asset (e.g.
-        // "R5/Content/FX/Particles/Environment/Fire/FX_Bonefire_Center.uasset").
         public string AssetPath;
-        // Total EmitterHandles encountered on the asset's NiagaraSystem.
         public int TotalHandles;
-        // Subset of TotalHandles that had bIsEnabled flipped from true to
-        // false. Handles already at false are not counted.
         public int FlippedHandles;
     }
 
-    // Standalone summary of "minimap-range got included in this build".
-    // The .pak path here is the raw-companion .pak (shared with stability
-    // when both are active); the loose ini lives at
-    // R5/Config/DefaultR5MapSettings.ini inside that pak. Vanilla baseline
-    // values + effective scaled values surface in the Patch member so
-    // callers can render "37 -> 74" style summaries without recomputing.
     public sealed class MinimapRangeResult
     {
         public bool Enabled;
@@ -3800,13 +2772,6 @@ namespace Windrose.Quartermaster.Core
         public long PakSize;
     }
 
-    // Standalone summary of "bonfire-radius got included in this build".
-    // The patched DataAsset rides inside the SAME IoStore triplet as
-    // Pickup / NoSmoke (sharedBaseName.ucas/utoc), so PakPath here is
-    // null when a main Pak1 is also being built (it would be redundant
-    // with the main pak path) and points to the stub .pak otherwise.
-    // Patch carries the vanilla + effective influence values for the
-    // build-response log line.
     public sealed class BonfireRadiusResult
     {
         public bool Enabled;
@@ -3817,15 +2782,6 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
-    // Standalone summary of "pickaxe-range got included in this build".
-    // The patched InstanceParams DataAssets ride inside the SAME IoStore
-    // triplet as Pickup / Bonfire / NoSmoke (sharedBaseName.ucas/utoc), so
-    // PakPath here mirrors Bonfire's semantics (null when a main Pak1 is
-    // also being built, stub .pak otherwise).
-    //
-    // AssetResults holds one entry per pickaxe tier (4 in 5.6) with each
-    // tier's vanilla + effective TraceScaleModifier - lets the build log
-    // render a "T00:1.00->1.40, T01:1.00->1.40, ..." line per tier.
     public sealed class PickaxeRangeResult
     {
         public bool Enabled;
@@ -3836,27 +2792,12 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
-    // One light source whose AttenuationRadius should be rewritten in this
-    // build. The pipeline produces these by walking LightingPatcher.Lights
-    // and resolving each light's effective multiplier from the profile's
-    // Lighting global (overall * per-light override).
     public sealed class LightingJob
     {
         public LightingPatcher.LightInfo Info;
         public double Multiplier;
     }
 
-    // Standalone summary of "lighting patches got included in this build".
-    // Mirrors PickaxeRangeResult structurally - the patched DataAssets ride
-    // inside the SAME IoStore triplet as Pickup / Bonfire / Pickaxe, so
-    // PakPath is null when a main Pak1 is also being built and points to
-    // the stub .pak otherwise.
-    //
-    // OverallMultiplier carries the GUI's "Lighting" slider state at build
-    // time (the value the per-light fallback used). AssetResults holds
-    // one entry per patched light with vanilla + effective values, so the
-    // build response can render "Lantern: 5.5m -> 16.5m, Torch: 8.0m -> ..."
-    // style lines.
     public sealed class LightingResult
     {
         public bool Enabled;
@@ -3867,10 +2808,6 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
-    // Discriminator for cooldown jobs - tells the dispatcher which patcher
-    // to invoke for a given asset. Each shape corresponds to one of the
-    // three patcher classes (CooldownsPatcher with two methods, plus
-    // RangedReloadPatcher and ShipCannonPatcher).
     public enum CooldownJobShape
     {
         ScalableFloatDuration,
@@ -3879,14 +2816,8 @@ namespace Windrose.Quartermaster.Core
         ShipCannon,
     }
 
-    // A single cooldown patch to apply: which asset, which multiplier,
-    // which property shape. ResolveCooldownJobs() fans the 8 family
-    // multipliers out into 1..N of these per family.
     public sealed class CooldownJob
     {
-        // Human-readable family id ("elixir", "medicine", "ranged-reload",
-        // "ship-cannon", ...). Used to group per-asset results back into
-        // family-level summaries for the build response.
         public string Family;
         public string AssetStem;
         public string VirtualPath;
@@ -3894,10 +2825,6 @@ namespace Windrose.Quartermaster.Core
         public CooldownJobShape Shape;
     }
 
-    // Per-asset cooldown patch outcome. Uniform envelope across all four
-    // patch shapes so the build response can render a single table without
-    // branching on Shape. BatteryCount/PatchedBatteryCount carry extra
-    // diagnostic for ShipCannon (zero for the other shapes).
     public sealed class CooldownJobResult
     {
         public string Family;
@@ -3909,11 +2836,6 @@ namespace Windrose.Quartermaster.Core
         public int PatchedBatteryCount;
     }
 
-    // Standalone summary of "cooldown patches got included in this build".
-    // The patched DataAssets ride inside the SAME IoStore triplet as
-    // Pickup / Bonfire / Pickaxe / NoSmoke (sharedBaseName.ucas/utoc), so
-    // PakPath mirrors the same semantics as the other composite results
-    // (null when a main Pak1 is also being built, stub .pak otherwise).
     public sealed class CooldownsResult
     {
         public bool Enabled;
@@ -3923,34 +2845,16 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
-    // One scheduled ship-music slot replacement. The pipeline's
-    // ResolveShipMusicJobs() fans the profile's Songs dict out into
-    // one of these per replaced shanty, each pointing at the on-disk
-    // user .wav. The patcher runs binkaudioenc.exe on it and splices
-    // the resulting Bink Audio bytes into a fresh copy of the
-    // SoundWave_BinkInline template.
     public sealed class ShipMusicJob
     {
         public ShipMusicSlots.SlotInfo Slot;
         public string UserWavPath;
         public string OriginalFilename;
 
-        // User-supplied absolute VolumeMultiplier (0.45 = vanilla
-        // VoicePlayer baseline = "vanilla unchanged", 0.0..1.0 range,
-        // clamped at the patcher). When ~0.45 the pipeline skips cue
-        // extraction entirely - only the SWAV is swapped. When != 0.45
-        // we extract the 4 vanilla cue variants (Large/Medium/Small
-        // VoicePlayer + NoPlayer) for this slot and overwrite their
-        // VolumeMultiplier with this absolute value.
+        // Absolute VolumeMultiplier; 0.45 = vanilla baseline (pipeline skips cue patching).
         public double UserVolume;
     }
 
-    // Standalone summary of "ship-music slots got replaced in this
-    // build". The patched SoundWaves ride inside the SAME IoStore
-    // triplet as Pickup / Bonfire / Pickaxe / NoSmoke / Cooldowns
-    // (sharedBaseName.ucas/utoc), so PakPath mirrors the same
-    // semantics as the other composite results (null when a main
-    // Pak1 is also being built, stub .pak otherwise).
     public sealed class ShipMusicResult
     {
         public bool Enabled;
@@ -3960,38 +2864,16 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
-    // One scheduled bonfire-music ("The Hearth") replacement. Single
-    // slot, so the resolver returns null or a populated instance, no
-    // list. UserVolume rides along as an absolute multiplier in
-    // [0.0, 1.0] - the build pipeline bakes it into the staged WAV as
-    // a pre-encode PCM gain (ffmpeg `-filter:a volume=X`) before the
-    // Bink encoder consumes the buffer. 0.0 = digital silence (the
-    // SWAV plays at zero amplitude in-engine, effectively muting "The
-    // Hearth"); 1.0 = unchanged. Defaults to 1.0 when the profile
-    // hasn't touched the slider yet.
     public sealed class BonfireMusicJob
     {
-        // Path of the staged user-provided WAV (44.1 kHz / stereo /
-        // 16-bit PCM). Null when IsSynthesizedSilence is true - the
-        // build block then generates a transient silence WAV instead.
+        // Null when IsSynthesizedSilence is true (build generates a silence WAV).
         public string UserWavPath;
         public string OriginalFilename;
         public double UserVolume = 1.0;
 
-        // True when the resolver decided to mute vanilla "The Hearth"
-        // without a user upload (Volume == 0 + no audio.wav on disk).
-        // In that case UserWavPath is null and the build block calls
-        // AudioPreprocessor.GenerateSilenceAsync() to produce a stereo
-        // 44.1 kHz silence WAV which is then fed through the regular
-        // BinkAudio encode + SoundWave splice. Lets the user mute the
-        // hearth theme without having to upload a silent dummy file.
         public bool IsSynthesizedSilence;
     }
 
-    // Standalone summary of "bonfire-music got replaced in this build".
-    // The patched SoundWave rides inside the SAME IoStore triplet as
-    // every other composite member, so PakPath has the same null /
-    // stub semantics as the others.
     public sealed class BonfireMusicResult
     {
         public bool Enabled;

@@ -4,8 +4,6 @@ using System.IO;
 namespace Windrose.Quartermaster.Core;
 
 #if NET
-// Cross-platform trash/delete helper. Uses the Windows recycle bin on
-// Windows; falls back to the freedesktop.org XDG trash spec on Linux/macOS.
 public static class CrossPlatformTrash
 {
     public static void DeleteToTrash(string path)
@@ -15,7 +13,6 @@ public static class CrossPlatformTrash
 
         if (OperatingSystem.IsWindows())
         {
-            // Windows: use the proven VB runtime path.
             Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
                 path,
                 Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
@@ -24,13 +21,9 @@ public static class CrossPlatformTrash
         }
         else
         {
-            // Linux/macOS: use XDG Trash spec.
-            // Files go to $XDG_DATA_HOME/Trash or $HOME/.local/share/Trash
             var trashDir = GetTrashDir();
             var baseName = Path.GetFileName(path);
 
-            // Deduplicate: if a file with the same name already exists in
-            // trash, append a counter before the extension.
             var destPath = Path.Combine(trashDir, "files", baseName);
             if (File.Exists(destPath))
             {
@@ -47,13 +40,10 @@ public static class CrossPlatformTrash
                 while (File.Exists(destPath));
             }
 
-            // Ensure the 'files' subdir exists.
             Directory.CreateDirectory(Path.Combine(trashDir, "files"));
 
-            // Move to trash.
             File.Move(path, destPath);
 
-            // Write a .trashinfo entry (freedesktop.org spec).
             var infoPath = Path.Combine(trashDir, "info", Path.GetFileName(destPath) + ".trashinfo");
             Directory.CreateDirectory(Path.Combine(trashDir, "info"));
 

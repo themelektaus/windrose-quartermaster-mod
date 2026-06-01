@@ -7,15 +7,6 @@ using System.Text.Json.Serialization;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Walks Sources/Vanilla and emits the manifest JSON that
-    // IconExtractor.exe consumes. Mirrors the PowerShell logic that lived
-    // in Library/Icons.ps1 (the only behavioural difference: this version
-    // uses System.Text.Json.Nodes, which gives us a clean way to reject
-    // mistyped FText refs without try/catch chains).
-    //
-    // The shape of the per-entry record (and of the FText / curve nested
-    // records) MUST match WindroseIconExtractor.Program's ManifestEntry.
-    // change both ends together if you touch this.
     public sealed class IconManifestBuilder
     {
         public Action<string> Log;
@@ -63,9 +54,6 @@ namespace Windrose.Quartermaster.Core
             return new BuildResult { Entries = entries };
         }
 
-        // Writes the manifest to a JSON file. Returns the absolute path.
-        // Used by IconExtractionRunner; callers can also build the in-memory
-        // list and serialize it themselves.
         public string WriteToTempFile(IList<ManifestEntry> entries)
         {
             var path = Path.Combine(Path.GetTempPath(),
@@ -75,8 +63,6 @@ namespace Windrose.Quartermaster.Core
             return path;
         }
 
-        // The IconExtractor expects a particular JSON shape: camelCase keys,
-        // nulls omitted (so "no FText for VanityText" is just an absent field).
         public static readonly JsonSerializerOptions ManifestSerializerOptions = new JsonSerializerOptions
         {
             IncludeFields = true,
@@ -102,11 +88,8 @@ namespace Windrose.Quartermaster.Core
             var rootObj = root as JsonObject;
             if (rootObj == null) return null;
 
-            // Only InventoryItem definitions get textures.
             var typeNode = rootObj["$type"];
             if (typeNode == null) return null;
-            // Some items live under a different $type (NPC data, etc.);
-            // checking only for ItemTexture below filters those naturally.
 
             var ui = rootObj["InventoryItemUIData"] as JsonObject;
             if (ui == null) return null;
@@ -120,12 +103,10 @@ namespace Windrose.Quartermaster.Core
                 TexturePath = texturePath,
             };
 
-            // Title / description FText refs.
             ReadFText(ui["ItemName"],        out entry.NameTable,   out entry.NameKey);
             ReadFText(ui["ItemDescription"], out entry.DescTable,   out entry.DescKey);
             ReadFText(ui["VanityText"],      out entry.VanityTable, out entry.VanityKey);
 
-            // EffectsDescriptions: array of FText. Empty array is the common case.
             var effectsArr = ui["EffectsDescriptions"] as JsonArray;
             if (effectsArr != null)
             {
@@ -140,7 +121,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // ItemDescriptionData: shared placeholder source for {0}, {1}, ...
             var ddArr = ui["ItemDescriptionData"] as JsonArray;
             if (ddArr != null)
             {
@@ -167,7 +147,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // SetEffectsDescriptions: structs with nested FText + tag + count.
             var setArr = ui["SetEffectsDescriptions"] as JsonArray;
             if (setArr != null)
             {
@@ -206,8 +185,6 @@ namespace Windrose.Quartermaster.Core
             return entry;
         }
 
-        // ---- JsonNode helpers (null-safe, type-tolerant) -----------------
-
         static string AsString(JsonNode n)
         {
             if (n == null) return null;
@@ -240,8 +217,7 @@ namespace Windrose.Quartermaster.Core
             return v.TryGetValue<bool>(out b) ? b : fallback;
         }
 
-        // VanityText is polymorph: empty string in some items, FText {TableId,Key}
-        // in others. We accept only the FText-shaped form.
+        // Source is polymorphic: a plain string in some items, an FText {TableId,Key} object in others. Only the object form yields a ref.
         static bool TryReadFText(JsonNode n, out string table, out string key)
         {
             table = null;
@@ -271,11 +247,6 @@ namespace Windrose.Quartermaster.Core
             public List<ManifestEntry> Entries;
         }
     }
-
-    // ---- On-disk schema ---------------------------------------------------
-    // Property names map to camelCase (see ManifestSerializerOptions). Keep
-    // these in sync with WindroseIconExtractor.Program's ManifestEntry,
-    // both ends serialize/deserialize the same on-disk shape.
 
     public sealed class ManifestEntry
     {

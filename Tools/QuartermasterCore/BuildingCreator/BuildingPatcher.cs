@@ -11,64 +11,17 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Extracted from .build-tmp/da-patch-test/Program.cs - the validated
-    // QmPainting build pipeline, generalised so the GUI can invoke it
-    // per-Building. Pipeline steps:
-    //
-    //   1) Stage user-cooked assets (mesh + icon + user textures) from
-    //      CookedFolderPath into stagingItemsDir, skipping any user-cooked
-    //      materials/MIs (those crash shipping - empirically bisected).
-    //   2) Rewrite the user-cooked mesh's NameMap so its per-slot material
-    //      refs (M_<prefix>_<SlotName>) point at the cloned-MI stems we'll
-    //      generate in step 4.
-    //   3) retoc to-legacy --filter <VanillaMaterialStem> to extract the
-    //      Vanilla MI (per template - usually one MI shared across all
-    //      slots, but we extract once and clone N times).
-    //   4) Per slot: DataAssetPatcher renames the Vanilla MI's NameMap so
-    //      it lives under our mod's output namespace as MI_*,
-    //      with texture refs swapped to user-custom (if provided) or to
-    //      the shared default-VT names. Then patch VectorParameterValues
-    //      in-place via UAssetAPI for any template-declared overrides.
-    //   5) retoc to-legacy --filter <VanillaDaStem> to extract the Vanilla
-    //      DA.
-    //   6) DataAssetPatcher rewrites the DA's NameMap so it points at the
-    //      user-cooked mesh + icon + the synthesized localization key.
-    //
-    // What's NOT in this class (orchestrator's responsibility):
-    //   - Deleting the staging dir before-hand (we ADD into an existing
-    //     dir so multiple buildings + shared defaults can co-exist).
-    //   - Shipping the shared default VT textures (T_QmPainting_White /
-    //     NormalFlat / MTRMDefault). Those land in staging once per build,
-    //     not once per building.
-    //   - retoc to-zen (pak build). One pak for the whole profile.
-    //   - The CSV-Synthese-Pattern for DisplayName/Description
-    //     localization. Mirrors ItemCreatorPatcher's StringTable approach,
-    //     handled by the orchestrator.
-    //   - GameDeployer (.pak triple + dxgi.dll + qm_items_<profile>.json).
     public sealed class BuildingPatcher
     {
         public Action<string> Log;
 
-        // External-tool paths. The orchestrator resolves these once via
-        // RetocResolver + UsmapLocator and hands them to every per-building
-        // patch call.
         public string RetocExe;
         public string UsmapPath;
         public string VanillaPaksDir;
         public string AesKey;
 
-        // Working dir for retoc-to-legacy intermediates. Each Patch() call
-        // creates per-building subdirs underneath this (so two parallel
-        // calls don't trample each other).
         public string TempDir;
 
-        // Per-building entry point. Writes patched assets into
-        // stagingItemsDir (the on-disk folder the orchestrator wires to
-        // the mod's output namespace - WindrosePaths.ModItemsPackagePath -
-        // inside the staging tree).
-        //
-        // Returns a structured result the orchestrator can fold into the
-        // SSE-streamed Build report.
         public BuildingPatchResult Patch(
             BuildingTemplate template,
             BuildingInputs inputs,
@@ -94,28 +47,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 OutputDaStem    = "DA_BI_" + inputs.BuildingId,
                 StagedFiles     = new List<string>(),
                 Warnings        = new List<string>(),
-                // Propagate user-supplied display text so the orchestrator
-                // can feed it to the BuildingItems.csv synthesizer without
-                // having to re-look-up the CustomBuilding from the profile.
                 DisplayName     = inputs.DisplayName,
                 Description     = inputs.Description,
             };
 
-            // ---- Step 1: stage user-cooked assets ----------------------
             LogLine("=== [" + inputs.BuildingId + "] Step 1: stage user-cooked assets ===");
             StageCookedAssets(inputs, stagingItemsDir, result);
 
-            // ---- Step 2: rewrite mesh material slots -------------------
-            // Each mesh slot's user-MI ref (e.g. "MI_QmPainting_Canvas")
-            // gets swapped for the slot's clone stem (e.g.
-            // "MI_QmPainting_slot1"). The clones are produced in Step 4.
             LogLine("=== [" + inputs.BuildingId + "] Step 2: rewrite mesh material slots ===");
             PatchMeshMaterialSlots(inputs, stagingItemsDir, result);
 
-            // ---- Step 3: extract Vanilla MIs ---------------------------
-            // Each slot may pick a different Vanilla MI as parent. We
-            // cache by VanillaMaterialParentPath so distinct picks each
-            // run retoc once; slots that share a pick reuse the extract.
             LogLine("=== [" + inputs.BuildingId + "] Step 3: extract Vanilla MIs ===");
             var vanillaMiCache = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var slot in inputs.MeshSlots)
@@ -127,7 +68,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 vanillaMiCache[slot.VanillaMaterialParentPath] = legacyMiPath;
             }
 
-            // ---- Step 4: clone + patch per-slot MIs --------------------
             LogLine("=== [" + inputs.BuildingId + "] Step 4: clone + patch per-slot MIs ===");
             foreach (var slot in inputs.MeshSlots)
             {
@@ -139,31 +79,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 ClonePatchSlot(inputs, slot, vanillaMiCache[slot.VanillaMaterialParentPath], stagingItemsDir, result);
             }
 
-            // ---- Step 5: extract Vanilla DA ----------------------------
             LogLine("=== [" + inputs.BuildingId + "] Step 5: extract Vanilla DA ===");
             var legacyDaPath = ExtractVanillaAsset(template.VanillaDaStem, perBuildingTemp, "da");
 
-            // ---- Step 6: clone + patch DA ------------------------------
             LogLine("=== [" + inputs.BuildingId + "] Step 6: clone + patch DA ===");
             PatchDataAsset(template, inputs, legacyDaPath, stagingItemsDir, result);
 
-            // ---- Step 7: rewrite inline FText keys in the DA body ------
-            // The vanilla DA carries its in-game display name / tooltip
-            // as FText StringTableEntry records whose Key strings sit
-            // inline in the export body (NOT in the NameMap). Step 6's
-            // DataAssetPatcher only touches NameMap entries, so without
-            // this step the patched DA still resolves to the vanilla
-            // translation - the user's "My Painting" is never displayed.
-            //
-            // Patches each known FText key (template.VanillaNameKey,
-            // template.VanillaDescriptionKey if set) to a same-byte-
-            // length per-Building key. Also rewrites the FText.TableId
-            // FName from "BuildingItems" to "BuildingItems_<shortProfileId>"
-            // so each profile's pak ships a uniquely-named string-table
-            // CSV that can't be overridden by another profile's pak.
-            // The orchestrator pairs the new keys with the user-supplied
-            // display text by writing the per-profile CSV at
-            // R5/Content/Localization/Data/BuildingItems_<shortId>.csv.
             LogLine("=== [" + inputs.BuildingId + "] Step 7: rewrite inline FText keys ===");
             RewriteInlineFTextKeys(template, inputs, stagingItemsDir, result, profileId);
 
@@ -174,25 +95,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return result;
         }
 
-        // -----------------------------------------------------------------
-        // Step 7: rewrite the cloned DA's inline FText records from
-        // HistoryType=StringTableEntry to HistoryType=Base, inlining the
-        // user-supplied display text as the Base SourceString. Sidesteps
-        // the per-profile-CSV problem (Windrose's CSV loader only mounts
-        // the two vanilla CSVs by hardcoded name - any extra CSV in the
-        // pak would never become a StringTable, so every lookup against
-        // it resolves to <MISSING_STRING>). Plain-string-FText ships the
-        // text in the DA itself, no string-table indirection.
-        //
-        // profileId is unused now but kept on the signature for caller
-        // compatibility (could be useful later for namespacing the
-        // Key field on the rewritten FText.Base record for diagnostics).
-        // -----------------------------------------------------------------
         void RewriteInlineFTextKeys(BuildingTemplate template, BuildingInputs inputs,
                                     string stagingItemsDir, BuildingPatchResult result,
                                     string profileId)
         {
-            _ = profileId; // currently unused, see method comment
+            _ = profileId;
 
             if (string.IsNullOrWhiteSpace(template.VanillaNameKey)
                 && string.IsNullOrWhiteSpace(template.VanillaDescriptionKey))
@@ -211,10 +118,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 return;
             }
 
-            // Build the vanilla-key -> user-display-text map. Empty values
-            // are intentional - an empty Description shows as an empty
-            // tooltip line (not <MISSING_STRING>) because the FText.Base
-            // record has an explicit SourceString="".
+            // Empty values are intentional: an empty SourceString shows a blank tooltip line, not <MISSING_STRING>.
             var displayMap = new Dictionary<string, string>(StringComparer.Ordinal);
             if (!string.IsNullOrWhiteSpace(template.VanillaNameKey))
             {
@@ -234,11 +138,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var rewriter = new FTextKeyRewriter { Log = LogLine };
             var pr = rewriter.Patch(outDaFile, UsmapPath, displayMap);
 
-            // Surface dead-letter keys (vanilla bytes not present in body)
-            // as warnings. Means the template declared an FText key the
-            // extracted DA doesn't actually carry - in-game text stays
-            // vanilla (= cloned-template's stale string-table lookup, may
-            // render as <MISSING_STRING> if vanilla also lacks the row).
             if (pr.Missed != null && pr.Missed.Count > 0)
             {
                 foreach (var m in pr.Missed)
@@ -252,11 +151,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // -----------------------------------------------------------------
-        // Step 1: copy user-cooked files into staging, skipping the known
-        // crash-trigger user-cooked materials/MIs that the GUI will replace
-        // with Vanilla-MI clones (Step 4).
-        // -----------------------------------------------------------------
         void StageCookedAssets(BuildingInputs inputs, string stagingItemsDir, BuildingPatchResult result)
         {
             if (!Directory.Exists(inputs.CookedFolderPath))
@@ -264,11 +158,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     "Cooked folder not found: " + inputs.CookedFolderPath
                     + " - cook the user assets in the UE editor first.");
 
-            // Greedy-match by asset-prefix (Punkt 7 of the planning doc).
-            // Skip-set: every user-cooked MI the mesh references (each
-            // slot's UserMaterialStem). Those crash shipping per the
-            // spike bisect, the patcher replaces them with Vanilla-MI
-            // clones in Step 4.
+            // Skip user-cooked MIs the mesh references: they crash shipping and get replaced by Vanilla-MI clones in Step 4.
             var skipStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (inputs.MeshSlots != null)
             {
@@ -279,13 +169,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
-            // Allowlist: user-referenced asset stems (mesh, icon, every
-            // texture param). These get staged even if they don't match
-            // the AssetPrefix filter - e.g. shared default-VT textures
-            // (see DefaultTextureProvider.Stems) the user picks from the
-            // resource picker without an explicit prefix. Without this,
-            // the cloned MI's NameMap rewrites point at unstaged files
-            // and the material renders missing-texture / breaks the mesh.
+            // Allowlist user-referenced stems so they stage even if they don't match the AssetPrefix filter (e.g. shared default textures).
             var allowStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrWhiteSpace(inputs.MeshStem))
                 allowStems.Add(inputs.MeshStem);
@@ -304,9 +188,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
-            // Files we actually staged - used by Step 1.5 to walk them
-            // again for FolderName normalization (so the staged top-level
-            // package path matches the asset's internal self-reference).
             var stagedUserAssets = new List<string>();
 
             int copied = 0;
@@ -319,17 +200,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 var name = Path.GetFileName(f);
                 var stem = Path.GetFileNameWithoutExtension(name);
 
-                // Asset-prefix filter: match the user prefix as a NAME
-                // COMPONENT inside the stem - not via StartsWith. UE files
-                // are named with a type prefix (SM_/T_/M_/MI_/DA_/...) +
-                // user project token + suffix, e.g.:
-                //   SM_QmPainting_01  T_QmPainting_Icon  M_QmPainting_Canvas
-                // The project token "QmPainting" is the second component,
-                // so the original StartsWith check rejected every file.
-                // Boundary-rule:
-                //   - left of the match must be start-of-stem or '_'
-                //   - right of the match must be end-of-stem or '_' or '.'
-                // Empty prefix => take everything.
+                // Match the prefix as a NAME COMPONENT inside the stem (boundary '_' or start/end), not via StartsWith. Empty prefix => take everything.
                 bool prefixOk = string.IsNullOrEmpty(inputs.AssetPrefix)
                     || StemContainsPrefixAsComponent(stem, inputs.AssetPrefix);
                 bool allowed = prefixOk || allowStems.Contains(stem);
@@ -349,26 +220,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 var dst = Path.Combine(stagingItemsDir, name);
 
-                // Skip-if-exists: when multiple buildings share the same
-                // CookedFolderPath (or even just the same shared default
-                // textures, see DefaultTextureProvider.Stems), each
-                // building's stage pass would otherwise re-copy and
-                // overwrite the previous building's already-staged files.
-                // For meshes this is catastrophic: building #1 has its
-                // user-MI refs rewritten to MI_<Id1>_slot* by Step 2; if
-                // building #2 then re-copies the raw cooked mesh on top,
-                // the patch is silently lost and the in-game mesh renders
-                // unmaterialed (white). For textures it's just wasted I/O.
-                //
-                // The first building to reach a file wins; subsequent
-                // buildings see it as preexisting and skip. Combined with
-                // BuildSlotCloneStem now keying on BuildingId instead of
-                // AssetPrefix, this makes the multi-building case in a
-                // shared cooked folder behave correctly.
+                // First building to reach a file wins; re-copying a mesh would silently clobber Step 2's NameMap rewrite and render it unmaterialed.
                 if (File.Exists(dst))
                 {
                     preexisting++;
-                    result.StagedFiles.Add(name); // still counts toward this building's manifest
+                    result.StagedFiles.Add(name);
                     continue;
                 }
 
@@ -377,23 +233,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 result.StagedFiles.Add(name);
                 copied++;
 
-                // Track .uasset files for the FolderName-normalization
-                // pass; .uexp/.ubulk are siblings UAssetAPI reads from
-                // the same directory automatically.
                 if (string.Equals(Path.GetExtension(name), ".uasset", StringComparison.OrdinalIgnoreCase))
                     stagedUserAssets.Add(dst);
             }
 
-            // Both 0 means: no file matched the prefix/allowlist AND no
-            // earlier building already brought one. That's the real error
-            // state (probably a wrong cooked folder or wrong prefix);
-            // preexisting > 0 is fine because a previous building staged
-            // them already.
+            // Both 0 = nothing matched and no earlier building staged one: the real error state (preexisting > 0 is fine).
             if (copied == 0 && preexisting == 0)
             {
-                // Build a directory-listing snapshot so the user can see
-                // immediately what's actually in the folder vs what they
-                // typed as prefix.
                 var allFiles = Directory.GetFiles(inputs.CookedFolderPath);
                 var sample = new List<string>();
                 foreach (var f in allFiles)
@@ -417,17 +263,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 + (rejected > 0 ? " (" + rejected + " file(s) didn't match prefix"
                     + (rejectedSample.Count > 0 ? ", e.g. " + string.Join(", ", rejectedSample) : "") + ")" : ""));
 
-            // ---- Step 1.5: normalize FolderName + self-NameMap --------
-            // The user's UE editor cooks assets under whatever project
-            // subfolder they chose (e.g. /Game/MyStuff/QmPainting/SM_*).
-            // We stage every asset top-level under the mod's output
-            // namespace (WindrosePaths.ModItemsPackagePath) as <stem>, so
-            // the asset's internal FolderName + NameMap self-path entries
-            // disagree with the chunk path the iostore lookup uses. UE5's
-            // iostore loader silently fails to resolve the package on
-            // mismatch -> mesh + icon are invisible in-game. Fix: rewrite
-            // each staged user-cooked asset's self-references to the
-            // top-level path before retoc-to-zen sees the file.
+            // The iostore loader silently fails to resolve a package when its internal FolderName disagrees with the staged top-level path, so rewrite self-refs before retoc-to-zen.
             int normalized = 0;
             foreach (var uassetPath in stagedUserAssets)
             {
@@ -437,31 +273,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 LogLine("[OK] " + normalized + " staged file(s) self-path normalized to " + WindrosePaths.ModItemsPackagePath + "<stem>");
         }
 
-        // Rewrites the asset's FolderName + every NameMap entry that holds
-        // the old FolderName string, so the asset's internal self-reference
-        // matches the top-level staging path under the mod's output
-        // namespace (WindrosePaths.ModItemsPackagePath + <stem>). Returns
-        // true if a rewrite happened, false if the asset was already
-        // correct (no-op).
-        //
-        // Why this matters: when the user's UE project cooks an asset under
-        // some <UserFolder>/<subfolder>/<stem>, the cooked .uasset carries
-        // a matching FolderName + NameMap entry. retoc-to-zen builds the
-        // iostore chunk path from the file location on disk - which here
-        // is the mod-pak's output namespace, top-level. The
-        // loader uses the chunk path to find the package, but the package
-        // header's FolderName drives the engine's name-resolution checks.
-        // Mismatch silently fails the load. We normalize both to the same
-        // top-level virtual path.
         bool NormalizeStagedUserAssetSelfPath(string stagedUassetPath, BuildingPatchResult result)
         {
             bool changed = NormalizeAssetSelfPath(stagedUassetPath, UsmapPath, LogLine, out var error);
             if (!changed && error != null)
             {
-                // Not every staged file is a parseable Zen package - retoc
-                // sometimes emits sidecar files (e.g. .uptnl) that look like
-                // .uasset but aren't. Surface as a warning so a single weird
-                // file doesn't fail the whole build silently.
+                // Not every staged file is a parseable Zen package (retoc emits sidecars); surface as a warning instead of failing the build.
                 result.Warnings.Add(
                     "FolderName normalize failed for " + Path.GetFileName(stagedUassetPath)
                     + ": " + error
@@ -470,28 +287,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return changed;
         }
 
-        // Static counterpart used by DefaultTextureProvider (which doesn't
-        // have an active BuildingPatcher instance during the pre-loop stage
-        // pass). Rewrites the asset's FolderName + every NameMap entry that
-        // holds the old FolderName so the asset's internal self-reference
-        // matches the top-level staging path under the mod's output
-        // namespace (WindrosePaths.ModItemsPackagePath + <stem>).
-        //
-        // Returns true if a rewrite happened, false otherwise. When false,
-        // `error` is null for "no-op already correct" and a short type+message
-        // string when the underlying read/write threw. Caller decides whether
-        // to escalate the error (build pipeline records it as a warning).
-        //
-        // Why this matters for the shipped default textures: they were cooked
-        // in the editor under /Content/Quartermaster/<stem>, so their internal
-        // FolderName is /Game/Quartermaster/<stem>. We stage them under the
-        // mod's output namespace to keep all building assets under one
-        // virtual folder; without this rewrite the iostore
-        // loader silently fails to resolve the package (chunk path vs
-        // FolderName mismatch) and the MI's texture lookup falls back to
-        // the vanilla parent's texture - which is exactly the bug the user
-        // reported when picking any of the shipped default textures
-        // (see DefaultTextureProvider.Stems).
+        // Static counterpart for DefaultTextureProvider (no live BuildingPatcher instance). On false, `error` is null for no-op-already-correct, else a type+message string.
         public static bool NormalizeAssetSelfPath(string stagedUassetPath, string usmapPath, Action<string> log, out string error)
         {
             error = null;
@@ -507,12 +303,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 if (string.IsNullOrEmpty(currentFolderName)
                     || string.Equals(currentFolderName, targetFolderName, StringComparison.Ordinal))
                 {
-                    return false; // already correct, no rewrite needed
+                    return false;
                 }
 
-                // Rename the NameMap entry holding the old FolderName so any
-                // soft-object lookup of this asset's self-path resolves to the
-                // staged top-level path.
                 var names = asset.GetNameMapIndexList();
                 int renamedSelfEntries = 0;
                 for (int i = 0; i < names.Count; i++)
@@ -542,12 +335,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // Returns true if `prefix` appears as a name component in `stem`:
-        // i.e. surrounded by '_' (or start/end of stem). Case-insensitive.
-        // Matches "QmPainting" against "SM_QmPainting_01", "T_QmPainting",
-        // "DA_BI_QmPainting_01", "QmPainting_01", "QmPainting"; rejects
-        // "SM_QmPaintingTest" (no right boundary) and "SomethingQmPainting"
-        // (no left boundary).
+        // True if `prefix` appears as a name component in `stem` (bounded by '_' or start/end). Case-insensitive.
         static bool StemContainsPrefixAsComponent(string stem, string prefix)
         {
             if (string.IsNullOrEmpty(stem) || string.IsNullOrEmpty(prefix)) return false;
@@ -565,13 +353,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return false;
         }
 
-        // -----------------------------------------------------------------
-        // Step 2: in-place patch the user-cooked mesh's NameMap to swap its
-        // per-slot user-MI refs for the cloned MI stems that Step 4 will
-        // generate. Slot-by-slot lookup comes from inputs.MeshSlots
-        // (which originates from CookedFolderInspector reading the mesh's
-        // StaticMaterials array).
-        // -----------------------------------------------------------------
         void PatchMeshMaterialSlots(BuildingInputs inputs,
                                     string stagingItemsDir, BuildingPatchResult result)
         {
@@ -582,10 +363,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     "Mesh not found in staging: " + meshInStaging
                     + " - expected the user-cooked SM_<prefix>.uasset at MeshStem='" + inputs.MeshStem + "'.");
 
-            // Build replacements per slot: every user-cooked slot's
-            // UserMaterialStem -> CloneStem. Slots without a UserMaterialStem
-            // (rare: mesh has empty slot) are skipped silently here; they
-            // still get a clone but the mesh won't reference it.
             var meshReplacements = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var slot in inputs.MeshSlots)
             {
@@ -597,15 +374,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     meshReplacements[slot.UserMaterialPath] = clonePath;
             }
 
-            // Possible (and legal): the user's mesh carries no user-cooked MI
-            // refs at all. Examples: every slot points directly at a Vanilla
-            // material (e.g. WorldGridMaterial), or every slot has an empty
-            // MaterialInterface entry. In that case there's nothing to swap
-            // in the mesh's NameMap - the per-slot MI clones still get
-            // generated by Step 4 but no mesh-side rewrite is required.
-            // Skip Step 2 instead of throwing; DataAssetPatcher rejects an
-            // empty replacements dict with "At least one replacement is
-            // required" which would crash the whole build for this building.
+            // Legal: mesh carries no user-cooked MI refs. Skip rather than throw (DataAssetPatcher rejects an empty replacements dict).
             if (meshReplacements.Count == 0)
             {
                 LogLine("  (mesh has no user-cooked MI slots to rewrite - skipping NameMap pass)");
@@ -615,10 +384,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var meshPatcher = new DataAssetPatcher { Log = LogLine };
             var meshPr = meshPatcher.Patch(
                 inputAssetPath:  meshInStaging,
-                outputAssetPath: meshInStaging, // in-place
+                outputAssetPath: meshInStaging,
                 usmapPath:       UsmapPath,
                 replacements:    meshReplacements,
-                newFolderName:   null, // mesh keeps its own FolderName
+                newFolderName:   null,
                 requireAllHits:  false);
 
             LogLine("[OK] Mesh patched: " + meshPr.NameMapEntriesRenamed
@@ -633,11 +402,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // -----------------------------------------------------------------
-        // Step 3: retoc to-legacy --filter <stem> to extract a Vanilla
-        // asset into <perBuildingTemp>/<subDirName>/. Returns the absolute
-        // path to the extracted .uasset.
-        // -----------------------------------------------------------------
+        // retoc to-legacy --filter <stem>. Returns the absolute path to the extracted .uasset.
         string ExtractVanillaAsset(string assetStem, string perBuildingTemp, string subDirName)
         {
             var outDir = Path.Combine(perBuildingTemp, "legacy-" + subDirName);
@@ -666,17 +431,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return found[0];
         }
 
-        // -----------------------------------------------------------------
-        // Step 4 (Etappe G mesh-driven): clone the user-picked Vanilla MI
-        // under the slot's clone path. Rewrite NameMap so:
-        //   - self-name+path point at the clone
-        //   - each texture param the user overrode points at the user's
-        //     texture stem (under the mod's output namespace)
-        // Then patch Scalar/Vector parameter values via UAssetAPI for
-        // any params the user overrode. Texture stems get rewritten via
-        // the NameMap path (DataAssetPatcher); scalars/vectors via direct
-        // UAssetAPI struct edits.
-        // -----------------------------------------------------------------
         void ClonePatchSlot(BuildingInputs inputs, MeshSlotInput slot,
                             string legacyMiPath,
                             string stagingItemsDir, BuildingPatchResult result)
@@ -686,33 +440,18 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var cloneFile = Path.Combine(stagingItemsDir, cloneStem + ".uasset");
             var vanillaStem = StemFromPath(slot.VanillaMaterialParentPath);
 
-            // We first inspect the Vanilla MI to learn its texture-param
-            // mappings (param-name -> existing texture-stem). The
-            // DataAssetPatcher rewrites textures via NameMap entries, so
-            // we need to know the OLD stem (from the Vanilla MI) to swap
-            // for the NEW stem (user's override). Without this peek the
-            // patcher wouldn't know which strings to replace.
+            // Inspect the Vanilla MI to learn the OLD texture stems so the NameMap rewrite knows which strings to swap for the user's overrides.
             var inspector = new MaterialInstanceInspector { UsmapPath = UsmapPath };
             var miData = inspector.Inspect(legacyMiPath)
                 ?? throw new InvalidOperationException(
                     "Vanilla MI '" + vanillaStem + "' didn't parse as MaterialInstanceConstant");
 
-            // Self-name + path: needed so the clone packs under the new
-            // mod-pak output-namespace location.
             var matReplacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [vanillaStem] = cloneStem,
                 [slot.VanillaMaterialParentPath] = clonePath,
             };
 
-            // Per-texture-param user overrides: look up the Vanilla
-            // texture-ref this param currently carries and rewrite to
-            // the user's texture stem. The user's texture must exist
-            // under the mod-pak's output namespace at <stem> in staging
-            // (the cooked-folder step already copied it there).
-            // Vanilla-matching overrides are skipped (no-op writes plus
-            // a harmful path redirect to a non-existent vanilla stem
-            // under the mod namespace).
             int textureSkippedVanilla = 0;
             if (slot.TextureParams != null)
             {
@@ -729,7 +468,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     }
                     if (string.Equals(existing.TextureStem, kv.Value, StringComparison.Ordinal))
                     {
-                        // User's value equals Vanilla's stem - no-op.
+                        // No-op: user value equals Vanilla. Writing it would redirect to a non-existent vanilla stem under the mod namespace.
                         textureSkippedVanilla++;
                         continue;
                     }
@@ -770,10 +509,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     + string.Join(", ", pr.MissedReplacements));
             }
 
-            // Scalar + Vector overrides via UAssetAPI struct edits.
-            // Vanilla-matching overrides are skipped (functional no-op +
-            // clutter in the patch). The vanilla defaults are read from
-            // the inspected miData above.
             int scalarOverrides = slot.ScalarParams?.Count ?? 0;
             int vectorOverrides = slot.VectorParams?.Count ?? 0;
             if (scalarOverrides == 0 && vectorOverrides == 0) return;
@@ -841,9 +576,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // Find a texture-param entry by name in the inspected MI.
-        // Returns null if not present (param was inherited from parent
-        // master material rather than overridden in the MI itself).
+        // Returns null if the param was inherited from the parent master material rather than overridden in the MI itself.
         static MITextureParam FindTextureParam(MaterialInstanceData mi, string name)
         {
             if (mi?.Textures == null) return null;
@@ -853,10 +586,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return null;
         }
 
-        // Vanilla-default lookup for scalar/vector params - used to skip
-        // overrides whose value exactly matches the Vanilla parent's
-        // default (writing vanilla as override is a functional no-op
-        // plus clutter in the patch).
         static MIScalarParam FindScalarParam(MaterialInstanceData mi, string name)
         {
             if (mi?.Scalars == null) return null;
@@ -875,7 +604,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return null;
         }
 
-        // Strip "/Game/.../" -> just the trailing stem.
         static string StemFromPath(string path)
         {
             if (string.IsNullOrEmpty(path)) return path;
@@ -883,11 +611,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return last < 0 ? path : path.Substring(last + 1);
         }
 
-        // -----------------------------------------------------------------
-        // Step 6: clone the Vanilla DA under the Building's output DA stem,
-        // rewriting NameMap entries so mesh / icon / self-refs and the
-        // localization key all point at our mod assets.
-        // -----------------------------------------------------------------
         void PatchDataAsset(BuildingTemplate template, BuildingInputs inputs,
                             string legacyDaPath, string stagingItemsDir, BuildingPatchResult result)
         {
@@ -895,30 +618,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             var outDaPath = WindrosePaths.ModItemsPackagePath + outDaStem;
             var outDaFile = Path.Combine(stagingItemsDir, outDaStem + ".uasset");
 
-            // Output mesh / icon stems (the ones the user-cooked assets
-            // actually carry). Note: per the spike convention these don't
-            // necessarily share inputs.BuildingId - the icon is typically
-            // T_<AssetPrefix>_Icon, the mesh SM_<AssetPrefix>_<n>.
             var outMeshStem = inputs.MeshStem;
             var outMeshPath = WindrosePaths.ModItemsPackagePath + outMeshStem;
             var outIconStem = inputs.IconStem;
             var outIconPath = WindrosePaths.ModItemsPackagePath + outIconStem;
 
-            // Etappe H2: per-building recipe clone target. The vanilla
-            // building DA's NameMap references the recipe DA both by full
-            // package path AND by bare stem - both entries must move to
-            // point at our cloned recipe under the same vanilla folder
-            // structure (UE resolves them relative to that path).
-            // BuildingId already carries the "QmBldg_" prefix - don't
-            // double-prefix to "DA_RD_QmQmBldg_*".
+            // BuildingId already carries the "QmBldg_" prefix - don't double-prefix.
             var outRecipeStem = "DA_RD_" + inputs.BuildingId;
             var outRecipePath = "/R5BusinessRules/Recipes/Building/Items/Decorations/" + outRecipeStem;
 
-            // NameMap-rewrite covers asset path / stem refs only - the
-            // vanilla FText *keys* (template.VanillaNameKey /
-            // VanillaDescriptionKey) live inline in the DA's RawExport
-            // body and are NOT in the NameMap, so they're handled by
-            // Step 7's FTextKeyRewriter instead.
+            // FText keys live inline in the DA body (not the NameMap); they're handled by Step 7's FTextKeyRewriter.
             var daReplacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [template.VanillaMeshStem] = outMeshStem,
@@ -931,10 +640,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 [template.VanillaDaPath] = outDaPath,
             };
 
-            // Add recipe rewrites only when the template carries the
-            // linkage. Defensive: keeps the patch behaviour identical
-            // for any future template that has no recipe (free-build
-            // brushes, decoratives without RecipeCost, ...).
             if (!string.IsNullOrEmpty(template.VanillaRecipeStem)
                 && !string.IsNullOrEmpty(template.VanillaRecipePackagePath))
             {
@@ -942,14 +647,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 daReplacements[template.VanillaRecipePackagePath] = outRecipePath;
             }
 
-            // Etappe J: merge orchestrator-supplied extra NameMap rewrites
-            // (currently used for the FlamePreset ItemClass redirection -
-            // vanilla BP -> cloned QmFlaming BP). Done here so the single
-            // DataAssetPatcher run covers everything; no second open/write
-            // pass on the cloned DA needed. Later entries win on collision
-            // (the caller is responsible for not overlapping with built-in
-            // mesh/icon/da/recipe rewrites - in practice the BP refs live
-            // in a disjoint key space so this is safe).
+            // Later entries win on collision; the caller must not overlap with the built-in rewrites above.
             if (inputs.ExtraDaNameMapRewrites != null)
             {
                 foreach (var kv in inputs.ExtraDaNameMapRewrites)
@@ -976,9 +674,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             result.OutputDaStem = outDaStem;
             result.OutputDaPath = outDaPath;
 
-            // Surface the recipe-clone identity so the orchestrator's
-            // RecipePatcher step (Etappe H2) knows what stem to emit
-            // and matches the NameMap rewrites we just committed.
             if (!string.IsNullOrEmpty(template.VanillaRecipeStem))
             {
                 result.OutputRecipeStem = outRecipeStem;
@@ -993,36 +688,13 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // -----------------------------------------------------------------
-        // Slot clone stem/path naming helper (Etappe G mesh-driven).
-        //
-        // Old (template-driven): "MI_<AssetPrefix>_<SlotName>" with the
-        // template's hardcoded SlotName ("Canvas"/"Frame"). The mesh
-        // had to carry "M_<AssetPrefix>_<SlotName>" so the rewrite
-        // could find it.
-        //
-        // Etappe G v1 (mesh-driven, AssetPrefix-keyed): "MI_<AssetPrefix>_slot<Index>".
-        // Problem: two buildings sharing the same AssetPrefix (because the
-        // user cooked them under one project token, e.g. "QmWieselburger"
-        // _01 and _02) produced colliding MI clone paths - second build
-        // overwrote first build's MI in-place.
-        //
-        // Etappe G v2 (BuildingId-keyed): "MI_<BuildingId>_slot<Index>".
-        // BuildingId is a per-building GUID-derived stem (QmBldg_xxxxxxxx)
-        // so the clone path is guaranteed unique even when AssetPrefix
-        // collides. Consistent with the DA naming (DA_BI_<BuildingId>).
-        // -----------------------------------------------------------------
+        // Keyed on BuildingId (not AssetPrefix) so two buildings sharing one prefix don't produce colliding MI clone paths.
         static string BuildSlotCloneStem(BuildingInputs inputs, MeshSlotInput slot)
             => "MI_" + inputs.BuildingId + "_slot" + slot.Index;
 
         static string BuildSlotClonePath(BuildingInputs inputs, MeshSlotInput slot)
             => WindrosePaths.ModItemsPackagePath + BuildSlotCloneStem(inputs, slot);
 
-        // -----------------------------------------------------------------
-        // UAssetAPI helper: locate a ScalarParameterValues entry by
-        // ParameterInfo.Name and overwrite its embedded float value.
-        // Mirrors PatchMiVectorParameter (same walk, simpler value).
-        // -----------------------------------------------------------------
         static int PatchMiScalarParameter(UAsset asset, string paramName, float value)
         {
             int hits = 0;
@@ -1069,11 +741,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return hits;
         }
 
-        // -----------------------------------------------------------------
-        // UAssetAPI helper: locate a VectorParameterValues entry by
-        // ParameterInfo.Name and overwrite its embedded LinearColor.
-        // Extracted from Program.cs:PatchMiVectorParameter unchanged.
-        // -----------------------------------------------------------------
         static int PatchMiVectorParameter(UAsset asset, string paramName,
             float r, float g, float b, float a)
         {
@@ -1127,9 +794,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return hits;
         }
 
-        // -----------------------------------------------------------------
-        // Validation: catch caller errors before we touch disk.
-        // -----------------------------------------------------------------
         void EnsureToolingReady()
         {
             if (string.IsNullOrEmpty(RetocExe) || !File.Exists(RetocExe))
@@ -1157,9 +821,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (inputs.MeshSlots == null || inputs.MeshSlots.Count == 0)
                 throw new ArgumentException("BuildingInputs.MeshSlots is required (mesh has no material slots, or orchestrator forgot to feed inspector output)");
 
-            // Each slot needs a Vanilla parent picked. The GUI gates
-            // Save on this too but we re-validate so a hand-edited
-            // profile JSON can't crash the patcher mid-flight.
+            // Re-validate even though the GUI gates Save, so a hand-edited profile JSON can't crash the patcher mid-flight.
             for (int i = 0; i < inputs.MeshSlots.Count; i++)
             {
                 var s = inputs.MeshSlots[i];
@@ -1172,11 +834,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // -----------------------------------------------------------------
-        // Process runner. Mirrors the spike's RunProcess; routes
-        // stdout/stderr through our Log so the GUI's SSE stream can
-        // forward retoc lines verbatim.
-        // -----------------------------------------------------------------
         int RunProcess(string exe, string[] argv)
         {
             var psi = new ProcessStartInfo
@@ -1201,134 +858,69 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         void LogLine(string msg) { if (Log != null) Log(msg); }
     }
 
-    // -------------------------------------------------------------------
-    // Per-building input bundle (Etappe G mesh-driven).
-    //
-    // The orchestrator fills this from the Profile's CustomBuilding plus
-    // the mesh inspection (which yields the slot list with user-MI refs).
-    // The patcher no longer needs default-VT texture names - any param
-    // the user doesn't override stays at its Vanilla value.
-    // -------------------------------------------------------------------
     public sealed class BuildingInputs
     {
-        // Unique id for this Building. Drives the output DA stem
-        // (DA_BI_<BuildingId>) and the localization key (Decoration_<BuildingId>_Name).
+        // Drives the output DA stem (DA_BI_<BuildingId>) and the localization key.
         public string BuildingId;
 
-        // Asset-prefix the user picked. Used to filter the cooked folder
-        // (only files matching as a name component get staged) and to
-        // drive the clone stem (MI_<AssetPrefix>_slot<Index>).
         public string AssetPrefix;
 
-        // Absolute path to the user's cooked-output folder.
         public string CookedFolderPath;
 
-        // User-cooked mesh stem (e.g. "SM_QmPainting_01").
         public string MeshStem;
 
-        // User-cooked icon stem (e.g. "T_QmPainting_Icon").
         public string IconStem;
 
-        // Human-facing strings - used by the orchestrator to synthesize
-        // the localization CSV (NOT consumed by the patcher itself).
+        // Consumed by the orchestrator to synthesize the localization CSV, not by the patcher.
         public string DisplayName;
         public string Description;
 
-        // Mesh-derived slot list with per-slot user-config. Length
-        // matches the user-cooked mesh's StaticMaterials array. The
-        // orchestrator builds this by feeding the cooked folder
-        // through CookedFolderInspector + merging the Profile's
-        // CustomBuildingSlot overrides on top.
         public List<MeshSlotInput> MeshSlots;
 
-        // Etappe H2: user-edited build cost. null = use the template's
-        // vanilla recipe defaults (pass-through). Empty list = explicit
-        // "free build" override (engine accepts a recipe with empty
-        // RecipeCost). Items beyond the catalog are non-fatal warnings.
+        // null = use the template's vanilla recipe defaults. Empty list = explicit free-build override.
         public List<(string ItemPath, int Count)> RecipeCost;
 
-        // Etappe J: extra DA NameMap rewrites that the orchestrator wants
-        // merged into the standard daReplacements dictionary BEFORE the
-        // DataAssetPatcher runs. Used to retarget the cloned DA's ItemClass
-        // FSoftClassPath entries from a Vanilla BP class to our mod-owned
-        // cloned BP. Null = no extras (default for buildings without a
-        // flame preset).
-        //
-        // Why this is a generic "extra rewrites" bag rather than a
-        // ComponentPreset-specific field: the orchestrator computes the
-        // vanilla-BP -> cloned-BP key pairs from the ComponentPresetCatalog
-        // already, and BuildingPatcher.Patch's only concern is "swap these
-        // FName strings during the same NameMap pass." A generic bag keeps
-        // the patcher decoupled from preset-specific knowledge and lets
-        // future features (e.g. multi-BP redirects) plug in the same way.
+        // Extra DA NameMap rewrites merged before DataAssetPatcher runs (e.g. retargeting ItemClass FSoftClassPath). Null = none.
         public Dictionary<string, string> ExtraDaNameMapRewrites;
     }
 
-    // Per-slot user input (Etappe G mesh-driven).
-    //
-    // Each entry maps one mesh material slot to:
-    //   - the Vanilla MI the user picked as parent (required)
-    //   - the user-MI stem the mesh originally referenced (so the
-    //     mesh NameMap rewrite knows what string to swap)
-    //   - per-param overrides for the picked Vanilla MI
     public sealed class MeshSlotInput
     {
-        public int    Index;       // mesh slot index (0..N-1)
-        public string SlotName;    // mesh slot name (e.g. "lambert1")
+        public int    Index;
+        public string SlotName;
 
-        // User-MI stem the cooked mesh references in this slot
-        // (e.g. "MI_QmPainting_Canvas"). May be null if the cooked mesh
-        // has no MI bound to this slot - in that case the patcher logs
-        // a warning, the slot still gets a clone but the mesh's
-        // material ref won't be rewritten.
+        // User-MI stem the cooked mesh references in this slot. May be null if no MI is bound (then no mesh-side rewrite, but the slot still gets a clone).
         public string UserMaterialStem;
         public string UserMaterialPath;
 
-        // User-picked Vanilla MI to clone for this slot
-        // (e.g. "/Game/Environment/.../MI_Paintings_01"). REQUIRED.
         public string VanillaMaterialParentPath;
 
-        // Param overrides. Keys are MI param names; missing entries
-        // leave the cloned MI's value unchanged from Vanilla.
+        // Missing entries leave the cloned MI's value unchanged from Vanilla.
         public Dictionary<string, float>    ScalarParams;
         public Dictionary<string, float[]>  VectorParams;
         public Dictionary<string, string>   TextureParams;
     }
 
-    // Per-building result, returned to the orchestrator so it can fold
-    // counts/warnings into the build report.
     public sealed class BuildingPatchResult
     {
         public string BuildingId;
         public string TemplateId;
 
-        // Output asset identity (post-clone). The orchestrator uses these
-        // when writing qm_items_<profile>.json so the DLL knows what to inject.
         public string OutputDaStem;
         public string OutputDaPath;
 
-        // User-supplied display strings echoed back from BuildingInputs.
-        // Stored verbatim - empty / null means the field was not filled
-        // and the in-game FText.Base record was written with SourceString=""
-        // (= blank tooltip line, not <MISSING_STRING>).
+        // Empty/null means the field was not filled and the FText.Base record was written with SourceString="" (blank tooltip line, not <MISSING_STRING>).
         public string DisplayName;
         public string Description;
 
-        // Filenames staged into stagingItemsDir (for sanity-check + log).
         public List<string> StagedFiles;
 
-        // Non-fatal warnings (missed replacement keys, unmatched vector
-        // params, etc.). Surfaced into the SSE stream so the user knows
-        // their template + cook may have drifted.
         public List<string> Warnings;
 
-        // Etappe H2: recipe artefacts. Empty / null when the building's
-        // template doesn't carry a vanilla recipe linkage (defensive -
-        // every shipped template has one today).
-        public string OutputRecipeStem;        // "DA_RD_Qm<BuildingId>"
-        public string OutputRecipeJsonPath;    // absolute on-disk path written
-        public string NewRecipeTag;            // "RecipeData.QM.<BuildingId>"
-        public int    RecipeCostRows;          // rows actually written (vanilla or user)
-        public bool   RecipeCostOverridden;    // user-list applied vs vanilla pass-through
+        public string OutputRecipeStem;
+        public string OutputRecipeJsonPath;
+        public string NewRecipeTag;
+        public int    RecipeCostRows;
+        public bool   RecipeCostOverridden;
     }
 }

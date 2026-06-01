@@ -7,8 +7,6 @@ using System.Text.Json.Serialization;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Disk persistence for Profiles. All profiles live in Profiles/<id>.json
-    // (gitignored, freely editable from the GUI).
     public sealed class ProfileStore
     {
         public static readonly JsonSerializerOptions JsonOpts = BuildJsonOptions();
@@ -47,7 +45,6 @@ namespace Windrose.Quartermaster.Core
             return LoadAll().FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
         }
 
-        // Persists a profile to Profiles/<id>.json.
         public void Save(Profile profile)
         {
             if (profile == null) throw new ArgumentNullException("profile");
@@ -63,8 +60,6 @@ namespace Windrose.Quartermaster.Core
             File.WriteAllText(path, json);
         }
 
-        // Removes a profile. Returns true if a file was deleted, false if the
-        // id wasn't found.
         public bool Delete(string id)
         {
             if (string.IsNullOrEmpty(id)) return false;
@@ -87,8 +82,6 @@ namespace Windrose.Quartermaster.Core
                 }
                 catch (Exception)
                 {
-                    // Bad JSON: skip. Caller can list files separately if it
-                    // wants to surface "broken profile" warnings in the GUI.
                     continue;
                 }
                 if (profile == null || string.IsNullOrEmpty(profile.Id)) continue;

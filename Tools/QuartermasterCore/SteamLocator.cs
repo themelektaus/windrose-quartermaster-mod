@@ -7,29 +7,15 @@ using Microsoft.Win32;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Resolves the Steam install path and the Windrose vanilla pak by
-    // walking libraryfolders.vdf - the same logic Library/Common.ps1
-    // used to do via Get-SteamInstallPath / Get-SteamLibraryPaths /
-    // Get-WindroseVanillaPak.
-    //
-    // Supports Windows (via registry) and Linux/Steam Deck (via well-known paths).
-    // The .NET CA1416 (Platform compatibility) analyzer is suppressed at the
-    // call sites because we gate every registry call behind an OS check.
     public static class SteamLocator
     {
-        // Pak filenames we accept, in priority order. Steam ships the
-        // Windows variant; dedicated server installs ship the
-        // WindowsServer variant. Either one contains the encrypted
-        // InventoryItems JSONs.
+        // Priority order: client install ships the Windows variant, dedicated server the WindowsServer variant.
         public static readonly string[] VanillaPakNames =
         {
             "pakchunk0-Windows.pak",
             "pakchunk0-WindowsServer.pak",
         };
 
-        // Returns the Steam install directory (e.g. "C:\Program Files (x86)\Steam"
-        // on Windows, or "~/.local/share/Steam" on Linux/Steam Deck),
-        // or null if Steam isn't installed / platform unsupported.
         public static string FindSteamInstallPath()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -41,19 +27,15 @@ namespace Windrose.Quartermaster.Core
 
         static string ReadSteamLinux()
         {
-            // Steam Deck / Linux Desktop: try the common install locations in order.
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var steamDot = Path.Combine(home, ".steam");
 
-            // 1. ~/.steam/steam (symlink/dir Steam writes on most distros)
             var steam = Path.Combine(steamDot, "steam");
             if (Directory.Exists(Path.Combine(steam, "steamapps"))) return steam;
 
-            // 2. Default install location
             var standard = Path.Combine(home, ".local", "share", "Steam");
             if (Directory.Exists(Path.Combine(standard, "steamapps"))) return standard;
 
-            // 3. Flatpak install
             var flatpak = Path.Combine(home, ".var", "app",
                 "com.valvesoftware.Steam", ".local", "share", "Steam");
             if (Directory.Exists(Path.Combine(flatpak, "steamapps"))) return flatpak;
@@ -64,7 +46,6 @@ namespace Windrose.Quartermaster.Core
         [SupportedOSPlatform("windows")]
         static string ReadSteamRegistry()
         {
-            // Per-user (HKCU) is what Steam writes when launched normally.
             using (var hkcu = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
             {
                 if (hkcu != null)
@@ -73,7 +54,7 @@ namespace Windrose.Quartermaster.Core
                     if (!string.IsNullOrEmpty(p)) return p.Replace('/', '\\');
                 }
             }
-            // Machine-wide 32-bit hive that the Steam installer creates.
+            // Registry32: Steam writes the machine-wide key under WOW6432Node.
             using (var hklm = RegistryKey
                 .OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32)
                 .OpenSubKey(@"SOFTWARE\Valve\Steam"))
@@ -87,8 +68,6 @@ namespace Windrose.Quartermaster.Core
             return null;
         }
 
-        // Parses Steam's libraryfolders.vdf and returns every library root.
-        // We only care about the "path" entries; full VDF parsing isn't needed.
         public static List<string> FindLibraryPaths(string steamPath)
         {
             var libs = new List<string>();
@@ -101,9 +80,8 @@ namespace Windrose.Quartermaster.Core
             foreach (var rawLine in File.ReadAllLines(vdf))
             {
                 var line = rawLine.Trim();
-                // matches:    "path"    "C:\\SteamLibrary"
                 if (!line.StartsWith("\"path\"", StringComparison.Ordinal)) continue;
-                var idx = line.IndexOf('"', 6); // first quote after "path"
+                var idx = line.IndexOf('"', 6);
                 if (idx < 0) continue;
                 var end = line.IndexOf('"', idx + 1);
                 if (end < 0) continue;
@@ -113,20 +91,9 @@ namespace Windrose.Quartermaster.Core
             return libs;
         }
 
-        // Returns the absolute path to the Windrose vanilla pak by
-        // probing every Steam library for
-        //   <library>\steamapps\common\Windrose\R5\Content\Paks\<paknames>.
-        // Honors GameInstallOverride first so users without Steam (Epic,
-        // GOG, dedicated server, portable install) can point Quartermaster
-        // at any folder layout that mirrors the Steam tree. Throws a
-        // descriptive error when nothing is found so callers can surface
-        // it to the user.
         public static string FindVanillaPak()
         {
-            // 1. User-configured override wins. GameInstallOverride only
-            //    surfaces when the configured gameRoot actually resolves
-            //    to an on-disk pak, so a stale / typoed override falls
-            //    through to Steam below without throwing.
+            // A stale/typoed override resolves to null and falls through to Steam rather than throwing.
             var fromOverride = GameInstallOverride.TryResolveVanillaPak();
             if (!string.IsNullOrEmpty(fromOverride)) return fromOverride;
 
@@ -170,19 +137,11 @@ namespace Windrose.Quartermaster.Core
             throw new InvalidOperationException(failMsg);
         }
 
-        // Convenience: returns the Paks/ directory that contains the vanilla
-        // pak (CUE4Parse needs the directory, not the .pak file itself).
         public static string FindVanillaPaksDir()
         {
             return Path.GetDirectoryName(FindVanillaPak());
         }
 
-        // Returns the absolute path to Windrose's user-mods folder
-        //   <SteamLib>\steamapps\common\Windrose\R5\Content\Paks\~mods
-        // which is where the engine picks up loose .pak files at startup.
-        // The folder is created if it does not exist (fresh installs ship
-        // without it). Throws via FindVanillaPak when the game itself can't
-        // be located so callers can surface a single uniform error.
         public static string FindModsDir()
         {
             var paks = FindVanillaPaksDir();
@@ -191,20 +150,9 @@ namespace Windrose.Quartermaster.Core
             return mods;
         }
 
-        // Returns the absolute path to Windrose's Binaries/Win64 folder
-        //   <SteamLib>\steamapps\common\Windrose\R5\Binaries\Win64
-        // which is where the game executable lives and where the dxgi.dll
-        // proxy + qm_items_<profile>.json files have to land for the inject pipeline to
-        // load. Derived from FindVanillaPak (.../Content/Paks/<pak>) by
-        // walking up to the R5 root and back down to Binaries/Win64.
-        // Throws via FindVanillaPak when the game can't be located so
-        // callers see a single uniform "no install" error shape.
         public static string FindBinariesWin64Dir()
         {
             var paksDir = FindVanillaPaksDir();
-            // paksDir = <...>/R5/Content/Paks; go up 2 to <...>/R5, then
-            // into Binaries/Win64. The folder must exist already (it ships
-            // with the game). Missing folder = broken install.
             var r5Root = Path.GetDirectoryName(Path.GetDirectoryName(paksDir));
             if (string.IsNullOrEmpty(r5Root))
             {

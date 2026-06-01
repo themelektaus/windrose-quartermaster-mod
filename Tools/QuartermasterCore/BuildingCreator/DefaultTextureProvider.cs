@@ -4,38 +4,10 @@ using System.IO;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Shipped VT default textures the Building Creator's MI clones can
-    // reference for the Albedo / Normal / MTRM params (and any other
-    // texture slot the user wants to leave at "shared default" instead
-    // of picking a custom).
-    //
-    // Lives at <ModRoot>/Tools/Templates/DefaultTextures/ as plain
-    // .uasset + .uexp + .ubulk triplets cooked once from a UE5.6
-    // editor project (4x4 RGBA pages, VT-enabled). The build pipeline
-    // copies them into the per-build staging tree once (regardless of
-    // which buildings reference them) so the cloned MIs always resolve
-    // these stems under the mod's output namespace. The frontend asks
-    // the backend for the stem list via /api/buildings/default-textures
-    // so the per-slot texture dropdowns can list them as an "always
-    // available" group on top of whatever the user-cooked folder
-    // contributes.
-    //
-    // Why ship them and not let the user cook their own:
-    //   - User would have to recreate identical 4x4 pages every project,
-    //     with the same exact compression + sRGB + VT flags - very easy
-    //     to get wrong, and a wrong default kills the material silently
-    //     (missing-texture grey).
-    //   - "Hey what should the Normal / MTRM look like for a building
-    //     I just want to be flat" is a recurring question; embedding
-    //     a sane default removes the friction entirely.
-    //   - The cooked bytes are tiny (~3 KB per texture), so shipping
-    //     three of them adds noise-level overhead to the published EXE.
+    // Shipped VT default textures the MI clones can reference instead of a user-picked custom. Staged into the per-build tree once so the clones always resolve them under the mod's output namespace.
     public static class DefaultTextureProvider
     {
-        // The canonical stem list. Order is the UI dropdown order
-        // (Albedo-ish first, then Normal, then MTRM/AO/Roughness).
-        // The frontend's "Default textures" optgroup renders them in
-        // this exact order so the user has a stable visual anchor.
+        // Order is the UI dropdown order.
         public static readonly string[] Stems = new[]
         {
             "T_White",
@@ -46,26 +18,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             "T_MTRMOne"
         };
 
-        // File-extension set per stem we copy. Mirrors what the UE5
-        // editor produced when it cooked the triplets - .uasset is
-        // the package header, .uexp the body, .ubulk the bulk-data
-        // sidecar UAssetAPI reads from the same directory automatically.
         static readonly string[] Extensions = new[] { ".uasset", ".uexp", ".ubulk" };
 
-        // Copy every default-texture triplet from the shipped Tools/
-        // folder into stagingItemsDir. Skip-if-exists so a user-cooked
-        // override (placed under their own CookedFolderPath with the
-        // same stem) wins - the per-building stage pass runs before
-        // this for the relevant cooked folders, and File.Exists below
-        // catches the prior copy. Returns the number of files actually
-        // copied; callers can fold the count into their per-build log.
-        //
-        // Missing-file behaviour is non-fatal: each missing file is
-        // reported via log so a fresh checkout that hasn't fetched
-        // the LFS/binary triplets yet doesn't silently produce a
-        // pak with no defaults staged. Buildings that reference the
-        // missing stem will surface a broken-texture in-game; the log
-        // line gives the user enough context to pull the file in.
+        // Skip-if-exists so a user-cooked override with the same stem wins. Missing files are non-fatal (logged), so a fresh checkout without the binary triplets doesn't silently ship a pak with no defaults.
         public static int StageInto(WindrosePaths paths, string stagingItemsDir, string usmapPath, Action<string> log)
         {
             if (paths == null) throw new ArgumentNullException("paths");
@@ -83,10 +38,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             int copied = 0;
             int skipped = 0;
             int missing = 0;
-            // Per-stem flag: did we just copy a fresh .uasset that needs
-            // FolderName normalization? .uexp/.ubulk siblings don't need
-            // normalization themselves but the .uasset header drives the
-            // package-resolution check, so we run the rewrite once per stem.
+            // The .uasset header drives the package-resolution check, so FolderName normalization runs once per stem.
             var freshStems = new List<string>();
             foreach (var stem in Stems)
             {
@@ -96,14 +48,9 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     var srcFile = Path.Combine(srcDir, stem + ext);
                     if (!File.Exists(srcFile))
                     {
-                        // .ubulk is sometimes absent when the source
-                        // texture has no bulk-data (small inline cooks).
-                        // The other two (.uasset, .uexp) are required;
-                        // we surface anything missing so the user knows.
                         if (string.Equals(ext, ".ubulk", StringComparison.OrdinalIgnoreCase))
                         {
-                            // Not noisy - skip silently. UAssetAPI tolerates
-                            // missing .ubulk for textures that don't use it.
+                            // .ubulk is optional - absent when the texture has no bulk-data.
                             continue;
                         }
                         if (log != null) log("  warn: default-texture file missing: " + srcFile);
@@ -114,10 +61,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                     var dstFile = Path.Combine(stagingItemsDir, stem + ext);
                     if (File.Exists(dstFile))
                     {
-                        // Pre-existing staged file wins (user-cooked
-                        // override with the same stem). Mirrors the
-                        // skip-if-exists pattern the per-building
-                        // stage pass uses for shared cooked folders.
+                        // Pre-existing staged file (user-cooked override) wins.
                         skipped++;
                         continue;
                     }
@@ -129,14 +73,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 if (stemFreshlyCopied) freshStems.Add(stem);
             }
 
-            // Normalize FolderName on the freshly staged .uasset files so
-            // their internal self-reference matches the top-level staging
-            // path (mod-pak output namespace + <stem>). The default
-            // textures were cooked under /Content/Quartermaster/, so without this
-            // pass the iostore loader silently fails to resolve them at
-            // runtime and the MI's texture lookup falls back to the
-            // vanilla parent's texture - which is exactly why the user
-            // sees the original vanilla material despite picking T_White.
+            // Without this, the iostore loader fails to resolve the texture (chunk path vs FolderName mismatch) and the MI falls back to the vanilla parent's texture.
             int normalized = 0;
             int normalizeFailures = 0;
             if (!string.IsNullOrEmpty(usmapPath) && File.Exists(usmapPath))
@@ -176,10 +113,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return copied;
         }
 
-        // Returns the list of stems for the frontend dropdown. Keeps
-        // the canonical order from the Stems array; the caller may
-        // augment with additional stems but should keep these on top
-        // so the UX is consistent.
         public static IReadOnlyList<string> GetStems() => Stems;
     }
 }

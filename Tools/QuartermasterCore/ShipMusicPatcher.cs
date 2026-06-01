@@ -9,64 +9,11 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Patches a user-supplied .wav into one of the 10 vanilla ship-music
-    // SoundWave slots. We don't ask the user to cook anything in the UE5
-    // Editor anymore - the in-tree binkaudioenc.exe (Tools/BinkAudioEnc/)
-    // turns the WAV into a Bink-Audio buffer byte-identical to what the
-    // editor's AudioFormatBink cooker produces, and a tiny pre-cooked
-    // ForceInline USoundWave template (Tools/Templates/) gives us the
-    // surrounding .uasset+.uexp wrapper. The patcher splices the new Bink
-    // bytes into a copy of the template and renames the package so the
-    // engine resolves the file under the vanilla shanty's asset path.
-    //
-    // The template was cooked once by hand from a 5-second 44.1 kHz stereo
-    // PCM WAV (References/AudioEncoder project). Its layout is fixed and
-    // mirrored in the constants below; if anyone ever recooks the
-    // template, regenerate these constants from the new uexp.
-    //
-    // Pipeline (per slot):
-    //   1. WavInfo.Read(wavPath) -> rate / channels / sampleCount / dur
-    //      (input is strict 44.1 kHz stereo 16-bit PCM so we don't need
-    //      to retouch the template's NumChannels/SampleRate fields).
-    //   2. BinkAudioEncoder.Encode(wavPath) -> binkBuf
-    //      [UEBA-header][seek-table][frames] - one contiguous buffer.
-    //   3. Build new .uexp:
-    //        propsPatched   = template[0x00..0x38] with Duration (f32@0x14)
-    //                         and TotalSamples (f32@0x18) overwritten.
-    //        newUexp        = propsPatched + binkBuf + template[len-20..]
-    //                         (the trailing 16 bytes of opaque hash/
-    //                         padding plus the 4-byte package magic
-    //                         stay verbatim - cooked Windrose paks don't
-    //                         validate this hash on load).
-    //   4. Use UAssetAPI to rename NameMap "Empty" -> slot.Stem in a
-    //      copy of the template .uasset. Write it out (UAssetAPI emits a
-    //      placeholder .uexp at the same time; we immediately overwrite
-    //      that with newUexp).
-    //   5. Patch Exports[0].SerialSize in the written .uasset so it
-    //      matches the new (larger) .uexp size. Locate the SerialSize
-    //      field by scanning the export table for the int64 value that
-    //      UAssetAPI wrote and overwriting it with the new total - this
-    //      is robust against UE-version layout drift.
-    //   6. Hand the patched triplet (.uasset+.uexp; no .ubulk for
-    //      ForceInline assets) off to the IoStore composite staging dir
-    //      under the vanilla slot's virtual path.
     public sealed class ShipMusicPatcher
     {
         public Action<string> Log;
 
-        // Template byte-layout constants. Derived from the SoundWave_BinkInline
-        // template under Tools/Templates/ (cooked in UE5.6 from a 5-second
-        // 44.1 kHz stereo PCM WAV in ForceInline mode).
-        //
-        // Layout of SoundWave_BinkInline.uexp (8618 bytes):
-        //   [0x0000 .. 0x0037] (56 B) UE5 unversioned-properties block
-        //                              0x10: SamplingRate (u32 LE) = 44100
-        //                              0x14: Duration     (f32 LE) = 5.0 s
-        //                              0x18: TotalSamples (f32 LE) = 220500
-        //   [0x0038 .. 0x2195] (8542 B) Bink Audio payload starting with
-        //                              the 'UEBA' tag (memory: 'A','B','E','U')
-        //   [0x2196 .. 0x21A9] (20 B) Trailing hash + package magic
-        public const int TemplatePropsSize = 0x38;     // 56 bytes
+        public const int TemplatePropsSize = 0x38;
         public const int TemplateUexpSize = 8618;
         public const int TemplateBinkStart = 0x38;
         public const int TemplateBinkSize = 8542;
@@ -109,10 +56,6 @@ namespace Windrose.Quartermaster.Core
                     "Template .uexp not found: " + templateUexpPath
                     + " - expected under Tools/Templates/SoundWave_BinkInline.uexp.");
 
-            // 1. Inspect the WAV. We hard-restrict to 44.1 kHz stereo
-            // 16-bit PCM in WavInfo so the template's NumChannels /
-            // SampleRate properties don't need rewriting - only the
-            // Duration and TotalSamples values change per upload.
             var wav = WavInfo.Read(userWavPath);
             LogLine("WAV info for " + slot.Stem + ": " + wav.Describe());
             if (wav.SampleRate != 44100)
@@ -126,13 +69,10 @@ namespace Windrose.Quartermaster.Core
                     + wav.Channels + "-channel input). Convert your file "
                     + "(Audacity / ffmpeg: `ffmpeg -i in.wav -ac 2 out.wav`).");
 
-            // 2. Encode WAV -> Bink. Returns the raw cooker buffer
-            //    [BinkAudioFileHeader][SeekTable][Frames].
             var encoder = new BinkAudioEncoder(encoderPath) { Log = Log };
             var binkBuf = encoder.Encode(userWavPath);
             LogLine("Bink encoded: " + binkBuf.Length + " bytes");
 
-            // 3. Build the new .uexp in memory from the template.
             var templateUexp = File.ReadAllBytes(templateUexpPath);
             if (templateUexp.Length != TemplateUexpSize)
                 throw new InvalidOperationException(
@@ -140,26 +80,20 @@ namespace Windrose.Quartermaster.Core
                     + ", expected " + TemplateUexpSize + ") - the template "
                     + "under Tools/Templates/ has been replaced and the "
                     + "patcher constants need re-deriving.");
-            if (templateUexp[TemplateBinkStart] != 0x41 // 'A'
-                || templateUexp[TemplateBinkStart + 1] != 0x42 // 'B'
-                || templateUexp[TemplateBinkStart + 2] != 0x45 // 'E'
-                || templateUexp[TemplateBinkStart + 3] != 0x55) // 'U'
+            if (templateUexp[TemplateBinkStart] != 0x41
+                || templateUexp[TemplateBinkStart + 1] != 0x42
+                || templateUexp[TemplateBinkStart + 2] != 0x45
+                || templateUexp[TemplateBinkStart + 3] != 0x55)
                 throw new InvalidOperationException(
                     "Template .uexp does not have the 'UEBA' tag at offset "
                     + "0x" + TemplateBinkStart.ToString("X") + " - constants "
                     + "are out of sync with the on-disk template.");
 
-            // Copy the props block, patch Duration + TotalSamples to the
-            // user WAV's values. NumChannels / SampleRate stay verbatim
-            // (we enforce 44.1 kHz stereo above).
             var props = new byte[TemplatePropsSize];
             Buffer.BlockCopy(templateUexp, 0, props, 0, TemplatePropsSize);
             WriteFloatLE(props, OffsetDuration, wav.DurationSeconds);
             WriteFloatLE(props, OffsetTotalSamples, (float)wav.SampleCount);
 
-            // Compose [props][bink][footer]. The 16-byte hash + 4-byte
-            // PACKAGE_FILE_TAG at the tail of the template stay verbatim;
-            // cooked Windrose paks load fine without recomputing them.
             var footer = new byte[TemplateFooterSize];
             Buffer.BlockCopy(templateUexp,
                 templateUexp.Length - TemplateFooterSize,
@@ -171,9 +105,6 @@ namespace Windrose.Quartermaster.Core
             Buffer.BlockCopy(binkBuf, 0, newUexp, p, binkBuf.Length); p += binkBuf.Length;
             Buffer.BlockCopy(footer, 0, newUexp, p, footer.Length);
 
-            // 4. Stage the destination triplet path. Convert the virtual
-            // forward-slash path into platform-native and ensure the
-            // parent dir exists.
             var destSubPath = slot.VirtualUassetPath
                 .Replace('/', Path.DirectorySeparatorChar);
             var destUassetAbs = Path.Combine(stagingRoot, destSubPath);
@@ -182,37 +113,15 @@ namespace Windrose.Quartermaster.Core
             if (!string.IsNullOrEmpty(destDir))
                 Directory.CreateDirectory(destDir);
 
-            // Copy the template .uasset to the destination, then re-open
-            // it with UAssetAPI so we can rename the package's only
-            // user-facing FName ("Empty") to the vanilla slot stem. The
-            // template carries the package path "/Game/Empty" - UAssetAPI
-            // updates both the asset name and the implicit package path
-            // when we swap the NameMap entry.
-            // Copy BOTH .uasset and .uexp into staging before opening with
-            // UAssetAPI. UAssetAPI's UAsset constructor reads the .uexp
-            // sibling immediately to populate export bodies; a missing
-            // .uexp surfaces as an opaque "ReadBytes(-N)" exception. We'll
-            // overwrite the .uexp with our patched payload (newUexp)
-            // further down once UAssetAPI is done with the asset object.
+            // UAssetAPI's constructor reads the .uexp sibling immediately, so
+            // both files must be staged before opening (else an opaque error).
             File.Copy(templateUassetPath, destUassetAbs, overwrite: true);
             File.Copy(templateUexpPath, destUexpAbs, overwrite: true);
             LogLine("Loading usmap: " + usmapPath);
             var mappings = new Usmap(usmapPath);
             LogLine("Loading template uasset: " + destUassetAbs);
-            // The template was originally cooked with UE5.7's Editor (the
-            // source-build UE we installed for the Bink encoder static lib),
-            // but retoc 0.1.5 chokes on the UE5.7 PackageFileSummary layout
-            // (custom-version container, GenerationCount entries) with
-            // "failed to fill whole buffer" during to-zen. We re-cooked the
-            // template under UE5.6 (matching the game's engine version
-            // 5.6.1) so it serializes back through retoc cleanly. All
-            // patchers across the codebase now stay on VER_UE5_6.
             var asset = new UAsset(destUassetAbs, EngineVersion.VER_UE5_6, mappings);
 
-            // Compute the /Game/-prefixed package path that should sit
-            // in FolderName + the corresponding NameMap entry, derived
-            // from the slot's virtual content path. R5/Content/Foo/Bar
-            // ? /Game/Foo/Bar; drop the .uasset suffix.
             var vanillaPackagePath = "/Game/" + slot.VirtualUassetPath
                 .Replace("R5/Content/", "", StringComparison.Ordinal)
                 .Replace(".uasset", "", StringComparison.Ordinal);
@@ -237,17 +146,10 @@ namespace Windrose.Quartermaster.Core
                     renamed++;
                 }
             }
-            // FolderName is stored separately from the NameMap in the
-            // package file summary; set it explicitly so cooked-load
-            // path resolution and asset-registry lookups (if the engine
-            // does any in shipping builds) see a consistent package
-            // path matching where we're dropping the asset on disk.
+            // FolderName lives outside the NameMap; set it so the package path
+            // matches where the asset lands on disk.
             asset.FolderName = FString.FromString(vanillaPackagePath);
 
-            // Defensive: also retarget any NormalExport.ObjectName still
-            // referring to the template stem after the name-map rename
-            // (covers entries whose FName.Number is nonzero and would
-            // otherwise resolve to "Empty_<n>").
             int retargetedExports = 0;
             for (int i = 0; i < asset.Exports.Count; i++)
             {
@@ -270,25 +172,8 @@ namespace Windrose.Quartermaster.Core
                     + "' NameMap entry to rename - did the template change?");
             }
 
-            // Patch DataResources[0].SerialSize/RawSize. The package
-            // summary's FObjectDataResource list carries explicit offsets
-            // into the export body for the audio's "bulk-data" chunk
-            // (UE5.6+ style FByteBulkData replacement). The template's
-            // resource record points at offset 56 size 8542 - meaning the
-            // 8542-byte Bink chunk that lives between the 56-byte unversioned
-            // property block and the 16-byte trailing hash inside the
-            // template's 8614-byte export body. Our new Bink chunk is much
-            // bigger (binkBuf.Length bytes), so without patching this
-            // record retoc reads only the original 8542 bytes from the
-            // bink payload and then runs off the end of the .uexp while
-            // expecting another resource at an offset further into the
-            // stream - that's what triggers "failed to fill whole buffer".
-            //
-            // FObjectDataResource is a value type, so we copy-mutate-write
-            // back via index assignment. SerialOffset (=56, start of bink
-            // inside export) stays the same because the unversioned props
-            // block in front of the bink is identical between template and
-            // patched .uexp.
+            // The DataResource size must track the new bink length, or retoc
+            // runs off the end of the .uexp ("failed to fill whole buffer").
             var dataResources = asset.DataResources;
             int dataResourcesPatched = 0;
             if (dataResources != null && dataResources.Count > 0)
@@ -314,38 +199,22 @@ namespace Windrose.Quartermaster.Core
                         + "replaced and the patcher constants need re-deriving.");
             }
 
-            // Capture the SerialSize value UAssetAPI is about to write,
-            // so we can later locate-and-patch the byte field in the
-            // written .uasset. Exports[0].SerialSize is set during
-            // Write() based on what UAssetAPI itself emits for the .uexp
-            // (template-size, not our newUexp-size). The value we capture
-            // here matches the .uexp UAssetAPI emits.
-            long uassetApiUexpSize; // computed below post-write
+            long uassetApiUexpSize;
             LogLine("Writing template uasset: " + destUassetAbs);
             asset.Write(destUassetAbs);
 
-            // UAssetAPI just wrote both files. Read the .uexp it produced
-            // to know its size (= the SerialSize value UAssetAPI burned
-            // into the .uasset).
             uassetApiUexpSize = new FileInfo(destUexpAbs).Length;
 
-            // Overwrite the .uexp with our composed bink+template payload.
             File.WriteAllBytes(destUexpAbs, newUexp);
             LogLine("Wrote patched .uexp: " + newUexp.Length + " bytes");
 
-            // 5. Patch Exports[0].SerialSize in the .uasset. UAssetAPI's
-            // SerialSize is (.uexp size - 4 bytes for the package magic).
-            // We compute the same delta for our newUexp and replace.
+            // SerialSize is the .uexp size minus the 4-byte package magic.
             long oldSerialSize = uassetApiUexpSize - 4;
             long newSerialSize = (long)newUexp.Length - 4;
             PatchSerialSizeInUasset(destUassetAbs, oldSerialSize, newSerialSize);
             LogLine("Patched Exports[0].SerialSize: "
                 + oldSerialSize + " -> " + newSerialSize);
 
-            // Reuse the original ShipMusicPatchResult contract for the
-            // build report. UbulkSize == 0 because ForceInline assets
-            // have no .ubulk sidecar; the GUI's slot-state badge already
-            // handles that case.
             return new ShipMusicPatchResult
             {
                 SlotStem = slot.Stem,
@@ -363,26 +232,12 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Locate the int64 LE field within the .uasset bytes that matches
-        // the UAssetAPI-emitted SerialSize, and replace it with the new
-        // value in place. We scan a bounded window starting at the export
-        // table offset (read from the file summary) so we don't accidentally
-        // pattern-match the same int64 value somewhere unrelated. The
-        // export table sits right after the import table, and Exports[0]'s
-        // SerialSize lives at a known field offset within FObjectExport -
-        // but that offset shifts between UE versions, so a scan with a
-        // single expected match is more robust.
+        // Scans for the unique int64 SerialSize value rather than a fixed
+        // field offset, which shifts between UE versions.
         static void PatchSerialSizeInUasset(string uassetPath, long oldValue, long newValue)
         {
             var bytes = File.ReadAllBytes(uassetPath);
 
-            // The .uasset summary has a fixed-position field at offset 24
-            // pointing to TotalHeaderSize... but the export offset itself
-            // varies. We can read it via UAssetAPI but a direct scan of
-            // the whole file for the unique int64 LE value is simpler and
-            // still safe: the only place the literal byte pattern occurs
-            // is the SerialSize field of Exports[0] (a template has a
-            // single export, the SoundWave).
             var needle = BitConverter.GetBytes(oldValue);
             if (!BitConverter.IsLittleEndian)
                 Array.Reverse(needle);
@@ -435,18 +290,11 @@ namespace Windrose.Quartermaster.Core
         void LogLine(string msg) { if (Log != null) Log(msg); }
     }
 
-    // Per-slot patch outcome. The build pipeline aggregates one of these
-    // per replaced shanty into a higher-level ShipMusicResult that also
-    // carries the published triplet paths.
     public sealed class ShipMusicPatchResult
     {
         public string SlotStem;
         public string SlotTitle;
         public string OriginalUserStem;
-        // Display-only echo of the per-slot ProfileGlobals.ShipMusic.Songs
-        // metadata - the pipeline copies this in after Patch() returns so
-        // the build-response JSON can render "Custom: mysong.wav" without
-        // re-loading the profile.
         public string OriginalFilename;
         public int NameMapEntriesRenamed;
         public int ExportsRetargeted;
@@ -454,11 +302,10 @@ namespace Windrose.Quartermaster.Core
         public int? NumChannels;
         public int? SampleRate;
         public float? DurationSeconds;
-        public long UbulkSize;       // always 0 for ForceInline cooks
-        public int BinkBytes;        // size of the bink encoder output
-        public int NewUexpSize;      // total .uexp size we wrote
+        public long UbulkSize;
+        public int BinkBytes;
+        public int NewUexpSize;
 
-        // Convenience formatter for the build log + JSON response.
         public string FormatDiagnostic()
         {
             var inv = CultureInfo.InvariantCulture;

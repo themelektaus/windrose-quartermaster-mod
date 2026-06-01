@@ -8,35 +8,6 @@ using System.Text.Json.Nodes;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Reads vanilla R5BLRecipeList + R5BLRecipeData JSONs and writes a
-    // parallel directory containing patched PlayerBuys lists + the
-    // recipes they reference. Structurally a mirror of BuyerPatcher; the
-    // important differences:
-    //
-    //   * filters / consumes Profile.SellerRecipes + Profile.SellerLists
-    //     (vs Buyer*)
-    //   * Cost/Result mapping is SWAPPED on disk - on the seller side
-    //     RecipeResult is the item the NPC delivers (= override.ItemPath)
-    //     and RecipeCost is the currency (= override.PayItemPath). The
-    //     SellersEndpoint does the same swap on the read side, so the
-    //     profile JSON shape stays uniform between buyer and seller tabs.
-    //   * synthesized custom recipes use the "QM_SCustom_*" prefix so the
-    //     seller and buyer custom namespaces stay disjoint
-    //   * the custom-recipe template is picked from a vanilla *_Buy
-    //     recipe so the RecipeTag stays in the PlayerBuy namespace
-    //
-    // Output dir is the SAME tree BuyerPatcher writes into - both patchers
-    // produce disjoint subpaths under Recipes/ (vanilla edits land in
-    // their original folder, customs land in Custom/<id>.json) and
-    // disjoint files under RecipeLists/ (PlayerSells vs PlayerBuys), so
-    // they compose cleanly into one pak.
-    //
-    // After applying the override, the patcher deep-compares against
-    // vanilla and skips writing files that turned out identical (idempotent
-    // edits do not bloat the pak).
-    //
-    // Output formatting matches vanilla: tab indent (size 1), CRLF line
-    // endings, trailing CRLF.
     public sealed class SellerPatcher
     {
         const string RecipesPathPrefix = "/R5BusinessRules/Recipes/";
@@ -69,10 +40,6 @@ namespace Windrose.Quartermaster.Core
 
             var recipeMap = BuildVanillaRecipeMap(vanillaRecipesDir);
 
-            // Custom-recipe template: a vanilla *_Buy recipe so the
-            // synthesized RecipeTag follows the PlayerBuy naming
-            // convention and any field the engine looks at lives at the
-            // expected key.
             JsonObject customTemplate = null;
             if (HasAnyCustomRecipe(recipeOverrides))
             {
@@ -85,7 +52,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // 1. Recipe-level edits + synthesis.
             foreach (var kv in recipeOverrides)
             {
                 result.RecipesScanned++;
@@ -126,7 +92,6 @@ namespace Windrose.Quartermaster.Core
                 }
             }
 
-            // 2. RecipeList-level edits.
             foreach (var kv in listOverrides)
             {
                 result.ListsScanned++;
@@ -166,10 +131,6 @@ namespace Windrose.Quartermaster.Core
             return map;
         }
 
-        // Prefer *_Buy recipes so the template's RecipeTag follows the
-        // PlayerBuy convention. Falls back to any recipe with the right
-        // $type if no _Buy file is present (vanilla always ships some;
-        // fallback is defensive).
         JsonObject LoadCustomRecipeTemplate(
             Dictionary<string, RecipePathPair> recipeMap,
             SellerPatchResult result)
@@ -194,18 +155,12 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        // Writes Recipes/Custom/<id>.json based on the template. The four
-        // trade fields are written WITH THE SWAP - the override stores
-        // ItemPath = what the NPC sells (= RecipeResult on disk),
-        // PayItemPath = what the player pays (= RecipeCost on disk).
         void WriteCustomRecipe(string outDir, string recipeId,
             SellerRecipeOverride ovr, JsonObject template, SellerPatchResult result)
         {
             var root = (JsonObject)template.DeepClone();
 
-            // Seller-side swap: ItemPath (the NPC's delivery) -> RecipeResult,
-            // PayItemPath (the player's payment) -> RecipeCost. Exactly the
-            // mirror of BuyerPatcher.
+            // Seller-side swap: ItemPath -> RecipeResult, PayItemPath -> RecipeCost.
             SetTradeField(root, "RecipeResult", ovr.ItemPath,    ovr.ItemCount.Value);
             SetTradeField(root, "RecipeCost",   ovr.PayItemPath, ovr.PayCount.Value);
 
@@ -213,8 +168,7 @@ namespace Windrose.Quartermaster.Core
                 ? "None"
                 : ovr.CraftRequirement;
 
-            // Unique RecipeTag in the PlayerBuy namespace so each clone
-            // counts as a distinct trade.
+            // Unique tag per recipe so the engine treats each as a distinct trade.
             if (root["RecipeTag"] is JsonObject tagObj)
             {
                 tagObj["TagName"] = "RecipeData.Trade.PlayerBuy.QmSCustom." + recipeId;
@@ -227,8 +181,6 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
-            // Wipe the carried-over UIData label / image so the engine
-            // falls back to the item's own icon.
             if (root["UIData"] is JsonObject uiObj)
             {
                 uiObj["Name"] = string.Empty;
@@ -263,7 +215,7 @@ namespace Windrose.Quartermaster.Core
 
             var before = root.DeepClone();
 
-            // SWAP vs BuyerPatcher: ItemPath -> RecipeResult, PayItemPath -> RecipeCost.
+            // Seller-side swap: ItemPath -> RecipeResult, PayItemPath -> RecipeCost.
             if (!string.IsNullOrEmpty(ovr.ItemPath) || ovr.ItemCount.HasValue)
                 UpdateTradeField(root, "RecipeResult", ovr.ItemPath, ovr.ItemCount);
             if (!string.IsNullOrEmpty(ovr.PayItemPath) || ovr.PayCount.HasValue)
@@ -327,7 +279,7 @@ namespace Windrose.Quartermaster.Core
             var newArr = new JsonArray();
             if (ovr.RecipeOrder != null)
             {
-                // Definitive-order mode: output exactly what RecipeOrder says.
+                // Definitive order: vanilla IDs not listed are dropped.
                 foreach (var id in ovr.RecipeOrder)
                 {
                     if (string.IsNullOrEmpty(id)) continue;
@@ -344,7 +296,6 @@ namespace Windrose.Quartermaster.Core
             }
             else
             {
-                // Legacy mode: vanilla refs minus removed, then appended ids.
                 var removed = ovr.RemovedRecipeIds != null
                     ? new HashSet<string>(ovr.RemovedRecipeIds, StringComparer.OrdinalIgnoreCase)
                     : null;

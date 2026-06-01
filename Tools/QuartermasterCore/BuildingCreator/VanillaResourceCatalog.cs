@@ -6,36 +6,10 @@ using System.Text.Json;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Indexes all R5BLInventoryItem "Resource" entries from the
-    // already-extracted Sources/Vanilla tree. Used to populate the
-    // per-row "Resource picker" in the Building Recipe editor (Etappe H2).
-    //
-    // Unlike VanillaMaterialCatalog this catalog does NOT touch
-    // CUE4Parse - the resource definitions ship as plain JSON files
-    // in the legacy pakchunk0-Windows.pak and Setup already extracts
-    // them to Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/
-    // InventoryItems/DefaultItems/Resource/. So index = glob + parse.
-    //
-    // Entry shape:
-    //   stem         = "DA_DID_Resource_Hardwood_T02"
-    //   packagePath  = "/R5BusinessRules/InventoryItems/DefaultItems/
-    //                   Resource/DA_DID_Resource_Hardwood_T02.
-    //                   DA_DID_Resource_Hardwood_T02"
-    //                  (the exact form the vanilla Recipe JSON uses in
-    //                   RecipeCost[i].Item, so the patcher can write it
-    //                   straight through)
-    //   displayName  = "Hardwood T02"  (file stem with the common
-    //                   "DA_DID_Resource_" prefix stripped and
-    //                   underscores replaced; cheap, no CSV lookup)
-    //   itemNameKey  = "DID_Resource_Hardwood_T02_ItemName" (FText key,
-    //                   from the JSON; the localized text lives in
-    //                   InventoryItems.csv if a future feature wants it)
-    //   iconPath     = "/Game/UI/Icons/Items/..." (from the JSON's
-    //                   InventoryItemUIData.ItemTexture field; may be
-    //                   empty for resources that ship without icon)
+    // Indexes vanilla DA_DID_Resource_*.json definitions (plain JSON, no CUE4Parse) for the recipe editor's resource picker.
     public sealed class VanillaResourceCatalog
     {
-        public string VanillaResourceDir;  // .../R5BusinessRules/Content/InventoryItems/DefaultItems/Resource
+        public string VanillaResourceDir;
         public Action<string> Log;
 
         readonly object _gate = new object();
@@ -51,9 +25,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             }
         }
 
-        // Lookup by exact packagePath. Returns null if not in the catalog.
-        // Used by the BuildPipeline's pre-build validation step to make
-        // sure every user-set RecipeCost item actually exists.
         public VanillaResourceEntry FindByPackagePath(string packagePath)
         {
             if (string.IsNullOrWhiteSpace(packagePath)) return null;
@@ -149,18 +120,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
             var root = doc.RootElement;
 
-            // Only index real R5BLInventoryItem entries. Defensive: some
-            // adjacent JSONs under InventoryItems/ aren't items (rare but
-            // legal, e.g. fragment files).
             if (root.ValueKind != JsonValueKind.Object) return null;
             if (!root.TryGetProperty("$type", out var typeEl)) return null;
             if (typeEl.ValueKind != JsonValueKind.String) return null;
             if (!string.Equals(typeEl.GetString(), "R5BLInventoryItem", StringComparison.Ordinal))
                 return null;
 
-            // Pull out the optional bits. None are fatal if missing - the
-            // worst case is an entry with empty displayName/iconPath which
-            // the UI can still render via the stem fallback.
             string iconPath = "";
             string itemNameKey = "";
             string itemTag = "";
@@ -194,10 +159,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
-            // PackagePath: the exact form used by RecipeCost[i].Item.
-            // Convention: full plugin path with .Stem suffix.
-            //   /R5BusinessRules/InventoryItems/DefaultItems/Resource/
-            //     <Stem>.<Stem>
+            // Must match the exact "<path>/<Stem>.<Stem>" form RecipeCost[i].Item uses, so the patcher writes it through verbatim.
             var packagePath =
                 "/R5BusinessRules/InventoryItems/DefaultItems/Resource/"
                 + stem + "." + stem;
@@ -213,10 +175,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             };
         }
 
-        // "DA_DID_Resource_Hardwood_T02" -> "Hardwood T02"
-        // Strips the common DA_DID_Resource_ prefix (or, falling back,
-        // DA_DID_ prefix) and replaces underscores with spaces so the
-        // string is human-readable in a search dropdown.
         static string PrettifyStem(string stem)
         {
             if (string.IsNullOrEmpty(stem)) return stem ?? "";
@@ -233,11 +191,11 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
     public sealed class VanillaResourceEntry
     {
-        public string Stem;          // "DA_DID_Resource_Hardwood_T02"
-        public string PackagePath;   // "/R5BusinessRules/.../DA_DID_X.DA_DID_X"
-        public string DisplayName;   // "Hardwood T02" (prettified for UI)
-        public string IconPath;      // "/Game/UI/Icons/Items/..."  (may be "")
-        public string ItemNameKey;   // "DID_Resource_Hardwood_T02_ItemName"
-        public string ItemTag;       // "ItemData.Resource.Hardwood.T02"
+        public string Stem;
+        public string PackagePath;
+        public string DisplayName;
+        public string IconPath;
+        public string ItemNameKey;
+        public string ItemTag;
     }
 }

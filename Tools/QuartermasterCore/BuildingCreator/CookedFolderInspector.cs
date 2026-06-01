@@ -10,18 +10,7 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Reads everything the GUI needs from a user-cooked Content folder:
-    //   - mesh (SM_<stem>.uasset) -> material slot list with slot-names
-    //     + per-slot user-MI references
-    //   - all MI_*.uasset files -> inspected via MaterialInstanceInspector
-    //
-    // The GUI feeds this into its dynamic slot UI: per mesh-slot we know
-    // the User-cooked MI ref, can match it against the inspected user-MIs
-    // to pre-fill values, and lay out the appropriate Vanilla-MI picker
-    // and param-editing controls.
-    //
-    // All input files must be in legacy UE format (the UE-Editor produces
-    // them that way during cook).
+    // Reads a user-cooked Content folder: mesh -> material slot list, plus all MI_*.uasset inspected for GUI pre-fill. Inputs must be legacy UE format.
     public sealed class CookedFolderInspector
     {
         public string UsmapPath;
@@ -36,13 +25,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             if (string.IsNullOrWhiteSpace(UsmapPath) || !File.Exists(UsmapPath))
                 throw new InvalidOperationException("CookedFolderInspector.UsmapPath not set or not found");
 
-            // Serialize against MaterialInstanceInspector: UAssetAPI is not
-            // thread-safe and `new Usmap(path)` opens the .usmap exclusively,
-            // so parallel inspect requests (one card with N slots all firing
-            // /api/vanilla-materials/inspect at once) would race on the
-            // shared usmap file. Lock is reentrant so the nested
-            // MaterialInstanceInspector.Inspect() calls below re-take it
-            // without issue.
+            // UAssetAPI is not thread-safe and `new Usmap(path)` opens the .usmap exclusively. Lock is reentrant so the nested Inspect() calls re-take it.
             lock (MaterialInstanceInspector.UsmapGate)
             {
                 return InspectLocked(cookedFolderPath, meshStem);
@@ -60,9 +43,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 Warnings         = new List<string>(),
             };
 
-            // 1) Read the mesh (optional - if MeshStem missing or file
-            //    absent we just skip and the GUI shows "specify mesh stem"
-            //    state).
             if (!string.IsNullOrWhiteSpace(meshStem))
             {
                 var meshFile = Path.Combine(cookedFolderPath, meshStem + ".uasset");
@@ -89,10 +69,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
-            // 2) Walk the cooked folder for MI_*.uasset files, inspect each.
-            //    These are user-cooked MaterialInstanceConstants; we use
-            //    them ONLY as pre-fill defaults for the GUI. The build
-            //    pipeline never ships them (skip-list).
+            // User-cooked MIs are used ONLY as GUI pre-fill defaults; the build pipeline never ships them (skip-list).
             var inspector = new MaterialInstanceInspector { UsmapPath = UsmapPath };
             foreach (var file in Directory.GetFiles(cookedFolderPath, "MI_*.uasset", SearchOption.TopDirectoryOnly))
             {
@@ -121,17 +98,12 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return inspection;
         }
 
-        // -----------------------------------------------------------------
-        // Mesh reader. UE StaticMesh has a `StaticMaterials` array on the
-        // primary export, each entry being a StaticMaterial struct with
-        // MaterialInterface (Object ref) + MaterialSlotName (FName).
-        // -----------------------------------------------------------------
+        // UE StaticMesh has a `StaticMaterials` array on the primary export; each entry is a struct with MaterialInterface (Object ref) + MaterialSlotName (FName).
         List<MeshMaterialSlot> ReadMeshSlots(string meshFile)
         {
             var mapping = new Usmap(UsmapPath);
             var asset = new UAsset(meshFile, EngineVersion.VER_UE5_6, mapping);
 
-            // Find the StaticMesh export (the primary export of a SM_*.uasset).
             NormalExport meshExport = null;
             foreach (var ex in asset.Exports)
             {
@@ -210,9 +182,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         public string MeshStem;
         public List<MeshMaterialSlot> MeshSlots;
 
-        // Inspected user-cooked MIs keyed by stem (filename without ext).
-        // The GUI matches a mesh slot's UserMaterialStem against this dict
-        // to find the pre-fill source.
+        // Keyed by stem (filename without ext). The GUI matches a slot's UserMaterialStem against this to find the pre-fill source.
         public Dictionary<string, MaterialInstanceData> UserMaterialInstances;
 
         public List<string> Warnings;
@@ -221,8 +191,8 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     public sealed class MeshMaterialSlot
     {
         public int    Index;
-        public string SlotName;            // e.g. "WorldGridMaterial", "lambert1", "Frame"
-        public string UserMaterialStem;    // user-cooked MI ref, e.g. "MI_QmPainting_Canvas"
-        public string UserMaterialPath;    // package path under the mod's output namespace, e.g. "<ModItemsPackagePath>MI_QmPainting_Canvas"
+        public string SlotName;
+        public string UserMaterialStem;
+        public string UserMaterialPath;
     }
 }

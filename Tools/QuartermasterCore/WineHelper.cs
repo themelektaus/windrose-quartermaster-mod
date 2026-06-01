@@ -7,13 +7,6 @@ using System.Runtime.InteropServices;
 
 namespace Windrose.Quartermaster.Core
 {
-    // On Linux, Windows .exe binaries must be run via Wine. We resolve a wine
-    // binary in this order:
-    //   1. `wine` on $PATH        (standalone install: pacman, apt, Discover-WINE)
-    //   2. Proton's bundled wine  (~/.steam/.../steamapps/common/Proton*/files/bin/wine)
-    //   3. GE-Proton bundled wine (~/.steam/.../steamapps/common/GE-Proton*/files/bin/wine)
-    // Result is cached for the lifetime of the process.
-    //
     // Call ApplyWine() on any ProcessStartInfo targeting a .exe before Process.Start.
     static class WineHelper
     {
@@ -30,8 +23,7 @@ namespace Windrose.Quartermaster.Core
             psi.FileName = wine;
         }
 
-        // Exposed for diagnostics. Returns null on Windows or if no wine was found
-        // (does not throw). The first call performs the search and caches the result.
+        // Returns null (never throws) when no wine is found, unlike ResolveWineOrThrow.
         public static string TryGetWineBinary()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return null;
@@ -62,11 +54,9 @@ namespace Windrose.Quartermaster.Core
 
         static string DetectWine()
         {
-            // 1) wine on PATH (preferred - cleanest, user installed it explicitly)
             var pathWine = FindOnPath("wine");
             if (pathWine != null) return pathWine;
 
-            // 2) Proton-bundled wine (Steam Deck / any user with Proton installed)
             var proton = FindProtonWine();
             if (proton != null) return proton;
 
@@ -87,7 +77,6 @@ namespace Windrose.Quartermaster.Core
                 }
                 catch
                 {
-                    // Skip unreadable PATH entries silently.
                 }
             }
             return null;
@@ -107,8 +96,6 @@ namespace Windrose.Quartermaster.Core
                     var common = Path.Combine(lib, "steamapps", "common");
                     if (!Directory.Exists(common)) continue;
 
-                    // Cover stock Proton (e.g. "Proton 9.0", "Proton Experimental")
-                    // and GE-Proton (e.g. "GE-Proton9-25").
                     var globs = new[] { "Proton*", "GE-Proton*" };
                     foreach (var glob in globs)
                     {
@@ -118,8 +105,6 @@ namespace Windrose.Quartermaster.Core
                         foreach (var dir in dirs)
                         {
                             var name = Path.GetFileName(dir);
-                            // Newer Proton: <root>/files/bin/wine
-                            // Older Proton: <root>/dist/bin/wine
                             var winePath = Path.Combine(dir, "files", "bin", "wine");
                             if (!File.Exists(winePath))
                                 winePath = Path.Combine(dir, "dist", "bin", "wine");
@@ -131,11 +116,6 @@ namespace Windrose.Quartermaster.Core
 
                 if (candidates.Count == 0) return null;
 
-                // Prefer the latest version. Lexicographic descending sort on the
-                // directory name is a good-enough heuristic for "Proton 9.0" >
-                // "Proton 8.0" > "Proton 7.0" and friends. Stock Proton beats
-                // GE-Proton only because 'P' < 'G' alphabetically reversed - but
-                // either works, so we don't fight over it.
                 candidates.Sort((a, b) => string.CompareOrdinal(b.Name, a.Name));
                 return candidates[0].Path;
             }

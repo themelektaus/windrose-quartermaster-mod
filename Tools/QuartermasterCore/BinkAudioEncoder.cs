@@ -5,28 +5,13 @@ using System.Text;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Thin process wrapper around `binkaudioenc.exe` - the in-tree CLI
-    // (Tools/BinkAudioEnc/binkaudioenc.cpp) that links Epic's static Bink
-    // encoder library and produces a raw `[BinkAudioFileHeader][SeekTable]
-    // [Frames]` buffer from a 16-bit PCM WAV. The output is byte-identical
-    // to what AudioFormatBink::Cook() produces inside the UE5 Editor.
-    //
-    // We use the encoder for the ShipMusic feature: a user-supplied .wav
-    // gets compressed and spliced into a vanilla SoundWave template so the
-    // engine can stream it under one of the 10 sea-shanty asset slots.
     public sealed class BinkAudioEncoder
     {
         public Action<string> Log;
 
-        // Quality 0..9, where 0 = best and 9 = worst. The CLI defaults to
-        // 4 (the UE Editor's middle preset); 2 gives audibly better quality
-        // for music at modest bitrate cost and we pick that for shanties.
-        // Public so tests can override; the build pipeline sticks with the
-        // default.
+        // 0 = best quality, 9 = worst.
         public int Quality = 2;
 
-        // Absolute path to the encoder executable. The build pipeline
-        // resolves this from `<app-root>/Tools/binkaudioenc.exe`.
         public string EncoderPath;
 
         public BinkAudioEncoder(string encoderPath)
@@ -42,13 +27,6 @@ namespace Windrose.Quartermaster.Core
             EncoderPath = encoderPath;
         }
 
-        // Encode a 16-bit PCM WAV to a Bink-Audio buffer. Returns the raw
-        // bytes of the encoder output (header + seek-table + frames). The
-        // caller splices these into a USoundWave template's .uexp.
-        //
-        // Throws on encoder failure with the stderr message attached so
-        // the GUI can surface a clear error ("Only 16-bit PCM supported.
-        // Got 24-bit." etc.).
         public byte[] Encode(string wavPath)
         {
             if (string.IsNullOrEmpty(wavPath))
@@ -56,9 +34,6 @@ namespace Windrose.Quartermaster.Core
             if (!File.Exists(wavPath))
                 throw new FileNotFoundException("WAV not found: " + wavPath);
 
-            // Output to a sibling .binka temp file - the encoder writes
-            // direct to disk, no stdout-piping support. We read it back in
-            // memory and clean up.
             var tempOut = Path.Combine(Path.GetTempPath(),
                 "qm_binka_" + Guid.NewGuid().ToString("N") + ".binka");
 
@@ -108,8 +83,6 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
-                // Surface the encoder's "OK" summary line to the build log
-                // so the user can see "44.1kHz Stereo, 225s, quality=2".
                 var stdoutText = stdout.ToString();
                 if (!string.IsNullOrWhiteSpace(stdoutText))
                 {
@@ -130,10 +103,7 @@ namespace Windrose.Quartermaster.Core
                         "binkaudioenc.exe output is too short (" + bytes.Length
                         + " bytes) - expected at least a 28-byte BinkAudioFileHeader.");
 
-                // Sanity: first 4 bytes must be the 'UEBA' tag (memory
-                // order 'A','B','E','U'). Anything else means the encoder
-                // produced something unexpected and we'd corrupt the
-                // template downstream.
+                // 'UEBA' tag stored in reverse byte order: 'A','B','E','U'.
                 if (bytes[0] != 0x41 || bytes[1] != 0x42
                     || bytes[2] != 0x45 || bytes[3] != 0x55)
                     throw new InvalidOperationException(
@@ -146,7 +116,7 @@ namespace Windrose.Quartermaster.Core
             finally
             {
                 try { if (File.Exists(tempOut)) File.Delete(tempOut); }
-                catch { /* leave temp behind on Windows-locked edge case */ }
+                catch { }
             }
         }
 

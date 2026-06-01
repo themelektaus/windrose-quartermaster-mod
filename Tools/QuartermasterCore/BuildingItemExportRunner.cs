@@ -1,14 +1,3 @@
-// Runs BuildingItemExporter with the standard Windrose path layout:
-//   PaksDir   = Steam install Paks/ dir (auto-located)
-//   Usmap     = newest *.usmap under ModRoot (UsmapLocator)
-//   OutDir    = Sources/Vanilla/  (so extracted files land 1:1 next to the
-//               existing dumped JSONs from VanillaDumper)
-//
-// Mirrors IconExtractionRunner: each Run() resolves inputs, invokes the
-// extractor in-process, and reports stats. Used by the /api/export endpoint
-// in the GUI (SSE-streamed log) and indirectly by anyone shelling out via
-// the CLI in the future.
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,23 +16,11 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
-        // Optional explicit overrides; null/empty values are auto-resolved.
         public string PaksDirOverride;
         public string UsmapOverride;
         public string OutDirOverride;
         public string GameVersion = "UE5_6";
 
-        // Default scope: every Building-related subtree across the IoStore
-        // containers. Substring matching is lenient on the prefix convention
-        // ("Game/Content/..." vs "R5/Content/...") so users with a slightly
-        // different layout still get matches.
-        //
-        // Scope rationale:
-        //   - Gameplay/Building/     : DA_BI_*, BP_*, FX params, gameplay materials
-        //   - Environment/Gameplay/Building/ : SM_*, environment materials, textures
-        //   - Audio/Game/Building/   : build/destroy cues, set-piece audio
-        // Together this covers everything needed to clone a building item end-
-        // to-end in the UE editor (visual + behavior + audio).
         public List<string> IncludeSubstrings = new List<string>
         {
             "/Gameplay/Building/",

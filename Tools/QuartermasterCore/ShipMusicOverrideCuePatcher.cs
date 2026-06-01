@@ -8,53 +8,12 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Per-slot SoundCue VolumeMultiplier patcher for vanilla shanty
-    // OVERRIDE slots. Distinct from ShipMusicAddCueCloner: that one
-    // clones cue 10 under a new name (for added tracks). This one
-    // keeps the cue at its vanilla path/name and writes the user-
-    // supplied absolute VolumeMultiplier into the existing slot.
-    //
-    // Why a separate patcher: override slots replace the SWAV under
-    // the vanilla cue's path. The cue itself is unchanged unless the
-    // user pulls the volume slider off the vanilla default (0.45) -
-    // then we extract the 4 vanilla CUE_Shanti_<n>_* variants
-    // (Large/Medium/Small VoicePlayer + NoPlayer), overwrite each
-    // VolumeMultiplier with the user-supplied absolute value, and
-    // write them back at the same vanilla path so the mod-pak
-    // overrides the cue. The DA never needs updating because the cue
-    // keeps its original name.
-    //
-    // Vanilla VolumeMultiplier values (verified by recon, consistent
-    // across all 10 shanties):
-    //   Large/Medium/Small VoicePlayer:  0.45
-    //   NoPlayer:                        0.50
-    // The slider default (45%) matches the VoicePlayer baseline; the
-    // NoPlayer variant gets force-aligned to 0.45 too when the user
-    // pulls the slider, which is intentional (= one slider per slot,
-    // all 4 variants stay in lockstep). At the default 45% the build
-    // pipeline skips this patcher entirely so all 4 variants keep
-    // their pristine vanilla values.
     public sealed class ShipMusicOverrideCuePatcher
     {
         public Action<string> Log;
 
         const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
-        // Patches Export[0].VolumeMultiplier of the vanilla cue in place.
-        // Returns the (oldValue, newValue) pair for logging. The cue's
-        // NameMap + FolderName + graph stay verbatim - the IoStore
-        // staging tree drops the file at its vanilla path so the mod-pak
-        // overrides the SWAV-bound cue.
-        //
-        //   inputUassetPath  - vanilla CUE_Shanti_<n>_*.uasset (sibling .uexp
-        //                      lives next to it on disk; UAssetAPI reads
-        //                      both via the .uasset constructor).
-        //   outputUassetPath - destination .uasset path (typically the
-        //                      same path under the staging tree).
-        //   usmapPath        - shared .usmap mappings (UE5 unversioned).
-        //   userVolumeAbsolute - absolute VolumeMultiplier value to
-        //                      write into the cue (0.0..1.0). Clamped
-        //                      to [0.0, 1.0].
         public Patched Patch(
             string inputUassetPath, string outputUassetPath, string usmapPath,
             double userVolumeAbsolute)

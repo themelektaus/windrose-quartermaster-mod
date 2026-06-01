@@ -7,34 +7,8 @@ using System.Text.RegularExpressions;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Reads vanilla item JSONs and writes a parallel directory containing only
-    // the items that changed under a given Profile. The output directory is
-    // what gets fed into repak.
-    //
-    // Resolver rule per item (StackSize):
-    //   1. profile.Overrides[itemId].StackSize  (unconditional, even Equipment)
-    //   2. profile.Globals.StackSize.Absolute
-    //   3. vanillaStack * Globals.StackSize.Multiplier  (clamped at Cap)
-    //   4. null  -> skip (item stays vanilla in-game)
-    //
-    // For vanillaStack == 1 items, globals (steps 2/3) only apply when the item
-    // is "promotable" - i.e. one of:
-    //   * ItemClass == "Consumable"
-    //   * ItemType.TagName == "Inventory.ItemType.Resource"  (game's own
-    //     classification - catches treasure/loot Misc items like the
-    //     Senkamati pieces that look like resources to the game but live
-    //     under Category=Misc)
-    //   * ItemClass == "Default" && Category == "Resource"   (legacy folder-
-    //     based rule; covers a couple of items the game still tags Quest.Other
-    //     even though they sit in Resource/)
-    // Equipment / NPCs / Ship cannons / Quest tokens stay at 1 unless the
-    // user explicitly sets a per-item override.
-    //
-    // Behaviour matches Library/Apply.ps1 byte-for-byte (same regex pass on the
-    // raw JSON, single-occurrence replace, UTF-8 no-BOM output).
     public sealed class StackPatcher
     {
-        // Parsing regexes - intentionally identical to the PS version.
         static readonly Regex MaxCountRegex = new Regex(
             "(\"MaxCountInSlot\"\\s*:\\s*)(\\d+)",
             RegexOptions.Compiled);
@@ -47,18 +21,15 @@ namespace Windrose.Quartermaster.Core
             "\"Category\"\\s*:\\s*\"([^\"]+)\"",
             RegexOptions.Compiled);
 
-        // Matches the nested ItemType { TagName: ... } block. The TagName key
-        // appears in many other contexts (ItemTag, ActivationAbilityTag, ...),
-        // so we anchor on the parent property name to avoid false positives.
+        // Anchored on the "ItemType" parent because the TagName key also appears
+        // under ItemTag / ActivationAbilityTag / etc.
         static readonly Regex ItemTypeTagRegex = new Regex(
             "\"ItemType\"\\s*:\\s*\\{\\s*\"TagName\"\\s*:\\s*\"([^\"]+)\"",
             RegexOptions.Compiled);
 
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
-        // PowerShell-style wildcards relative to vanillaDir; default excludes
-        // dev-only test items. Configurable per instance for unit tests / future
-        // profile-level filters.
+        // PowerShell-style wildcards relative to vanillaDir.
         public string[] ExcludeRelativePaths = new[] { "*\\Tests\\*" };
 
         public PatchResult PatchToDirectory(string vanillaDir, string outDir, Profile profile)
@@ -113,17 +84,14 @@ namespace Windrose.Quartermaster.Core
 
                 if (userOverride.HasValue)
                 {
-                    // Per-item override: the user explicitly asked for this value,
-                    // so we apply it unconditionally - no Equipment/Ship gate.
+                    // Per-item override applies unconditionally - no Equipment/Ship gate.
                     target = userOverride.Value;
                     fromOverride = true;
                     if (oldVal <= 1) wasPromoted = true;
                 }
                 else
                 {
-                    // No per-item override: globals only apply if the item is
-                    // (a) already stackable (oldVal > 1) or (b) "promotable"
-                    // (Consumable / Default+Resource at oldVal == 1).
+                    // Globals only promote a non-stackable item (oldVal <= 1) if it is promotable.
                     if (oldVal <= 1 && !IsPromotable(content))
                     {
                         result.Skipped++;
@@ -215,7 +183,7 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Mimics PowerShell's -like operator (case-insensitive on Windows).
+        // Mimics PowerShell's -like (case-insensitive).
         static bool LikeMatch(string text, string pattern)
         {
             var rx = "^" + Regex.Escape(pattern).Replace("\\*", ".*").Replace("\\?", ".") + "$";

@@ -12,34 +12,8 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Patches the AimingData.ReloadTime FloatProperty on every BatteryData
-    // entry of every ship's BatteryManagerParams DataAsset, multiplying it
-    // by a user-supplied scalar < 1.0 to shorten cannon reload times.
-    //
-    // The property structure is deeper than the other cooldown patches:
-    //
-    //   Default__DA_BatteryManagerParams_*  (NormalExport, R5BatteryManagerData)
-    //   + BatteryDataArray (ArrayProperty of R5BatteryData)
-    //     [* per battery, typically Port + Starboard for a Cutter/Brig/...]
-    //     + AimingData (StructProperty, R5AimingData)
-    //       + ReloadTime (FloatProperty, seconds; vanilla 10)
-    //
-    // All batteries on a given ship get the SAME multiplier. The patcher
-    // does NOT touch the ShotDelay inside the per-caliber ammo params
-    // (R5CannonAmmoParams.ProjectileData.LogicData.LauncherParams.ShotDelay) -
-    // that's the small inter-shot pause within a salvo, not the cooldown
-    // between salvos. Touching ShotDelay would only matter for rapid-fire
-    // builds and is out of scope here.
-    //
-    // Workflow context (mirrors PickaxeRangePatcher):
-    //   game IoStore (.ucas)
-    //     -> retoc to-legacy   (Zen package -> Legacy .uasset+.uexp)
-    //     -> THIS CLASS        (multiply ReloadTime on every battery)
-    //     -> retoc to-zen      (Legacy -> IoStore triplet)
     public sealed class ShipCannonPatcher
     {
-        // Bidirectional range: < 1.0 shortens reload (faster), > 1.0 lengthens
-        // it (harder gameplay). 1.0 = vanilla; the GUI null-collapses at 1.0.
         public const double MinMultiplier = 0.1;
         public const double MaxMultiplier = 3.0;
 
@@ -47,8 +21,6 @@ namespace Windrose.Quartermaster.Core
         public const string AimingDataProp       = "AimingData";
         public const string ReloadTimeProp       = "ReloadTime";
 
-        // Filename stem -> virtual asset path. Covers every shipping hull
-        // variant with a BatteryManagerParams in 5.6.
         public static readonly Dictionary<string, string> HullAssets =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -97,10 +69,7 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading uasset: " + inputAssetPath);
             var asset = new UAsset(inputAssetPath, EngineVersion.VER_UE5_6, mappings);
 
-            // UE5.6 DataAssets may ship sub-component exports alongside the
-            // Default__DA_*_C CDO. The first NormalExport is therefore not
-            // necessarily the CDO carrying BatteryDataArray - locate the
-            // right export by property presence instead of by index.
+            // The CDO is not necessarily the first NormalExport; locate it by BatteryDataArray presence.
             var arrayName = FName.FromString(asset, BatteryDataArrayProp);
             NormalExport target = null;
             int targetIndex = -1;
@@ -202,9 +171,6 @@ namespace Windrose.Quartermaster.Core
         public double Multiplier;
         public int BatteryCount;
         public int PatchedCount;
-        // Sample values from the first patched battery; all batteries on
-        // a given ship share the same vanilla ReloadTime in 5.6, so a
-        // single sample is representative.
         public float VanillaReloadTime;
         public float EffectiveReloadTime;
     }

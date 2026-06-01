@@ -8,61 +8,11 @@ using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Core.Deploy
 {
-    // Owns writes into the live game's <R5>/Binaries/Win64 folder:
-    //
-    //   1) dxgi.dll                  - the inject-proxy our DLL hook lives in.
-    //                                  Self-loading: at DllMain time it copies
-    //                                  the system dxgi.dll to %TEMP% and
-    //                                  routes the 19 dxgi exports through it,
-    //                                  so no companion DLL is needed alongside.
-    //   2) dxgi.dll.qm               - empty marker file written next to the
-    //                                  DLL on install. Proves the dxgi.dll
-    //                                  belongs to us so we can safely
-    //                                  overwrite it later.
-    //   3) qm_items_<profile>.json   - per-profile runtime config the DLL reads at startup.
-    //                                  Filename matches the pak basename's profile slot:
-    //                                  Quartermaster_<profile>_P.pak <-> qm_items_<profile>.json.
-    //                                  The DLL scans qm_items_*.json and merges every match,
-    //                                  so multiple deployed profiles compose naturally.
-    //
-    // The pak triple (Quartermaster_<name>_P.{pak,ucas,utoc}) is NOT this
-    // class's job - it gets shipped via BuildPipeline.OutputDir directly
-    // into ~mods/. We only touch the Win64 dir here.
-    //
-    // Lifecycle (per Variant C - PENDING.md design point #13):
-    //   - DLL stays permanently in Win64 once deployed (no per-build copy
-    //     if already there; idempotent install).
-    //   - qm_items_<profile>.json is re-written every build for the active
-    //     profile. If buildings.Count == 0 we DELETE the file (so the DLL
-    //     stops injecting that profile's items). Other profiles' JSONs
-    //     stay untouched - they belong to other paks in ~mods/.
-    //   - When the user deletes a pak in the mods tab, ModsEndpoint
-    //     deletes the matching qm_items_<profile>.json alongside.
-    //   - CleanupGame() is the explicit one-shot uninstall path (user
-    //     opt-in, not auto-triggered by 'all buildings removed'). Removes
-    //     ALL qm_items_*.json files plus the DLL + marker.
-    //
-    // Guard against clobbering: we never overwrite a pre-existing dxgi.dll
-    // unless the dxgi.dll.qm marker proves it's our proxy.
     public sealed class GameDeployer
     {
         public Action<string> Log;
 
-        // Source path probed at install time. Two locations in priority
-        // order:
-        //   1) <ModRoot>/Tools/DllProxy/dxgi/dxgi.dll - dev tree, freshly
-        //      built via Tools/DllProxy/dxgi/build.bat. Wins when present
-        //      so dev iteration always deploys the latest build.
-        //   2) <ModRoot>/dxgi.dll - the seeded copy of the embedded
-        //      resource Program.SeedDxgiDllIfMissing wrote on first
-        //      launch (deployed EXEs only). Used by end users who
-        //      installed the published EXE bundle and don't have the
-        //      DllProxy source tree alongside.
-        // EnsureDllInstalled() re-resolves at call time so the picked path
-        // appears in the build log honestly.
         readonly string _modRoot;
-
-        // <Game>/R5/Binaries/Win64/ - target for all three files we own.
         readonly string _gameWin64Dir;
 
         public GameDeployer(string modRoot, string gameWin64Dir = null)
@@ -74,9 +24,6 @@ namespace Windrose.Quartermaster.Core.Deploy
                 : SteamLocator.FindBinariesWin64Dir();
         }
 
-        // Probes the two known source locations and returns the first one
-        // that exists, or the dev path (= the more informative error
-        // target) if neither is present.
         string ResolveDllSourcePath()
         {
             var devPath = Path.Combine(_modRoot, "Tools", "DllProxy", "dxgi", "dxgi.dll");
@@ -90,24 +37,14 @@ namespace Windrose.Quartermaster.Core.Deploy
         public string GameWin64Dir  => _gameWin64Dir;
 
         public string TargetDllPath()      => Path.Combine(_gameWin64Dir, "dxgi.dll");
-        // Marker file written next to dxgi.dll on install to prove ownership.
-        // Existence => safe to overwrite. Plain text, contents informational
-        // (build stamp). We never inspect contents - presence alone is the signal.
+        // Presence of this marker (not its contents) is the proof we own the adjacent dxgi.dll.
         public string TargetDllMarkerPath() => Path.Combine(_gameWin64Dir, "dxgi.dll.qm");
 
-        // Returns true if the dxgi.dll at TargetDllPath() was put there by us.
-        // The dxgi.dll.qm marker alongside is the single proof-of-ownership.
         bool IsOurProxyAtTarget()
         {
             return File.Exists(TargetDllMarkerPath());
         }
 
-        // Per-profile items JSON path. profileSafeName is the same string
-        // BuildPipeline.SanitizeForFileName produced for the pak basename,
-        // so the JSON and the pak share one display-name slot. Example:
-        //   profileSafeName = "Tausi"
-        //   -> qm_items_Tausi.json  (alongside dxgi.dll)
-        //   matches Quartermaster_Tausi_P.pak in ~mods/.
         public string TargetItemsJsonPath(string profileSafeName)
         {
             if (string.IsNullOrEmpty(profileSafeName))
@@ -115,38 +52,14 @@ namespace Windrose.Quartermaster.Core.Deploy
             return Path.Combine(_gameWin64Dir, "qm_items_" + profileSafeName + ".json");
         }
 
-        // Enumerates every qm_items_*.json file in the target Win64 dir.
-        // Used by CleanupGame() for full uninstall. Returns an empty list
-        // if the dir doesn't exist (e.g. game folder not located).
         public IList<string> EnumerateProfileItemsJsonPaths()
         {
             if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
             return Directory.GetFiles(_gameWin64Dir, "qm_items_*.json", SearchOption.TopDirectoryOnly);
         }
 
-        // Idempotent install of dxgi.dll + dxgi.dll.qm marker. Returns true on
-        // success, false when the platform doesn't support the inject (Linux
-        // / Steam Deck - see below), throws InvalidOperationException if the
-        // guard refuses (= an unknown dxgi.dll is already there without our
-        // marker alongside). The latter never recovers automatically: user
-        // has to investigate / remove the foreign file manually.
-        //
-        // Always re-copies our dxgi.dll over an existing proxy to ensure
-        // the deployed binary matches the current build - we don't want
-        // the game running against a stale DLL if the user rebuilt but
-        // didn't redeploy. The marker is rewritten on every install with
-        // the current build stamp.
         public bool EnsureDllInstalled()
         {
-            // Platform gate: the dxgi-proxy inject is a Windows-only PE
-            // mechanism. Under Proton/Wine the deploy step is skipped because
-            // we'd have to find a Wine prefix's Win64 dir (compatdata) and we
-            // don't locate that here. The DLL itself works under Wine when
-            // staged there manually - it self-loads the system dxgi via the
-            // %TEMP%-copy strategy in passthrough.cpp.
-            // Build still produces the pak (Stack/Loot/Recipes/Trade work via
-            // the pak alone). Loud log so the user understands why their
-            // custom building doesn't appear.
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 LogLine("DLL inject SKIPPED: dxgi-proxy is Windows-only "
@@ -170,9 +83,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             var targetDll = TargetDllPath();
             var targetMarker = TargetDllMarkerPath();
 
-            // Guard: refuse to overwrite an unknown dxgi.dll (could be the
-            // game's own shipped DLL, or another mod's proxy). Marker
-            // alongside is the single proof of ownership.
             if (File.Exists(targetDll) && !IsOurProxyAtTarget())
             {
                 throw new InvalidOperationException(
@@ -182,14 +92,9 @@ namespace Windrose.Quartermaster.Core.Deploy
                     + "Investigate or remove it manually, then retry.");
             }
 
-            // Proxy: always overwrite so users running an older deployed
-            // build pick up the latest after a rebuild + click Build.
             LogLine("Copying " + dllSourcePath + " -> " + targetDll);
             File.Copy(dllSourcePath, targetDll, overwrite: true);
 
-            // Marker: write/refresh next to the DLL so the next install can
-            // recognise this as our proxy. Contents are informational only -
-            // presence is what matters to the guard.
             var markerBody =
                 "Quartermaster dxgi.dll proxy marker\n"
                 + "Installed: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ssZ") + "\n"
@@ -200,23 +105,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             return true;
         }
 
-        // Writes qm_items_<profileSafeName>.json next to the DLL with the
-        // given buildings. Empty/null list deletes the file instead (so the
-        // DLL stops injecting that profile's items on next start); other
-        // profiles' JSONs stay untouched. Always overwrites the target file
-        // when non-empty - no merge.
-        //
-        // tabPurityFilter is a substring matched against the first item's
-        // package path in each group of the resolved tab. ALL groups in the
-        // tab must match for the inject to fire (purity-gate).
-        //
-        // Default "BuildingBrushes" routes every custom building to the
-        // "Vorgefertigte Strukturen" tab (last tab in the build menu),
-        // regardless of which vanilla template was cloned. The tab contains
-        // both /BuildingBrushes/* and /Houses/* but the only observed group
-        // there has its first item in /BuildingBrushes/* - so this substring
-        // is enough to identify the tab. If we ever see Houses items in
-        // their own group we'd need a broader filter (e.g. a tag probe).
+        // Empty/null buildings deletes the JSON; non-empty overwrites (no merge).
         public void WriteItemsJson(
             string profileSafeName,
             IList<BuildingPatchResult> buildings,
@@ -229,10 +118,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             int count = buildings != null ? buildings.Count : 0;
             if (count == 0)
             {
-                // No buildings for this profile - the JSON should not exist,
-                // otherwise the DLL would scan-and-inject an empty entry on
-                // next start. Delete so the per-profile contribution is
-                // really gone.
                 if (File.Exists(path))
                 {
                     LogLine("Removing empty qm_items_" + profileSafeName + ".json -> " + path);
@@ -245,9 +130,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.WriteAllText(path, body, new UTF8Encoding(false));
         }
 
-        // Deletes a profile's qm_items_<safeName>.json (no-op if missing).
-        // Called by ModsEndpoint when the user trashes the matching pak.
-        // Returns true if a file was actually removed.
         public bool RemoveItemsJson(string profileSafeName)
         {
             if (string.IsNullOrEmpty(profileSafeName))
@@ -259,31 +141,10 @@ namespace Windrose.Quartermaster.Core.Deploy
             return true;
         }
 
-        // Removes dxgi.dll + dxgi.dll.qm if there are no qm_items_*.json
-        // profiles left in Win64. Safe no-op when there are still profile
-        // JSONs around (at least one deployed pak wants the inject).
-        // Triggered by:
-        //   - BuildPipeline after a profile is built with 0 buildings
-        //     AND no other profile JSONs exist anymore (i.e. the user's
-        //     last buildings profile just emptied out).
-        //   - ModsEndpoint after the user trashes a Quartermaster pak
-        //     and the matching qm_items_<name>.json was removed too.
-        //
-        // Safety guard: only treats the dxgi.dll as ours when the marker
-        // is alongside. Without that proof we leave the unknown file alone.
-        //
-        // `deleter` is called once per file we decide to remove - the
-        // BuildPipeline path uses File.Delete, the ModsEndpoint path
-        // routes through CrossPlatformTrash so the user can recover the
-        // DLL the same way they recover the pak. Defaults to File.Delete.
-        //
-        // Returns true if at least one file was removed.
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)
         {
             if (!Directory.Exists(_gameWin64Dir)) return false;
 
-            // Any per-profile JSON left -> another deployed pak still
-            // wants the inject. Keep the DLL installed.
             if (EnumerateProfileItemsJsonPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
@@ -292,10 +153,8 @@ namespace Windrose.Quartermaster.Core.Deploy
             bool dllExists = File.Exists(targetDll);
             bool markerExists = File.Exists(targetMarker);
 
-            if (!dllExists && !markerExists) return false; // already clean
+            if (!dllExists && !markerExists) return false;
 
-            // Same guard as EnsureDllInstalled: an existing dxgi.dll
-            // without marker is not our proxy. Refuse to touch it.
             if (dllExists && !markerExists)
             {
                 LogLine("Skipping DLL cleanup: dxgi.dll exists at " + targetDll
@@ -321,8 +180,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             return removedAny;
         }
 
-        // Pure builder so tests/inspection can verify the wire format
-        // without writing to disk.
         public static string BuildItemsJson(
             IList<BuildingPatchResult> buildings,
             string tabPurityFilter)
@@ -342,10 +199,6 @@ namespace Windrose.Quartermaster.Core.Deploy
                     ? b.OutputDaPath
                     : WindrosePaths.ModItemsPackagePath + (b.OutputDaStem ?? "");
                 var assetName = b.OutputDaStem ?? "";
-                // R5BuildingItem is the donor class our inject pipeline
-                // expects. We don't yet have a template-driven class but
-                // keep the field per InjectableItem schema for forward
-                // compat.
                 sb.Append(i == 0 ? "\n" : ",\n");
                 sb.Append("    {\n");
                 sb.Append("      \"name\":                    \"")
@@ -365,12 +218,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             return sb.ToString();
         }
 
-        // Full uninstall: remove dxgi.dll, dxgi.dll.qm marker, every
-        // qm_items_*.json, and (optionally) the pak triple. Idempotent -
-        // missing files are silently skipped so the caller can run this
-        // safely on a partial install. The pak triple removal is opt-in
-        // because the pak might be shared with other Quartermaster features
-        // (loot, items, etc.).
         public CleanupResult CleanupGame(string pakBasename = null)
         {
             var result = new CleanupResult();
@@ -396,10 +243,6 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
             return result;
         }
-
-        // ----------------------------------------------------------------
-        // Helpers
-        // ----------------------------------------------------------------
 
         void LogLine(string m) { if (Log != null) Log(m); }
 

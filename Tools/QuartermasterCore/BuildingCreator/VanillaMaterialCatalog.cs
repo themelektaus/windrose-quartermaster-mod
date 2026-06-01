@@ -12,15 +12,7 @@ using CUE4Parse.UE4.Versions;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Indexes all MaterialInstanceConstant assets (MI_*.uasset) in the
-    // Vanilla pak set. Built lazily on first use - the scan walks the
-    // mounted CUE4Parse provider's virtual-file list (no I/O for the
-    // individual MI bytes, just path enumeration).
-    //
-    // Subsequent extraction of a specific MI for Inspect-on-demand goes
-    // via retoc to-legacy (see BuildingPatcher.ExtractVanillaAsset) -
-    // CUE4Parse can decode IoStore but legacy-format files are what
-    // UAssetAPI (and our MaterialInstanceInspector) expects.
+    // Indexes vanilla MI_*.uasset paths by walking the mounted CUE4Parse provider's file list (path enumeration only, no per-MI I/O).
     public sealed class VanillaMaterialCatalog
     {
         public string PaksDir;
@@ -32,9 +24,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         bool _built;
         List<VanillaMaterialEntry> _entries;
 
-        // Convention: an entry's PackagePath is the "/Game/..." style path
-        // (the UE virtual filename without extension), DisplayName is the
-        // file stem (e.g. "MI_Paintings_01").
         public IReadOnlyList<VanillaMaterialEntry> All
         {
             get
@@ -53,9 +42,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 return _entries.Take(limit).ToList();
             }
             var q = query.Trim();
-            // Case-insensitive substring match against both DisplayName
-            // and PackagePath. Score by where the match starts so prefix
-            // matches sort first.
             return _entries
                 .Select(e => new
                 {
@@ -80,8 +66,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return dn;
         }
 
-        // Force a rebuild (e.g. after a vanilla-paks update). Otherwise
-        // the catalog is built once per process lifetime.
         public void Invalidate()
         {
             lock (_gate)
@@ -129,8 +113,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             LogLine("[catalog] provider mounted: " + provider.Files.Count
                 + " virtual files (+" + mounted + " vfs)");
 
-            // Find all uasset entries whose stem starts with "MI_".
-            // Filter on case-insensitive prefix to be tolerant.
             var entries = new List<VanillaMaterialEntry>(256);
             foreach (var kv in provider.Files)
             {
@@ -143,10 +125,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
                 var stem = fileName.Substring(0, fileName.Length - ".uasset".Length);
 
-                // PackagePath: convert pak-internal "R5/Content/..." style
-                // into UE's "/Game/..." path. Strip the leading
-                // "<game>/Content/" prefix if present so the result lines
-                // up with what the editor / patcher uses.
                 var withoutExt = key.Substring(0, key.Length - ".uasset".Length).Replace('\\', '/');
                 var pkgPath = ToGamePath(withoutExt);
 
@@ -163,10 +141,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return entries;
         }
 
-        // Strip the leading "<chunk>/Content/" prefix and prepend "/Game".
-        // Example input:  "R5/Content/Environment/.../MI_Paintings_01"
-        // Example output: "/Game/Environment/.../MI_Paintings_01"
-        // Falls through cleanly if the input has no Content/ segment.
         static string ToGamePath(string pakInternal)
         {
             const string contentMarker = "/Content/";
@@ -175,10 +149,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return "/Game" + pakInternal.Substring(idx + contentMarker.Length - 1);
         }
 
-        // Mirror of BuildingItemExporter.EnsureOodle - the catalog can be
-        // initialized before any other CUE4Parse user has primed Oodle.
-        // Resolves the cache dir via WindrosePaths so the download lands in
-        // the data root rather than the EXE folder (see NativeDllDir).
         void EnsureOodle()
         {
             var here = WindrosePaths.ResolveNativeDllDir();
@@ -200,13 +170,10 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         void LogLine(string msg) { if (Log != null) Log(msg); }
     }
 
-    // Single entry in the catalog. DisplayName == file stem
-    // ("MI_Paintings_01"), PackagePath == UE virtual path
-    // ("/Game/Environment/.../MI_Paintings_01").
     public sealed class VanillaMaterialEntry
     {
         public string DisplayName;
         public string PackagePath;
-        public string PakRelativePath;  // for internal use (retoc filter lookup)
+        public string PakRelativePath;
     }
 }

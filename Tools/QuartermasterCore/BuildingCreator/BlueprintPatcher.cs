@@ -11,103 +11,17 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core.BuildingCreator
 {
-    // Etappe J: Clones a vanilla "fire building" Blueprint (e.g.
-    // BP_BuildingBlock_FloorTorch_C) under our mod path so we can plug it
-    // into a building's DA as ItemClass. The clone inherits everything
-    // from the vanilla BP - including the NiagaraComponent (flame FX), the
-    // ChildActor for BP_PointLight_TorchFire (flickering light via the
-    // MI_LF_Dimming_FireSmall LightFunctionMaterial), and the AudioComponent
-    // (ambient loop SFX) - via the SCS-Components serialized in the cooked
-    // .uasset/.uexp. We don't need to touch any of those component refs:
-    // they live as soft-object/class pointers to vanilla pak content which
-    // stays mounted, so the cloned BP picks them up at runtime by-path.
-    //
-    // What this patcher DOES touch:
-    //   - The BP's own self-name and package path in the NameMap (so the
-    //     emitted .uasset/.uexp ends up under the mod's output namespace
-    //     instead of /Game/Gameplay/Building/Actors/Furniture/).
-    //   - The "_C" class-name variant (cooked BPs reference themselves by
-    //     both the package stem and the "<stem>_C" class name).
-    //   - The CDO name "Default__<stem>_C" if present.
-    //   - The FolderName header field via BuildingPatcher.NormalizeAssetSelfPath
-    //     so the IoStore resolver finds the package at the new path.
-    //   - Etappe J v3: the SOURCE-VANILLA MESH ref baked into the BP's
-    //     StaticMeshComponent SCS-Node default value (e.g. SM_TorchT01_01).
-    //     The vanilla BP's StaticMesh export carries an ObjectProperty that
-    //     resolves through the NameMap to SM_TorchT01_01 + its package path.
-    //     We rewrite those FName entries to the user-cooked mesh stem +
-    //     path so the cloned BP renders the user's mesh instead of the
-    //     vanilla torch. Without this the vanilla torch was rendered ON TOP
-    //     of the user mesh (in fact replacing it - empirically verified by
-    //     the user's screenshot in the conversation). This is also why
-    //     Stage() now runs PER BUILDING (not per preset) - each building
-    //     has a different user mesh, so each building gets its own BP clone.
-    //
-    // What this patcher DOES NOT touch:
-    //   - SCS-Component default values (NiagaraComponent.RelativeLocation,
-    //     ChildActor offsets, etc.). Phase 1 ships with the vanilla position
-    //     - the flame ends up at the same Z-height as the vanilla torch tip
-    //     (~150 cm). Phase 2 will read a "flame" socket from the user's
-    //     StaticMesh and overwrite these offsets per-building; that needs
-    //     a separate SCS-rewrite pass that's gated on the spike's success
-    //     (the spike has verified socket parsing works; SCS write is the
-    //     next step).
-    //
-    // Why a wrapper around DataAssetPatcher instead of using it directly:
-    //   - DataAssetPatcher takes a dict of replacements; this class
-    //     centralizes the BP-specific replacement set + the retoc to-legacy
-    //     extraction so the orchestrator just calls Stage() and gets a
-    //     ready-to-pak triplet in stagingItemsDir.
-    //   - Future BP-specific quirks (e.g. SCS rewrite, ChildActor class-ref
-    //     swap) land here without polluting DataAssetPatcher's general
-    //     contract.
     public sealed class BlueprintPatcher
     {
         public Action<string> Log;
 
-        // External-tool paths. The orchestrator resolves these once via
-        // RetocResolver + UsmapLocator and assigns them before the first
-        // Stage() call (same wiring pattern as BuildingPatcher).
         public string RetocExe;
         public string UsmapPath;
         public string VanillaPaksDir;
         public string AesKey;
 
-        // Working dir for per-preset retoc-to-legacy intermediates. Each
-        // Stage() call wipes its own subdir under this so repeat builds
-        // don't accumulate stale extracts.
         public string TempDir;
 
-        // Stages one vanilla BP as a cloned triplet under stagingItemsDir,
-        // PER BUILDING. The clone stem is derived from buildingId
-        // (BP_QmFlaming_<BuildingId>) so two buildings with the same flame
-        // preset still get distinct clones - each with its own user-mesh
-        // rewritten into the StaticMeshComponent SCS-Node defaults.
-        //
-        // userMeshStem / userMeshPath identify the user-cooked StaticMesh
-        // the building displays. The patcher swaps the BP's hardcoded
-        // vanilla-mesh refs (preset.SourceVanillaMeshStem +
-        // preset.SourceVanillaMeshPath) for these via the NameMap rewrite -
-        // the BP's StaticMeshComponent then resolves to the user mesh
-        // at runtime instead of the vanilla torch mesh.
-        //
-        // Etappe J v4: if componentSocket is non-null, the BP's NiagaraComponent
-        // / light-component / audio-component RelativeLocation / Rotation /
-        // Scale3D properties are overridden with the socket transform so the
-        // flame sits exactly where the user placed a socket on their mesh.
-        // If null, the BP keeps the vanilla position (~Z=158 cm for the
-        // Torch preset).
-        //
-        // Etappe J v5 rolled back: an earlier attempt cloned the Niagara +
-        // Light component templates + SCS_Nodes for sockets[1..N] to spawn
-        // multiple flames per building. UE crashed at load time with
-        // "Bad name index <huge>/<NameMap count>" on the cloned NiagaraComponent
-        // because UAssetAPI doesn't fully implement NiagaraVariableWithOffsetPropertyData
-        // - the deep-clone ended up sharing references to partially-parsed
-        // properties whose Write() emitted bytes that didn't round-trip
-        // through retoc's legacy->zen converter. Reverted to single-socket;
-        // the patcher now takes only the first socket the caller found
-        // (name-agnostic - any socket counts). Multi-flame is parked.
         public BlueprintStageResult Stage(
             ComponentPresetCatalog.ComponentPreset preset,
             string buildingId,
@@ -153,22 +67,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             LogLine("=== [" + preset.Kind + ":" + preset.Id + ":" + buildingId + "] Step 2: rewrite NameMap and FolderName ===");
 
-            // Replacement set. We rewrite three flavours of the BP's own
-            // identity so all internal cross-refs and the cooked-load
-            // resolver agree on the new path:
-            //   - bare stem:  "BP_BuildingBlock_FloorTorch"
-            //   - class name: "BP_BuildingBlock_FloorTorch_C"
-            //   - full path:  "/Game/.../BP_BuildingBlock_FloorTorch"
-            //   - CDO name:   "Default__BP_BuildingBlock_FloorTorch_C"
-            //
-            // Plus (Etappe J v3): redirect the vanilla mesh refs baked into
-            // the BP's StaticMeshComponent SCS-Node default to the user
-            // mesh so the rendered actor uses the user's mesh.
-            //
-            // The CDO entry is optional - some BPs cook without it inline
-            // in the NameMap when the CDO export references its own
-            // ObjectName via FName.Number suffix. requireAllHits=false
-            // turns missing entries into warnings instead of fatal.
+            // All four identity flavours (stem, _C class, path, CDO) must move together.
             var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 [preset.VanillaBpStem]                  = cloneStem,
@@ -177,10 +76,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 ["Default__" + preset.VanillaBpStem + "_C"] = "Default__" + cloneStem + "_C",
             };
 
-            // Etappe J v3: vanilla -> user mesh rewrite. Both flavours
-            // (stem + full path) must move; otherwise the BP's NameMap
-            // resolves only one half and the StaticMesh ObjectProperty
-            // points at a half-cooked path that fails to load.
+            // Stem and full path must both move, or the mesh ref half-resolves and fails to load.
             if (!string.IsNullOrEmpty(preset.SourceVanillaMeshStem)
                 && !string.IsNullOrEmpty(preset.SourceVanillaMeshPath))
             {
@@ -188,12 +84,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 replacements[preset.SourceVanillaMeshPath] = userMeshPath;
             }
 
-            // Secondary mesh refs (e.g. PendulumClock's SM_..._p01 glass-
-            // front cover, BP-added via SCS_Node). Each gets redirected to
-            // the SAME user mesh so the BP's extra R5FoliageMeshComponents
-            // render the user mesh on top of the primary one instead of
-            // showing vanilla geometry. See ComponentPreset.AdditionalSource-
-            // VanillaMeshes for the why + the per-preset entries.
             if (preset.AdditionalSourceVanillaMeshes != null)
             {
                 foreach (var extra in preset.AdditionalSourceVanillaMeshes)
@@ -206,15 +96,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 }
             }
 
-            // Audio Phase B: if a user audio stage is supplied, fold its
-            // NameMap rewrites into this BP's NameMap rewrite pass. Four
-            // entries flip:
-            //   MS_Building_Clock_LP        -> our cue stem
-            //   /Game/.../MS_Building_Clock_LP -> our cue package path
-            //   MetaSoundSource             -> SoundCue (Import.ClassName)
-            //   /Script/MetasoundEngine     -> /Script/Engine (Import.ClassPackage)
-            // After this rewrite the cloned BP's AudioComponent.Sound
-            // import resolves to our cloned cue (which loops our SWAV).
             if (audioStage != null)
             {
                 foreach (var kvp in BuildingAudioStager.NameMapRewritesForBp(audioStage))
@@ -241,8 +122,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
 
             if (patchResult.MissedReplacements != null && patchResult.MissedReplacements.Count > 0)
             {
-                // CDO miss is fine (NameMap might not carry it inline).
-                // Stem / class-name / path miss is alarming - log loud.
+                // A CDO miss is benign; any other miss means the clone may not resolve.
                 foreach (var miss in patchResult.MissedReplacements)
                 {
                     if (miss.StartsWith("Default__", StringComparison.Ordinal))
@@ -262,20 +142,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
                 + result.ExportsRetargeted + " export retargets -> " + cloneStem
                 + " (mesh rewritten to '" + userMeshStem + "')");
 
-            // Etappe J v4: single-socket flame placement.
-            //
-            // The just-saved BP keeps the vanilla SCS-Component layout
-            // (1 NiagaraComponent, 1 Light, 1 Audio); we only overwrite
-            // their RelativeLocation/Rotation/Scale to match the picked
-            // socket. The caller picks "first socket found" (name-agnostic);
-            // any additional sockets on the mesh are ignored.
-            //
-            // If componentSocket is null, this entire pass is skipped and the
-            // BP keeps the vanilla component positions (~Z=158 cm for the
-            // Torch preset). The orchestrator decides whether to call
-            // Stage() at all when no sockets exist - see the buildings-
-            // step body in BuildPipeline.cs (current contract: "skip flame
-            // entirely when 0 sockets", warning logged).
             if (componentSocket != null)
             {
                 try
@@ -301,33 +167,7 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return result;
         }
 
-        // -----------------------------------------------------------------
-        // Socket-transform overrides on the cloned BP's component templates.
-        //
-        // After the NameMap-rewrite pass writes the BP triplet, we open the
-        // staged .uasset and override RelativeLocation / RelativeRotation /
-        // RelativeScale3D on the three component-template exports the BP
-        // carries:
-        //   - NiagaraComponent  (the flame FX itself)
-        //   - <Preset>LightComponent  (BP_PointLight_TorchFire_C for torch,
-        //     name contains "Light" + has its own RelativeLocation)
-        //   - AudioComponent    (the ambient SFX loop - optional)
-        //
-        // For each present component we OVERWRITE existing transform
-        // properties with the socket's values. We don't ADD missing
-        // properties: the BP's SCS-Component defaults already include
-        // RelativeLocation for the components that need positioning - the
-        // ones that don't (AudioComponent at 0,0,0) get the socket's
-        // location too only if they had the property. For all three we set
-        // whatever transform properties exist on each.
-        //
-        // Identity-tolerance: if the socket has rotation=(0,0,0) and
-        // scale=(1,1,1), those count as "user didn't bother to set them" and
-        // are still WRITTEN OUT (overriding the vanilla light's
-        // Pitch=90/Yaw=180/Roll=180 with identity). That's the documented
-        // contract: pickup-from-socket means full override; users who want
-        // the vanilla orientation should explicitly rotate the socket to it.
-        // -----------------------------------------------------------------
+        // Overwrites existing transform properties only; never adds missing ones.
         int PatchSocketTransform(string assetPath, StaticMeshSocketReader.Socket socket)
         {
             if (string.IsNullOrEmpty(UsmapPath) || !File.Exists(UsmapPath))
@@ -362,30 +202,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
             return patched;
         }
 
-        // Heuristic to find the BP's flame-related component templates without
-        // hardcoding export indices (the vanilla BP could be re-cooked with
-        // a different export order in a game patch). We look at the export
-        // class type + the object name and accept any of:
-        //   - NiagaraComponent
-        //   - AudioComponent
-        //   - any class containing "PointLight" (catches BP_PointLight_TorchFire_C)
-        //   - any class containing "Light" combined with Component
-        // The plain SceneComponent / StaticMesh / Default exports are
-        // excluded so we don't move the BP's own root or the mesh component.
+        // Matched by class type / name, not export index, to survive a re-cooked BP's export reorder.
         static bool IsFlameRelatedComponent(NormalExport ex)
         {
             var classType = ex.GetExportClassType()?.Value?.Value ?? "";
             var name = ex.ObjectName?.Value?.Value ?? "";
 
-            // The vanilla light component is named ...TorchFire_GEN_VARIABLE
-            // and has a custom BP class (BP_PointLight_TorchFire_C). The
-            // class-type contains "PointLight" which matches.
             if (classType.IndexOf("Niagara", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (classType.IndexOf("PointLight", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (classType.IndexOf("Audio", StringComparison.OrdinalIgnoreCase) >= 0) return true;
 
-            // Defensive: future presets might use a different light BP whose
-            // class-type doesn't contain "PointLight". Match by name then.
             if (name.IndexOf("Light", StringComparison.OrdinalIgnoreCase) >= 0
                 && name.IndexOf("Component", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
@@ -446,45 +272,6 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
         {
             return d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
-
-        // -----------------------------------------------------------------
-        // Historical note (Etappe J v1 -> v2): An earlier revision exposed
-        // a `RewriteItemClassOnDataAsset(...)` helper that opened the
-        // staged DA after the BuildingPatcher run, located the main
-        // NormalExport, and added/replaced a SoftObjectProperty named
-        // "ItemClass" via UAssetAPI's property-level API.
-        //
-        // That approach hit a blocker:
-        //
-        //   R5BuildingItem DAs surface in UAssetAPI as a single RawExport
-        //   (NOT NormalExport), because the trailing CollisionApproximation
-        //   property uses a custom C++ Serialize() the unversioned-property
-        //   walker can't pass. So the SoftObjectPropertyData add-or-replace
-        //   never had a NormalExport to operate on - the call returned
-        //   "No NormalExport found in DA - cannot write ItemClass" for
-        //   every flame-enabled building.
-        //
-        // The v2 fix bypasses property-level mutation entirely:
-        //
-        //   1. When FlamePresetId is set on a building, the orchestrator
-        //      OVERRIDES the user's chosen template with the FlamePreset's
-        //      source flame-DA (e.g. DA_BI_FloorTorch). The vanilla flame
-        //      DA already has ItemClass set + its FSoftClassPath FName
-        //      entries in the NameMap.
-        //   2. The orchestrator adds extra NameMap rewrites to
-        //      BuildingInputs.ExtraDaNameMapRewrites that redirect those
-        //      vanilla BP FName entries to our cloned BP's stem + path.
-        //   3. BuildingPatcher's existing DataAssetPatcher run picks them
-        //      up alongside the regular mesh/icon/recipe rewrites - one
-        //      single open/rewrite/write pass, no NormalExport needed.
-        //
-        // See ComponentPresetCatalog.ComponentPreset.ApplyTo() and the
-        // buildings-step body in BuildPipeline.cs for the wiring.
-        // -----------------------------------------------------------------
-
-        // -----------------------------------------------------------------
-        // Internal helpers.
-        // -----------------------------------------------------------------
 
         string ExtractVanillaBlueprint(string assetStem, string perPresetTemp)
         {
@@ -562,27 +349,16 @@ namespace Windrose.Quartermaster.Core.BuildingCreator
     public sealed class BlueprintStageResult
     {
         public string PresetId;
-        // Etappe J v3: BP-Clones are now per-building, so the result
-        // carries the building id alongside the preset id.
         public string BuildingId;
         public string VanillaBpStem;
         public string ClonedBpStem;
         public string ClonedClassPath;
 
-        // True if a previous Stage() call had already produced the clone -
-        // the second call is a no-op (idempotency). Per-building staging
-        // means this is only true on re-runs with the same BuildingId
-        // (not across buildings).
         public bool AlreadyStaged;
 
         public int NameMapRenames;
         public int ExportsRetargeted;
 
-        // Etappe J v4: number of component templates (NiagaraComponent,
-        // light, audio, ...) whose RelativeLocation/Rotation/Scale3D got
-        // overridden from the user's picked mesh socket. 0 means either
-        // no socket was supplied or the BP carried no transform-bearing
-        // component template (extremely unlikely for the flame presets).
         public int ComponentsRetransformed;
 
         public string StagedAssetPath;

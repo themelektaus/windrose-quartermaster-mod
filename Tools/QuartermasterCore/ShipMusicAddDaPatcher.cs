@@ -10,59 +10,17 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // M2: append one or more track slots to a vanilla
-    // DA_<ShipType>_AudioParams DataAsset. Each appended slot adds:
-    //
-    //   * 2 Imports per slot to the asset's ImportMap:
-    //       Package (ClassPackage=/Script/CoreUObject, ClassName=Package,
-    //                ObjectName=/Game/Audio/.../CUE_Shanti_N_*, Outer=0)
-    //       SoundCue (ClassPackage=/Script/Engine, ClassName=SoundCue,
-    //                 ObjectName=CUE_Shanti_N_*, Outer=-<previous package>)
-    //   * 1 R5ShantyCuData StructProperty in Export[0].Shanty.Cues with
-    //       AutonomousShantySound (Object ref to the VoicePlayer cue)
-    //       SimulatedShantySound (Object ref to the VoiceNoPlayer cue)
-    //
-    // The DA must already have its Shanty.Cues populated with vanilla
-    // entries 1..10. We do NOT touch existing slots; we only extend the
-    // array. UAssetAPI handles offset/header recomputation on Write().
-    //
-    // DA -> VoicePlayer-flavor mapping (recon-verified, see
-    // .build-tmp/shanties-recon/):
-    //   DA_Brig_AudioParams         -> Medium VoicePlayer + NoPlayer
-    //   DA_Frigate_AudioParams      -> Large  VoicePlayer + NoPlayer
-    //   DA_FrigateNoCrue_AudioParams-> Large  VoicePlayer + NoPlayer
-    //   DA_Ketch_AudioParams        -> Small  VoicePlayer + NoPlayer
     public sealed class ShipMusicAddDaPatcher
     {
         public Action<string> Log;
 
         const EngineVersion Ue = EngineVersion.VER_UE5_6;
 
-        // Vanilla virtual paths for the 4 DataAssets the game ships with.
-        // Used by the build pipeline to filter retoc to-legacy + know where
-        // to drop the patched output back into the IoStore staging tree.
         public const string DaRelDir =
             "R5/Content/Gameplay/Water/Character/Params/Audio";
 
-        // Inputs:
-        //   inputDaPath        - vanilla DA_<Name>_AudioParams.uasset (sibling
-        //                        .uexp implicit, both must exist).
-        //   outputDaPath       - target path; can equal input for in-place.
-        //   usmapPath          - shared UE5 unversioned-properties mapping.
-        //   excludedIndices    - 0-based indices into the vanilla Shanty.Cues
-        //                        array to drop (e.g. {2,7} removes CUE_03 and
-        //                        CUE_08). Can be null/empty. Indices are
-        //                        applied BEFORE the new slots are appended,
-        //                        so they always refer to vanilla positions.
-        //   slots              - new slots to append after exclusion. Each
-        //                        slot has voice + noplayer cue stem to
-        //                        reference (must match the cue clones
-        //                        produced by ShipMusicAddCueCloner). May be
-        //                        empty (exclude-only patches are allowed).
-        //
-        // At least one of excludedIndices or slots must be non-empty -
-        // calling this with both empty is a programmer error (and a
-        // pointless rewrite of vanilla bytes).
+        // excludedIndices are 0-based positions in the original vanilla
+        // Cues array, applied before slots are appended.
         public ShipMusicAddDaPatchResult Patch(
             string inputDaPath, string outputDaPath, string usmapPath,
             IReadOnlyCollection<int> excludedIndices,
@@ -88,7 +46,6 @@ namespace Windrose.Quartermaster.Core
             LogLine("Loading DA: " + inputDaPath);
             var asset = new UAsset(inputDaPath, Ue, mappings);
 
-            // Locate the Shanty.Cues array on the single NormalExport.
             var ne = asset.Exports[0] as NormalExport
                 ?? throw new InvalidOperationException(
                     "Export[0] is not a NormalExport in " + inputDaPath
@@ -102,8 +59,6 @@ namespace Windrose.Quartermaster.Core
             int beforeCues = cues.Value.Length;
             LogLine("Before: NameMap=" + beforeNameMap + " Imports=" + beforeImports + " Cues=" + beforeCues);
 
-            // Build the surviving vanilla list (in original order) by
-            // skipping every position the caller wants excluded.
             var excludeSet = hasExcludes
                 ? new HashSet<int>(excludedIndices)
                 : new HashSet<int>();
@@ -126,10 +81,8 @@ namespace Windrose.Quartermaster.Core
                     + " with an empty Cues array and no replacements - "
                     + "the engine would crash. Refuse to write.");
 
-            // Clone the last vanilla entry to inherit its element-name
-            // (StructProperty array elements share the array's Name).
-            // We need the template even if we drop the last entry, so use
-            // the original tail rather than the post-exclude tail.
+            // StructProperty array elements share the array's Name, so reuse an
+            // existing entry as template; use the original tail even if excluded.
             var template = cues.Value[cues.Value.Length - 1] as StructPropertyData
                 ?? throw new InvalidOperationException("Last existing cue is not StructProperty");
 
@@ -224,10 +177,8 @@ namespace Windrose.Quartermaster.Core
             return null;
         }
 
-        // Constructs an Import via the string-overload (which auto-registers
-        // the FName strings into the asset's NameMap as a side effect) and
-        // appends it to ImportMap. Returns the 1-based positive index that
-        // FPackageIndex uses (caller negates it when referring to it).
+        // The string-overload auto-registers the FName strings into the
+        // NameMap. Returns a 1-based index; caller negates it for FPackageIndex.
         static int AddImport(UAsset asset, string classPackage, string className, string objectName, int outerNeg)
         {
             var im = new Import(classPackage, className, new FPackageIndex(outerNeg), objectName, false, asset);
@@ -241,22 +192,18 @@ namespace Windrose.Quartermaster.Core
         }
     }
 
-    // Input description: per new slot, the four facts the patcher needs.
-    // Object-names are the cue stems; package paths are the full virtual
-    // /Game/... paths under which the cue assets will be packed.
     public sealed class ShipMusicAddSlotRef
     {
-        public string VoiceCueStem;          // e.g. CUE_Shanti_11_Large_VoicePlayer
-        public string NoPlayerCueStem;       // e.g. CUE_Shanti_11_VoiceNoPlayer
-        public string VoiceCuePackagePath;   // e.g. /Game/Audio/Game/Music/Shanti/Ships/Large/CUE_Shanti_11_Large_VoicePlayer
-        public string NoPlayerCuePackagePath;// e.g. /Game/Audio/Game/Music/Shanti/VoiceNoPlayer/CUE_Shanti_11_VoiceNoPlayer
+        public string VoiceCueStem;
+        public string NoPlayerCueStem;
+        public string VoiceCuePackagePath;
+        public string NoPlayerCuePackagePath;
     }
 
     public sealed class ShipMusicAddDaPatchResult
     {
         public int BeforeCues;
         public int AfterCues;
-        // Number of vanilla cue entries removed (from excludedIndices).
         public int Excluded;
         public int BeforeImports;
         public int AfterImports;
@@ -269,7 +216,7 @@ namespace Windrose.Quartermaster.Core
     {
         public string VoiceCueStem;
         public string NoPlayerCueStem;
-        public int VoicePkgImport;     // 1-based, positive
+        public int VoicePkgImport;
         public int NoPlayerPkgImport;
         public int VoiceObjImport;
         public int NoPlayerObjImport;

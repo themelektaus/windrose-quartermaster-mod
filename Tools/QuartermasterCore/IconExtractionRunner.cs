@@ -4,15 +4,6 @@ using System.Linq;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Runs the full icon-extraction pipeline:
-    //   1. Resolve all the moving pieces (Sources/, Icons/, paks dir,
-    //      .usmap, AES key).
-    //   2. Walk Sources and build the manifest JSON
-    //      (delegated to IconManifestBuilder).
-    //   3. Invoke the IconExtractor library in-process with the manifest.
-    //   4. Clean up the temp manifest, report stats.
-    //
-    // Replaces Library/Icons.ps1 + Extract-Icons.ps1.
     public sealed class IconExtractionRunner
     {
         readonly WindrosePaths _paths;
@@ -25,7 +16,6 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
-        // Optional explicit overrides; null/empty values are auto-resolved.
         public string SourceDirOverride;
         public string OutDirOverride;
         public string PaksDirOverride;
@@ -34,7 +24,6 @@ namespace Windrose.Quartermaster.Core
 
         public IconExtractionResult Run()
         {
-            // --- 1. Resolve paths ------------------------------------------
             var sourceDir = !string.IsNullOrEmpty(SourceDirOverride)
                 ? Path.GetFullPath(SourceDirOverride)
                 : _paths.Vanilla;
@@ -70,16 +59,14 @@ namespace Windrose.Quartermaster.Core
             }
             LogLine("Usmap:     " + usmap);
 
-            // --- 2. Build manifest ----------------------------------------
             LogLine("Scanning JSONs for ItemTexture paths");
             var manifest = new IconManifestBuilder { Log = Log }.Build(sourceDir);
 
             var manifestPath = new IconManifestBuilder().WriteToTempFile(manifest.Entries);
             try
             {
-                // --- 3. Invoke IconExtractor (in-process) -----------------
                 LogLine("Running IconExtractor");
-                // Hide the AES key in the displayed banner so logs are safe to share.
+                // AES key shown as <hidden> so the log is safe to share.
                 LogLine("IconExtractor (in-process) --paks-dir \"" + paksDir + "\" --aes-key <hidden>" +
                         " --manifest \"" + manifestPath + "\" --out-dir \"" + outDir + "\"" +
                         " --usmap \"" + usmap + "\" --game-version " + GameVersion);
@@ -99,7 +86,7 @@ namespace Windrose.Quartermaster.Core
             }
             finally
             {
-                try { File.Delete(manifestPath); } catch { /* best effort */ }
+                try { File.Delete(manifestPath); } catch { }
             }
 
             return Statistics(outDir);

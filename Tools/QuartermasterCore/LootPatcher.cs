@@ -9,40 +9,12 @@ using System.Text.Json.Nodes;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Reads vanilla LootTable JSONs and writes a parallel directory
-    // containing only the LTs that changed under a given Profile. Output
-    // dir mirrors the in-pak layout (R5/Plugins/.../LootTables/<...>) so
-    // it can be co-packed with the StackPatcher output by repak.
-    //
-    // Resolver rule per LootTable entry (LootData[i]):
-    //   1. profile.LootOverrides[ltId].Removed contains i  -> entry skipped
-    //   2. profile.LootOverrides[ltId].Entries[i].Min/Max  -> wins over multiplier
-    //   3. else: vanillaMin/Max * globals.loot.byCategory[bucket] (rounded AwayFromZero)
-    //   4. Weight/LootItem/LootTable: edit overrides directly, no multiplier
-    //   5. profile.LootOverrides[ltId].Added is appended verbatim after the survivors
-    //
-    // After computing the result list, the patcher does a deep equality check
-    // against the vanilla list - if nothing actually changed, the LT is
-    // skipped (no file is written, the engine uses vanilla).
-    //
-    // Output formatting matches vanilla LootTable JSONs: tab indent
-    // (size 1), CRLF line endings, trailing CRLF. Field order on the
-    // entries is preserved exactly, including the counter-intuitive
-    // Min/Max/Weight/LootItem/ItemAttributeModifiers/LootTable sequence
-    // the engine expects.
     public sealed class LootPatcher
     {
-        // UE asset paths reference the in-pak LootTables under this prefix.
-        // Sub-table refs use this path even though the on-disk JSONs sit
-        // under Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/LootTables/.
         const string LootTablesPathPrefix = "/R5BusinessRules/LootTables/";
 
-        // No-BOM UTF-8; line endings handled manually because we pin
-        // CRLF to match vanilla regardless of host platform.
         static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
-        // The dump tree always lives under this relative root. We strip it
-        // when computing the LT id (Mobs/DA_LT_..., not the full prefix).
         const string VanillaRoot = "R5/Plugins/R5BusinessRules/Content/LootTables";
 
         public LootPatchResult PatchToDirectory(string vanillaLootTablesDir, string outDir, Profile profile)
@@ -64,8 +36,6 @@ namespace Windrose.Quartermaster.Core
             {
                 result.Scanned++;
 
-                // Compute a stable LT id: subpath under LootTables/, no extension.
-                // E.g. "Mobs/DA_LT_Mob_BlackBeard_Sergeant_Final".
                 var rel = jsonPath.Substring(vanillaFull.Length).TrimStart(
                     Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var ltId = rel
@@ -81,7 +51,6 @@ namespace Windrose.Quartermaster.Core
 
                 if (multiplier == 1.0 && ovr == null)
                 {
-                    // No global multiplier and no per-LT override -> vanilla.
                     result.UnchangedSkip++;
                     continue;
                 }
@@ -108,8 +77,6 @@ namespace Windrose.Quartermaster.Core
                 var newData = ApplyOverrides(vanillaData, multiplier, ovr, ltId, result);
                 if (newData == null)
                 {
-                    // Override schema referenced indices that don't exist;
-                    // ApplyOverrides logged it via result.Warnings.
                     continue;
                 }
 
@@ -136,10 +103,6 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
-        // The bucket key is the first path segment under LootTables/, e.g.
-        // "Mobs", "Chests", "Foliage". Sub-folders below that are folded
-        // into the same bucket - "Mobs/Rss/..." still hits "Mobs". This
-        // matches the user-facing per-category multiplier UI (no sub-tree).
         static string ExtractBucket(string ltId)
         {
             var slash = ltId.IndexOf('/');
@@ -155,10 +118,6 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
-        // Builds the new LootData array. Returns null if the override is
-        // structurally invalid (e.g. references a non-existent vanilla
-        // index AND the build would produce something nonsensical) and
-        // logs a warning. Otherwise applies edits + removals + appends.
         static JsonArray ApplyOverrides(JsonArray vanillaData, double multiplier,
             LootTableOverride ovr, string ltId, LootPatchResult result)
         {
@@ -168,9 +127,6 @@ namespace Windrose.Quartermaster.Core
                 ? new HashSet<int>(ovr.Removed)
                 : new HashSet<int>();
 
-            // Warn (don't fail) if the override references indices outside
-            // the vanilla range - the schema is forgiving so old profiles
-            // survive game-patch shifts.
             if (ovr != null)
             {
                 if (ovr.Entries != null)
@@ -216,12 +172,6 @@ namespace Windrose.Quartermaster.Core
             return newArr;
         }
 
-        // Produces a fresh JsonObject in the canonical field order:
-        // Min, Max, Weight, LootItem, ItemAttributeModifiers (if present in
-        // vanilla), LootTable. This order matches what the engine emits.
-        // The optionality of ItemAttributeModifiers is a vanilla schema
-        // variation - 278 of 1589 vanilla LTs simply don't include the
-        // field on their entries, and we mirror that exactly.
         static JsonObject BuildEntry(JsonObject vanilla, LootEntryEdit edit, double multiplier)
         {
             var vMin    = vanilla["Min"]?.GetValue<int>() ?? 0;
@@ -231,11 +181,7 @@ namespace Windrose.Quartermaster.Core
             var vTable  = vanilla["LootTable"]?.GetValue<string>() ?? "None";
             var vAttrs  = vanilla["ItemAttributeModifiers"] as JsonArray;
 
-            // Sub-table refs roll the referenced LT N times - multiplying
-            // that count would compound with the leaf-table drops (which
-            // already get the multiplier). User intent for "Mobs x2" is
-            // "twice the drops", not "roll each sub-table twice", so the
-            // multiplier is skipped on orchestrator entries entirely.
+            // Sub-table orchestrator entries skip the multiplier; else drops compound with the leaf table's.
             bool isOrchestrator =
                 string.Equals(vItem, "None", StringComparison.Ordinal)
                 && !string.Equals(vTable, "None", StringComparison.Ordinal);
@@ -269,8 +215,7 @@ namespace Windrose.Quartermaster.Core
             var newItem   = (edit != null && edit.LootItem  != null) ? edit.LootItem  : vItem;
             var newTable  = (edit != null && edit.LootTable != null) ? edit.LootTable : vTable;
 
-            // Field order MUST match vanilla emission order. ItemAttributeModifiers
-            // is inserted only when vanilla had it (preserves 278 schema-light LTs).
+            // Field order must match vanilla emission order; emit ItemAttributeModifiers only when vanilla had it.
             var obj = new JsonObject
             {
                 ["Min"] = newMin,
@@ -286,10 +231,6 @@ namespace Windrose.Quartermaster.Core
             return obj;
         }
 
-        // For brand-new (Added) entries, follow the predominant vanilla
-        // shape and always emit ItemAttributeModifiers as []. Sub-table-
-        // only LTs that omit the field are a vanilla-only quirk; user-
-        // added entries should match the full schema.
         static JsonObject BuildAddedEntry(LootEntry e)
         {
             return new JsonObject
@@ -303,8 +244,7 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // JSON arrays are order-sensitive; objects must have the same keys
-        // in the same order with deep-equal values.
+        // Order-sensitive: object keys must match in the same order too.
         static bool DeepEquals(JsonNode a, JsonNode b)
         {
             if (a == null && b == null) return true;
@@ -338,9 +278,6 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
-        // Tab-indent (size 1), CRLF line endings, trailing CRLF. The
-        // System.Text.Json writer emits CRLF for the inter-token newlines;
-        // we stitch the final CRLF on manually to match vanilla.
         static byte[] SerializeWithTabsAndCrlf(JsonObject root)
         {
             using var ms = new MemoryStream();
@@ -350,16 +287,12 @@ namespace Windrose.Quartermaster.Core
                 IndentCharacter = '\t',
                 IndentSize = 1,
                 NewLine = "\r\n",
-                // The pak file allows raw / and . in strings; UnsafeRelaxed
-                // matches what the vanilla emitter produces (no \u escapes
-                // for ASCII characters above 0x20).
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             };
             using (var writer = new Utf8JsonWriter(ms, writerOptions))
             {
                 root.WriteTo(writer);
             }
-            // Trailing CRLF - vanilla LT JSONs end with one.
             ms.WriteByte((byte)'\r');
             ms.WriteByte((byte)'\n');
             return ms.ToArray();
@@ -384,12 +317,12 @@ namespace Windrose.Quartermaster.Core
         public int Scanned;
         public int Written;
         public int UnchangedSkip;
-        public int NoSchema;          // root not a JsonObject or no LootData array
+        public int NoSchema;
 
         public int MultiplierApplied;
-        public int Edited;            // had non-empty Entries
-        public int Removed;           // had non-empty Removed
-        public int Added;             // had non-empty Added
+        public int Edited;
+        public int Removed;
+        public int Added;
 
         public List<string> WrittenLootTables = new List<string>();
         public List<string> Warnings = new List<string>();
