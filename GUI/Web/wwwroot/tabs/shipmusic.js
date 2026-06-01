@@ -46,6 +46,13 @@ function shipmusicFormatBytes(n) {
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+function shipmusicHintParagraph(text) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = text;
+    return p;
+}
+
 // Mirrors a slider value into state.current so the next global Save
 // (PUT /api/profiles/<id>) ships it to disk. Creates the Songs entry
 // on the fly when the user pre-tunes a slot before uploading audio,
@@ -113,28 +120,14 @@ function shipmusicMulFromSliderPct(pct) {
 // The `url` parameter is retained for ABI stability (callers still pass it)
 // but ignored - the per-slot/per-track volume POST endpoints exist on the
 // backend for API completeness but the GUI no longer calls them.
-function buildShipMusicVolumeSlider(initialMul, url, onChange) {
-    const wrap = document.createElement('div');
-    wrap.className = 'shipmusic-volume-row';
+function buildShipMusicVolumeNode(initialMul, url, onChange) {
+    const wrap = cloneTemplate('tpl-shipmusic-volume');
 
-    const label = document.createElement('span');
-    label.className = 'hint shipmusic-volume-label';
-    label.textContent = 'Volume';
-    wrap.appendChild(label);
-
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = '100';
-    slider.step = '5';
+    const slider = wrap.querySelector('.shipmusic-volume-slider');
     slider.value = String(shipmusicSliderPctFromMul(initialMul));
-    slider.className = 'shipmusic-volume-slider';
-    wrap.appendChild(slider);
 
-    const valueLbl = document.createElement('span');
-    valueLbl.className = 'hint shipmusic-volume-value';
+    const valueLbl = wrap.querySelector('.shipmusic-volume-value');
     valueLbl.textContent = slider.value + '%';
-    wrap.appendChild(valueLbl);
 
     slider.addEventListener('input', () => {
         valueLbl.textContent = slider.value + '%';
@@ -157,9 +150,9 @@ async function refreshShipMusicAll() {
     const id = shipmusicProfileId();
     if (!id) {
         const host = document.getElementById('shipmusic-slot-list');
-        if (host) host.innerHTML = '<p class="hint">No profile loaded.</p>';
+        if (host) host.replaceChildren(shipmusicHintParagraph('No profile loaded.'));
         const host2 = document.getElementById('shipmusic-added-list');
-        if (host2) host2.innerHTML = '<p class="hint">No profile loaded.</p>';
+        if (host2) host2.replaceChildren(shipmusicHintParagraph('No profile loaded.'));
         shipmusicCache = { slots: [], added: [] };
         return;
     }
@@ -175,9 +168,10 @@ async function refreshShipMusicAll() {
     } catch (ex) {
         const host = document.getElementById('shipmusic-slot-list');
         if (host) {
-            host.innerHTML = '<p class="hint" style="color: var(--accent);">'
-                + 'Failed to load shanty data: ' + (ex && ex.message ? ex.message : ex)
-                + '</p>';
+            const p = shipmusicHintParagraph(
+                'Failed to load shanty data: ' + (ex && ex.message ? ex.message : ex));
+            p.style.color = 'var(--accent)';
+            host.replaceChildren(p);
         }
         return;
     }
@@ -205,25 +199,22 @@ function renderShipMusicSlots() {
     const host = document.getElementById('shipmusic-slot-list');
     if (!host) return;
     if (shipmusicCache.slots.length === 0) {
-        host.innerHTML = '<p class="hint">No shanty slots returned by the server.</p>';
+        host.replaceChildren(shipmusicHintParagraph('No shanty slots returned by the server.'));
         return;
     }
-    host.innerHTML = '';
+    host.replaceChildren();
     for (const slot of shipmusicCache.slots) {
-        host.appendChild(renderShipMusicSlot(slot));
+        host.appendChild(buildShipMusicSlotNode(slot));
     }
 }
 
-function renderShipMusicSlot(slot) {
-    const row = document.createElement('div');
-    row.className = 'shipmusic-slot' + (slot.excluded ? ' excluded' : '');
+function buildShipMusicSlotNode(slot) {
+    const row = cloneTemplate('tpl-shipmusic-slot');
+    if (slot.excluded) row.classList.add('excluded');
     row.dataset.stem = slot.stem;
 
-    const titleLine = document.createElement('div');
-    titleLine.className = 'shipmusic-slot-title';
-    const titleSpan = document.createElement('strong');
-    titleSpan.textContent = slot.title;
-    titleLine.appendChild(titleSpan);
+    const titleLine = row.querySelector('.shipmusic-slot-title');
+    titleLine.querySelector('.shipmusic-slot-name').textContent = slot.title;
 
     const stateBadge = document.createElement('span');
     if (slot.excluded) {
@@ -240,7 +231,6 @@ function renderShipMusicSlot(slot) {
         }
     }
     titleLine.appendChild(stateBadge);
-    row.appendChild(titleLine);
 
     // Filename + size line (only when the slot is overridden).
     if (slot.state !== 'vanilla') {
@@ -340,7 +330,7 @@ function renderShipMusicSlot(slot) {
     const id = shipmusicProfileId();
     if (id) {
         const initialMul = typeof slot.volume === 'number' ? slot.volume : 0.45;
-        const volRow = buildShipMusicVolumeSlider(
+        const volRow = buildShipMusicVolumeNode(
             initialMul,
             '/api/profiles/' + encodeURIComponent(id)
                 + '/ship-music/' + encodeURIComponent(slot.stem) + '/volume',
@@ -463,31 +453,22 @@ function renderShipMusicAdded() {
     const host = document.getElementById('shipmusic-added-list');
     if (!host) return;
     if (shipmusicCache.added.length === 0) {
-        host.innerHTML = '<p class="hint">No added tracks yet. Use the form below to add your first.</p>';
+        host.replaceChildren(shipmusicHintParagraph('No added tracks yet. Use the form below to add your first.'));
         return;
     }
-    host.innerHTML = '';
+    host.replaceChildren();
     for (const t of shipmusicCache.added) {
-        host.appendChild(renderShipMusicAddedTrack(t));
+        host.appendChild(buildShipMusicAddedTrackNode(t));
     }
 }
 
-function renderShipMusicAddedTrack(track) {
-    const row = document.createElement('div');
-    row.className = 'shipmusic-added';
+function buildShipMusicAddedTrackNode(track) {
+    const row = cloneTemplate('tpl-shipmusic-added');
     row.dataset.trackKey = track.trackKey;
 
-    const titleLine = document.createElement('div');
-    titleLine.className = 'shipmusic-added-title';
-
-    const idxBadge = document.createElement('span');
-    idxBadge.className = 'shipmusic-added-index';
-    idxBadge.textContent = '#' + (track.newIndex || '?');
-    titleLine.appendChild(idxBadge);
-
-    const titleSpan = document.createElement('strong');
-    titleSpan.textContent = track.title || track.trackKey;
-    titleLine.appendChild(titleSpan);
+    const titleLine = row.querySelector('.shipmusic-added-title');
+    titleLine.querySelector('.shipmusic-added-index').textContent = '#' + (track.newIndex || '?');
+    titleLine.querySelector('.shipmusic-added-name').textContent = track.title || track.trackKey;
 
     if (track.title && track.title !== track.trackKey) {
         const keySpan = document.createElement('span');
@@ -500,7 +481,6 @@ function renderShipMusicAddedTrack(track) {
     stateBadge.className = 'shipmusic-added-state shipmusic-added-state-' + track.state;
     stateBadge.textContent = track.state === 'ready' ? 'Ready' : 'WAV missing';
     titleLine.appendChild(stateBadge);
-    row.appendChild(titleLine);
 
     const meta = document.createElement('div');
     meta.className = 'shipmusic-added-meta';
@@ -560,7 +540,7 @@ function renderShipMusicAddedTrack(track) {
     const id = shipmusicProfileId();
     if (id) {
         const initialMul = typeof track.volume === 'number' ? track.volume : 0.45;
-        const volRow = buildShipMusicVolumeSlider(
+        const volRow = buildShipMusicVolumeNode(
             initialMul,
             '/api/profiles/' + encodeURIComponent(id)
                 + '/ship-music-add/' + encodeURIComponent(track.trackKey) + '/volume',

@@ -98,4 +98,33 @@
     </section>
 
   </aside>
+
+  <!-- Cloned + filled in shipmusic.js (buildShipMusicSlotNode). Variant
+       badge/meta/controls are built on the clone. -->
+  <template id="tpl-shipmusic-slot">
+    <div class="shipmusic-slot">
+      <div class="shipmusic-slot-title">
+        <strong class="shipmusic-slot-name"></strong>
+      </div>
+    </div>
+  </template>
+
+  <!-- Cloned + filled in shipmusic.js (buildShipMusicAddedTrackNode). -->
+  <template id="tpl-shipmusic-added">
+    <div class="shipmusic-added">
+      <div class="shipmusic-added-title">
+        <span class="shipmusic-added-index"></span>
+        <strong class="shipmusic-added-name"></strong>
+      </div>
+    </div>
+  </template>
+
+  <!-- Cloned + filled in shipmusic.js (buildShipMusicVolumeNode). -->
+  <template id="tpl-shipmusic-volume">
+    <div class="shipmusic-volume-row">
+      <span class="hint shipmusic-volume-label">Volume</span>
+      <input type="range" min="0" max="100" step="5" class="shipmusic-volume-slider">
+      <span class="hint shipmusic-volume-value"></span>
+    </div>
+  </template>
 </div>
