@@ -39,4 +39,75 @@
     <div id="buyers-error" class="mods-error" hidden></div>
     <ul id="buyers-list" class="buyers-list"></ul>
   </section>
+
+  <!-- Render templates. Cloned + configured in buyers.js (cloneTemplate).
+       Markup lives here; JS only sets values, text and data-* hooks. The
+       data-buyer-field / data-buyer-picker-target attributes are baked in
+       so the existing event-delegation in buyers.js keeps working. -->
+  <template id="tpl-buyer-card">
+    <li class="buyer-card">
+      <header class="buyer-header">
+        <div class="buyer-title">
+          <span class="buyer-faction"></span>
+          <span class="buyer-label"></span>
+          <span class="buyer-change-badge" hidden></span>
+        </div>
+        <span class="buyer-sub"></span>
+      </header>
+      <table class="buyer-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Qty</th>
+            <th>Pay item</th>
+            <th class="num">Pay qty</th>
+            <th>Requirement</th>
+            <th class="buyer-row-actions">&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="buyer-card-footer">
+        <button class="buyer-add-btn primary" data-buyer-add="">Add Entry</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="tpl-buyer-row">
+    <tr class="buyer-row">
+      <td class="buyer-item" data-cell="item">
+        <span class="buyer-icon buyer-icon-empty"></span>
+        <div class="buyer-item-edit">
+          <span class="buyer-item-name"></span>
+          <input type="text" class="buyer-item-input" data-buyer-picker-target="1"
+                 data-buyer-field="item" placeholder="Search items by name or id..." autocomplete="off">
+        </div>
+      </td>
+      <td class="num">
+        <input type="number" class="buyer-num-input" min="0" data-buyer-field="itemCount">
+      </td>
+      <td class="buyer-item" data-cell="payItem">
+        <span class="buyer-icon buyer-icon-empty"></span>
+        <div class="buyer-item-edit">
+          <span class="buyer-item-name"></span>
+          <input type="text" class="buyer-item-input" data-buyer-picker-target="1"
+                 data-buyer-field="payItem" placeholder="Search items by name or id..." autocomplete="off">
+        </div>
+      </td>
+      <td class="num">
+        <input type="number" class="buyer-num-input" min="0" data-buyer-field="payCount">
+      </td>
+      <td class="buyer-req"></td>
+      <td class="buyer-row-actions"></td>
+    </tr>
+  </template>
+
+  <template id="tpl-buyer-unresolved-row">
+    <tr class="buyer-row unresolved">
+      <td colspan="6" class="buyer-unresolved">
+        <span class="buyer-recipe"></span>
+        <span class="hint"></span>
+      </td>
+    </tr>
+  </template>
 </div>
