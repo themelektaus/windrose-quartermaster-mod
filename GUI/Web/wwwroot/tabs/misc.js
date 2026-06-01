@@ -42,8 +42,8 @@ function syncPickupInputState() {
 function syncPickupReadout() {
     const slider = document.getElementById('pickup-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('pickup-multiplier-value').innerHTML =
-        mul.toFixed(1) + 'x<!--&times;-->';
+    document.getElementById('pickup-multiplier-value').textContent =
+        mul.toFixed(1) + 'x';
     document.getElementById('pickup-range').textContent =
         (4.0 * mul).toFixed(1) + ' m';
 }
@@ -73,7 +73,7 @@ function syncMinimapInputState() {
 function syncMinimapReadout() {
     const slider = document.getElementById('minimap-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('minimap-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    document.getElementById('minimap-multiplier-value').textContent = mul.toFixed(1) + 'x';
     const footDist  = 25 * mul / 10;
     const shipDist  = 75 * mul / 10;
     document.getElementById('minimap-foot-readout').textContent = footDist.toFixed(1) + ' m';
@@ -90,7 +90,7 @@ function syncBonfireInputState() {
 function syncBonfireReadout() {
     const slider = document.getElementById('bonfire-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('bonfire-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    document.getElementById('bonfire-multiplier-value').textContent = mul.toFixed(1) + 'x';
     document.getElementById('bonfire-radius-readout').textContent = (mul * 50).toFixed(0) + ' m'
     document.getElementById('bonfire-height-readout').textContent = (mul * 30).toFixed(0) + ' m'
 }
@@ -105,7 +105,7 @@ function syncPickaxeInputState() {
 function syncPickaxeReadout() {
     const slider = document.getElementById('pickaxe-multiplier');
     const mul = parseFloat(slider.value) || 1.0;
-    document.getElementById('pickaxe-multiplier-value').innerHTML = mul.toFixed(1) + 'x<!--&times;-->';
+    document.getElementById('pickaxe-multiplier-value').textContent = mul.toFixed(1) + 'x';
     const pct = (mul - 1.0) * 100.0;
     const sign = pct >= 0 ? '+' : '';
     document.getElementById('pickaxe-readout').textContent = sign + pct.toFixed(0) + '%';
@@ -280,28 +280,45 @@ function setNoSmokeFromUI() {
 // underlying bytes ARE the persistence, the in-memory state.current is
 // just a mirror.
 // ---------------------------------------------------------------------------
-function bonfireMusicStatusHtml(meta) {
+function bonfireMusicClearButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-link danger';
+    btn.id = 'bonfire-music-clear';
+    btn.textContent = 'Clear';
+    return btn;
+}
+
+function buildBonfireMusicStatus(meta) {
+    const frag = document.createDocumentFragment();
+    const span = document.createElement('span');
+    let withClear = true;
     if (!meta || meta.state === 'vanilla') {
-        return '<span class="bonfire-music-vanilla">No custom audio - vanilla "The Hearth" plays.</span>';
+        span.className = 'bonfire-music-vanilla';
+        span.textContent = 'No custom audio - vanilla "The Hearth" plays.';
+        withClear = false;
+    } else if (meta.state === 'muted-vanilla') {
+        // No upload, slider at 0%: the build synthesizes a silence SWAV.
+        span.className = 'bonfire-music-muted';
+        span.textContent = 'Vanilla "The Hearth" will be muted on next build (Volume 0%).';
+    } else if (meta.state === 'broken') {
+        span.className = 'bonfire-music-broken';
+        span.textContent = 'Filename "' + (meta.originalFilename || '')
+            + '" is set on the profile but its audio.wav is missing - re-upload or clear.';
+    } else {
+        let sizeNote = '';
+        if (typeof meta.wavBytes === 'number' && meta.wavBytes > 0) {
+            sizeNote = ' (' + Math.round(meta.wavBytes / 1024) + ' KB)';
+        }
+        span.className = 'bonfire-music-ready';
+        span.textContent = 'Custom: ' + (meta.originalFilename || '') + sizeNote;
     }
-    if (meta.state === 'muted-vanilla') {
-        // No upload, slider dialed to 0%. The build synthesizes a
-        // silence SWAV so vanilla "The Hearth" goes quiet in-engine.
-        return '<span class="bonfire-music-muted">Vanilla "The Hearth" will be muted on next build (Volume 0%).</span>'
-             + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
+    frag.appendChild(span);
+    if (withClear) {
+        frag.appendChild(document.createTextNode(' '));
+        frag.appendChild(bonfireMusicClearButton());
     }
-    const fname = escapeHtml(meta.originalFilename || '');
-    if (meta.state === 'broken') {
-        return '<span class="bonfire-music-broken">Filename "' + fname
-             + '" is set on the profile but its audio.wav is missing - re-upload or clear.</span>'
-             + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
-    }
-    let sizeNote = '';
-    if (typeof meta.wavBytes === 'number' && meta.wavBytes > 0) {
-        sizeNote = ' (' + Math.round(meta.wavBytes / 1024) + ' KB)';
-    }
-    return '<span class="bonfire-music-ready">Custom: ' + fname + sizeNote + '</span>'
-         + ' <button type="button" class="btn-link danger" id="bonfire-music-clear">Clear</button>';
+    return frag;
 }
 
 // Renders the status line + binds the Clear handler. Called from
@@ -310,7 +327,7 @@ function bonfireMusicStatusHtml(meta) {
 function renderBonfireMusicStatus(meta) {
     const el = document.getElementById('bonfire-music-status');
     if (!el) return;
-    el.innerHTML = bonfireMusicStatusHtml(meta);
+    el.replaceChildren(buildBonfireMusicStatus(meta));
     const clearBtn = document.getElementById('bonfire-music-clear');
     if (clearBtn) {
         clearBtn.addEventListener('click', clearBonfireMusic);
@@ -351,7 +368,9 @@ async function onBonfireMusicFileChange(e) {
     }
     const statusEl = document.getElementById('bonfire-music-status');
     if (statusEl) {
-        statusEl.innerHTML = '<em>Uploading + transcoding ' + escapeHtml(file.name) + '...</em>';
+        const em = document.createElement('em');
+        em.textContent = 'Uploading + transcoding ' + file.name + '...';
+        statusEl.replaceChildren(em);
     }
     try {
         const form = new FormData();
