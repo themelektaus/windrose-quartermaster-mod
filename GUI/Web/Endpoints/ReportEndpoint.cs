@@ -16,45 +16,10 @@ using Windrose.Quartermaster.Core.Deploy;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// POST /api/report   body: { title: "...", description: "..." }
-//
-// User-facing bug-report submission. Collects everything we need to
-// triage an issue without forcing the user to dig up files manually:
-//
-//   - R5.log                       (game's own log, %LOCALAPPDATA%\R5\Saved\Logs\R5.log)
-//   - Quartermaster_Inject.log     (our DLL log, same folder)
-//   - All profile JSONs            (<DataRoot>\Profiles\*.json)
-//   - ~mods/ file listing          (filename + size for every pak in the game's
-//                                   ~mods folder, identifies WHICH paks were
-//                                   active when the issue occurred)
-//   - metadata.json                (Quartermaster version, OS, timestamps, ~mods dir,
-//                                   data root, title+description from the user)
-//
-// Everything goes into an in-memory ZIP, the ZIP is base64-encoded and POSTed
-// as a single JSON request to ReportEndpointUrl below. The receiver is
-// expected to decode `attachment` (base64 ZIP), extract files of interest
-// and link them on an issue tracker.
-//
-// The outbound URL is a hardcoded constant - intentionally simple, the
-// expectation is a self-hosted ingestion endpoint that the maintainer
-// configures themselves. Change ReportEndpointUrl below to point at your
-// receiver.
 public static class ReportEndpoint
 {
-    // ------------------------------------------------------------------
-    // CONFIGURE THIS: where reports get POSTed to.
-    //
-    // Expected receiver behaviour: accepts a JSON body with the shape
-    //   { title, description, attachmentName, attachment (base64 zip), metadata }
-    // returns any 2xx status on success. Response body (if any) is
-    // forwarded to the user so a server can return e.g. an issue URL.
-    // ------------------------------------------------------------------
     private const string ReportEndpointUrl = "https://quartermaster-report.nockal.com";
 
-    // Cap on the outbound JSON body. The base64-encoded ZIP can grow with
-    // multi-MB R5.log files; we still want a sane upper bound so the
-    // request doesn't take ages or timeout. 50 MB raw -> ~67 MB base64,
-    // which covers very long sessions with verbose logs.
     private const long MaxBodyBytes = 75L * 1024 * 1024;
 
     private static readonly HttpClient s_http = new HttpClient
@@ -93,14 +58,9 @@ public static class ReportEndpoint
                 });
             }
 
-            // Build the ZIP in memory. We collect best-effort - any missing
-            // file (e.g. user never ran the game so R5.log doesn't exist)
-            // is silently skipped, the metadata.json records what was
-            // included / what was missing so the receiver still has a
-            // complete picture.
             string modsDir = null;
             try { modsDir = SteamLocator.FindModsDir(); }
-            catch { /* not located - metadata will say so */ }
+            catch { }
 
             var collected = new List<string>();
             var missing = new List<string>();
@@ -109,7 +69,6 @@ public static class ReportEndpoint
             {
                 using (var zip = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
                 {
-                    // ----- Logs -----
                     var logsDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "R5", "Saved", "Logs");
@@ -119,7 +78,6 @@ public static class ReportEndpoint
                     TryAddFileToZip(zip, Path.Combine(logsDir, "Quartermaster_Inject.log"),
                         "logs/Quartermaster_Inject.log", collected, missing);
 
-                    // ----- Profiles -----
                     if (Directory.Exists(paths.Profiles))
                     {
                         foreach (var jsonPath in Directory.EnumerateFiles(
@@ -135,7 +93,6 @@ public static class ReportEndpoint
                         missing.Add("profiles/ (directory not found: " + paths.Profiles + ")");
                     }
 
-                    // ----- ~mods/ file listing -----
                     var modsListing = new StringBuilder();
                     if (modsDir != null && Directory.Exists(modsDir))
                     {
@@ -154,7 +111,7 @@ public static class ReportEndpoint
                                 size = fi.Length;
                                 mtime = fi.LastWriteTimeUtc;
                             }
-                            catch { /* ignore - we still want to log the name */ }
+                            catch { }
                             modsListing.AppendLine(string.Format(
                                 "{0,12}  {1:yyyy-MM-dd HH:mm:ss}Z  {2}",
                                 size >= 0 ? size.ToString() : "?",
@@ -173,7 +130,6 @@ public static class ReportEndpoint
                     AddTextToZip(zip, "mods.txt", modsListing.ToString());
                     collected.Add("mods.txt");
 
-                    // ----- Metadata -----
                     var metaObj = new
                     {
                         title = body.Title,
@@ -201,9 +157,6 @@ public static class ReportEndpoint
                 zipBytes = zipStream.ToArray();
             }
 
-            // Cap check (after compression - we don't bound the ZIP build
-            // itself because that's bounded by what's on disk and we want
-            // to give the user clean failure messaging).
             if (zipBytes.LongLength > MaxBodyBytes)
             {
                 return Results.Json(new
@@ -216,7 +169,6 @@ public static class ReportEndpoint
                 }, statusCode: 413);
             }
 
-            // ----- Outbound POST -----
             var outboundPayload = new
             {
                 title = body.Title,
@@ -259,7 +211,7 @@ public static class ReportEndpoint
 
             string respBody = "";
             try { respBody = await response.Content.ReadAsStringAsync(); }
-            catch { /* ignore */ }
+            catch { }
 
             return Results.Json(new
             {
@@ -285,9 +237,7 @@ public static class ReportEndpoint
                 missing.Add(entryName + " (not found: " + sourcePath + ")");
                 return;
             }
-            // Use Open + manual copy instead of CreateEntryFromFile because the
-            // source files (especially R5.log) may be open for write by the
-            // running game; we need FileShare.ReadWrite to read them anyway.
+            // Source files may be held open for write by the running game; FileShare.ReadWrite is required to read them.
             var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
             using var entryStream = entry.Open();
             using var src = new FileStream(sourcePath,

@@ -12,26 +12,9 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// Three endpoints that wrap BuildingItemExportRunner:
-//
-//   GET  /api/export/status   -> fast, returns counts + hint paths so the
-//                                Mods-tab Export card can show "already
-//                                extracted N files" before the user clicks.
-//
-//   POST /api/export/building -> Server-Sent Events stream. Runs the
-//                                BuildingItemExporter against the standard
-//                                three Building subtrees. Each log line is
-//                                emitted as an SSE event "log"; a final
-//                                "done" event carries success/result stats.
-//
-// SSE wire format mirrors SetupEndpoint so the frontend can re-use the same
-// parser. We funnel the synchronous BuildingItemExporter log callback
-// through a Channel<string> for the same reason: write each line as it
-// arrives without blocking the worker.
 public static class ExportEndpoint
 {
-    // Mutex so concurrent /api/export/building calls don't trample each
-    // other. 0 == idle, 1 == running.
+    // 0 == idle, 1 == running.
     static int _running;
 
     public static void Map(WebApplication app, string repoRoot)
@@ -40,10 +23,6 @@ public static class ExportEndpoint
 
         app.MapGet("/api/export/status", () =>
         {
-            // Cheap heuristic: count *.uasset files under each expected
-            // landing directory. Anything > 0 means a prior export ran and
-            // the user can immediately use the assets from the editor;
-            // anything == 0 means setup-not-yet for this card.
             var gameplayDir = Path.Combine(paths.Vanilla, "R5", "Content", "Gameplay", "Building");
             var environmentDir = Path.Combine(paths.Vanilla, "R5", "Content", "Environment", "Gameplay", "Building");
             var audioDir = Path.Combine(paths.Vanilla, "R5", "Content", "Audio", "Game", "Building");
@@ -65,8 +44,6 @@ public static class ExportEndpoint
 
         app.MapPost("/api/export/building", async (HttpContext ctx) =>
         {
-            // Single-flight guard so two clicks don't kick off two concurrent
-            // CUE4Parse provider inits against the same paks dir.
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
             {
                 ctx.Response.StatusCode = 409;
@@ -131,14 +108,13 @@ public static class ExportEndpoint
             }
             catch (OperationCanceledException)
             {
-                // Client disconnected mid-stream.
             }
             catch (Exception ex)
             {
                 var payload = "{\"success\":false,\"error\":" +
                               System.Text.Json.JsonEncodedText.Encode(ex.Message ?? "unknown error") + "}";
                 try { await WriteSseEvent(ctx, "done", payload); }
-                catch { /* connection may be gone */ }
+                catch { }
             }
             finally
             {

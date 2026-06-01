@@ -9,14 +9,8 @@ using Microsoft.AspNetCore.Http;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// GET /api/items -> all R5BLInventoryItem JSONs in Sources/Vanilla, merged
-// with the per-item Icons/<id>.json sidecar (localized name + description +
-// effects, when available).
 public static class ItemsEndpoint
 {
-    // Marker segment in the on-disk source path. Everything below
-    // ".../Plugins/<Plugin>/Content/" maps 1:1 to the UE asset path
-    // "/<Plugin>/<rest>".
     const string ContentSegment = "Content";
 
     public static void Map(WebApplication app, string repoRoot)
@@ -62,15 +56,9 @@ public static class ItemsEndpoint
         return result;
     }
 
-    // Convert a source path like
-    //   .../Sources/Vanilla/R5/Plugins/R5BusinessRules/Content/InventoryItems/Consumables/Food/DA_CID_X.json
-    // into the canonical UE asset reference
-    //   /R5BusinessRules/InventoryItems/Consumables/Food/DA_CID_X.DA_CID_X
-    // Returns null if the path doesn't match the expected ".../Plugins/<Plugin>/Content/..." layout.
     static string DerivePath(string jsonPath, string id)
     {
         var parts = jsonPath.Replace('\\', '/').Split('/');
-        // Find ".../Plugins/<Plugin>/Content/<rest>"
         for (int i = 0; i + 2 < parts.Length; i++)
         {
             if (parts[i] == "Plugins" && parts[i + 2] == ContentSegment)

@@ -9,14 +9,8 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// GET /api/loot-tables -> all R5BLLootParams JSONs in
-// Sources/Vanilla/.../LootTables/, projected to a wire-friendly shape
-// (short ids + asset paths, ItemAttributeModifiers stripped). Sorted by
-// id so the frontend can render deterministically without re-sorting.
 public static class LootTablesEndpoint
 {
-    // UE asset path prefixes for the two relevant sub-trees. Used to map
-    // a full path back to the short id format the frontend consumes.
     const string LootTablesPathPrefix = "/R5BusinessRules/LootTables/";
 
     public static void Map(WebApplication app, string repoRoot)
@@ -60,8 +54,6 @@ public static class LootTablesEndpoint
                 || typeEl.GetString() != "R5BLLootParams")
                 return null;
 
-            // Build a stable LT id matching what LootPatcher uses internally:
-            // path under LootTables/, '/'-separated, no extension.
             var rel = jsonPath.Substring(rootFull.Length).TrimStart(
                 Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var ltId = rel
@@ -86,7 +78,7 @@ public static class LootTablesEndpoint
 
             if (!root.TryGetProperty("LootData", out var dataEl)
                 || dataEl.ValueKind != JsonValueKind.Array)
-                return dto; // valid LT, just empty entry list
+                return dto;
 
             int idx = 0;
             foreach (var e in dataEl.EnumerateArray())
@@ -125,9 +117,7 @@ public static class LootTablesEndpoint
         }
     }
 
-    // "None" or empty -> null. This matches the wire-contract: a missing
-    // LootItem or LootTable simply doesn't appear in the DTO at all
-    // (DefaultIgnoreCondition.WhenWritingNull strips it).
+    // UE sentinel "None" (and empty) -> null.
     static string ReadStringOrNone(JsonElement parent, string prop)
     {
         if (!parent.TryGetProperty(prop, out var el)) return null;
@@ -137,41 +127,28 @@ public static class LootTablesEndpoint
         return s;
     }
 
-    // UE asset path -> short id. UE paths come in two forms:
-    //   "/Path/To/Folder/AssetName"            (some legacy data)
-    //   "/Path/To/Folder/AssetName.AssetName"  (the canonical post-cook form)
-    // Both reduce to "AssetName" - which is the on-disk filename in
-    // Sources/Vanilla/InventoryItems/ and the lookup key for /api/items.
+    // UE asset path -> short id. Handles both "/Folder/AssetName" and the
+    // cooked "/Folder/AssetName.AssetName" forms, reducing both to "AssetName".
     static string AssetPathToId(string assetPath)
     {
         if (string.IsNullOrEmpty(assetPath)) return null;
         var s = assetPath;
         var dot = s.LastIndexOf('.');
         var slash = s.LastIndexOf('/');
-        // Take the rightmost name segment regardless of which separator wins.
         var cut = Math.Max(dot, slash);
         return cut >= 0 && cut < s.Length - 1 ? s.Substring(cut + 1) : s;
     }
 
-    // LootTable asset path -> the same id that LootPatcher uses
-    // (relative to /R5BusinessRules/LootTables/, '.AssetName' suffix
-    // stripped). Returns null if the path isn't an LT ref or is empty.
     static string LootTablePathToId(string assetPath)
     {
         if (string.IsNullOrEmpty(assetPath)) return null;
         if (!assetPath.StartsWith(LootTablesPathPrefix, StringComparison.Ordinal))
         {
-            // Out-of-tree LT refs shouldn't really occur, but if they do,
-            // fall back to AssetName so the UI at least has SOMETHING to
-            // show.
             return AssetPathToId(assetPath);
         }
         var trimmed = assetPath.Substring(LootTablesPathPrefix.Length);
         var dot = trimmed.LastIndexOf('.');
         if (dot < 0) return trimmed;
-        // Verify the post-dot segment is the same as the pre-dot segment's
-        // last path component. If yes, drop the duplicate (canonical form).
-        // If no, leave the raw string alone.
         var slash = trimmed.LastIndexOf('/', dot - 1);
         var lastSeg = slash < 0 ? trimmed.Substring(0, dot) : trimmed.Substring(slash + 1, dot - slash - 1);
         var afterDot = trimmed.Substring(dot + 1);

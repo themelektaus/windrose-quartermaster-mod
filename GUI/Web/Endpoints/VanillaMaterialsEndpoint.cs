@@ -8,31 +8,8 @@ using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// Powers the per-slot "Vanilla material parent" dropdown in the
-// Building Creator tab.
-//
-//   GET /api/vanilla-materials?search=<q>&limit=<n>
-//       Search the indexed list of MI_*.uasset entries from the vanilla
-//       paks. Substring match on displayName + packagePath. Limited to
-//       avoid flooding the wire (default 50, max 200). Returns
-//       VanillaMaterialDto[].
-//
-//   GET /api/vanilla-materials/inspect?path=<packagePath>
-//       Extract one vanilla MI via retoc-to-legacy and inspect its
-//       Scalar/Vector/Texture parameter blocks via UAssetAPI. The GUI
-//       calls this when the user picks a material in the dropdown,
-//       then renders one editor control per surfaced parameter.
-//       Returns MaterialInstanceDto.
-//
-// The catalog is lazy-built on first request (Index walks the mounted
-// CUE4Parse provider's virtual-file list - a few seconds on cold start,
-// instant on subsequent requests). The inspect endpoint runs retoc
-// once per unique packagePath; a future iteration may cache the
-// inspection result but for now a build-menu pick is a one-off click.
 public static class VanillaMaterialsEndpoint
 {
-    // Static singleton catalog. First-touch cost is paid by whichever
-    // endpoint call comes in first; subsequent calls return immediately.
     static readonly object _gate = new object();
     static VanillaMaterialCatalog _catalog;
     static string _retocExe;
@@ -43,15 +20,6 @@ public static class VanillaMaterialsEndpoint
 
     public static void Map(WebApplication app, string repoRoot)
     {
-        // Lazy bootstrap: shared inputs (paks dir, AES key, usmap, retoc.exe)
-        // are resolved on the first endpoint hit rather than at process
-        // startup. Eager startup-time resolution used to crash the whole
-        // host (and the WPF wrapper's "Quartermaster failed to start"
-        // dialog) when e.g. retoc.exe wasn't deployed yet - the deployed
-        // build doesn't ship it; RetocResolver downloads it on demand into
-        // <DataRoot>. Failures here surface as 503s on the first request
-        // instead of preventing the app from opening.
-
         app.MapGet("/api/vanilla-materials", (string search, int? limit) =>
         {
             try
@@ -60,9 +28,6 @@ public static class VanillaMaterialsEndpoint
                 var cat = GetCatalog();
                 int lim = limit.GetValueOrDefault(50);
                 if (lim < 1) lim = 1;
-                // Cap raised to 2000 so the frontend can load the full
-                // catalog (~1134 MIs) once and filter client-side using
-                // the same UX pattern as the loot-table picker.
                 if (lim > 2000) lim = 2000;
                 var hits = cat.Search(search ?? "", lim);
                 var dtos = new List<VanillaMaterialDto>(hits.Count);
@@ -107,18 +72,10 @@ public static class VanillaMaterialsEndpoint
         {
             if (_catalog != null) return;
 
-            // Vanilla paks dir: from SteamLocator like everyone else.
             _paksDir = SteamLocator.FindVanillaPaksDir();
             _aesKey  = WindroseGameSecrets.AesKey;
             _usmapPath = UsmapLocator.Find(repoRoot);
 
-            // retoc.exe: same resolver as the build pipeline. Auto-
-            // downloads to <repoRoot>/retoc.exe (= QuartermasterData/
-            // in deployed runs, workspace root in dev) and SHA256-
-            // verifies on first use. Subsequent calls are a no-op
-            // lookup. We pipe the resolver's progress messages to the
-            // catalog log so the first vanilla-materials request shows
-            // the ~10s download instead of looking hung.
             var retocResolver = new RetocResolver(repoRoot)
             {
                 Log = msg => Console.WriteLine("[vanilla-catalog/retoc] " + msg),
@@ -142,14 +99,8 @@ public static class VanillaMaterialsEndpoint
     static VanillaMaterialCatalog GetCatalog() => _catalog
         ?? throw new InvalidOperationException("Vanilla material catalog not bootstrapped");
 
-    // Lazy extract + inspect a vanilla MI by package path. Caches the
-    // legacy extract on disk (under temp) keyed by stem so subsequent
-    // requests for the same MI are fast.
     static MaterialInstanceDto InspectVanillaMaterial(string packagePath)
     {
-        // Strip the optional "/Game/" prefix and trailing ".uasset" if
-        // the caller included them. We only need the stem for the
-        // retoc --filter and we re-derive the path on the way out.
         string stem;
         int lastSlash = packagePath.LastIndexOfAny(new[] { '/', '\\' });
         stem = lastSlash >= 0 ? packagePath.Substring(lastSlash + 1) : packagePath;
@@ -162,8 +113,6 @@ public static class VanillaMaterialsEndpoint
         var perAssetDir = Path.Combine(_inspectCacheDir, stem);
         string legacyAssetPath = null;
 
-        // If we already have it cached, reuse the extract; otherwise run
-        // retoc to-legacy --filter <stem>.
         if (Directory.Exists(perAssetDir))
         {
             var existing = Directory.GetFiles(perAssetDir, stem + ".uasset", SearchOption.AllDirectories);
@@ -209,10 +158,7 @@ public static class VanillaMaterialsEndpoint
         };
         foreach (var a in argv) psi.ArgumentList.Add(a);
 
-        // Capture stderr (and a bit of stdout) so non-zero exits give an
-        // actionable error message in the GUI's 500 response instead of
-        // a generic "exit 1". Both streams have to be drained or the
-        // child can deadlock waiting on a full stdout pipe.
+        // Both streams must be drained or the child can deadlock on a full pipe.
         var stdoutSb = new System.Text.StringBuilder();
         var stderrSb = new System.Text.StringBuilder();
         var proc = System.Diagnostics.Process.Start(psi);

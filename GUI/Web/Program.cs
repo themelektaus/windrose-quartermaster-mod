@@ -19,39 +19,18 @@ public static class Program
 {
     public static int Main(string[] args)
     {
-        // Headless CLI paths - bypass the WebApplication entirely.
-        //   --test-patcher       : smoke-test the StackPatcher / BuildPipeline
-        //                          against the legacy PowerShell pipeline.
-        //   --test-loot-patcher  : smoke-test the LootPatcher by writing a
-        //                          single-bucket multiplier patch into
-        //                          .build-tmp/loot_smoke_<...>/.
-        //   --setup [--force]    : run the dump + icon extraction pipeline
-        //                          (replaces the old Dump-WindroseVanilla.ps1 +
-        //                          Extract-Icons.ps1 wrappers).
         if (args.Length > 0 && (args[0] == "--test-patcher" || args[0] == "--test-loot-patcher" || args[0] == "--setup"))
         {
-            // Use the same data-root resolver as the WebApplication path:
-            // dev runs (`dotnet run --project GUI/Web`) walk up to the repo,
-            // deployed/copied EXEs land at <exe-dir>\QuartermasterData\.
             var (cliRoot, _) = ResolveDataRoot();
             if (args[0] == "--setup")
                 return PatcherCli.RunSetup(args, cliRoot);
             return PatcherCli.Run(args, cliRoot);
         }
 
-        // Single-instance enforcement: if a prior Quartermaster.Web is still
-        // sitting in the background (typical Linux scenario: user closed the
-        // browser tab without clicking the power button), kill it before we
-        // try to bind port 17777. The WPF wrapper bypasses this path entirely
-        // and uses a dynamic port, so multi-window on Windows still works.
         TerminatePriorInstances();
 
         var app = CreateWebApp(args, "http://localhost:17777");
 
-        // Linux/Steam Deck path: there's no WPF/WebView2 host wrapping us,
-        // so the EXE is its own thing. Auto-open the user's default browser
-        // once Kestrel is actually listening. Windows runs go through the
-        // WPF App project (see GUI/App/App.xaml.cs) which embeds a WebView2.
         if (OperatingSystem.IsLinux())
         {
             app.Lifetime.ApplicationStarted.Register(() =>
@@ -73,41 +52,17 @@ public static class Program
         return 0;
     }
 
-    /// <summary>
-    /// Build the configurator's <see cref="WebApplication"/>. Used by both the
-    /// CLI entry point above (which passes the fixed <c>17777</c> URL and runs
-    /// blocking via <c>app.Run()</c>) and by the WPF wrapper (which passes
-    /// <c>http://127.0.0.1:0</c> for a dynamic port and starts the app via
-    /// <c>app.StartAsync()</c> in-process behind a WebView2).
-    /// </summary>
-    /// <param name="dataRoot">
-    /// Explicit data root to override the auto-resolver. The default
-    /// (<see cref="ResolveDataRoot"/>) walks up from <c>AppContext.BaseDirectory</c>
-    /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
-    /// marker (= dev / repo run) and falls back to
-    /// <c>&lt;exe-dir&gt;\QuartermasterData\</c> for a deployed EXE that's
-    /// been copied somewhere outside the source tree - so the data folder
-    /// travels with the EXE (USB-stick portable).
-    /// </param>
     public static WebApplication CreateWebApp(string[] args, string url, string dataRoot = "")
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<JsonOptions>(opts =>
         {
-            // Keep the wire-format consistent with the on-disk profile files
-            // (camelCase, fields-as-properties, drop nulls).
             opts.SerializerOptions.IncludeFields = true;
             opts.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
             opts.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             opts.SerializerOptions.WriteIndented = false;
         });
 
-        // Bump the upload ceiling so the ship-music WAV picker can stream
-        // multi-minute tracks without Kestrel killing the TCP connection.
-        // A 5-minute 44.1 kHz stereo 16-bit PCM file is ~50 MB - well over
-        // the framework defaults (Kestrel: 30 MB, FormOptions: 128 MB) -
-        // and the endpoint handler enforces its own 150 MB cap on top of
-        // this, so we leave 50 MB of headroom for multipart framing.
         const long uploadCeiling = 200L * 1024 * 1024;
         builder.WebHost.ConfigureKestrel(opts =>
         {
@@ -126,39 +81,15 @@ public static class Program
             ? (Path.GetFullPath(dataRoot), !LooksLikeDevRepo(dataRoot))
             : ResolveDataRoot();
 
-        // Make sure the data layout exists. Dev/repo runs already have these;
-        // deployed runs need them created on first launch in QuartermasterData/.
         Directory.CreateDirectory(resolvedRoot);
         var iconsDir = Path.Combine(resolvedRoot, "Icons");
         Directory.CreateDirectory(iconsDir);
         Directory.CreateDirectory(Path.Combine(resolvedRoot, "Profiles"));
 
-        // Prime the native-DLL cache dir so the lazily-extracted /
-        // lazily-downloaded sidecars (oodle-data-shared.dll from the
-        // OodleUE GitHub release, Detex.dll from a CUE4Parse-Conversion
-        // embedded resource) land in the data root instead of next to the
-        // EXE. The per-endpoint WindrosePaths.FromModRoot calls would set
-        // the same value, but doing it once at startup documents intent at
-        // the entry point and removes the first-request ordering risk.
         Windrose.Quartermaster.Core.WindrosePaths.ConfigureNativeDllDir(resolvedRoot);
 
-        // Prime the game-install override resolver so SteamLocator
-        // first-checks the user-configured gameRoot before walking the
-        // Steam libraryfolders.vdf. Without this call, the override file
-        // is invisible and Quartermaster behaves Steam-only.
         Windrose.Quartermaster.Core.GameInstallOverride.ConfigureDataRoot(resolvedRoot);
 
-        // Deployed EXE: seed the embedded UE5 *.usmap so setup works without
-        // the user first dumping one via UE4SS. Only seed when none is
-        // present so a user-supplied newer dump (e.g. after a game update)
-        // wins. Dev mode skips this: the on-disk file is the source of
-        // truth and you're probably editing it.
-        //
-        // (The IconExtractor used to need a similar seed step - we extracted
-        // a prebuilt publish/ zip into <DataRoot>\Tools\IconExtractor\ on
-        // first run. It's now linked in-process via QuartermasterCore so
-        // there's no sibling EXE to seed; the runtime libraries travel
-        // inside this assembly.)
         if (isDeployed)
         {
             SeedUsmapIfMissing(resolvedRoot);
@@ -167,11 +98,6 @@ public static class Program
             SeedTemplatesIfMissing(resolvedRoot);
         }
 
-        // Static files: prefer the on-disk wwwroot if it sits next to the
-        // ContentRoot (= dev run via `dotnet run --project GUI/Web`, where
-        // editing app.css/app.js shows up immediately on refresh). Otherwise
-        // fall back to the manifest embedded provider so the single-file EXE
-        // serves the frontend straight from its own assembly.
         var diskWebRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
         IFileProvider webFileProvider;
         if (Directory.Exists(diskWebRoot) && File.Exists(Path.Combine(diskWebRoot, "index.html")))
@@ -186,10 +112,6 @@ public static class Program
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = webFileProvider });
         app.UseStaticFiles(new StaticFileOptions { FileProvider = webFileProvider });
 
-        // Icons live outside wwwroot (they're produced by the in-process
-        // IconExtractor library into the data root's Icons/ folder). Mount
-        // them at /Icons/* so the frontend can reference them directly
-        // without us proxying.
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(iconsDir),
@@ -223,30 +145,6 @@ public static class Program
         return app;
     }
 
-    /// <summary>
-    /// Resolves the data root for runtime files (Profiles, Sources, Icons,
-    /// Tools, Builds). Walks up from <see cref="AppContext.BaseDirectory"/>
-    /// looking for a <c>Tools\QuartermasterCore\QuartermasterCore.csproj</c>
-    /// marker - if found, that's a dev/repo run and we use it directly.
-    /// Otherwise the EXE has been deployed somewhere outside its source
-    /// tree, and we route reads/writes to a sibling folder
-    /// <c>QuartermasterData\</c> next to the EXE - so the data travels
-    /// with the EXE (USB-stick portable).
-    /// </summary>
-    /// <remarks>
-    /// We seed the walk from <see cref="AppContext.BaseDirectory"/> rather
-    /// than <see cref="Environment.CurrentDirectory"/> / ContentRootPath on
-    /// purpose: the latter depends on whoever invoked the EXE (e.g. starting
-    /// from a shell that happens to live inside the repo would give a false
-    /// positive on the marker). BaseDirectory is the actual binary location
-    /// - for a single-file EXE this is the launch directory (where the
-    /// .exe physically sits), not the self-extract temp dir, which is
-    /// exactly where we want <c>QuartermasterData\</c> to live.
-    /// </remarks>
-    /// <returns>
-    /// (<c>path</c>, <c>isDeployed</c>) - callers use the second flag to
-    /// gate "seed-from-embedded" behavior so dev edits aren't clobbered.
-    /// </returns>
     public static (string Path, bool IsDeployed) ResolveDataRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -262,29 +160,10 @@ public static class Program
 
     static bool LooksLikeDevRepo(string root)
     {
-        // Marker file that only exists in the source tree (not in the
-        // deployed EXE bundle nor in <DataRoot>\QuartermasterData\).
         return File.Exists(Path.Combine(root, "Tools", "QuartermasterCore",
                                               "QuartermasterCore.csproj"));
     }
 
-    /// <summary>
-    /// Hunt down any other process that shares this executable's
-    /// <see cref="System.Diagnostics.Process.ProcessName"/> and kill it. Used
-    /// by the standalone Web entry to free port 17777 before binding - the
-    /// typical Linux scenario is a user closing the browser tab without ever
-    /// clicking the shutdown button, leaving Quartermaster.Web running in the
-    /// background and the port wedged.
-    /// </summary>
-    /// <remarks>
-    /// Matches by <c>ProcessName</c> (not by EXE path) so a binary the user
-    /// re-launched from a different folder still counts as "the same app".
-    /// On Linux that name comes from <c>/proc/&lt;pid&gt;/comm</c> which is
-    /// truncated to 15 chars (e.g. <c>Quartermaster.W</c>) - that's fine, the
-    /// runtime truncates the current process's name the same way so they
-    /// still match. After killing we briefly pause so the kernel releases
-    /// the TCP socket from TIME_WAIT before Kestrel tries to bind.
-    /// </remarks>
     static void TerminatePriorInstances()
     {
         var self = System.Diagnostics.Process.GetCurrentProcess();
@@ -303,10 +182,6 @@ public static class Program
             }
             catch
             {
-                // Race - process already exited - or insufficient
-                // privileges. Either way there's nothing useful we can do
-                // here; if the port is still bound, Kestrel will fail loud
-                // enough below.
             }
             finally
             {
@@ -316,25 +191,14 @@ public static class Program
 
         if (killedAny)
         {
-            // Give the kernel a beat to release the listening socket so
-            // our own bind doesn't race a still-closing TCP endpoint.
+            // Let the kernel release the listening socket before we rebind.
             System.Threading.Thread.Sleep(300);
         }
     }
 
-    /// <summary>
-    /// Writes the embedded UE5 mappings file (<c>Usmap.*.usmap</c> resource)
-    /// into <paramref name="dataRoot"/>, but only if no <c>*.usmap</c> is
-    /// already there. Newer dumps - e.g. one the user grabbed via UE4SS
-    /// Ctrl+Num6 after a game update - are preserved (and win in
-    /// <see cref="UsmapLocator"/> by mtime). The embedded copy is a
-    /// "good-enough default" so a fresh EXE drop can run setup without
-    /// any external prerequisites.
-    /// </summary>
     static void SeedUsmapIfMissing(string dataRoot)
     {
-        // Bail if any *.usmap is already at the data root - user-supplied
-        // dumps take precedence over our embedded fallback.
+        // A user-supplied dump takes precedence over the embedded fallback.
         if (Directory.EnumerateFiles(dataRoot, "*.usmap", SearchOption.TopDirectoryOnly).Any())
             return;
 
@@ -345,9 +209,6 @@ public static class Program
                               && n.EndsWith(".usmap", StringComparison.OrdinalIgnoreCase));
         if (resourceName == null) return;
 
-        // Resource name shape: "Usmap.<filename>.usmap" - strip prefix
-        // for the on-disk name so an updated EXE can ship a different
-        // dump and the user sees the version-tagged filename.
         var filename = resourceName.Substring(prefix.Length);
         var targetPath = Path.Combine(dataRoot, filename);
         using var src = asm.GetManifestResourceStream(resourceName);
@@ -356,40 +217,9 @@ public static class Program
         src.CopyTo(dst);
     }
 
-    /// <summary>
-    /// Writes the embedded dxgi-proxy DLL (<c>DllProxy.dxgi.dll</c> resource)
-    /// into <paramref name="dataRoot"/> as <c>dxgi.dll</c>, replacing any
-    /// previously seeded copy whenever the embedded version differs.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <see cref="Windrose.Quartermaster.Core.Deploy.GameDeployer"/> probes
-    /// two source paths in order when it needs to install the proxy into
-    /// the game's <c>Binaries/Win64/</c>:
-    /// </para>
-    /// <list type="number">
-    ///   <item><c>&lt;ModRoot&gt;/Tools/DllProxy/dxgi/dxgi.dll</c> (dev tree,
-    ///         freshly built via <c>build.bat</c>)</item>
-    ///   <item><c>&lt;ModRoot&gt;/dxgi.dll</c> (this seeded file)</item>
-    /// </list>
-    /// <para>
-    /// In a deployed run only the seeded file exists; in dev mode the
-    /// Tools path wins so devs always deploy whatever they just built
-    /// without having to manually re-copy.
-    /// </para>
-    /// <para>
-    /// <b>Update behaviour:</b> the historical seed-if-missing logic meant
-    /// that publishing a newer EXE never replaced the previously-extracted
-    /// <c>dxgi.dll</c> - users were stuck on the version that happened to be
-    /// there on first launch. We now compare the embedded resource's
-    /// SHA-256 against a sidecar stamp (<c>dxgi.dll.embedded-sha256</c>) and
-    /// rewrite both files when the hash differs. The stamp doubles as
-    /// proof-of-ownership: if a user dropped in a custom DLL of their own
-    /// they should keep the stamp pointing at that DLL's hash (we never
-    /// recompute the on-disk hash, so any pre-existing custom DLL keeps
-    /// winning as long as the user updates the stamp to match).
-    /// </para>
-    /// </remarks>
+    // The stamp records the embedded resource hash; the on-disk DLL's own
+    // hash is never recomputed, so a user's custom DLL keeps winning only
+    // while its stamp stays pointed at that DLL's hash.
     static void SyncDxgiDllFromEmbedded(string dataRoot)
     {
         var targetPath = Path.Combine(dataRoot, "dxgi.dll");
@@ -400,8 +230,6 @@ public static class Program
         using var src = asm.GetManifestResourceStream(resourceName);
         if (src == null) return;
 
-        // Buffer the embedded bytes once so we can hash and (potentially)
-        // write them without a second decompression pass.
         using var ms = new MemoryStream();
         src.CopyTo(ms);
         var embeddedBytes = ms.ToArray();
@@ -411,40 +239,13 @@ public static class Program
         {
             var existingStamp = File.ReadAllText(stampPath).Trim();
             if (string.Equals(existingStamp, embeddedHash, StringComparison.OrdinalIgnoreCase))
-                return; // on-disk copy is in sync with the embedded resource
+                return;
         }
 
         File.WriteAllBytes(targetPath, embeddedBytes);
         File.WriteAllText(stampPath, embeddedHash);
     }
 
-    /// <summary>
-    /// Writes the embedded Bink Audio encoder CLI
-    /// (<c>BinkAudioEnc.binkaudioenc.exe</c> resource) into
-    /// <paramref name="dataRoot"/>/Tools/binkaudioenc.exe, replacing any
-    /// previously seeded copy whenever the embedded version differs.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <see cref="Windrose.Quartermaster.Core.WindrosePaths.BinkAudioEncoderPath"/>
-    /// resolves to <c>&lt;ModRoot&gt;/Tools/binkaudioenc.exe</c>, which in a
-    /// deployed run lives under <c>QuartermasterData\Tools\</c>. Both
-    /// ShipMusicPatcher and BuildingAudioStager probe that exact path at
-    /// build time and fail loudly with "Bink Audio encoder not found at ..."
-    /// when it's missing - which is exactly what users hit before this
-    /// seed step was added, because <c>dotnet publish</c> alone doesn't
-    /// carry the in-tree CLI into the published bundle.
-    /// </para>
-    /// <para>
-    /// SHA256-stamp pattern (matches <see cref="SyncDxgiDllFromEmbedded"/>):
-    /// we compare the embedded resource's hash against a sidecar stamp
-    /// (<c>binkaudioenc.exe.embedded-sha256</c>) and rewrite both when
-    /// they disagree. This makes a fresh publish that rebuilt the CLI
-    /// roll forward to existing installs - the historical "seed-if-
-    /// missing" pattern would have left users stuck on the first launch's
-    /// binary.
-    /// </para>
-    /// </remarks>
     static void SyncBinkAudioEncFromEmbedded(string dataRoot)
     {
         var toolsDir = Path.Combine(dataRoot, "Tools");
@@ -465,7 +266,7 @@ public static class Program
         {
             var existingStamp = File.ReadAllText(stampPath).Trim();
             if (string.Equals(existingStamp, embeddedHash, StringComparison.OrdinalIgnoreCase))
-                return; // on-disk copy is in sync with the embedded resource
+                return;
         }
 
         Directory.CreateDirectory(toolsDir);
@@ -473,34 +274,6 @@ public static class Program
         File.WriteAllText(stampPath, embeddedHash);
     }
 
-    /// <summary>
-    /// Writes the embedded <c>Tools/Templates/**</c> assets (UE-cooked
-    /// .uasset/.uexp/.ubulk triplets for the ship-music SoundWave
-    /// template and the default VT textures used by the Building Creator)
-    /// into <paramref name="dataRoot"/>/Tools/Templates/, but only when
-    /// a target file isn't already there. Per-file skip-if-exists so a
-    /// user-supplied newer triplet (drop-in upgrade or local edit after
-    /// the EXE was published) wins.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Without this seed step a deployed EXE's per-build pipeline emits
-    /// "default-textures folder missing: ...QuartermasterData/Tools/
-    /// Templates/DefaultTextures - buildings that reference T_White /
-    /// T_NormalFlat / T_MTRMDefault may render broken textures" because
-    /// <see cref="Windrose.Quartermaster.Core.BuildingCreator.DefaultTextureProvider"/>
-    /// reads from <see cref="Windrose.Quartermaster.Core.WindrosePaths.BuildingDefaultTexturesDir"/>
-    /// (= <c>&lt;ModRoot&gt;/Tools/Templates/DefaultTextures</c>), and that
-    /// folder doesn't ship with <c>dotnet publish</c>.
-    /// </para>
-    /// <para>
-    /// Resource-name shape (encoded by the csproj): <c>Template/&lt;rel&gt;</c>
-    /// where <c>&lt;rel&gt;</c> is the path under <c>Tools/Templates/</c>
-    /// with forward slashes (e.g. <c>Template/DefaultTextures/T_White.uasset</c>).
-    /// The forward-slash hierarchy lets us reconstruct subdirectories
-    /// unambiguously instead of having to parse dot-separated filenames.
-    /// </para>
-    /// </remarks>
     static void SeedTemplatesIfMissing(string dataRoot)
     {
         var asm = typeof(Program).Assembly;
@@ -512,11 +285,10 @@ public static class Program
             if (!resourceName.StartsWith(prefix, StringComparison.Ordinal))
                 continue;
 
-            // Strip prefix and re-hydrate platform-native separators.
-            // Resource format: "Template/<sub>/<file>.<ext>"
             var rel = resourceName.Substring(prefix.Length)
                 .Replace('/', Path.DirectorySeparatorChar);
             var targetPath = Path.Combine(templatesRoot, rel);
+            // Skip if present so a user-supplied file wins over the seed.
             if (File.Exists(targetPath)) continue;
 
             var targetDir = Path.GetDirectoryName(targetPath);

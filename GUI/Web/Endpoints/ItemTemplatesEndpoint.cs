@@ -7,32 +7,15 @@ using Microsoft.AspNetCore.Http;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// GET /api/item-templates -> the catalog of vanilla items the Item Creator
-// tab can clone. Phase 1 ships one hardcoded entry (Piastre, a Default
-// Resource item). Future phases can add more entries here without any
-// schema migration; the frontend only reads the fields it knows about.
-//
-// Each template surfaces the baseline values its clones inherit by default
-// (MaxCountInSlot, Rarity, KeepOnDeath, ItemTexture path) so the UI can
-// preview "this is what your custom item looks like before you edit it"
-// without re-loading the source JSON.
 public static class ItemTemplatesEndpoint
 {
-    // Hardcoded catalog. Each entry must reference a real vanilla item -
-    // the ItemCreatorPatcher locates the source JSON by walking
-    // Sources/Vanilla/InventoryItems/** for a matching basename, so the
-    // folder doesn't matter, only the basename does. Adding more here is
-    // O(1): list one more entry, the patcher already supports any
-    // R5BLInventoryItem template.
+    // Each entry's id must be the basename of a real vanilla item.
     static readonly TemplateDto[] Catalog = new[]
     {
         new TemplateDto
         {
             id = "DA_DID_Misc_CoinPiastre_T02",
             label = "Piastre Coin",
-            // Default Resource item: stacks to 9999, Rare rarity, kept on
-            // death, no abilities. The simplest possible inventory item -
-            // good starting point for the "new item" flow.
             kind = "Resource",
             defaultMaxCountInSlot = 9999,
             defaultRarity = "Rare",
@@ -43,13 +26,6 @@ public static class ItemTemplatesEndpoint
         {
             id = "DA_CID_Food_Rum_Bottle_T03",
             label = "Rum Bottle",
-            // Consumable food item: stacks to 20, Rare rarity, NOT kept on
-            // death. References a ConsumableAbilityData asset that powers
-            // the drink animation + effects; the patcher copies this
-            // reference through verbatim so clones share the same behavior
-            // as the vanilla bottle. Different feel from Piastre (drops on
-            // death, smaller stack, edible) - useful as a second starter
-            // template for "potion-like" custom items.
             kind = "Consumable",
             defaultMaxCountInSlot = 20,
             defaultRarity = "Rare",
@@ -62,19 +38,15 @@ public static class ItemTemplatesEndpoint
     {
         app.MapGet("/api/item-templates", () =>
         {
-            // Return the static catalog as-is. The frontend uses the
-            // `id` field to seed CustomItem.TemplateId; the rest powers
-            // the "create new" preview card.
             return Results.Json(Catalog);
         });
     }
 
     sealed class TemplateDto
     {
-        public string id;        // basename of the vanilla item, e.g. "DA_DID_Misc_CoinPiastre_T02"
-        public string label;     // human-friendly: "Piastre Coin"
-        public string kind;      // free-form classification ("Resource", "Consumable", ...)
-                                 // - frontend uses it as a coarse filter / display badge.
+        public string id;
+        public string label;
+        public string kind;
         public int defaultMaxCountInSlot;
         public string defaultRarity;
         public bool defaultKeepInInventoryOnDeath;

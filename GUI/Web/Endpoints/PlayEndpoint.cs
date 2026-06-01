@@ -7,19 +7,6 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// POST /api/play   no body
-//
-// Launches the Windrose top-level Windrose.exe via the OS shell. We deliberately
-// go through the top-level launcher (sibling of R5/, Engine/) and not the
-// shipping EXE under R5/Binaries/Win64/ because the top-level binary is the
-// one Steam knows about - launching it through ShellExecute lets Steam pick up
-// the process (overlay, friends, achievements), and crash-handling/DRM glue
-// all wire up correctly. The shipping EXE works too but is "outside Steam"
-// from the platform's point of view.
-//
-// No profile context, no build pipeline interaction - this is a thin wrapper
-// around Process.Start. Returns immediately after spawning; the game continues
-// to run independently of Quartermaster.
 public static class PlayEndpoint
 {
     public static void Map(WebApplication app, string repoRoot)

@@ -11,14 +11,6 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// CRUD endpoints for Profile objects:
-//
-//   GET    /api/profiles               -> list of summary objects
-//   GET    /api/profiles/{id}          -> full profile
-//   POST   /api/profiles               -> create profile (server assigns id)
-//   PUT    /api/profiles/{id}          -> overwrite profile
-//   DELETE /api/profiles/{id}          -> delete profile
-//   POST   /api/profiles/{id}/duplicate -> clone a profile into a new one
 public static class ProfilesEndpoint
 {
     public static void Map(WebApplication app, string repoRoot)
@@ -54,8 +46,7 @@ public static class ProfilesEndpoint
             if (string.IsNullOrWhiteSpace(incoming.Name))
                 return Results.BadRequest(new { error = "name is required" });
 
-            // Server always picks the id; ignore any client-supplied value
-            // so they can't accidentally overwrite another profile.
+            // Server always assigns the id, ignoring any client-supplied value.
             incoming.Id = Guid.NewGuid().ToString();
 
             try { store.Save(incoming); }
@@ -80,7 +71,6 @@ public static class ProfilesEndpoint
             }
             if (incoming == null) return Results.BadRequest(new { error = "Empty body" });
 
-            // Path id wins over body id; preserve created-at across edits.
             incoming.Id = id;
             incoming.CreatedAt = existing.CreatedAt;
 
@@ -100,33 +90,24 @@ public static class ProfilesEndpoint
                 if (!store.Delete(id))
                     return Results.NotFound(new { error = "Profile file not found", id });
 
-                // Per-profile Icons/ subfolder lives next to <id>.json. We
-                // own that path entirely (only the upload endpoint writes
-                // to it, only here do we delete it), so a recursive nuke
-                // is safe and preferred over leaving orphaned PNGs behind.
                 var iconsDir = paths.ProfileIconsDir(id);
                 if (Directory.Exists(iconsDir))
                 {
                     try { Directory.Delete(iconsDir, recursive: true); }
-                    catch { /* best-effort cleanup; not fatal */ }
+                    catch { }
                 }
-                // Same cleanup for the ShipMusic subtree - the per-slot
-                // dirs hold up to ~30 MB of triplet bytes per slot (ubulk
-                // is the bulk), so leaving them behind on profile delete
-                // would slowly fill the disk.
                 var shipMusicRoot = Path.Combine(
                     paths.Profiles, id, "ShipMusic");
                 if (Directory.Exists(shipMusicRoot))
                 {
                     try { Directory.Delete(shipMusicRoot, recursive: true); }
-                    catch { /* best-effort cleanup; not fatal */ }
+                    catch { }
                 }
-                // BonfireMusic subtree (single slot for the hearth theme).
                 var bonfireMusicRoot = paths.ProfileBonfireMusicDir(id);
                 if (Directory.Exists(bonfireMusicRoot))
                 {
                     try { Directory.Delete(bonfireMusicRoot, recursive: true); }
-                    catch { /* best-effort cleanup; not fatal */ }
+                    catch { }
                 }
             }
             catch (Exception ex)
@@ -136,22 +117,6 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // POST /api/profiles/import?overwrite=false
-        //
-        // Accepts a profile JSON (same shape PUT /api/profiles/{id} writes),
-        // validates it has both id + name, and persists it as a new file. The
-        // frontend uses this for drag-and-drop import of profile files: the
-        // filename is irrelevant, only the embedded id matters.
-        //
-        // Conflict handling: if a profile with the same id already exists
-        // and overwrite=false (default), returns 409 with the existing
-        // profile's name so the GUI can prompt the user. Re-submit with
-        // overwrite=true to replace.
-        //
-        // Path safety: the id becomes the filename, so we reject anything
-        // that could escape the Profiles/ dir or land in a Win32-reserved
-        // name. Mirror of the implicit guarantee the regular POST gives by
-        // assigning Guid.NewGuid() server-side.
         app.MapPost("/api/profiles/import", async (HttpRequest req, bool? overwrite) =>
         {
             Profile incoming;
@@ -183,9 +148,6 @@ public static class ProfilesEndpoint
                 }, statusCode: StatusCodes.Status409Conflict);
             }
 
-            // Preserve CreatedAt on overwrite so the import doesn't reset
-            // the timestamp the user saw earlier. Save() will refresh
-            // ModifiedAt unconditionally.
             if (existing != null)
             {
                 incoming.CreatedAt = existing.CreatedAt;
@@ -199,26 +161,6 @@ public static class ProfilesEndpoint
                 : Results.Json(incoming, ProfileStore.JsonOpts);
         });
 
-        // POST /api/profiles/import-zip?overwrite=false  multipart -> ingest
-        // an exported profile bundle (single .zip).
-        //
-        // ZIP shape: anywhere inside the archive there is a profile JSON
-        // whose filename stem matches the embedded `id` field (i.e.
-        // <id>.json), and optionally a sibling <id>/ directory holding the
-        // per-profile assets (Icons/*.png, ShipMusic/<slot>/audio.wav, ...).
-        // We auto-detect the JSON by walking every *.json entry, parsing
-        // it, and picking the first one whose stem == id and whose `name`
-        // field is set. The directory the JSON lives in becomes the "root":
-        // every entry under <root>/<id>/ is extracted to Profiles/<id>/.
-        //
-        // Conflict handling mirrors /import: same id already present and
-        // overwrite=false -> 409 with existingName so the GUI can prompt.
-        // Re-submit with overwrite=true to replace both the JSON AND the
-        // entire Profiles/<id>/ subfolder (we wipe it first so leftover
-        // files from the previous profile can't bleed through).
-        //
-        // ZipSlip defense: every extracted path is canonicalised and
-        // verified to live under Profiles/<id>/ before bytes touch disk.
         app.MapPost("/api/profiles/import-zip", async (HttpRequest req, bool? overwrite) =>
         {
             if (!req.HasFormContentType)
@@ -237,9 +179,6 @@ public static class ProfilesEndpoint
             if (zipFile == null || zipFile.Length == 0)
                 return Results.BadRequest(new { error = "No file uploaded (form key 'file' or first file)" });
 
-            // Generous cap. Per-profile ShipMusic dir easily reaches 100+
-            // MB (10 slots * ~15 MB WAV), so 500 MB lets users round-trip
-            // a fully populated profile.
             const long maxBytes = 500L * 1024 * 1024;
             if (zipFile.Length > maxBytes)
                 return Results.BadRequest(new {
@@ -247,9 +186,7 @@ public static class ProfilesEndpoint
                           + " (" + zipFile.Length + " bytes, cap " + maxBytes + ")"
                 });
 
-            // Stage to memory so the ZipArchive can seek freely (the form
-            // stream is forward-only). MemoryStream is fine here because
-            // we already capped at 500 MB above.
+            // Stage to memory so the ZipArchive can seek; the form stream is forward-only.
             byte[] zipBytes;
             using (var ms = new MemoryStream())
             {
@@ -269,10 +206,6 @@ public static class ProfilesEndpoint
 
             using (archive)
             {
-                // Find the profile JSON: any *.json entry whose stem matches
-                // its embedded id and has a non-empty name. We prefer entries
-                // closer to the archive root (shorter path) so a nested
-                // duplicate can't shadow the canonical top-level one.
                 Profile incoming = null;
                 string jsonEntryPath = null;
                 foreach (var e in archive.Entries
@@ -321,26 +254,17 @@ public static class ProfilesEndpoint
                 if (existing != null)
                     incoming.CreatedAt = existing.CreatedAt;
 
-                // Resolve the prefix the JSON lives under so we can pick
-                // out the matching <id>/ subfolder. ZipArchive uses '/' as
-                // separator regardless of platform.
+                // ZipArchive uses '/' as the entry separator regardless of platform.
                 var prefix = "";
                 var slashIdx = jsonEntryPath.LastIndexOf('/');
                 if (slashIdx >= 0) prefix = jsonEntryPath.Substring(0, slashIdx + 1);
                 var subfolderPrefix = prefix + incoming.Id + "/";
 
-                // Target paths. ProfileStore.Save() will normally create
-                // Profiles/ on demand and write <id>.json; we mirror that
-                // explicitly so the subfolder extraction below can rely on
-                // the parent dir existing.
                 var profilesDir = paths.Profiles;
                 Directory.CreateDirectory(profilesDir);
                 var targetSubfolder = Path.Combine(profilesDir, incoming.Id);
 
-                // On overwrite, wipe the existing per-profile subfolder so
-                // leftover Icons / ShipMusic from the previous incarnation
-                // can't bleed into the imported one. The JSON itself is
-                // overwritten atomically by ProfileStore.Save() below.
+                // On overwrite, wipe the existing subfolder so stale assets can't bleed through.
                 if (existing != null && Directory.Exists(targetSubfolder))
                 {
                     try { Directory.Delete(targetSubfolder, recursive: true); }
@@ -350,16 +274,10 @@ public static class ProfilesEndpoint
                     }
                 }
 
-                // Save the JSON first (so a corrupt subfolder extraction
-                // surfaces with a recoverable profile on disk, not an
-                // orphaned tree of files).
+                // Save the JSON before extracting assets so a failed extraction leaves a recoverable profile.
                 try { store.Save(incoming); }
                 catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 
-                // Extract every entry under <prefix><id>/ to Profiles/<id>/.
-                // We canonicalise the destination path before writing so a
-                // crafted entry name (".." etc.) can never escape the
-                // subfolder.
                 int extractedFiles = 0;
                 var targetRoot = Path.GetFullPath(targetSubfolder);
                 foreach (var e in archive.Entries)
@@ -367,7 +285,6 @@ public static class ProfilesEndpoint
                     if (string.IsNullOrEmpty(e.FullName)) continue;
                     if (!e.FullName.StartsWith(subfolderPrefix, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    // Directory entries (trailing '/') have empty Name.
                     var relative = e.FullName.Substring(subfolderPrefix.Length);
                     if (string.IsNullOrEmpty(relative)) continue;
                     var dest = Path.GetFullPath(Path.Combine(targetSubfolder,
@@ -375,9 +292,7 @@ public static class ProfilesEndpoint
                     if (!dest.StartsWith(targetRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(dest, targetRoot, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Zip-slip attempt: skip silently rather than abort
-                        // the whole import (the rest of the archive may be
-                        // legitimate).
+                        // Zip-slip attempt: skip this entry rather than aborting the whole import.
                         continue;
                     }
                     if (e.FullName.EndsWith("/", StringComparison.Ordinal))
@@ -439,12 +354,7 @@ public static class ProfilesEndpoint
             try { store.Save(clone); }
             catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 
-            // Mirror any per-item PNG icons into the clone's Icons folder
-            // so the cloned profile is fully self-contained (the cloned
-            // CustomItem entries already carry IconPath via CloneCustomItems,
-            // they just need the bytes copied over). Best-effort: a copy
-            // failure logs but doesn't roll back the clone, since the user
-            // can always re-upload manually.
+            // Mirror per-item icon bytes into the clone so it is self-contained.
             try
             {
                 var srcIconsDir = paths.ProfileIconsDir(src.Id);
@@ -459,11 +369,9 @@ public static class ProfilesEndpoint
                     }
                 }
             }
-            catch { /* best-effort */ }
+            catch { }
 
-            // Same story for the per-slot ShipMusic triplets - the cloned
-            // ShipMusicGlobal.Songs dict points at on-disk bytes that need
-            // to live under the clone's profile id to stay loadable.
+            // Mirror per-slot ShipMusic bytes under the clone's profile id.
             try
             {
                 if (src.Globals != null && src.Globals.ShipMusic != null
@@ -483,11 +391,9 @@ public static class ProfilesEndpoint
                     }
                 }
             }
-            catch { /* best-effort */ }
+            catch { }
 
-            // Same story for the BonfireMusic single-slot dir - the
-            // cloned BonfireMusicGlobal.OriginalFilename refers to bytes
-            // on disk that need to live under the clone's profile id.
+            // Mirror BonfireMusic bytes under the clone's profile id.
             try
             {
                 if (src.Globals != null && src.Globals.BonfireMusic != null)
@@ -505,20 +411,11 @@ public static class ProfilesEndpoint
                     }
                 }
             }
-            catch { /* best-effort */ }
+            catch { }
 
             return Results.Created("/api/profiles/" + clone.Id, clone);
         });
 
-        // ---- Custom-icon upload / clear ----
-        // POST /api/profiles/{id}/icons/{itemId}  multipart -> store PNG
-        //   bytes at Profiles/<id>/Icons/<itemId>.png and update the
-        //   matching CustomItem.IconPath. Server holds two truths in
-        //   sync (file + profile field) so the client doesn't have to
-        //   PUT the profile separately just for the icon link.
-        // DELETE /api/profiles/{id}/icons/{itemId} -> clear IconPath
-        //   and delete the PNG. Idempotent (404 only if profile/item
-        //   missing).
         app.MapPost("/api/profiles/{id}/icons/{itemId}", async (string id, string itemId, HttpRequest req) =>
         {
             var profile = store.Load(id);
@@ -542,11 +439,6 @@ public static class ProfilesEndpoint
             if (file == null || file.Length == 0)
                 return Results.BadRequest(new { error = "No file uploaded (form key 'file' or first file)" });
 
-            // Hard cap to keep accidents from filling the disk. The
-            // Piastre source PNG is ~85 KB; even an extravagantly large
-            // 1024x1024 24-bit master plus alpha would land well under
-            // 8 MB, so 8 MB is a generous "you definitely meant to do
-            // this" ceiling.
             const long maxBytes = 8L * 1024 * 1024;
             if (file.Length > maxBytes)
                 return Results.BadRequest(new { error = $"File too large ({file.Length} bytes); max is {maxBytes} bytes" });
@@ -563,10 +455,7 @@ public static class ProfilesEndpoint
                 bytes = ms.ToArray();
             }
 
-            // Sniff PNG magic so we don't store a JPG-with-png-extension
-            // and confuse the baker downstream. The baker re-decodes via
-            // ImageSharp which would surface a clearer error too, but
-            // failing fast at upload is friendlier.
+            // Reject non-PNG bytes by checking the PNG signature.
             if (bytes.Length < 8
                 || bytes[0] != 0x89 || bytes[1] != 0x50 || bytes[2] != 0x4E || bytes[3] != 0x47
                 || bytes[4] != 0x0D || bytes[5] != 0x0A || bytes[6] != 0x1A || bytes[7] != 0x0A)
@@ -591,16 +480,13 @@ public static class ProfilesEndpoint
             var item = profile.CustomItems?.FirstOrDefault(c => c != null && string.Equals(c.Id, itemId, StringComparison.Ordinal));
             if (item == null) return Results.NotFound(new { error = "CustomItem not found in profile", itemId });
 
-            // Delete the file if present (don't crash if the PNG was
-            // already manually removed). Always clear the profile field
-            // so the build pipeline stops trying to bake it.
             var iconsDir = paths.ProfileIconsDir(id);
             if (!string.IsNullOrEmpty(item.IconPath))
             {
                 var diskPath = Path.Combine(iconsDir, item.IconPath);
                 if (File.Exists(diskPath))
                 {
-                    try { File.Delete(diskPath); } catch { /* best-effort */ }
+                    try { File.Delete(diskPath); } catch { }
                 }
             }
 
@@ -611,17 +497,9 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // GET /api/profiles/{id}/icons/{itemId} -> the raw PNG bytes
-        // (or 404). Used by the frontend to render the preview thumb
-        // in the Item-Creator card. We don't expose a generic static-
-        // file mount because Profiles/ is gitignored / arbitrary user
-        // data and we want every read to go through the path-validating
-        // endpoint instead of an open directory listing.
         app.MapGet("/api/profiles/{id}/icons/{itemId}", (string id, string itemId) =>
         {
-            // Itemid sanity: filename-safe characters only. Mirrors the
-            // ItemCreatorPatcher.IsSafeId rule so a malicious "../.." can
-            // never escape the icons dir.
+            // Reject path-traversal: filename-safe characters only.
             if (string.IsNullOrEmpty(itemId)) return Results.BadRequest(new { error = "itemId required" });
             foreach (var ch in itemId)
             {
@@ -635,28 +513,6 @@ public static class ProfilesEndpoint
             return Results.File(diskPath, "image/png");
         });
 
-        // ---- Ship-music triplet upload / clear / status ----
-        //
-        // POST /api/profiles/{id}/ship-music/{slotStem}
-        //   multipart, expects a single audio file keyed "audio" (or
-        //   "wav" for back-compat, or any form-file with a supported
-        //   extension: wav/mp3/ogg/flac/m4a/aac/opus). For non-WAV
-        //   inputs the server transcodes via ffmpeg.exe (auto-downloaded
-        //   on first use); for WAVs already at 44.1 kHz / stereo /
-        //   16-bit PCM the transcode is skipped. Stores the cleaned WAV
-        //   as audio.wav under Profiles/<id>/ShipMusic/<slotStem>/ and
-        //   creates/updates the matching ShipMusicGlobal.Songs[slotStem]
-        //   entry with the user's original filename. Replaces any prior
-        //   upload for the same slot.
-        //
-        // DELETE /api/profiles/{id}/ship-music/{slotStem}
-        //   Removes the per-slot dir and clears the Songs entry. Idempotent
-        //   (returns 204 even when the slot was already vanilla).
-        //
-        // GET /api/profiles/{id}/ship-music
-        //   Lists all 10 vanilla slots with current status (vanilla vs
-        //   custom + per-slot metadata). The frontend renders one card
-        //   per row.
         app.MapGet("/api/profiles/{id}/ship-music", (string id) =>
         {
             var profile = store.Load(id);
@@ -680,7 +536,7 @@ public static class ProfilesEndpoint
                     wavPresent = File.Exists(wavPath);
                     if (wavPresent)
                     {
-                        try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                        try { wavBytes = new FileInfo(wavPath).Length; } catch { }
                     }
                 }
                 return new
@@ -692,34 +548,14 @@ public static class ProfilesEndpoint
                           : "broken",
                     originalFilename = ov?.OriginalFilename,
                     wavBytes,
-                    // True when the user excluded this slot from the
-                    // shanty rotation - the build pipeline drops it from
-                    // the DA Cues array so the engine never picks it.
-                    // Any configured override (Songs entry) stays on disk
-                    // and re-activates on include.
                     excluded = excludedSet.Contains(slot.Stem),
-                    // User-set absolute VolumeMultiplier. null OR 0.45
-                    // means "vanilla unchanged" (UI slider defaults to
-                    // 45%, which matches the VoicePlayer vanilla
-                    // baseline). Stored on the override even when no
-                    // audio is uploaded yet, so the user can pre-tune a
-                    // slot before picking an audio file.
+                    // Volume null or 0.45 both mean "vanilla unchanged".
                     volume = ov?.Volume ?? 0.45,
                 };
             }).ToArray();
             return Results.Json(new { slots = rows });
         });
 
-        // POST /api/profiles/{id}/ship-music/{slotStem}/exclude
-        //   Marks the vanilla shanty slot as excluded from the rotation.
-        //   Idempotent (re-posting the same slot is a no-op). Returns
-        //   400 if the resulting active-track count would drop below 1
-        //   (i.e. would exclude the last remaining vanilla slot and the
-        //   user has no added tracks to fall back on).
-        //
-        // DELETE /api/profiles/{id}/ship-music/{slotStem}/exclude
-        //   Removes the exclusion; the slot re-enters the rotation
-        //   with whatever override (if any) was configured before. Idempotent.
         app.MapPost("/api/profiles/{id}/ship-music/{slotStem}/exclude",
             (string id, string slotStem) =>
         {
@@ -737,9 +573,7 @@ public static class ProfilesEndpoint
                 .Any(s => string.Equals(s, slotStem, StringComparison.OrdinalIgnoreCase));
             if (!already)
             {
-                // Safety: refuse to exclude the last remaining playable
-                // track (active vanilla + added). The engine would crash
-                // on an empty Shanty.Cues array.
+                // At least one track must stay active; an empty Shanty.Cues array crashes the engine.
                 int excludedAfter = profile.Globals.ShipMusic.ExcludedSlots.Count + 1;
                 int activeVanillaAfter = ShipMusicSlots.All.Count - excludedAfter;
                 int addedCount = profile.Globals?.ShipMusicAdd?.Tracks == null
@@ -780,14 +614,6 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // POST /api/profiles/{id}/ship-music/{slotStem}/volume
-        //   JSON body: { "volume": 0.0..1.0 }. Sets the per-slot
-        //   absolute VolumeMultiplier. 0.45 means "vanilla unchanged"
-        //   (matches the VoicePlayer baseline; build pipeline skips cue
-        //   patching at that value). Creates the Songs entry on the fly
-        //   so the user can pre-tune a slot before uploading audio. The
-        //   entry is removed by DELETE /ship-music/{slotStem} together
-        //   with the audio.
         app.MapPost("/api/profiles/{id}/ship-music/{slotStem}/volume",
             async (string id, string slotStem, HttpRequest req) =>
         {
@@ -809,9 +635,6 @@ public static class ProfilesEndpoint
                 return Results.BadRequest(new { error = "Invalid JSON: " + ex.Message });
             }
 
-            // Clamp to UI range. The patcher itself also clamps, but
-            // we save the clamped value so subsequent GETs reflect the
-            // effective setting.
             if (volume < 0.0) volume = 0.0;
             if (volume > 1.0) volume = 1.0;
 
@@ -857,10 +680,6 @@ public static class ProfilesEndpoint
                 return Results.BadRequest(new { error = "Invalid form: " + ex.Message });
             }
 
-            // Match the audio file by form-key first, then by supported
-            // extension as a fallback. The GUI ships it under key "audio"
-            // (or legacy "wav"); curl users dropping any single supported
-            // audio file get the same behavior.
             IFormFile audioFile = files.GetFile("audio")
                 ?? files.GetFile("wav")
                 ?? files.FirstOrDefault(f => f.FileName != null
@@ -883,11 +702,6 @@ public static class ProfilesEndpoint
                 });
             }
 
-            // Hard cap. A 5-minute 44.1 kHz stereo 16-bit PCM WAV lands
-            // around 50 MB (CD-quality is 10 MB / min). 150 MB lets users
-            // upload up to ~15 minutes of music per slot - generous for
-            // raw WAVs and absurdly so for compressed formats (~150 MB
-            // of MP3 is ~3 hours of audio).
             const long maxBytes = 150L * 1024 * 1024;
             if (audioFile.Length > maxBytes)
                 return Results.BadRequest(new {
@@ -895,12 +709,7 @@ public static class ProfilesEndpoint
                           + " (" + audioFile.Length + " bytes, cap " + maxBytes + ")"
                 });
 
-            // Stage the upload into a temp file with the original
-            // extension so ffmpeg can pick the right demuxer (it
-            // sniffs magic bytes but also peeks at the extension as a
-            // tiebreaker). We can't write straight to the slot dir
-            // because the final filename is always audio.wav - the
-            // preprocessor produces that as the cleaned target.
+            // Stage to a temp file keeping the source extension so ffmpeg picks the right demuxer.
             var srcExt = Path.GetExtension(audioFile.FileName);
             if (string.IsNullOrEmpty(srcExt)) srcExt = ".bin";
             var stagedSrc = Path.Combine(Path.GetTempPath(),
@@ -914,28 +723,21 @@ public static class ProfilesEndpoint
             AudioPreprocessor.Result prep;
             try
             {
-                // Preprocess: short-circuit copy for already-correct WAV,
-                // ffmpeg-resample otherwise (downloads ffmpeg on first
-                // use via FfmpegResolver - that blocks the response by a
-                // few seconds the very first time).
                 prep = await AudioPreprocessor.PreprocessAsync(
                     paths, stagedSrc, wavOut,
                     log: null);
             }
             catch (Exception ex)
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
-                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new { error = ex.Message });
             }
             finally
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
             }
 
-            // Validate the cleaned WAV with the same reader the patcher
-            // uses. Anything the preprocessor produced should pass - but
-            // a sanity pass catches regressions in ffmpeg-argument tuning.
             WavInfo.Info wavInfo;
             try
             {
@@ -943,7 +745,7 @@ public static class ProfilesEndpoint
             }
             catch (Exception ex)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV failed validation: " + ex.Message
                           + " - this is a bug in the audio preprocessor."
@@ -951,27 +753,21 @@ public static class ProfilesEndpoint
             }
             if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
                           + wavInfo.Describe() + ") - this is a bug in the audio preprocessor."
                 });
             }
 
-            // Pick the user's original filename if the form didn't pass
-            // an explicit override.
             if (string.IsNullOrEmpty(originalFilename))
                 originalFilename = audioFile.FileName ?? slot.Stem + srcExt;
 
-            // Ensure the Globals chain exists, then update Songs.
             if (profile.Globals == null) profile.Globals = new ProfileGlobals();
             if (profile.Globals.ShipMusic == null) profile.Globals.ShipMusic = new ShipMusicGlobal();
             if (profile.Globals.ShipMusic.Songs == null)
                 profile.Globals.ShipMusic.Songs = new Dictionary<string, ShipMusicSlotOverride>(StringComparer.OrdinalIgnoreCase);
-            // Preserve any pre-existing Volume so a fresh audio upload
-            // doesn't wipe out the user's volume slider position. If no
-            // entry existed yet, Volume stays null (= 0.45 = vanilla
-            // VoicePlayer baseline).
+            // Preserve any existing Volume so a re-upload keeps the slider position.
             profile.Globals.ShipMusic.Songs.TryGetValue(slotStem, out var prior);
             profile.Globals.ShipMusic.Songs[slotStem] = new ShipMusicSlotOverride
             {
@@ -1002,18 +798,13 @@ public static class ProfilesEndpoint
             if (!ShipMusicSlots.IsKnown(slotStem))
                 return Results.BadRequest(new { error = "Unknown ship-music slot stem", slotStem });
 
-            // Drop the on-disk bytes - best-effort, missing dir is fine.
             var slotDir = paths.ProfileShipMusicSlotDir(id, slotStem);
             if (Directory.Exists(slotDir))
             {
                 try { Directory.Delete(slotDir, recursive: true); }
-                catch { /* best-effort */ }
+                catch { }
             }
 
-            // Drop the profile entry too. We leave the empty dict around
-            // (vs nulling ShipMusic outright) so re-uploads don't have to
-            // re-instantiate the global - it's harmless and the build
-            // pipeline treats empty Songs as "no shanties replaced".
             if (profile.Globals != null
                 && profile.Globals.ShipMusic != null
                 && profile.Globals.ShipMusic.Songs != null)
@@ -1027,20 +818,6 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // ---- Ship-music ADD (extra tracks beyond the vanilla 10) ----
-        //
-        // GET    /api/profiles/{id}/ship-music-add
-        //   Lists every added track from profile.Globals.ShipMusicAdd.Tracks
-        //   with on-disk status (wav present, size, title, etc.).
-        //
-        // POST   /api/profiles/{id}/ship-music-add
-        //   multipart form: trackKey (form field, [A-Za-z0-9_]), title
-        //   (optional), audio (file). Re-uses the same audio preprocessor
-        //   as the ship-music override endpoint. Creates the track entry
-        //   in Tracks list if missing, replaces audio.wav otherwise.
-        //
-        // DELETE /api/profiles/{id}/ship-music-add/{trackKey}
-        //   Removes the per-track dir + drops the entry from the Tracks list.
         app.MapGet("/api/profiles/{id}/ship-music-add", (string id) =>
         {
             var profile = store.Load(id);
@@ -1056,24 +833,17 @@ public static class ProfilesEndpoint
                     long wavBytes = 0;
                     if (wavPresent)
                     {
-                        try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                        try { wavBytes = new FileInfo(wavPath).Length; } catch { }
                     }
                     return new
                     {
                         trackKey = t.TrackKey,
                         title = t.Title,
                         originalFilename = t.OriginalFilename,
-                        // Display index (matches what the build pipeline will
-                        // assign at build time: position+11 because the
-                        // vanilla 10 cues stay).
                         newIndex = (idx + 11).ToString(System.Globalization.CultureInfo.InvariantCulture),
                         state = wavPresent ? "ready" : "missing-wav",
                         wavBytes,
-                        // Absolute VolumeMultiplier written into the cloned
-                        // cue at build time. Default for new tracks is
-                        // 0.45 (= parity with vanilla VoicePlayer baseline).
-                        // null on legacy tracks gets the new default
-                        // surfaced to the UI so the slider starts at 45%.
+                        // Volume null or 0.45 both mean "vanilla unchanged".
                         volume = t.Volume ?? 0.45,
                     };
                 })
@@ -1105,7 +875,6 @@ public static class ProfilesEndpoint
 
             if (string.IsNullOrEmpty(trackKey))
                 return Results.BadRequest(new { error = "trackKey is required (filesystem-safe identifier)" });
-            // Mirror the build-pipeline IsSafeTrackKey gate.
             foreach (var c in trackKey)
             {
                 if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
@@ -1160,25 +929,25 @@ public static class ProfilesEndpoint
             }
             catch (Exception ex)
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
-                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new { error = ex.Message });
             }
             finally
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
             }
 
             WavInfo.Info wavInfo;
             try { wavInfo = WavInfo.Read(wavOut); }
             catch (Exception ex)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new { error = "Preprocessed WAV failed validation: " + ex.Message });
             }
             if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new
                 {
                     error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
@@ -1196,11 +965,7 @@ public static class ProfilesEndpoint
 
             var existing = profile.Globals.ShipMusicAdd.Tracks
                 .FindIndex(t => t != null && string.Equals(t.TrackKey, trackKey, StringComparison.OrdinalIgnoreCase));
-            // Preserve any existing volume slider position when replacing
-            // audio. New tracks default to 0.45 (= absolute parity with
-            // the vanilla VoicePlayer VolumeMultiplier baseline; the
-            // build pipeline writes this value directly into the cloned
-            // cue's VolumeMultiplier slot).
+            // Preserve any existing volume on replace; new tracks default to 0.45 (vanilla parity).
             double? volumeForEntry = null;
             if (existing >= 0)
             {
@@ -1233,11 +998,6 @@ public static class ProfilesEndpoint
             });
         });
 
-        // POST /api/profiles/{id}/ship-music-add/{trackKey}/volume
-        //   JSON body: { "volume": 0.0..1.0 }. Sets the per-track absolute
-        //   VolumeMultiplier (written into the cloned cue's
-        //   VolumeMultiplier slot at build time). The track must already
-        //   exist.
         app.MapPost("/api/profiles/{id}/ship-music-add/{trackKey}/volume",
             async (string id, string trackKey, HttpRequest req) =>
         {
@@ -1284,7 +1044,7 @@ public static class ProfilesEndpoint
             var trackDir = paths.ProfileShipMusicAddTrackDir(id, trackKey);
             if (Directory.Exists(trackDir))
             {
-                try { Directory.Delete(trackDir, recursive: true); } catch { /* best-effort */ }
+                try { Directory.Delete(trackDir, recursive: true); } catch { }
             }
             if (profile.Globals?.ShipMusicAdd?.Tracks != null)
             {
@@ -1298,22 +1058,6 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // ---- Building Audio (per-building user audio for "audio" preset) ----
-        //
-        // GET    /api/profiles/{id}/buildings/{bid}/audio
-        //   Returns audio meta + on-disk state for the given building.
-        //
-        // POST   /api/profiles/{id}/buildings/{bid}/audio
-        //   multipart/form-data with key "audio" (file). Preprocessed to
-        //   44.1 kHz / stereo / 16-bit PCM via AudioPreprocessor, stored as
-        //   <Profiles>/<id>/BuildingAudio/<bid>/audio.wav. Returns the
-        //   updated AudioSourceMeta block.
-        //
-        // DELETE /api/profiles/{id}/buildings/{bid}/audio
-        //   Drops the on-disk dir + clears CustomBuilding.AudioSource.
-
-        // Shared lookup helper: find a CustomBuilding by id, or return
-        // (null, error-message) on miss.
         static (Profile profile, CustomBuilding bldg, string error) LoadBuilding(
             ProfileStore st, string profileId, string buildingId)
         {
@@ -1339,7 +1083,7 @@ public static class ProfilesEndpoint
             long wavBytes = 0;
             if (wavPresent)
             {
-                try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                try { wavBytes = new FileInfo(wavPath).Length; } catch { }
             }
             return Results.Json(new
             {
@@ -1397,8 +1141,6 @@ public static class ProfilesEndpoint
                 });
             }
 
-            // 60 MB cap. Looping ambient audio rarely needs > a few minutes;
-            // a 5-minute 44.1k stereo WAV is ~50 MB.
             const long maxBytes = 60L * 1024 * 1024;
             if (audioFile.Length > maxBytes)
                 return Results.BadRequest(new {
@@ -1424,27 +1166,27 @@ public static class ProfilesEndpoint
             }
             catch (Exception ex)
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
-                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new { error = ex.Message });
             }
             finally
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
             }
 
             WavInfo.Info wavInfo;
             try { wavInfo = WavInfo.Read(wavOut); }
             catch (Exception ex)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV failed validation: " + ex.Message
                 });
             }
             if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
                           + wavInfo.Describe() + ")"
@@ -1488,7 +1230,7 @@ public static class ProfilesEndpoint
             var dir = paths.ProfileBuildingAudioDir(id, bid);
             if (Directory.Exists(dir))
             {
-                try { Directory.Delete(dir, recursive: true); } catch { /* best-effort */ }
+                try { Directory.Delete(dir, recursive: true); } catch { }
             }
             bldg.AudioSource = null;
 
@@ -1497,21 +1239,6 @@ public static class ProfilesEndpoint
             return Results.NoContent();
         });
 
-        // ---- Bonfire / building-center hearth music ("The Hearth") ----
-        //
-        // GET    /api/profiles/{id}/bonfire-music
-        //   Returns the current upload state (filename + WAV size +
-        //   on-disk state). Single slot, no per-stem subdir.
-        //
-        // POST   /api/profiles/{id}/bonfire-music
-        //   multipart/form-data with key "audio" (file). Preprocessed to
-        //   44.1 kHz / stereo / 16-bit PCM via AudioPreprocessor, stored
-        //   as <Profiles>/<id>/BonfireMusic/audio.wav. Creates / updates
-        //   the BonfireMusic global. Replaces any prior upload.
-        //
-        // DELETE /api/profiles/{id}/bonfire-music
-        //   Drops the on-disk dir + clears the global. Idempotent
-        //   (returns 204 when already vanilla).
         app.MapGet("/api/profiles/{id}/bonfire-music", (string id) =>
         {
             var profile = store.Load(id);
@@ -1524,16 +1251,9 @@ public static class ProfilesEndpoint
             long wavBytes = 0;
             if (wavPresent)
             {
-                try { wavBytes = new FileInfo(wavPath).Length; } catch { /* best-effort */ }
+                try { wavBytes = new FileInfo(wavPath).Length; } catch { }
             }
-            // State machine:
-            //   vanilla       - no BonfireMusic node on the profile
-            //   custom        - WAV uploaded + filename set
-            //   muted-vanilla - no upload, no filename, Volume == 0
-            //                   (build synthesizes a silence SWAV so
-            //                   "The Hearth" goes quiet in-engine)
-            //   broken        - filename set but the WAV is missing
-            //                   (user needs to re-upload or clear)
+            // Volume == 0 with no upload is the "muted-vanilla" sentinel: the build silences the slot.
             string stateStr;
             if (bm == null) stateStr = "vanilla";
             else if (wavPresent) stateStr = "custom";
@@ -1592,9 +1312,6 @@ public static class ProfilesEndpoint
                 });
             }
 
-            // 150 MB cap matches the ship-music override endpoint (same
-            // pipeline + storage class - users may want a long hearth
-            // theme so the cap is generous).
             const long maxBytes = 150L * 1024 * 1024;
             if (audioFile.Length > maxBytes)
                 return Results.BadRequest(new {
@@ -1620,27 +1337,27 @@ public static class ProfilesEndpoint
             }
             catch (Exception ex)
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
-                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
+                try { if (File.Exists(wavOut)) File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new { error = ex.Message });
             }
             finally
             {
-                try { File.Delete(stagedSrc); } catch { /* best-effort */ }
+                try { File.Delete(stagedSrc); } catch { }
             }
 
             WavInfo.Info wavInfo;
             try { wavInfo = WavInfo.Read(wavOut); }
             catch (Exception ex)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV failed validation: " + ex.Message
                 });
             }
             if (wavInfo.SampleRate != 44100 || wavInfo.Channels != 2 || wavInfo.BitsPerSample != 16)
             {
-                try { File.Delete(wavOut); } catch { /* best-effort */ }
+                try { File.Delete(wavOut); } catch { }
                 return Results.BadRequest(new {
                     error = "Preprocessed WAV is not 44.1 kHz / stereo / 16-bit ("
                           + wavInfo.Describe() + ")"
@@ -1651,8 +1368,6 @@ public static class ProfilesEndpoint
                 originalFilename = audioFile.FileName ?? BonfireMusicSlot.Stem + srcExt;
 
             if (profile.Globals == null) profile.Globals = new ProfileGlobals();
-            // Preserve any pre-existing Volume (currently stored but not
-            // wired into the patcher - see BonfireMusicGlobal docs).
             double? priorVolume = profile.Globals.BonfireMusic?.Volume;
             profile.Globals.BonfireMusic = new BonfireMusicGlobal
             {
@@ -1684,7 +1399,7 @@ public static class ProfilesEndpoint
             if (Directory.Exists(dir))
             {
                 try { Directory.Delete(dir, recursive: true); }
-                catch { /* best-effort */ }
+                catch { }
             }
 
             if (profile.Globals != null)
@@ -1843,9 +1558,7 @@ public static class ProfilesEndpoint
         };
     }
 
-    // Deep-clones the per-LT override map. Each LootTableOverride contains
-    // dictionaries / lists that we don't want shared with the source profile
-    // (otherwise editing the clone would mutate the original).
+    // Deep-clone so editing the clone never mutates the source profile's collections.
     static Dictionary<string, LootTableOverride> CloneLootOverrides(
         Dictionary<string, LootTableOverride> src)
     {
@@ -1889,11 +1602,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clones the per-recipe edit map. Safe to share BuyerRecipeOverride
-    // values across clones in theory (they're flat), but explicit copying
-    // matches the LootOverrides pattern and makes future field additions
-    // safer (a forgotten reference-share would silently corrupt the source
-    // profile).
     static Dictionary<string, BuyerRecipeOverride> CloneBuyerRecipes(
         Dictionary<string, BuyerRecipeOverride> src)
     {
@@ -1916,9 +1624,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clones the per-recipe edit map for the Sellers tab. Mirrors
-    // CloneBuyerRecipes; the override shape is the same plus
-    // CraftRequirement (which buyers also carry now).
     static Dictionary<string, SellerRecipeOverride> CloneSellerRecipes(
         Dictionary<string, SellerRecipeOverride> src)
     {
@@ -1941,8 +1646,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clones the custom items list. Each CustomItem is flat (only
-    // primitive fields + nullable scalars) so a per-field copy is safe.
     static List<CustomItem> CloneCustomItems(List<CustomItem> src)
     {
         if (src == null) return null;
@@ -1967,11 +1670,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clones the custom buildings list. Each CustomBuilding has a
-    // nested Slots dict whose values are flat (just texture stems +
-    // paths), but we still copy element-by-element so future field
-    // additions to CustomBuildingSlot can't accidentally share state
-    // between the source and clone.
     static List<CustomBuilding> CloneCustomBuildings(List<CustomBuilding> src)
     {
         if (src == null) return null;
@@ -1979,13 +1677,6 @@ public static class ProfilesEndpoint
         foreach (var b in src)
         {
             if (b == null) { result.Add(null); continue; }
-            // AssetPrefix is no longer a user input. Persist the value
-            // derived from MeshStem so older code paths that read the
-            // field directly still see a non-empty string. If the
-            // incoming DTO already has one (e.g. an older profile that
-            // got loaded), prefer the existing value to avoid surprising
-            // renames on save. Empty MeshStem -> empty prefix; that's
-            // fine because the build pipeline gates on MeshStem first.
             var resolvedPrefix = !string.IsNullOrWhiteSpace(b.AssetPrefix)
                 ? b.AssetPrefix
                 : CustomBuilding.DeriveAssetPrefixFromMeshStem(b.MeshStem);
@@ -2000,14 +1691,7 @@ public static class ProfilesEndpoint
                 MeshStem = b.MeshStem,
                 IconStem = b.IconStem,
                 Slots = CloneCustomBuildingSlots(b.Slots),
-                // Carry the optional component-FX preset id through
-                // duplicate so the cloned profile inherits the preset.
                 ComponentPresetId = b.ComponentPresetId,
-                // Audio preset extension: range + meta-block follow the
-                // building on duplicate. The audio.wav file itself is
-                // duplicated separately by the duplicate-profile handler
-                // (per-building dir copy) - this DTO carries only the
-                // display meta.
                 AudioRangeMeters = b.AudioRangeMeters,
                 AudioVolume      = b.AudioVolume,
                 AudioSource = b.AudioSource == null
@@ -2045,8 +1729,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clone the float[] values (otherwise the duplicate shares the
-    // same array references with the source profile).
     static Dictionary<string, float[]> CloneVectorParams(Dictionary<string, float[]> src)
     {
         var result = new Dictionary<string, float[]>(src.Count, StringComparer.Ordinal);
@@ -2057,9 +1739,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Deep-clones the per-list edit map. List values are reference-sharing
-    // hazards (AddedRecipeIds / RemovedRecipeIds are mutable Lists), so
-    // the clone copies the lists explicitly.
     static Dictionary<string, BuyerListOverride> CloneBuyerLists(
         Dictionary<string, BuyerListOverride> src)
     {
@@ -2079,7 +1758,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Sellers-side mirror of CloneBuyerLists.
     static Dictionary<string, SellerListOverride> CloneSellerLists(
         Dictionary<string, SellerListOverride> src)
     {
@@ -2099,8 +1777,6 @@ public static class ProfilesEndpoint
         return result;
     }
 
-    // Lightweight summary for the list view - the full profile (including
-    // every override) only loads when the user opens it.
     static object ToSummary(Profile p)
     {
         return new
@@ -2124,78 +1800,32 @@ public static class ProfilesEndpoint
             hasGlobalLoot = p.Globals != null && p.Globals.Loot != null
                             && p.Globals.Loot.ByCategory != null
                             && p.Globals.Loot.ByCategory.Count > 0,
-            // Multiplier > 1.0 means a triplet would actually be built;
-            // 1.0 / null means "no pickup mod", same as no pickup config.
             hasGlobalPickupRadius = p.Globals != null && p.Globals.PickupRadius != null
                                     && p.Globals.PickupRadius.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickupRadius.Multiplier.Value - 1.0) > 1e-9,
-            // True when the profile would actually patch the
-            // BuildLimits JSON: at least one cap differs from vanilla
-            // (10 bells, 3 signal fires). Mirrors the same logic the
-            // build pipeline uses to decide whether to run the patcher.
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
-            // True when the single-toggle "enhanced building stability"
-            // is on - the build will then self-bake the 787 supported
-            // vanilla DA_BI* DataAssets (overwriting the IntegritySettings
-            // floats directly in their raw zen chunks) and ship them in
-            // the _Raw_P companion triplet next to the main mod.
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
-            // True when at least one NoSmoke category is on - the build
-            // will then self-bake the relevant vanilla Niagara assets
-            // (silencing emitter handles) into the IoStore composite.
             hasGlobalNoSmoke = HasAnyNoSmokeCategory(p),
-            // True when Minimap-range is configured with a multiplier
-            // > 1.0 (1.0 / null collapses to "no minimap mod"). The
-            // build then lazy-extracts the vanilla DefaultR5MapSettings
-            // .ini, scales four reveal-range fields linearly, and
-            // ships the result as a loose file in the _Raw_P companion
-            // .pak (shared with stability when both are active).
             hasGlobalMinimapRange = p.Globals != null
                                     && p.Globals.MinimapRange != null
                                     && p.Globals.MinimapRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.MinimapRange.Multiplier.Value - 1.0) > 1e-9,
-            // True when Bonfire-radius is configured with a multiplier
-            // > 1.0 (1.0 / null collapses to "no bonfire mod"). The build
-            // then patches the two influence floats on
-            // DA_BI_Utilities_BuildingCenterT01 and ships the result in
-            // the shared IoStore composite triplet alongside Pickup /
-            // NoSmoke.
             hasGlobalBonfireRadius = p.Globals != null
                                      && p.Globals.BonfireRadius != null
                                      && p.Globals.BonfireRadius.Multiplier.HasValue
                                      && Math.Abs(p.Globals.BonfireRadius.Multiplier.Value - 1.0) > 1e-9,
-            // True when Pickaxe-range is configured with a multiplier
-            // > 1.0 (1.0 / null collapses to "no pickaxe mod"). The
-            // build then patches TraceScaleModifier on each pickaxe tier's
-            // InstanceParams DataAsset and ships the result in the shared
-            // IoStore composite triplet alongside Pickup / Bonfire / NoSmoke.
             hasGlobalPickaxeRange = p.Globals != null
                                     && p.Globals.PickaxeRange != null
                                     && p.Globals.PickaxeRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickaxeRange.Multiplier.Value - 1.0) > 1e-9,
-            // True when at least one of the 8 cooldown axes (Elixir,
-            // Medicine, Recall, ShipRepairKit, BoarWhistle, ShipSummon,
-            // RangedReload, ShipCannon) is configured with a non-vanilla
-            // multiplier. The build then walks the active families and
-            // ships per-asset patches in the shared IoStore composite.
             hasGlobalCooldowns = p.Globals != null
                                  && p.Globals.Cooldowns != null
                                  && AnyCooldownActive(p.Globals.Cooldowns),
-            // True when at least one ProductionTimes axis (CropGrowth or
-            // any of the 9 recipe families: Smelting, Kiln, Tanning,
-            // Milling, BuildingBits, Decoration, ArmorWeapon, TradeOutpost,
-            // Other) is configured with a non-vanilla multiplier. Surfaces
-            // on the profile-list card so the user can see at a glance
-            // which profiles ship Stations-tab patches.
             hasGlobalProductionTimes = p.Globals != null
                                        && p.Globals.ProductionTimes != null
                                        && AnyProductionTimeActive(p.Globals.ProductionTimes),
-            // True when at least one ship-music slot has a configured
-            // replacement. The Songs dict only ever holds active entries
-            // (the upload endpoint adds keys, the delete endpoint removes
-            // them), so a non-empty Songs is itself the signal.
             hasGlobalShipMusic = p.Globals != null
                                  && p.Globals.ShipMusic != null
                                  && p.Globals.ShipMusic.Songs != null
@@ -2243,11 +1873,7 @@ public static class ProfilesEndpoint
             || n.Kiln.GetValueOrDefault(false);
     }
 
-    // Defends the Profiles/ dir against path-traversal at import time. The
-    // id becomes the filename, so anything that could escape (slash, dot-dot,
-    // colon, control char) or that Windows would reject (reserved device
-    // names like CON / NUL / COM1) is rejected up front. The regular POST
-    // path doesn't need this check because it assigns Guid.NewGuid() itself.
+    // The id becomes a filename, so reject path-traversal and Win32-reserved names.
     static bool IsSafeProfileId(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return false;
@@ -2257,9 +1883,6 @@ public static class ProfilesEndpoint
             if (!(char.IsLetterOrDigit(ch) || ch == '-' || ch == '_'))
                 return false;
         }
-        // Reserved Win32 device names (case-insensitive) - File.WriteAllText
-        // would either fail outright or, worse on some shells, redirect to
-        // the device.
         switch (id.ToUpperInvariant())
         {
             case "CON":  case "PRN":  case "AUX":  case "NUL":

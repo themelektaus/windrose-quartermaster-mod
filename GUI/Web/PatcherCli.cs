@@ -6,16 +6,6 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web
 {
-    // Headless CLI shim that lets us drive the patcher from the command line:
-    //
-    //   dotnet run --project GUI -- --test-patcher --multiplier 4 --build-pak
-    //   dotnet run --project GUI -- --test-patcher --profile x4
-    //   dotnet run --project GUI -- --test-loot-patcher --multiplier 2 --bucket Mobs
-    //
-    // Used to smoke-test parity with the legacy PowerShell pipeline before the
-    // full Build endpoint exists (Phase 4).  Keeps the production HTTP path
-    // untouched - the flag short-circuits Main before the WebApplication is
-    // built.
     public static class PatcherCli
     {
         public static int Run(string[] args, string repoRoot)
@@ -78,9 +68,6 @@ namespace Windrose.Quartermaster.Web
                 }
             }
 
-            // Loot-patcher smoke mode: builds a multiplier-only profile and
-            // writes the patched LootTables tree, no pak. Used for the
-            // round-trip diff against MoreEnemyResources_2x_P.pak.
             if (lootMode)
             {
                 return RunLootSmoke(repoRoot, lootBucket,
@@ -88,8 +75,6 @@ namespace Windrose.Quartermaster.Web
                     outDir);
             }
 
-            // Profile mode: load a profile by id or name and
-            // run the full BuildPipeline (patch + pack + cleanup).
             if (!string.IsNullOrEmpty(profileSpec))
             {
                 return RunProfileMode(repoRoot, profileSpec, keepTemp);
@@ -150,7 +135,6 @@ namespace Windrose.Quartermaster.Web
             Console.WriteLine("  Capped       : " + result.Capped);
             Console.WriteLine("Time           : " + sw.Elapsed.TotalSeconds.ToString("0.00") + "s");
 
-            // Spot check: Banana should be vanillaStack * multiplier (or absolute)
             var bananaPath = Directory.EnumerateFiles(outDir, "DA_CID_Food_Raw_Banana_T01.json", SearchOption.AllDirectories).FirstOrDefault();
             if (bananaPath != null)
             {
@@ -189,14 +173,6 @@ namespace Windrose.Quartermaster.Web
             return 0;
         }
 
-        // Headless setup pipeline: runs the same dump + icon extraction
-        // logic the GUI exposes via /api/setup/run, but writes progress to
-        // stdout. Replaces the old Dump-WindroseVanilla.ps1 +
-        // Extract-Icons.ps1 wrappers.
-        //
-        // Usage:
-        //   dotnet run --project GUI -- --setup           (run missing steps only)
-        //   dotnet run --project GUI -- --setup --force   (re-run every step)
         public static int RunSetup(string[] args, string repoRoot)
         {
             bool force = false;
@@ -237,9 +213,6 @@ namespace Windrose.Quartermaster.Web
             }
         }
 
-        // Loot smoke: applies a single bucket multiplier (or "*" wildcard)
-        // to the vanilla LootTables tree and writes the patched files into
-        // .build-tmp/loot_smoke_<...>/.
         static int RunLootSmoke(string repoRoot, string bucket, double mult, string outDirOverride)
         {
             var paths = WindrosePaths.FromModRoot(repoRoot);
@@ -275,8 +248,6 @@ namespace Windrose.Quartermaster.Web
             Console.WriteLine("Bucket:             " + bucketKey);
             Console.WriteLine("Multiplier:         x" + mult);
 
-            // Write into the same tree shape repak expects so the output can
-            // be compared 1:1 with an unpacked reference pak.
             var outLoot = Path.Combine(outDir, "R5", "Plugins", "R5BusinessRules", "Content", "LootTables");
 
             var patcher = new LootPatcher();
@@ -303,9 +274,6 @@ namespace Windrose.Quartermaster.Web
             return 0;
         }
 
-        // Loads a profile by id or display-name and runs the full pipeline
-        // through Builds/<sanitized-name>_P.pak. Used to verify Phase 3 against
-        // the legacy PS pipeline and as a hand-test for user-created profiles.
         static int RunProfileMode(string repoRoot, string spec, bool keepTemp)
         {
             var paths = WindrosePaths.FromModRoot(repoRoot);

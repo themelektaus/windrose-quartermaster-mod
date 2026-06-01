@@ -8,25 +8,6 @@ using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// Endpoints for the user-configured game-install override - used when
-// SteamLocator can't auto-detect the install (e.g. Epic Games, GOG,
-// dedicated server, portable extraction, second copy on a non-Steam
-// drive). The override layer is in GameInstallOverride; SteamLocator
-// transparently consults it first so all build / deploy / report paths
-// follow without per-call wiring.
-//
-//   GET    /api/game-install   ->  current override + Steam auto-detect
-//                                  probe + validation. Used by the GUI to
-//                                  pre-populate the "Configure" modal.
-//
-//   POST   /api/game-install   ->  body { "gameRoot": "..." }. Validates
-//                                  that the folder contains at least one
-//                                  R5\Binaries\Win64\Windrose*.exe plus a
-//                                  vanilla pak before persisting. 400 with
-//                                  details on validation failure.
-//
-//   DELETE /api/game-install   ->  clears the override (= back to Steam
-//                                  auto-detect).
 public static class GameInstallEndpoint
 {
     public static void Map(WebApplication app, string repoRoot)
@@ -93,10 +74,6 @@ public static class GameInstallEndpoint
         });
     }
 
-    // Probes both the persisted override and Steam auto-detect (without
-    // throwing) so the frontend modal can show the user what's available
-    // before they commit to a path. The vanillaPakPath field reflects
-    // whichever source actually resolves - override beats Steam.
     static object BuildStatus()
     {
         var overrideGameRoot = GameInstallOverride.LoadGameRoot();
@@ -106,17 +83,8 @@ public static class GameInstallEndpoint
         if (hasOverride)
             overrideValid = GameInstallOverride.Validate(overrideGameRoot);
 
-        // Steam-side probe without throwing - we want to suggest the
-        // auto-detected path in the modal even if the user has a stale
-        // override that's currently invalid.
-        //
-        // Important: we require the candidate folder to actually contain a
-        // vanilla pak under R5\Content\Paks\, not just an existing Windrose
-        // directory. Steam library leftovers from a previous install (or a
-        // partially-uninstalled copy on a different drive) can leave an empty
-        // Windrose folder behind that would otherwise outrank the real
-        // install on a later library and produce a divergent suggestion in
-        // the modal vs. the resolved effectiveGameRoot below.
+        // Candidate must contain a vanilla pak, not just a Windrose dir: leftover empty
+        // dirs from a prior install would otherwise outrank the real install on a later library.
         string steamGameRoot = null;
         string steamError = null;
         try
@@ -152,15 +120,12 @@ public static class GameInstallEndpoint
             steamError = ex.Message;
         }
 
-        // What's the effective resolved pak? Override wins if valid, else
-        // Steam autodetect attempt (which may itself fail).
         string effectiveGameRoot = null;
         string effectiveVanillaPak = null;
         string effectiveError = null;
         try
         {
             effectiveVanillaPak = SteamLocator.FindVanillaPak();
-            // Derive gameRoot from the resolved pak: <gameRoot>/R5/Content/Paks/<name>
             var paksDir = Path.GetDirectoryName(effectiveVanillaPak);
             var contentDir = Path.GetDirectoryName(paksDir);
             var r5Dir = Path.GetDirectoryName(contentDir);

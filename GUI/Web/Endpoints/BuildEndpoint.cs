@@ -12,12 +12,6 @@ using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
-// POST /api/build  body: { profileId: "...", keepTemp: false }
-//
-// Synchronously runs the full pipeline (patch -> pack -> cleanup) for the
-// given profile. Returns the captured log lines + patcher counters + final
-// pak metadata.  Sub-second for typical profiles, so we don't bother with
-// background-job orchestration / SSE here.
 public static class BuildEndpoint
 {
     public static void Map(WebApplication app, string repoRoot)
@@ -47,44 +41,18 @@ public static class BuildEndpoint
 
             var log = new List<string>();
             var pipeline = new BuildPipeline(paths);
-            // Pipeline.Build runs synchronously on a worker thread; the
-            // callback fires from there. List access is safe because we
-            // only read it from the same thread (Task.Run completion below).
             pipeline.Log = m => log.Add(m);
-            // Pickup-radius is built fresh per build by retoc + UAssetAPI:
-            // the pipeline pulls the live game's vanilla GA_Loot_AutoPickup,
-            // patches MagnetRadius via UAssetAPI, then re-packs as an
-            // IoStore triplet next to the main pak. Only used when the
-            // profile actually has globals.pickupRadius.multiplier > 1.0.
-            // Surfacing the same "no Steam install" error shape for both
-            // the main-pak ~mods target and this provider keeps the
-            // failure path uniform.
             pipeline.GamePaksDirProvider = SteamLocator.FindVanillaPaksDir;
 
-            // Etappe I.2: share the Web-layer Vanilla-Building catalog
-            // with the pipeline so it can resolve Vanilla-DA-path
-            // templateIds dynamically. GetSharedCatalog triggers the lazy
-            // bootstrap itself, so a Build click before the Buildings tab
-            // was ever opened still gets a populated catalog (previously
-            // silent-swallowed here, which produced
-            // "BuildingTemplateCatalog is not configured - skipping" for
-            // every Vanilla-DA-path templateId and a hollow pak).
             try
             {
                 pipeline.BuildingTemplateCatalog = BuildingTemplatesEndpoint.GetSharedCatalog();
             }
             catch (Exception ex)
             {
-                // Bootstrap genuinely failed (Steam install missing, usmap
-                // missing, etc.). Surface it as a build log line so the
-                // user sees the cause instead of a hollow success.
                 log.Add("[ERR] Building template catalog bootstrap failed: " + ex.Message);
             }
 
-            // Redirect the pak straight into Windrose's ~mods/ folder so
-            // the engine picks it up without a manual copy step. SteamLocator
-            // throws a descriptive error if the install can't be found.
-            // surface that as a 500 with the same shape as a build failure.
             try
             {
                 pipeline.OutputDir = SteamLocator.FindModsDir();
@@ -102,11 +70,6 @@ public static class BuildEndpoint
             try
             {
                 var result = await Task.Run(() => pipeline.Build(profile, keepTemp: body.KeepTemp));
-                // The loot patcher only runs when the profile actually has
-                // loot config, so lootPatchResult is null on stack-only
-                // profiles. The frontend distinguishes "no loot configured"
-                // (=null) vs "loot configured but no LT actually changed"
-                // (=present, written:0) by the field's presence.
                 object lootPatchResult = null;
                 if (result.LootPatchResult != null)
                 {
@@ -124,40 +87,22 @@ public static class BuildEndpoint
                         warnings = lpr.Warnings,
                     };
                 }
-                // PickupResult is null when the profile didn't request
-                // pickup or set multiplier=1.0 (no triplet to ship).
-                // PakResult is null on pickup-radius-only builds (no item /
-                // loot changes -> no main pak written). The frontend treats
-                // both null shapes as "this domain wasn't built" rather
-                // than "domain build failed".
-                //
-                // When BOTH are built, pickup's PakPath is null because
-                // the main pak overwrites the would-be pickup .pak stub
-                // at the same path - only the .ucas/.utoc are uniquely
-                // pickup-owned. The shared on-disk basename is reported
-                // via result.PakPath in that case.
                 object pickupRadiusInfo = null;
                 if (result.PickupResult != null)
                 {
                     var pr = result.PickupResult;
                     pickupRadiusInfo = new
                     {
-                        pakPath = pr.PakPath,        // null when main was built
+                        pakPath = pr.PakPath,
                         ucasPath = pr.UcasPath,
                         utocPath = pr.UtocPath,
-                        pakSize = pr.PakSize,        // 0 when main was built
+                        pakSize = pr.PakSize,
                         ucasSize = pr.UcasSize,
                         utocSize = pr.UtocSize,
                         magnetRadius = pr.MagnetRadius,
                         multiplier = result.PickupMultiplier,
                     };
                 }
-                // BellLimitsResult is null when the profile didn't request
-                // a bell-cap change, OR present-but-Skipped when the
-                // resolved caps matched vanilla. Frontend distinguishes
-                // null (= "domain not configured") from Skipped (=
-                // "configured but no-op"); the Written branch carries
-                // the actually-patched cap values.
                 object bellLimitsInfo = null;
                 if (result.BellLimitsResult != null)
                 {
@@ -173,13 +118,6 @@ public static class BuildEndpoint
                         unmatched = br.Unmatched,
                     };
                 }
-                // BuildingStability is a single-toggle feature: when on,
-                // the 787 supported vanilla DA_BI* assets get self-baked
-                // (4 floats in IntegritySettings overwritten directly in
-                // their raw zen chunks) and shipped inside the _Raw_P
-                // companion's .ucas/.utoc; when off (or null), nothing
-                // stability-related ships. The frontend only needs the
-                // boolean.
                 object buildingStabilityInfo = null;
                 if (result.StabilityResult != null)
                 {
@@ -188,11 +126,6 @@ public static class BuildEndpoint
                         enabled = result.StabilityResult.Enabled,
                     };
                 }
-                // Minimap-range: when active, scales the four vanilla
-                // reveal-range floats inside DefaultR5MapSettings.ini and
-                // ships the patched INI in the _Raw_P companion's .pak.
-                // Carries the effective scaled values so the build log
-                // can render a "37 -> 74" style summary.
                 object minimapRangeInfo = null;
                 if (result.MinimapResult != null)
                 {
@@ -218,10 +151,6 @@ public static class BuildEndpoint
                         },
                     };
                 }
-                // Bonfire-radius: when active, the patched DA_BI_Utilities_
-                // BuildingCenterT01 rides inside the shared IoStore triplet.
-                // Carries the effective influence values so the build log
-                // can render a "5000 -> 15000" style summary.
                 object bonfireRadiusInfo = null;
                 if (result.BonfireResult != null)
                 {
@@ -243,10 +172,6 @@ public static class BuildEndpoint
                         },
                     };
                 }
-                // Pickaxe-range: when active, ships 4 patched tier
-                // InstanceParams DataAssets inside the shared IoStore
-                // triplet. Carries per-tier vanilla + effective
-                // TraceScaleModifier for the build-log line.
                 object pickaxeRangeInfo = null;
                 if (result.PickaxeRangeResult != null)
                 {
@@ -267,11 +192,6 @@ public static class BuildEndpoint
                             }).ToArray(),
                     };
                 }
-                // Lighting: when active, ships N patched PointLight
-                // Blueprints inside the shared IoStore triplet. Carries
-                // per-light vanilla + effective AttenuationRadius for the
-                // build-log line. null = every light was at the overall
-                // multiplier of 1.0 (vanilla).
                 object lightingInfo = null;
                 if (result.LightingResult != null)
                 {
@@ -292,11 +212,6 @@ public static class BuildEndpoint
                             }).ToArray(),
                     };
                 }
-                // Cooldowns: groups per-asset results by family so the
-                // build log can render one line per active family
-                // (Elixir, Medicine, ShipRepairKit, ...) with per-family
-                // multipliers + a representative vanilla/effective sample.
-                // null = every cooldown family was vanilla / disabled.
                 object cooldownsInfo = null;
                 if (result.CooldownsResult != null)
                 {
@@ -327,10 +242,6 @@ public static class BuildEndpoint
                         families,
                     };
                 }
-                // Ship music: one entry per replaced shanty slot with the
-                // user's display name + filename + decoded SoundWave
-                // diagnostics (sample rate, channels, duration). The
-                // frontend renders one row per slot card.
                 object shipMusicInfo = null;
                 if (result.ShipMusicResult != null
                     && result.ShipMusicResult.SlotResults != null
@@ -354,11 +265,6 @@ public static class BuildEndpoint
                         }).ToArray(),
                     };
                 }
-                // Ship music ADD: extends the shanty roster (slots 11+)
-                // and/or excludes vanilla slots from the rotation. The
-                // info object is populated whenever EITHER the tracks
-                // list is non-empty OR the excludedSlots list is - the
-                // pipeline runs the DA rewrite in both cases.
                 object shipMusicAddInfo = null;
                 bool hasAddTracks = result.ShipMusicAddResult != null
                     && result.ShipMusicAddResult.TrackResults != null
@@ -369,9 +275,6 @@ public static class BuildEndpoint
                 if (hasAddTracks || hasExcludes)
                 {
                     var sma = result.ShipMusicAddResult;
-                    // Translate the 0-based positions in ShipMusicSlots.All
-                    // back to (stem, title) for the build-log so the user
-                    // sees "Excluded: Whiskey Johnny" instead of "Excluded: #9".
                     var excludedSlots = (sma.ExcludedSlotIndices ?? new List<int>())
                         .Where(idx => idx >= 0 && idx < ShipMusicSlots.All.Count)
                         .Select(idx => new
@@ -402,10 +305,6 @@ public static class BuildEndpoint
                         excludedSlots,
                     };
                 }
-                // Bonfire-music: single-slot SWAV swap for "The Hearth".
-                // null when the profile didn't configure a custom hearth
-                // theme. Mirror of the per-slot ship-music payload shape
-                // so the frontend can reuse the same renderer.
                 object bonfireMusicInfo = null;
                 if (result.BonfireMusicResult != null
                     && result.BonfireMusicResult.SlotResult != null)
@@ -426,10 +325,6 @@ public static class BuildEndpoint
                         diagnostic = s.FormatDiagnostic(),
                     };
                 }
-                // Crop growth: when active, scales every DA_Crop_*.json
-                // GrowthDuration by the user multiplier. Carries the
-                // count of patched crops + a representative vanilla -> effective
-                // sample (the first patched crop) for the build log.
                 object cropGrowthInfo = null;
                 if (result.CropGrowthResult != null && result.CropGrowthResult.Written > 0)
                 {
@@ -445,9 +340,6 @@ public static class BuildEndpoint
                         sampleEffectiveTicks = first != null ? first.EffectiveTicks : 0L,
                     };
                 }
-                // Recipe cooking-duration: one entry per active family,
-                // each carrying assetCount + a vanilla/effective sample
-                // (the family's first patched recipe).
                 object cookingDurationInfo = null;
                 if (result.CookingDurationResult != null
                     && result.CookingDurationResult.FamilySummaries != null
@@ -472,13 +364,6 @@ public static class BuildEndpoint
                         families = familyArr,
                     };
                 }
-                // Custom-buildings: one entry per BuildingPatchResult so
-                // the frontend can render a per-building line in the build
-                // log (e.g. "QmBldg_<8hex> (template DA_BI_FloorTorch_01):
-                // 7 staged files, 0 warnings"). null when the profile has no
-                // buildings or none passed validation. Note: the per-profile
-                // qm_items_<safeName>.json + dxgi.dll write happened inside
-                // the pipeline already; we just report what got included.
                 object customBuildingsInfo = null;
                 if (result.BuildingResults != null && result.BuildingResults.Count > 0)
                 {
@@ -497,10 +382,6 @@ public static class BuildEndpoint
                         }).ToArray(),
                     };
                 }
-                // NoSmoke surfaces the active categories + per-asset patch
-                // counts so the frontend can render "Campfire, Furnace
-                // (5 assets, 38 emitter handles silenced)". null = no
-                // NoSmoke category was active for this build.
                 object noSmokeInfo = null;
                 if (result.NoSmokeResult != null)
                 {
