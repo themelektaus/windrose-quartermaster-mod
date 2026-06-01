@@ -20,6 +20,9 @@ A profile bundles tweaks across multiple domains:
 - **Cooldowns** - bidirectional 0.1-3.0x sliders across eight families
   (Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle,
   Ship Summon, Ranged Weapon Reload, Ship Cannon Reload)
+- **Crop growth & crafting durations** - 0.1-3.0x sliders for crop grow
+  times plus furnace / kiln / tannery / mill / trade-outpost recipe
+  durations
 - **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider
 - **Fast-travel bells & signal fires** - raise the placement caps
 - **Building stability** - structures hold longer cantilevers / taller towers
@@ -43,7 +46,8 @@ A profile bundles tweaks across multiple domains:
 - **Mods tab** - inspect `~mods/`, recycle-bin old Quartermaster builds
 
 Vanilla values are extracted directly from the game's main pak file
-(`pakchunk0-WindowsServer.pak` or `pakchunk0-Windows.pak`). The resulting
+(`pakchunk0-Windows.pak` for a client install, or
+`pakchunk0-WindowsServer.pak` for a dedicated server). The resulting
 pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
 dedicated server / co-op alike.
 
@@ -53,22 +57,29 @@ dedicated server / co-op alike.
 
 - **.NET 10 SDK** (or newer preview) - everything is C# now.
 - **Windrose installed via Steam** - auto-detected via the registry +
-  `libraryfolders.vdf`. Dedicated-server / non-Steam installs work too,
-  you just need to point at a pak path.
-- **Git** on the PATH - the configurator transparently runs
-  `git submodule update --init Tools/CUE4Parse` on first use to pull the
-  CUE4Parse reader the icon extractor needs. (No need to do it yourself,
-  but the binary has to be reachable.)
+  `libraryfolders.vdf`. Non-Steam installs (Epic / GOG / portable /
+  dedicated server) work too: use the Mods tab's **Configure game
+  install** button to point Quartermaster at your Windrose folder (the
+  one with `R5\Binaries\Win64\Windrose-Win64-Shipping.exe` and a vanilla
+  pak). The override is validated and saved to
+  `QuartermasterData\game-install.json`; clearing it reverts to Steam
+  auto-detect.
+- **Git** on the PATH - when building from source, an MSBuild step
+  transparently runs `git submodule update --init Tools/CUE4Parse` to
+  pull the CUE4Parse reader the icon extractor needs. (No need to do it
+  yourself; not required for the prebuilt portable EXE, which already
+  bundles it.)
 - **A UE5 `*.usmap` file** - only needed when running from the source
   tree. The single-file EXE ships an embedded copy and seeds it into
   `QuartermasterData\` automatically, so end users don't need this. For
-  game updates (UE-version bump), regenerate one with UE4SS Keybinds
-  (Ctrl+Num6 in-game) and drop it into the data root - newest mtime
+  game updates (UE-version bump), regenerate one with Dumper-7 (run
+  `Tools\Dumper7Setup\run_dump.bat` with the game running, F8 to dump)
+  and drop the resulting `.usmap` into the data root - newest mtime
   wins, so it transparently supersedes the embedded copy.
 
-`repak.exe` is auto-downloaded (pinned v0.2.3, SHA256-verified) on first
-use. There are no PowerShell scripts left - everything runs through the
-GUI or the headless CLI shim.
+`repak.exe` and `retoc.exe` are auto-downloaded (pinned versions,
+SHA256-verified) on first use. There are no PowerShell scripts left -
+everything runs through the GUI or the headless CLI shim.
 
 ---
 
@@ -98,12 +109,13 @@ to the
 dotnet publish GUI\App -p:PublishProfile=win-x64
 ```
 
-Produces a single self-contained `Quartermaster.exe` (~94 MB, all .NET +
+Produces a single self-contained `Quartermaster.exe` (~100 MB: all .NET +
 WebView2 native libs + frontend + a default UE5 `.usmap` + the
-CUE4Parse-backed icon extractor bundled, compressed) at
-`GUI\App\bin\Publish\Quartermaster.exe`. You can drop it **anywhere** -
-desktop, USB stick, `C:\Tools\`, doesn't matter. On first run a sibling
-`QuartermasterData\` folder is created **next to the EXE** so the data
+CUE4Parse-backed icon extractor, bundled and compressed) at
+`GUI\App\bin\Publish\win-x64\Quartermaster.exe`. You can drop it
+**anywhere** - desktop, USB stick, `C:\Tools\`, doesn't matter. On first
+run a sibling `QuartermasterData\` folder is created **next to the EXE**
+so the data
 travels with it (USB-stick portable):
 
 ```
@@ -111,9 +123,10 @@ travels with it (USB-stick portable):
 <wherever>\QuartermasterData\
   .webview2\                     <- WebView2 cache/cookies
   Profiles\<id>.json             <- profiles you create (empty on first run)
-  Sources\Vanilla\               <- extracted by setup (1097 item JSONs)
-  Icons\                         <- extracted by setup (1097 PNGs)
+  Sources\Vanilla\               <- vanilla JSONs extracted by setup
+  Icons\                         <- one PNG per item icon, from setup
   Tools\repak.exe                <- auto-downloaded from GitHub on first setup
+  Tools\retoc.exe                <- auto-downloaded from GitHub on first setup
   *.usmap                        <- seeded from embedded resource on first run;
                                     drop a newer one here after game updates
 ```
@@ -168,14 +181,15 @@ icon to clone an existing one. For each profile you can:
 - **Cooldowns tab** - bidirectional 0.1-3.0x sliders across the eight
   cooldown families (Elixir, Medicine, Spell of Return, Ship Repair
   Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon
-  Reload).
-- **Misc tab** - cards for pickup radius, fast-travel bell caps,
+  Reload), plus crop grow times and crafting / processing durations
+  (furnace, kiln, tannery, mill, trade outpost).
+- **Basic tab** - cards for pickup radius, fast-travel bell caps,
   building stability, minimap range, bonfire radius, pickaxe range,
   overall light radius and no-smoke FX. Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
   is enabled.
 - **Lighting tab** - per-light AttenuationRadius overrides (overrides
-  the overall multiplier from the Misc Light Radius card on a per-light
+  the overall multiplier from the Basic Light Radius card on a per-light
   basis).
 - **Sea Shanties tab** - upload your own audio to replace any of the 10
   vanilla shanty slots, add extra tracks alongside the vanilla 10, tune
@@ -184,13 +198,17 @@ icon to clone an existing one. For each profile you can:
 - **Mods tab** - lists every `.pak` currently in your `~mods` folder,
   marks Quartermaster builds, and recycles old ones with one click.
   Also exposes a button that re-opens the first-run setup dialog so
-  you can re-dump vanilla JSONs / icons after a game update.
+  you can re-dump vanilla JSONs / icons after a game update, plus a
+  **Game install** status card whose **Configure game install** button
+  sets or clears a manual install path for non-Steam setups (persisted
+  to `game-install.json`).
 
 The header has a **Report** button that bundles the active profile, the
 latest build log and your `~mods` folder listing into a single archive
-for quick diagnostics. Profiles also drag-and-drop in (ZIP for audio
-profiles, plain JSON otherwise) with overwrite confirmation on id
-conflicts.
+for quick diagnostics, and a **Play** button that launches the game
+directly from the detected install. Profiles also drag-and-drop in (ZIP
+for audio profiles, plain JSON otherwise) with overwrite confirmation on
+id conflicts.
 
 Press **Build** to run the patch + pack pipeline. The finished `_P.pak`
 lands directly in the game's `~mods` folder, ready to play.
