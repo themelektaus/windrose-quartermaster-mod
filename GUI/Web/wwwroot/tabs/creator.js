@@ -32,23 +32,34 @@ function newCustomItemId() {
 function renderItemCreator() {
     const list = document.getElementById('creator-list');
     if (!state.current) {
-        list.innerHTML = '';
+        list.replaceChildren();
         return;
     }
     const customs = state.current.customItems || [];
     if (customs.length === 0) {
-        list.innerHTML = '';
+        list.replaceChildren();
         return;
     }
-    const parts = [];
+    const frag = document.createDocumentFragment();
     for (let i = 0; i < customs.length; i++) {
-        parts.push(buildCustomItemCardHtml(customs[i], i));
+        const node = buildCustomItemCardNode(customs[i], i);
+        if (node) frag.appendChild(node);
     }
-    list.innerHTML = parts.join('');
+    list.replaceChildren(frag);
 }
 
-function buildCustomItemCardHtml(custom, index) {
-    if (!custom) return '';
+function setCreatorTitleName(el, name) {
+    if (name) {
+        el.textContent = name;
+    } else {
+        const em = document.createElement('em');
+        em.textContent = '(unnamed)';
+        el.replaceChildren(em);
+    }
+}
+
+function buildCustomItemCardNode(custom, index) {
+    if (!custom) return null;
     const tpl = state.itemTemplates.byId.get(custom.templateId) || null;
     const profileId = state.current ? state.current.id : '';
     const hasCustomIcon = !!(custom.iconPath && profileId);
@@ -73,79 +84,51 @@ function buildCustomItemCardHtml(custom, index) {
         ? synthesizedTextureRef
         : (custom.itemTexture || (tpl ? tpl.defaultItemTexture : ''));
 
-    const rarityOpts = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
-        .map(r => `<option value="${r}"${r === rarity ? ' selected' : ''}>${r}</option>`)
-        .join('');
+    const card = cloneTemplate('tpl-creator-card');
+    card.dataset.customIndex = index;
 
-    const tplCatalog = state.itemTemplates.list || [];
-    let tplOpts = tplCatalog.map(t =>
-        `<option value="${escapeHtml(t.id)}"${t.id === custom.templateId ? ' selected' : ''}>${escapeHtml(t.label)}</option>`
-    ).join('');
-    if (custom.templateId && !state.itemTemplates.byId.has(custom.templateId)) {
-        tplOpts = `<option value="${escapeHtml(custom.templateId)}" selected>${escapeHtml(custom.templateId)} (unknown)</option>` + tplOpts;
+    const header = card.querySelector('.creator-card-header');
+    if (iconUrl) {
+        const img = document.createElement('img');
+        img.className = 'creator-icon';
+        img.src = iconUrl;
+        img.alt = '';
+        header.insertBefore(img, header.firstChild);
+    } else {
+        const ph = document.createElement('div');
+        ph.className = 'creator-icon-placeholder';
+        header.insertBefore(ph, header.firstChild);
     }
 
-    const safeName = escapeHtml(custom.name || '');
-    const safeDesc = escapeHtml(custom.description || '');
-    const safeVanity = escapeHtml(custom.vanityText || '');
+    setCreatorTitleName(card.querySelector('.creator-title-name'), custom.name || '');
+    card.querySelector('.creator-title-id').textContent = custom.id;
 
-    return ''
-        + '<li class="creator-card" data-custom-index="' + index + '">'
-        +   '<header class="creator-card-header">'
-        +     (iconUrl ? '<img class="creator-icon" src="' + iconUrl + '" alt="">' : '<div class="creator-icon-placeholder"></div>')
-        +     '<div class="creator-titles">'
-        +       '<div class="creator-title-name">' + (safeName || '<em>(unnamed)</em>') + '</div>'
-        +       '<div class="creator-title-id">' + escapeHtml(custom.id) + '</div>'
-        +       '<label class="creator-title-template">'
-        +         '<span>Based on:</span>'
-        +         '<select data-creator-field="templateId">' + tplOpts + '</select>'
-        +       '</label>'
-        +     '</div>'
-        +     '<div class="creator-card-actions">'
-        +       '<button type="button" class="btn-link danger" data-creator-action="delete" title="Delete custom item">Delete</button>'
-        +     '</div>'
-        +   '</header>'
-        +   '<div class="creator-fields">'
-        +     '<div class="creator-field creator-field-wide creator-icon-actions">'
-        +       '<input type="file" accept="image/png" data-creator-action="icon-pick" hidden>'
-        +       '<button type="button" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>'
-        +       '<button type="button" data-creator-action="icon-reset"'
-        +           (hasCustomIcon ? '' : ' disabled')
-        +           ' title="Revert to template icon">Reset</button>'
-        +       '<span class="creator-icon-status">'
-        +           (hasCustomIcon ? 'Custom PNG uploaded' : 'Template icon')
-        +       '</span>'
-        +     '</div>'
-        +     '<label class="creator-field">'
-        +       '<span>Name</span>'
-        +       '<input type="text" data-creator-field="name" value="' + safeName + '" placeholder="Item display name">'
-        +     '</label>'
-        +     '<label class="creator-field creator-field-wide">'
-        +       '<span>Description</span>'
-        +       '<textarea data-creator-field="description" rows="2" placeholder="Tooltip text...">' + safeDesc + '</textarea>'
-        +     '</label>'
-        +     '<label class="creator-field creator-field-wide">'
-        +       '<span>Vanity Text</span>'
-        +       '<input type="text" data-creator-field="vanityText" value="' + safeVanity + '" placeholder="Optional flavor text...">'
-        +     '</label>'
-        +     '<label class="creator-field">'
-        +       '<span>Max stack</span>'
-        +       '<input type="number" min="1" step="1" data-creator-field="maxCountInSlot" value="' + maxStack + '">'
-        +     '</label>'
-        +     '<label class="creator-field">'
-        +       '<span>Rarity</span>'
-        +       '<select data-creator-field="rarity">' + rarityOpts + '</select>'
-        +     '</label>'
-        +     '<label class="creator-field creator-checkbox">'
-        +       '<input type="checkbox" data-creator-field="keepInInventoryOnDeath"' + (keepOnDeath ? ' checked' : '') + '>'
-        +       '<span>Keep in inventory on death</span>'
-        +     '</label>'
-        +     '<label class="creator-field creator-field-wide" style="display: none; ">'
-        +       '<span>Icon path</span>'
-        +       '<input type="text" value="' + escapeHtml(iconPath) + '" readonly disabled>'
-        +     '</label>'
-        +   '</div>'
-        + '</li>';
+    const tplSelect = card.querySelector('select[data-creator-field="templateId"]');
+    const tplCatalog = state.itemTemplates.list || [];
+    if (custom.templateId && !state.itemTemplates.byId.has(custom.templateId)) {
+        tplSelect.appendChild(new Option(custom.templateId + ' (unknown)', custom.templateId));
+    }
+    for (const t of tplCatalog) tplSelect.appendChild(new Option(t.label, t.id));
+    if (custom.templateId) tplSelect.value = custom.templateId;
+
+    if (!hasCustomIcon) card.querySelector('button[data-creator-action="icon-reset"]').disabled = true;
+    card.querySelector('.creator-icon-status').textContent =
+        hasCustomIcon ? 'Custom PNG uploaded' : 'Template icon';
+
+    card.querySelector('input[data-creator-field="name"]').value = custom.name || '';
+    card.querySelector('textarea[data-creator-field="description"]').value = custom.description || '';
+    card.querySelector('input[data-creator-field="vanityText"]').value = custom.vanityText || '';
+    card.querySelector('input[data-creator-field="maxCountInSlot"]').value = maxStack;
+
+    const raritySelect = card.querySelector('select[data-creator-field="rarity"]');
+    for (const r of ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']) {
+        raritySelect.appendChild(new Option(r, r));
+    }
+    raritySelect.value = rarity;
+
+    card.querySelector('input[data-creator-field="keepInInventoryOnDeath"]').checked = keepOnDeath;
+    card.querySelector('.creator-fields > label:last-child input').value = iconPath;
+    return card;
 }
 
 function renderItemCreatorStatus() {
@@ -206,10 +189,7 @@ function onCreatorListChange(e) {
     if (field === 'name') {
         custom.name = t.value;
         const titleEl = card.querySelector('.creator-title-name');
-        if (titleEl) {
-            const safe = escapeHtml(custom.name || '');
-            titleEl.innerHTML = safe || '<em>(unnamed)</em>';
-        }
+        if (titleEl) setCreatorTitleName(titleEl, custom.name || '');
     } else if (field === 'description') {
         custom.description = t.value;
     } else if (field === 'maxCountInSlot') {

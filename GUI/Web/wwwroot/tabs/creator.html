@@ -34,4 +34,59 @@
     <div id="creator-error" class="mods-error" hidden></div>
     <ul id="creator-list" class="buyers-list"></ul>
   </section>
+
+  <!-- Cloned + filled in creator.js (buildCustomItemCardNode); data-creator-* hooks drive the delegation. -->
+  <template id="tpl-creator-card">
+    <li class="creator-card">
+      <header class="creator-card-header">
+        <div class="creator-titles">
+          <div class="creator-title-name"></div>
+          <div class="creator-title-id"></div>
+          <label class="creator-title-template">
+            <span>Based on:</span>
+            <select data-creator-field="templateId"></select>
+          </label>
+        </div>
+        <div class="creator-card-actions">
+          <button type="button" class="btn-link danger" data-creator-action="delete" title="Delete custom item">Delete</button>
+        </div>
+      </header>
+      <div class="creator-fields">
+        <div class="creator-field creator-field-wide creator-icon-actions">
+          <input type="file" accept="image/png" data-creator-action="icon-pick" hidden>
+          <button type="button" data-creator-action="icon-upload" title="Upload PNG (auto-resized to 256x256)">Upload Icon...</button>
+          <button type="button" data-creator-action="icon-reset" title="Revert to template icon">Reset</button>
+          <span class="creator-icon-status"></span>
+        </div>
+        <label class="creator-field">
+          <span>Name</span>
+          <input type="text" data-creator-field="name" placeholder="Item display name">
+        </label>
+        <label class="creator-field creator-field-wide">
+          <span>Description</span>
+          <textarea data-creator-field="description" rows="2" placeholder="Tooltip text..."></textarea>
+        </label>
+        <label class="creator-field creator-field-wide">
+          <span>Vanity Text</span>
+          <input type="text" data-creator-field="vanityText" placeholder="Optional flavor text...">
+        </label>
+        <label class="creator-field">
+          <span>Max stack</span>
+          <input type="number" min="1" step="1" data-creator-field="maxCountInSlot">
+        </label>
+        <label class="creator-field">
+          <span>Rarity</span>
+          <select data-creator-field="rarity"></select>
+        </label>
+        <label class="creator-field creator-checkbox">
+          <input type="checkbox" data-creator-field="keepInInventoryOnDeath">
+          <span>Keep in inventory on death</span>
+        </label>
+        <label class="creator-field creator-field-wide" style="display: none; ">
+          <span>Icon path</span>
+          <input type="text" readonly disabled>
+        </label>
+      </div>
+    </li>
+  </template>
 </div>
