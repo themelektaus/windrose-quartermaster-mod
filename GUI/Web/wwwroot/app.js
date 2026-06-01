@@ -1452,16 +1452,6 @@ function shortenSellerRequirement(reqPath) {
     return last.replace(/^DA_Requirement_/, '').replace(/_/g, ' ');
 }
 
-function escapeHtml(s) {
-    if (s == null) return '';
-    return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
 function cssEsc(s) {
     return s.replace(/(["\\])/g, '\\$1');
 }
