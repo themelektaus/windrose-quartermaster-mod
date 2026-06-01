@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
 
+using static Windrose.Quartermaster.Web.Endpoints.RecipeRefHelpers;
 namespace Windrose.Quartermaster.Web.Endpoints;
 
 public static class LootTablesEndpoint
@@ -129,15 +130,6 @@ public static class LootTablesEndpoint
 
     // UE asset path -> short id. Handles both "/Folder/AssetName" and the
     // cooked "/Folder/AssetName.AssetName" forms, reducing both to "AssetName".
-    static string AssetPathToId(string assetPath)
-    {
-        if (string.IsNullOrEmpty(assetPath)) return null;
-        var s = assetPath;
-        var dot = s.LastIndexOf('.');
-        var slash = s.LastIndexOf('/');
-        var cut = Math.Max(dot, slash);
-        return cut >= 0 && cut < s.Length - 1 ? s.Substring(cut + 1) : s;
-    }
 
     static string LootTablePathToId(string assetPath)
     {

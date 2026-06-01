@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
 
+using static Windrose.Quartermaster.Web.Endpoints.RecipeRefHelpers;
 namespace Windrose.Quartermaster.Web.Endpoints;
 
 public static class SellersEndpoint
@@ -163,13 +164,6 @@ public static class SellersEndpoint
     static bool IsHiddenSellerList(string fileNameNoExt)
         => !string.IsNullOrEmpty(fileNameNoExt) && HiddenSellerLists.Contains(fileNameNoExt);
 
-    static bool IsReputationRecipe(string recipeRef)
-    {
-        if (string.IsNullOrEmpty(recipeRef)) return false;
-        return recipeRef.IndexOf("Reputation_BlackbeardSign", StringComparison.OrdinalIgnoreCase) >= 0
-            || recipeRef.IndexOf("Reputation_FactionSign",    StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
     // Cost/Result mapping is swapped relative to BuyersEndpoint.ResolveRecipe:
     // here itemId is RecipeResult (the item the NPC delivers).
     static SellerEntryDto ResolveRecipe(string recipesRoot, string recipeRef)
@@ -251,34 +245,4 @@ public static class SellersEndpoint
         }
     }
 
-    static void FillItemRef(JsonElement arr, out string itemId, out string itemPath, out int count)
-    {
-        itemId = null;
-        itemPath = null;
-        count = 0;
-        foreach (var el in arr.EnumerateArray())
-        {
-            if (el.ValueKind != JsonValueKind.Object) continue;
-            if (el.TryGetProperty("Item", out var itemEl) && itemEl.ValueKind == JsonValueKind.String)
-            {
-                itemPath = itemEl.GetString();
-                itemId = AssetPathToId(itemPath);
-            }
-            if (el.TryGetProperty("Count", out var cntEl) && cntEl.ValueKind == JsonValueKind.Number)
-            {
-                cntEl.TryGetInt32(out count);
-            }
-            return;
-        }
-    }
-
-    static string AssetPathToId(string assetPath)
-    {
-        if (string.IsNullOrEmpty(assetPath)) return null;
-        var s = assetPath;
-        var dot = s.LastIndexOf('.');
-        var slash = s.LastIndexOf('/');
-        var cut = Math.Max(dot, slash);
-        return cut >= 0 && cut < s.Length - 1 ? s.Substring(cut + 1) : s;
-    }
 }
