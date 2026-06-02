@@ -259,6 +259,39 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(ship.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Ship Slots</h2>
+        <p class="hint">
+          Bigger ship cargo and more Combat Orders slots (Expanded Naval Tactics).
+          Cargo scales each ship's vanilla capacity; applies to Brig / Frigate /
+          Ketch and their variants.
+        </p>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="ship-cargo-mult" min="1" max="3" step="0.25" value="1">
+            <span class="mult-pill" id="ship-cargo-mult-value">x1</span>
+            <span class="mult-readout">cargo size</span>
+          </div>
+        </div>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="ship-combat-slots" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="ship-combat-slots-value">1</span>
+            <span class="mult-readout">combat order slots</span>
+          </div>
+        </div>
+        <p class="hint">
+          Affects new ships only - existing ships keep the slot count baked into
+          their save. <b>Use the Characters tab to patch an existing ship to these
+          counts.</b>
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(ui.png); "></div>
       </div>
       <div class="card-content">

@@ -750,6 +750,19 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        static bool HasShipSlotsConfiguration(Profile profile)
+        {
+            var s = profile.Globals != null ? profile.Globals.ShipSlots : null;
+            if (s == null) return false;
+            if (s.CargoMultiplier.HasValue
+                && Math.Abs(s.CargoMultiplier.Value - ShipSlotsPatcher.VanillaCargoMultiplier) > 1e-9)
+                return true;
+            if (s.CombatOrderSlots.HasValue
+                && s.CombatOrderSlots.Value != ShipSlotsPatcher.VanillaCombatOrders)
+                return true;
+            return false;
+        }
+
         public static string SanitizeForFileName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "Untitled";

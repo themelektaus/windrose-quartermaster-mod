@@ -15,6 +15,7 @@ namespace Windrose.Quartermaster.Core
         readonly LootPatcher _lootPatcher;
         readonly BellLimitsPatcher _bellPatcher;
         readonly InventorySlotsPatcher _invSlotsPatcher;
+        readonly ShipSlotsPatcher _shipSlotsPatcher;
         readonly BuyerPatcher _buyerPatcher;
         readonly SellerPatcher _sellerPatcher;
         readonly ItemCreatorPatcher _itemCreatorPatcher;
@@ -49,6 +50,7 @@ namespace Windrose.Quartermaster.Core
             _lootPatcher = new LootPatcher();
             _bellPatcher = new BellLimitsPatcher();
             _invSlotsPatcher = new InventorySlotsPatcher();
+            _shipSlotsPatcher = new ShipSlotsPatcher();
             _buyerPatcher = new BuyerPatcher();
             _sellerPatcher = new SellerPatcher();
             _itemCreatorPatcher = new ItemCreatorPatcher();
@@ -177,6 +179,27 @@ namespace Windrose.Quartermaster.Core
                                 + (invSlotsResult.NecklacePatched ? "necklace " : "")
                                 + "patched. NOTE: only affects NEW characters; existing "
                                 + "characters need the save patcher.");
+                    }
+                }
+
+                ShipSlotsPatchResult shipSlotsResult = null;
+                if (HasShipSlotsConfiguration(profile))
+                {
+                    LogLine("Patching ship inventory slots (cargo / combat orders)");
+                    var sh = profile.Globals.ShipSlots;
+                    shipSlotsResult = _shipSlotsPatcher.PatchToDirectory(
+                        _paths.VanillaShipInventory, tmpDir,
+                        sh.CargoMultiplier, sh.CombatOrderSlots);
+                    if (shipSlotsResult.Skipped)
+                    {
+                        LogLine("  skipped (resolved values match vanilla - nothing to do)");
+                    }
+                    else if (shipSlotsResult.Written)
+                    {
+                        LogLine("  cargo x" + shipSlotsResult.CargoMultiplier
+                                + ", combat orders " + shipSlotsResult.CombatOrderSlots
+                                + " - " + shipSlotsResult.FilesWritten + " ship file(s) patched. "
+                                + "NOTE: only affects NEW ships; existing ships need the save patcher.");
                     }
                 }
 
@@ -453,6 +476,7 @@ namespace Windrose.Quartermaster.Core
                     LootPatchResult = lootResult,
                     BellLimitsResult = bellResult,
                     EquipmentSlotsResult = invSlotsResult,
+                    ShipSlotsResult = shipSlotsResult,
                     BuyerPatchResult = buyerResult,
                     SellerPatchResult = sellerResult,
                     ItemCreatorResult = itemCreatorResult,

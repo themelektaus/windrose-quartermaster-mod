@@ -15,6 +15,7 @@ namespace Windrose.Quartermaster.Core
         public LootPatchResult LootPatchResult;
         public BellLimitsPatchResult BellLimitsResult;
         public InventorySlotsPatchResult EquipmentSlotsResult;
+        public ShipSlotsPatchResult ShipSlotsResult;
         public BuyerPatchResult BuyerPatchResult;
         public SellerPatchResult SellerPatchResult;
         public ItemCreatorPatchResult ItemCreatorResult;

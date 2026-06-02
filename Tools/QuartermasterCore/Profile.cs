@@ -28,6 +28,7 @@ namespace Windrose.Quartermaster.Core
         public PickupRadiusGlobal PickupRadius;
         public FastTravelBellsGlobal FastTravelBells;
         public EquipmentSlotsGlobal EquipmentSlots;
+        public ShipSlotsGlobal ShipSlots;
         public BuildingStabilityGlobal BuildingStability;
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
@@ -72,6 +73,17 @@ namespace Windrose.Quartermaster.Core
     {
         public int? RingSlots;
         public int? NecklaceSlots;
+    }
+
+    // Ship cargo + Combat Orders slots (the "Expanded Naval Tactics" mod).
+    // CargoMultiplier scales each ship's vanilla cargo (null/1.0 = vanilla);
+    // CombatOrderSlots is an absolute count (null/1 = vanilla). Drives both the
+    // pak blueprint (ShipSlotsPatcher) and the existing-ship save patch
+    // (ShipSaveSlotsPatcher) so new and existing ships stay in sync.
+    public sealed class ShipSlotsGlobal
+    {
+        public double? CargoMultiplier;
+        public int? CombatOrderSlots;
     }
 
     public sealed class BuildingStabilityGlobal

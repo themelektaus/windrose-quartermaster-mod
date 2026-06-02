@@ -30,6 +30,10 @@ const state = {
         supported: true,
         list: [],
         error: null,
+        // Ships (Expanded Naval Tactics save patcher), loaded alongside chars.
+        ships: [],
+        shipsSupported: true,
+        shipsError: null,
     },
 
     buyers: {
@@ -732,6 +736,12 @@ function applyProfileToUI() {
     document.getElementById('necklace-slots').value =
         eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1;
     syncEquipmentSlotsReadout();
+    const sh = (p.globals && p.globals.shipSlots) || null;
+    document.getElementById('ship-cargo-mult').value =
+        sh && sh.cargoMultiplier != null ? sh.cargoMultiplier : 1;
+    document.getElementById('ship-combat-slots').value =
+        sh && sh.combatOrderSlots != null ? sh.combatOrderSlots : 1;
+    syncShipSlotsReadout();
     const bs = (p.globals && p.globals.buildingStability) || null;
     document.getElementById('building-stability-enabled').checked =
         !!(bs && bs.enabled === true);

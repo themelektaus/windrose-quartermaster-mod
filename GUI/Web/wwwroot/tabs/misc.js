@@ -211,6 +211,35 @@ function setEquipmentSlotsFromUI() {
     markDirty();
 }
 
+function syncShipSlotsReadout() {
+    const mult = parseFloat(document.getElementById('ship-cargo-mult').value);
+    const combat = parseInt(document.getElementById('ship-combat-slots').value, 10);
+    document.getElementById('ship-cargo-mult-value').textContent =
+        'x' + (isFinite(mult) ? mult : 1);
+    document.getElementById('ship-combat-slots-value').textContent =
+        isFinite(combat) ? combat : 1;
+}
+
+function setShipSlotsFromUI() {
+    if (!state.current) return;
+    const mult = parseFloat(document.getElementById('ship-cargo-mult').value);
+    const combat = parseInt(document.getElementById('ship-combat-slots').value, 10);
+    if (!isFinite(mult) || !isFinite(combat)) return;
+    syncShipSlotsReadout();
+    state.current.globals = state.current.globals || {};
+    const cargoOn = Math.abs(mult - 1.0) > 1e-9;
+    const combatOn = combat !== 1;
+    if (!cargoOn && !combatOn) {
+        delete state.current.globals.shipSlots;
+    } else {
+        state.current.globals.shipSlots = {
+            cargoMultiplier: mult,
+            combatOrderSlots: combat,
+        };
+    }
+    markDirty();
+}
+
 // ---------------------------------------------------------------------------
 // UI Scale. Unlike the other Misc sliders this is NOT profile-bound: it edits
 // the per-user UE config directly (%LOCALAPPDATA%\R5\Saved\Config\Windows\
@@ -628,6 +657,8 @@ function bindMiscHandlers() {
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);
     document.getElementById('necklace-slots').addEventListener('input', setEquipmentSlotsFromUI);
+    document.getElementById('ship-cargo-mult').addEventListener('input', setShipSlotsFromUI);
+    document.getElementById('ship-combat-slots').addEventListener('input', setShipSlotsFromUI);
     document.getElementById('building-stability-enabled').addEventListener('change',
         setBuildingStabilityFromUI);
     document.getElementById('nosmoke-campfire').addEventListener('change', setNoSmokeFromUI);

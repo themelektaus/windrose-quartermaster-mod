@@ -51,22 +51,24 @@ namespace Windrose.Quartermaster.Core
         static bool IsCharacterDbDir(string path)
             => Directory.Exists(path) && File.Exists(Path.Combine(path, "CURRENT"));
 
-        public List<SaveCharacter> DiscoverCharacters()
+        // Canonical character DB folders across every Steam-ID profile. Shared by
+        // the jewelry and ship save patchers so the backup-dir exclusion (the
+        // "3 chars, 8 rows" fix) lives in exactly one place.
+        //
+        // Only the canonical Steam-ID profile dir (a pure numeric id) is scanned.
+        // The game also keeps sibling backup dirs next to it (<steamid>_Backups,
+        // <steamid>_Backups_Editor, <steamid>_progfix_backup_<timestamp>, ...)
+        // each carrying its own RocksDB_v2 copy of the same characters -
+        // enumerating those would surface every character several times over. A
+        // real Steam ID is all digits, so the suffixed backups are excluded.
+        public static List<string> DiscoverCharacterDbFolders()
         {
-            var result = new List<SaveCharacter>();
+            var folders = new List<string>();
             var profilesRoot = SaveProfilesRoot();
-            if (profilesRoot == null) return result;
+            if (profilesRoot == null) return folders;
 
             foreach (var steamDir in Directory.GetDirectories(profilesRoot).OrderBy(d => d, StringComparer.Ordinal))
             {
-                // Only the canonical Steam-ID profile dir (a pure numeric id).
-                // The game also keeps sibling backup dirs next to it
-                // (<steamid>_Backups, <steamid>_Backups_Editor,
-                // <steamid>_progfix_backup_<timestamp>, ...) each carrying its own
-                // RocksDB_v2 copy of the same characters - enumerating those would
-                // surface every character several times over (the "3 chars, 8 rows"
-                // bug). A real Steam ID is all digits, so the suffixed backups are
-                // excluded by this single check.
                 var steamName = Path.GetFileName(steamDir);
                 if (steamName.Length == 0 || !steamName.All(char.IsDigit)) continue;
                 var rocks = Path.Combine(steamDir, "RocksDB_v2");
@@ -82,18 +84,24 @@ namespace Windrose.Quartermaster.Core
                         if (IsCharacterDbDir(charDir))
                             byId[Path.GetFileName(charDir)] = charDir;
                 }
+                folders.AddRange(byId.Values);
+            }
+            return folders;
+        }
 
-                foreach (var folder in byId.Values)
+        public List<SaveCharacter> DiscoverCharacters()
+        {
+            var result = new List<SaveCharacter>();
+            foreach (var folder in DiscoverCharacterDbFolders())
+            {
+                try
                 {
-                    try
-                    {
-                        var info = ReadCharacter(folder);
-                        if (info != null) result.Add(info);
-                    }
-                    catch (Exception e)
-                    {
-                        LogLine("  skip " + folder + ": " + e.Message);
-                    }
+                    var info = ReadCharacter(folder);
+                    if (info != null) result.Add(info);
+                }
+                catch (Exception e)
+                {
+                    LogLine("  skip " + folder + ": " + e.Message);
                 }
             }
             return result;

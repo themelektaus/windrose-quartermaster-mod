@@ -132,6 +132,19 @@ public static class BuildEndpoint
                         necklacePatched = er.NecklacePatched,
                     };
                 }
+                object shipSlotsInfo = null;
+                if (result.ShipSlotsResult != null)
+                {
+                    var sr = result.ShipSlotsResult;
+                    shipSlotsInfo = new
+                    {
+                        skipped = sr.Skipped,
+                        written = sr.Written,
+                        cargoMultiplier = sr.CargoMultiplier,
+                        combatOrderSlots = sr.CombatOrderSlots,
+                        filesWritten = sr.FilesWritten,
+                    };
+                }
                 object buildingStabilityInfo = null;
                 if (result.StabilityResult != null)
                 {
@@ -444,6 +457,7 @@ public static class BuildEndpoint
                     pickupRadius = pickupRadiusInfo,
                     bellLimits = bellLimitsInfo,
                     equipmentSlots = equipmentSlotsInfo,
+                    shipSlots = shipSlotsInfo,
                     buildingStability = buildingStabilityInfo,
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,

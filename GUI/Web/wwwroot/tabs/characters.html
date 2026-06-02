@@ -5,24 +5,24 @@
         <div data-icon style="background-image: url(rings.png); "></div>
       </div>
       <div class="card-content">
-        <h2>Character Slot Patcher</h2>
+        <h2>Save Patcher</h2>
         <p class="hint">
-          Retro-fits ring / necklace slot counts onto your EXISTING characters.
-          The Equipment Slots sliders on the Basic tab only affect newly created
-          characters - this writes the matching slot count straight into each
-          character's save.
+          Retro-fits slot counts onto your EXISTING characters and ships. The
+          Equipment Slots and Ship Slots sliders on the Basic tab only affect
+          newly created characters / ships - this writes the matching counts
+          straight into the save.
         </p>
         <p class="hint">
-          Each character is compared against the profile's slider target. A
-          "Patch" button only appears when they differ; before writing, a
-          per-character backup is created automatically.
+          Each row is compared against the profile's slider target. A "Patch"
+          button only appears when they differ; before writing, a per-target
+          backup is created automatically.
         </p>
         <p class="hint warn-hint">
           Close Windrose completely and turn OFF Steam Cloud Sync for Windrose
           first, or the cloud will overwrite the patched save on next launch.
         </p>
         <div class="bell-row">
-          <button type="button" id="char-reload" class="btn-secondary">Reload characters</button>
+          <button type="button" id="char-reload" class="btn-secondary">Reload</button>
         </div>
         <p class="hint" id="char-global-status" style="margin:.4em 0"></p>
       </div>
@@ -30,6 +30,11 @@
   </aside>
 
   <section class="characters-list-pane">
+    <h3 class="char-section-title">Equipment slots (ring / necklace)</h3>
     <div id="char-list" class="char-list"></div>
+
+    <h3 class="char-section-title">Ship slots (cargo / combat orders)</h3>
+    <p class="hint" id="ship-global-status" style="margin:.2em 0 .8em"></p>
+    <div id="ship-list" class="char-list"></div>
   </section>
 </div>
