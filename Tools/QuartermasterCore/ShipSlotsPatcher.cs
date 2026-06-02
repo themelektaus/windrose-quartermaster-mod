@@ -30,7 +30,7 @@ namespace Windrose.Quartermaster.Core
         public const int VanillaCombatOrders = 1;
         public const double VanillaCargoMultiplier = 1.0;
         public const double MinCargoMultiplier = 1.0;
-        public const double MaxCargoMultiplier = 3.0;
+        public const double MaxCargoMultiplier = 10.0;
         public const int MinCombatOrders = 1;
         public const int MaxCombatOrders = 10;
         // Hard ceiling on the resulting cargo cell count so an extreme multiplier
