@@ -1,4 +1,5 @@
-.tab-page.misc-page {
+.tab-page.misc-page,
+.tab-page[data-tab="cooldowns"] {
   justify-content: start;
   overflow: auto;
 
@@ -122,32 +123,6 @@ fieldset .indent input[type="number"] {
 
 .pickup-slider:has([disabled]) {
   opacity: .5;
-}
-
-#pickup-multiplier-value,
-#minimap-multiplier-value,
-#bonfire-multiplier-value,
-#pickaxe-multiplier-value {
-  background-color: var(--warn);
-  color: var(--bg);
-  border-radius: var(--border-radius);
-  width: 3.5em;
-  text-align: center;
-  font-weight: bold;
-  font-size: var(--font-size-small);
-}
-
-#pickup-range,
-#minimap-foot-readout,
-#minimap-ship-readout,
-#bonfire-radius-readout,
-#bonfire-height-readout,
-#pickaxe-readout {
-  color: var(--text-dim);
-  border-radius: var(--border-radius);
-  width: 4em;
-  text-align: center;
-  font-size: var(--font-size-small);
 }
 
 .bell-row {

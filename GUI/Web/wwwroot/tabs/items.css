@@ -1,13 +1,3 @@
-.item-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 .5em 0 0;
-  overflow-y: scroll;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(40em, 1fr));
-  gap: .5em;
-}
-
 .item {
   --item-color: transparent;
   display: grid;
@@ -18,24 +8,12 @@
   border-radius: var(--border-radius);
   border: 1px solid transparent;
   position: relative;
-  --item-color: transparent;
   background-color: color-mix(in srgb, var(--bg-elev-2), color-mix(in srgb, var(--item-color), black 50%) 30%);
 }
 
 .item.changed,
 .item.override {
   background-color: color-mix(in srgb, var(--bg-elev-2), color-mix(in srgb, var(--item-color), black 80%) 50%);
-}
-
-.item::after {
-  content: "";
-  width: .75em;
-  height: .75em;
-  position: absolute;
-  top: 0;
-  left: 0;
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-  background-color: var(--item-color);
 }
 
 .item.changed {
@@ -59,12 +37,6 @@
 .item .placeholder-icon {
   width: var(--icon-size);
   height: var(--icon-size);
-  background: var(--border);
-  border-radius: var(--border-radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-dim);
 }
 
 .item .name {

@@ -126,24 +126,3 @@
     }
   }
 }
-
-/* Misc-tab overall light card (smaller, mirrors other misc cards) */
-#lighting-multiplier-value {
-  background-color: var(--warn);
-  color: var(--bg);
-  border-radius: var(--border-radius);
-  width: 3.5em;
-  text-align: center;
-  font-weight: bold;
-  font-size: var(--font-size-small);
-}
-
-#lighting-overall-multiplier-value {
-  background-color: var(--warn);
-  color: var(--bg);
-  border-radius: var(--border-radius);
-  width: 3.5em;
-  text-align: center;
-  font-weight: bold;
-  font-size: var(--font-size-small);
-}

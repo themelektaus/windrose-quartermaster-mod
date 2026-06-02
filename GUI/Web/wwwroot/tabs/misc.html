@@ -43,7 +43,7 @@
         </label>
         <div class="pickup-slider indent">
           <input type="range" id="pickup-multiplier" min="1.0" max="10.0" step="0.1" value="2.0">
-          <span id="pickup-multiplier-value">2.0x</span><span id="pickup-range">8.0 m</span>
+          <span class="mult-pill" id="pickup-multiplier-value">2.0x</span><span class="mult-readout" id="pickup-range">8.0 m</span>
         </div>
         <p class="hint">
           vanilla pickup radius: 4 m
@@ -108,9 +108,9 @@
           </label>
           <div class="pickup-slider indent">
             <input type="range" id="minimap-multiplier" min="1.0" max="5.0" step="0.1" value="2.0">
-            <span id="minimap-multiplier-value">2.0x</span>
-            <span id="minimap-foot-readout">5.0 m</span>
-            <span id="minimap-ship-readout">15.0 m</span>
+            <span class="mult-pill" id="minimap-multiplier-value">2.0x</span>
+            <span class="mult-readout" id="minimap-foot-readout">5.0 m</span>
+            <span class="mult-readout" id="minimap-ship-readout">15.0 m</span>
           </div>
         </div>
         <p class="hint">
@@ -133,9 +133,9 @@
           </label>
           <div class="pickup-slider indent">
             <input type="range" id="bonfire-multiplier" min="1.0" max="5.0" step="0.1" value="2.0">
-            <span id="bonfire-multiplier-value">2.0x</span>
-            <span id="bonfire-radius-readout">100 m</span>
-            <span id="bonfire-height-readout">60 m</span>
+            <span class="mult-pill" id="bonfire-multiplier-value">2.0x</span>
+            <span class="mult-readout" id="bonfire-radius-readout">100 m</span>
+            <span class="mult-readout" id="bonfire-height-readout">60 m</span>
           </div>
         </div>
         <div style="font-weight:bold;margin-top:.5em">Music</div>
@@ -169,8 +169,8 @@
           </label>
           <div class="pickup-slider indent">
             <input type="range" id="pickaxe-multiplier" min="1.0" max="3.0" step="0.1" value="1.4">
-            <span id="pickaxe-multiplier-value">1.4x</span>
-            <span id="pickaxe-readout">+40%</span>
+            <span class="mult-pill" id="pickaxe-multiplier-value">1.4x</span>
+            <span class="mult-readout" id="pickaxe-readout">+40%</span>
           </div>
         </div>
       </div>
@@ -190,8 +190,8 @@
         <div class="pickup-row">
           <div class="pickup-slider">
             <input type="range" id="lighting-multiplier" min="0.1" max="10.0" step="0.1" value="1.0">
-            <span id="lighting-multiplier-value">1.0x</span>
-            <span id="lighting-readout">overall only</span>
+            <span class="mult-pill" id="lighting-multiplier-value">1.0x</span>
+            <span class="mult-readout" id="lighting-readout">overall only</span>
           </div>
         </div>
         <p class="hint">

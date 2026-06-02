@@ -919,7 +919,6 @@ footer.collapsed .footer-body {
   vertical-align: middle;
   border: 1px solid var(--border);
   color: var(--text-dim);
-  background: color-mix(in srgb, var(--elev), #000 0%);
 }
 
 .picker-badge.custom {
@@ -986,6 +985,252 @@ footer.collapsed .footer-body {
 
 .profile-drop-hint {
   color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+/* ============================================================
+   Shared tab components - consolidated rules used across more
+   than one tab. Tabs keep only their unique overrides.
+   ============================================================ */
+
+/* Editable entity cards (buyers / buildings / item creator) */
+.buyer-card,
+.building-card,
+.creator-card {
+  background-color: color-mix(in srgb, var(--bg-elev-3), black 70%);
+  border-radius: var(--border-radius);
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+.buyer-card {
+  gap: .5em;
+}
+
+/* Card head / titles / fields shared by the buildings + creator editors */
+.building-card-header,
+.creator-card-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+}
+
+.building-titles,
+.creator-titles {
+  display: flex;
+  flex-direction: column;
+  gap: .25em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.building-title-name,
+.creator-title-name {
+  font-weight: bold;
+}
+
+.building-title-name em,
+.creator-title-name em {
+  color: var(--text-dim);
+}
+
+.building-title-id,
+.creator-title-id {
+  color: var(--text-dim);
+  font-family: var(--monospace);
+  font-size: var(--monospace-size);
+}
+
+.building-title-template,
+.creator-title-template {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.building-title-template > span,
+.creator-title-template > span {
+  white-space: nowrap;
+}
+
+.building-card-actions,
+.creator-card-actions {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.building-fields,
+.creator-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1em;
+  align-items: end;
+}
+
+.building-field,
+.creator-field {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+}
+
+.building-field-wide,
+.creator-field-wide {
+  grid-column: 1 / -1;
+}
+
+.building-field > span,
+.creator-field > span {
+  color: var(--text-dim);
+  font-size: var(--font-size-small);
+}
+
+.building-field input[disabled],
+.building-field textarea[disabled],
+.creator-field input[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.building-field textarea,
+.creator-field textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.building-field textarea {
+  min-height: 4em;
+}
+
+.creator-field textarea {
+  min-height: 6em;
+}
+
+/* Editable item icon (buyers / creator) */
+.buyer-icon,
+.creator-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.buyer-icon-empty,
+.creator-icon-placeholder {
+  background-color: var(--bg-elev);
+  border-radius: var(--border-radius);
+}
+
+.buyer-icon-empty {
+  display: inline-block;
+}
+
+.creator-icon-placeholder {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex-shrink: 0;
+}
+
+/* Scrollable entity lists */
+.buyers-list,
+.lt-list,
+.mods-list,
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 .5em 0 0;
+  overflow-y: scroll;
+}
+
+.buyers-list,
+.lt-list,
+.mods-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.buyers-list {
+  gap: .75em;
+}
+
+.lt-list,
+.mods-list {
+  gap: .25em;
+}
+
+.item-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40em, 1fr));
+  gap: .5em;
+}
+
+/* Empty-state placeholder rows */
+.buyers-empty,
+.creator-empty,
+.mods-empty {
+  padding: 2em 1em;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* Diagonal change-marker corner (top-left triangle) */
+.buyer-row::after,
+.lt::after,
+.item::after,
+.mod::after {
+  content: "";
+  width: .75em;
+  height: .75em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.lt::after {
+  background-color: var(--lt-color);
+}
+
+.item::after {
+  background-color: var(--item-color);
+}
+
+.mod::after {
+  background-color: var(--mod-color);
+}
+
+/* Placeholder icon (missing art) - shared visual; size set per context */
+.placeholder-icon {
+  background: var(--border);
+  border-radius: var(--border-radius);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Multiplier value badges + readouts (control panels: basic / cooldowns / lighting) */
+.mult-pill {
+  background-color: var(--warn);
+  color: var(--bg);
+  border-radius: var(--border-radius);
+  width: 3.5em;
+  text-align: center;
+  font-weight: bold;
+  font-size: var(--font-size-small);
+}
+
+.mult-readout {
+  color: var(--text-dim);
+  border-radius: var(--border-radius);
+  width: 5em;
+  text-align: center;
   font-size: var(--font-size-small);
 }
 

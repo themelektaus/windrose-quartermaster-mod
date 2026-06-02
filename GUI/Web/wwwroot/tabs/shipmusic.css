@@ -46,7 +46,7 @@
 }
 
 .shipmusic-howto {
-  background-color: var(--bg-sunk);
+  background-color: var(--bg);
   border-radius: var(--border-radius);
   padding: .5em 1em;
   margin-top: .5em;
@@ -88,7 +88,7 @@
   flex-direction: column;
   gap: .5em;
   padding: .75em 1em;
-  background-color: var(--bg-sunk);
+  background-color: var(--bg);
   border-radius: var(--border-radius);
 }
 
