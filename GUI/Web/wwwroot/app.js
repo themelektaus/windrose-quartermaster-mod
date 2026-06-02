@@ -1452,8 +1452,12 @@ function shortenSellerRequirement(reqPath) {
     return last.replace(/^DA_Requirement_/, '').replace(/_/g, ' ');
 }
 
+// Escapes a value for use inside a double-quoted [attr="..."] selector -
+// the only context cssEsc is used in - so escaping " and \ is necessary
+// and sufficient (an identifier-grade CSS.escape would be equivalent here,
+// just noisier). String() guards against a non-string id slipping through.
 function cssEsc(s) {
-    return s.replace(/(["\\])/g, '\\$1');
+    return String(s).replace(/(["\\])/g, '\\$1');
 }
 
 async function onQuit() {

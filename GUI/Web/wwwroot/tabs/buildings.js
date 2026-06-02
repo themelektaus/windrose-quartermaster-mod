@@ -1465,7 +1465,7 @@ function onBuildingListChange(e) {
             // Keep the active-card dropdown in sync with the typed name.
             const picker = document.getElementById('buildings-active-picker');
             if (picker) {
-                const opt = picker.querySelector('option[value="' + cssEscape(custom.id) + '"]');
+                const opt = picker.querySelector('option[value="' + cssEsc(custom.id) + '"]');
                 if (opt) opt.textContent = (custom.name && custom.name.trim()) ? custom.name : '(unnamed)';
             }
         } else if (field === 'description') {
@@ -1701,7 +1701,7 @@ async function onBuildingListClick(e) {
         if (building.slots && building.slots[slotKey] && building.slots[slotKey].scalarParams) {
             delete building.slots[slotKey].scalarParams[name];
         }
-        const input = slotEl.querySelector('input[data-param-scalar="' + cssEscape(name) + '"]');
+        const input = slotEl.querySelector('input[data-param-scalar="' + cssEsc(name) + '"]');
         if (input && Number.isFinite(def)) input.value = def;
         markDirty();
         updateButtons();
@@ -1723,8 +1723,8 @@ async function onBuildingListClick(e) {
         const g = parseFloat(t.dataset.defaultG);
         const b = parseFloat(t.dataset.defaultB);
         const a = parseFloat(t.dataset.defaultA);
-        const colorIn = slotEl.querySelector('input[data-param-vector="' + cssEscape(name) + '"]');
-        const alphaIn = slotEl.querySelector('input[data-param-vector-alpha="' + cssEscape(name) + '"]');
+        const colorIn = slotEl.querySelector('input[data-param-vector="' + cssEsc(name) + '"]');
+        const alphaIn = slotEl.querySelector('input[data-param-vector-alpha="' + cssEsc(name) + '"]');
         if (colorIn) colorIn.value = rgbToHex(r, g, b);
         if (alphaIn) alphaIn.value = Number.isFinite(a) ? a : 1;
         markDirty();
@@ -1743,7 +1743,7 @@ async function onBuildingListClick(e) {
         if (building.slots && building.slots[slotKey] && building.slots[slotKey].textureParams) {
             delete building.slots[slotKey].textureParams[name];
         }
-        const sel = slotEl.querySelector('select[data-param-texture="' + cssEscape(name) + '"]');
+        const sel = slotEl.querySelector('select[data-param-texture="' + cssEsc(name) + '"]');
         if (sel) sel.value = '';
         markDirty();
         updateButtons();
@@ -1933,11 +1933,6 @@ async function refreshAudioStatus(custom, card) {
     } catch (_) {
         // best-effort - status was already showing a usable state
     }
-}
-
-function cssEscape(s) {
-    if (window.CSS && window.CSS.escape) return window.CSS.escape(s);
-    return String(s).replace(/(["\\])/g, '\\$1');
 }
 
 // -----------------------------------------------------------------------
