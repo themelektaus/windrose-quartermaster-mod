@@ -4,96 +4,159 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
-[size=4][b]Features[/b][/size]
-[line]
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/stack-size.png[/img]
 [b]Stack sizes[/b]
-Per-item or global multiplier/absolute caps; weapons, armor and other unstackable items stay vanilla unless you explicitly promote them. 
-[line]
+Per-item or global multiplier/absolute caps; weapons, armor and other unstackable items stay vanilla unless you explicitly promote them.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/bonfire-radius.png[/img]
 [b]Bonfire radius[/b]
 1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m).
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/cooldown.png[/img]
 [b]Cooldowns, crops & crafting[/b]
 Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/pickup-radius.png[/img]
 [b]Pickup radius[/b]
-Free slider from 1.0x to 10.0x for the auto-pickup magnet range (vanilla 4 m). 
-[line]
+Free slider from 1.0x to 10.0x for the auto-pickup magnet range (vanilla 4 m).
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/fast-travel-bells.png[/img]
 [b]Fast-travel bells & signal fires[/b]
 Raise the placement caps (vanilla 10 / 3).
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/pickaxe-range.png[/img]
 [b]Pickaxe range[/b]
-1.0x to 3.0x slider that scales the trace radius on every pickaxe tier so you can hit nodes from slightly further away. 
-[line]
+1.0x to 3.0x slider that scales the trace radius on every pickaxe tier so you can hit nodes from slightly further away.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/loot-treasure.png[/img]
 [b]Loot tables[/b]
-Per-category Min/Max multipliers (mobs, plants, chests, fishing, ...) leave everything else alone. 
-[line]
+Per-category Min/Max multipliers (mobs, plants, chests, fishing, ...) leave everything else alone.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/sea-shanties.png[/img]
 [b]Sea Shanties[/b]
 Replace any of the 10 vanilla shanty slots with your own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio), add extra shanties alongside the vanilla 10, and tune the volume of each track individually. Exclude single slots if you only want the vanilla tracks you like.
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/building-stability.png[/img]
 [b]Building stability[/b]
-Structures hold longer cantilevers and taller towers without collapsing. 
-[line]
+Structures hold longer cantilevers and taller towers without collapsing.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/minimap-range.png[/img]
 [b]Minimap range[/b]
-1.0x to 5.0x slider for the foot/ship reveal range (vanilla 2.5 m / 7.5 m). 
-[line]
+1.0x to 5.0x slider for the foot/ship reveal range (vanilla 2.5 m / 7.5 m).
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/no-smoke.png[/img]
 [b]No smoke[/b]
-Hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns. 
-[line]
+Hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/lighting.png[/img]
 [b]Lighting[/b]
 Per-light AttenuationRadius multipliers for candle lamps, standing lanterns, wall lamps + signal fires, torches + chandeliers, building-center fires and the belt lantern (0.1x to 10x), on top of an overall light-radius slider on the Basic tab.
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/rings.png[/img]
 [b]Equipment slots[/b]
 Add extra ring and necklace equipment slots (vanilla 1 each, up to 10). New characters get the slots automatically; the Characters tab retro-fits the counts onto a character already in your save (with an automatic backup first).
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/ship-cargo.png[/img]
 [b]Ship slots[/b]
 Bigger ship cargo holds (scales each hull's vanilla capacity) and more Combat Orders slots, for the Brig / Frigate / Ketch and their variants. New ships get the bigger slots automatically; the Characters tab retro-fits the counts onto ships already in your save.
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/ui.png[/img]
 [b]UI scale[/b]
 Global interface scale from 50% to 110% (Engine.ini ApplicationScale). Writes your local UE config directly and locks it read-only so the game keeps the value across restarts - close the game before applying.
-[line]
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/item-creator.png[/img]
 [b]Item Creator[/b]
-Clone an existing vanilla item, give it a new name/icon/category and ship it as a brand-new entry in the same build. 
-[line]
+Clone an existing vanilla item, give it a new name/icon/category and ship it as a brand-new entry in the same build.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/building-creator.png[/img]
 [b]Building Creator[/b]
-Clone a vanilla building, rewrite its display name and description, edit the recipe cost, swap mesh materials, and  optionally add a flame/torch FX preset or upload your own looping ambient audio with adjustable range and volume. 
-[line]
+Clone a vanilla building, rewrite its display name and description, edit the recipe cost, swap mesh materials, and  optionally add a flame/torch FX preset or upload your own looping ambient audio with adjustable range and volume.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/sellers.png[/img]
 [b]Sellers[/b]
-Retune what NPC vendors offer you and at which price; works alongside the Buyers tab without overwriting each other. 
-[line]
+Retune what NPC vendors offer you and at which price; works alongside the Buyers tab without overwriting each other.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/buyers.png[/img]
 [b]Buyers[/b]
-Retune what NPC vendors are willing to buy from you and at which price (per-recipe edits with conflict-safe merging). 
-[line]
+Retune what NPC vendors are willing to buy from you and at which price (per-recipe edits with conflict-safe merging).
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/mods-overview.png[/img]
 [b]Mods Overview[/b]
-Lists every ".pak" in your "~mods" folder, marks Quartermaster builds, and lets you recycle-bin them with one click. 
-[line]
+Lists every ".pak" in your "~mods" folder, marks Quartermaster builds, and lets you recycle-bin them with one click.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/profile-import-export.png[/img]
 [b]Profile import/export[/b]
-Profiles serialize to a single JSON (audio files travel as a ZIP); drag and drop on the GUI to import, with overwrite confirmation on id conflicts. 
-[line]
+Profiles serialize to a single JSON (audio files travel as a ZIP); drag and drop on the GUI to import, with overwrite confirmation on id conflicts.
+
+
+
+
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/issue-reporter.png[/img]
 [b]Issue Reporter[/b]
-One-click "Report" button that bundles your active profile, the latest build log and your "~mods" folder listing into a single archive so problems can be diagnosed quickly. 
-[line]
+One-click "Report" button that bundles your active profile, the latest build log and your "~mods" folder listing into a single archive so problems can be diagnosed quickly.
+
+
 
 
 [size=4][b]Installation[/b][/size]
