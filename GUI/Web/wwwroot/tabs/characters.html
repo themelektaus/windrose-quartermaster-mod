@@ -1,0 +1,35 @@
+<div class="tab-page characters-page" data-tab="characters">
+  <aside class="pane characters-info">
+    <section class="card char-info-card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(rings.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Character Slot Patcher</h2>
+        <p class="hint">
+          Retro-fits ring / necklace slot counts onto your EXISTING characters.
+          The Equipment Slots sliders on the Basic tab only affect newly created
+          characters - this writes the matching slot count straight into each
+          character's save.
+        </p>
+        <p class="hint">
+          Each character is compared against the profile's slider target. A
+          "Patch" button only appears when they differ; before writing, a
+          per-character backup is created automatically.
+        </p>
+        <p class="hint warn-hint">
+          Close Windrose completely and turn OFF Steam Cloud Sync for Windrose
+          first, or the cloud will overwrite the patched save on next launch.
+        </p>
+        <div class="bell-row">
+          <button type="button" id="char-reload" class="btn-secondary">Reload characters</button>
+        </div>
+        <p class="hint" id="char-global-status" style="margin:.4em 0"></p>
+      </div>
+    </section>
+  </aside>
+
+  <section class="characters-list-pane">
+    <div id="char-list" class="char-list"></div>
+  </section>
+</div>

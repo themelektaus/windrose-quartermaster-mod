@@ -23,6 +23,15 @@ const state = {
         error: null,
     },
 
+    // Characters tab: discovered Windrose save characters (existing-character
+    // equipment-slot patcher). Loaded on first tab open; re-scanned on demand.
+    characters: {
+        loaded: false,
+        supported: true,
+        list: [],
+        error: null,
+    },
+
     buyers: {
         loaded: false,
         list: [],
@@ -269,7 +278,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'mods'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -640,6 +649,13 @@ function setActiveTab(tab) {
         renderBuildingCreator();
         renderBuildingCreatorStatus();
     }
+    if (tab === 'characters') {
+        if (!state.characters.loaded) {
+            loadCharacters();
+        } else {
+            renderCharacters();
+        }
+    }
 }
 
 async function loadProfile(id) {
@@ -685,6 +701,11 @@ async function loadProfile(id) {
     if (state.activeTab === 'buildings') {
         renderBuildingCreator();
         renderBuildingCreatorStatus();
+    }
+    // The Characters tab's per-row "needs patch?" comparison is against the
+    // profile's equipment-slot target, so re-render it when the profile changes.
+    if (state.activeTab === 'characters' && state.characters.loaded) {
+        renderCharacters();
     }
     updateButtons();
     setBuildLog([{ kind: 'info', msg: 'Profile loaded: ' + state.current.name }]);
@@ -1743,6 +1764,7 @@ function bindHandlers() {
     bindStationsHandlers();
     bindShipMusicHandlers();
     bindLightingHandlers();
+    bindCharactersHandlers();
 }
 
 // Window-level drag-and-drop import for profile JSONs. A single JSON file

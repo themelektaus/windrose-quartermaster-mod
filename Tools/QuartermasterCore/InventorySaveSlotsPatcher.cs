@@ -59,7 +59,16 @@ namespace Windrose.Quartermaster.Core
 
             foreach (var steamDir in Directory.GetDirectories(profilesRoot).OrderBy(d => d, StringComparer.Ordinal))
             {
-                if (Path.GetFileName(steamDir).StartsWith(".", StringComparison.Ordinal)) continue;
+                // Only the canonical Steam-ID profile dir (a pure numeric id).
+                // The game also keeps sibling backup dirs next to it
+                // (<steamid>_Backups, <steamid>_Backups_Editor,
+                // <steamid>_progfix_backup_<timestamp>, ...) each carrying its own
+                // RocksDB_v2 copy of the same characters - enumerating those would
+                // surface every character several times over (the "3 chars, 8 rows"
+                // bug). A real Steam ID is all digits, so the suffixed backups are
+                // excluded by this single check.
+                var steamName = Path.GetFileName(steamDir);
+                if (steamName.Length == 0 || !steamName.All(char.IsDigit)) continue;
                 var rocks = Path.Combine(steamDir, "RocksDB_v2");
                 if (!Directory.Exists(rocks)) continue;
 

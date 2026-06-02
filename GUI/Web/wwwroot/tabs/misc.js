@@ -211,81 +211,6 @@ function setEquipmentSlotsFromUI() {
     markDirty();
 }
 
-function slotPatchSetStatus(msg) {
-    const el = document.getElementById('slot-patch-status');
-    if (el) el.textContent = msg || '';
-}
-
-async function slotPatchScan() {
-    const select = document.getElementById('slot-patch-character');
-    const applyBtn = document.getElementById('slot-patch-apply');
-    slotPatchSetStatus('Scanning save profiles...');
-    try {
-        const res = await api('GET', '/api/savegame/characters');
-        if (!res.supported) {
-            slotPatchSetStatus('No Windrose save profiles found on this machine.');
-            return;
-        }
-        const chars = res.characters || [];
-        if (chars.length === 0) {
-            slotPatchSetStatus('No characters found.');
-            select.style.display = 'none';
-            applyBtn.style.display = 'none';
-            return;
-        }
-        select.innerHTML = '';
-        for (const c of chars) {
-            const opt = document.createElement('option');
-            opt.value = c.dbFolder;
-            opt.textContent = c.playerName + ' (ring ' + c.ringSlots + ', necklace ' + c.necklaceSlots + ')';
-            select.appendChild(opt);
-        }
-        select.style.display = '';
-        applyBtn.style.display = '';
-        slotPatchSetStatus('Found ' + chars.length + ' character(s). Pick one, then patch.');
-    } catch (e) {
-        slotPatchSetStatus('Scan failed: ' + e.message);
-    }
-}
-
-async function slotPatchApply(force) {
-    const select = document.getElementById('slot-patch-character');
-    const dbFolder = select && select.value;
-    if (!dbFolder) { slotPatchSetStatus('Select a character first.'); return; }
-    const ring = parseInt(document.getElementById('ring-slots').value, 10) || 1;
-    const neck = parseInt(document.getElementById('necklace-slots').value, 10) || 1;
-    slotPatchSetStatus('Patching to ring ' + ring + ' / necklace ' + neck + '...');
-    try {
-        const res = await api('POST', '/api/savegame/patch', {
-            dbFolder: dbFolder,
-            ringSlots: ring,
-            necklaceSlots: neck,
-            force: !!force,
-        });
-        if (res.blocked) {
-            const ok = window.confirm(
-                'Reducing slots would delete equipped items:\n\n'
-                + res.blockingItems.join('\n')
-                + '\n\nDelete them and patch anyway?');
-            if (ok) return slotPatchApply(true);
-            slotPatchSetStatus('Cancelled - unequip those items in-game first.');
-            return;
-        }
-        if (res.alreadyMatches) {
-            slotPatchSetStatus(res.playerName + ' already has ring ' + ring + ' / necklace ' + neck + '.');
-            return;
-        }
-        slotPatchSetStatus(
-            'Patched ' + res.playerName + ': ' + res.oldRing + '/' + res.oldNeck
-            + ' -> ' + res.newRing + '/' + res.newNeck
-            + (res.backupCreated ? ' (backup saved)' : '')
-            + (res.checkpointZipRebuilt ? '' : ' [no checkpoint zip - may revert]')
-            + '. Turn OFF Steam Cloud Sync for Windrose, then launch to verify.');
-    } catch (e) {
-        slotPatchSetStatus('Patch failed: ' + e.message);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // UI Scale. Unlike the other Misc sliders this is NOT profile-bound: it edits
 // the per-user UE config directly (%LOCALAPPDATA%\R5\Saved\Config\Windows\
@@ -699,8 +624,6 @@ function bindMiscHandlers() {
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);
     document.getElementById('necklace-slots').addEventListener('input', setEquipmentSlotsFromUI);
-    document.getElementById('slot-patch-scan').addEventListener('click', slotPatchScan);
-    document.getElementById('slot-patch-apply').addEventListener('click', () => slotPatchApply(false));
     document.getElementById('building-stability-enabled').addEventListener('change',
         setBuildingStabilityFromUI);
     document.getElementById('nosmoke-campfire').addEventListener('change', setNoSmokeFromUI);

@@ -84,36 +84,23 @@
         <p class="hint">Extra ring and necklace equipment slots (vanilla 1 each).</p>
         <div class="pickup-row">
           <div class="pickup-slider">
-            <input type="range" id="ring-slots" min="1" max="3" step="1" value="1">
+            <input type="range" id="ring-slots" min="1" max="10" step="1" value="1">
             <span class="mult-pill" id="ring-slots-value">1</span>
             <span class="mult-readout">ring slots</span>
           </div>
         </div>
         <div class="pickup-row">
           <div class="pickup-slider">
-            <input type="range" id="necklace-slots" min="1" max="3" step="1" value="1">
+            <input type="range" id="necklace-slots" min="1" max="10" step="1" value="1">
             <span class="mult-pill" id="necklace-slots-value">1</span>
             <span class="mult-readout">necklace slots</span>
           </div>
         </div>
         <p class="hint">
           Affects NEW characters only - existing characters keep the slot count
-          baked into their save. Patch an existing character with the tool below.
+          baked into their save. Use the Characters tab to patch an existing
+          character to these counts.
         </p>
-        <div class="equipment-slots-patch indent" id="equipment-slots-patch">
-          <p class="hint" style="margin:.4em 0">
-            Patch an existing character (writes directly to your save - close the
-            game and turn off Steam Cloud Sync for Windrose first):
-          </p>
-          <div class="bell-row">
-            <button type="button" id="slot-patch-scan" class="btn-secondary">Find characters</button>
-            <select id="slot-patch-character" style="display:none"></select>
-          </div>
-          <button type="button" id="slot-patch-apply" class="btn-secondary" style="display:none">
-            Patch selected character to the slider counts
-          </button>
-          <p class="hint" id="slot-patch-status" style="margin:.4em 0"></p>
-        </div>
       </div>
     </section>
 

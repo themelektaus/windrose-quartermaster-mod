@@ -1,0 +1,86 @@
+/* Characters tab. Keeps the base .tab-page grid (25em info column + 1fr list
+   column). The right column scrolls independently as a vertical list of
+   per-character cards. */
+
+.tab-page.characters-page {
+  padding: .5em;
+  gap: 1em;
+}
+
+.characters-page .pane.characters-info {
+  overflow-y: auto;
+}
+
+.char-info-card {
+  display: flex;
+  gap: 1em;
+  height: unset;
+}
+
+.char-info-card .card-icon {
+  flex: 0 0 5em;
+}
+
+.char-info-card .card-icon [data-icon] {
+  background-position: center;
+  background-size: cover;
+  border-radius: 50%;
+  width: 5em;
+  height: 5em;
+}
+
+.char-info-card .card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.char-info-card h2 {
+  margin: 0;
+  text-transform: unset;
+  color: var(--text);
+}
+
+.warn-hint {
+  color: var(--warn);
+}
+
+.characters-list-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: .25em;
+}
+
+.char-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+}
+
+.char-card {
+  height: unset;
+}
+
+.char-card .card-content {
+  display: flex;
+  flex-direction: column;
+  gap: .4em;
+}
+
+.char-card h2 {
+  margin: 0;
+  text-transform: unset;
+  color: var(--text);
+  font-size: var(--font-size-big);
+}
+
+/* A character whose slots differ from the profile target gets a subtle accent
+   so the actionable rows stand out from the already-up-to-date ones. */
+.char-card.char-needs-patch {
+  border-left: 3px solid var(--accent);
+}
+
+.char-card .char-current {
+  font-variant-numeric: tabular-nums;
+}
