@@ -171,8 +171,6 @@ function bindModsHandlers() {
             deleteMod(t.dataset.deleteMod);
         }
     });
-    // Status-Probe beim Tab-Wechsel auf "Mods": ist verlustfrei (HEAD-style),
-    // wird auch beim ersten Rendern ausgeloest.
     loadExportStatus();
     loadGameInstallStatus();
 }
@@ -255,8 +253,6 @@ async function openGameInstallModal() {
 }
 window.openGameInstallModal = openGameInstallModal;
 
-// Liest /api/export/status und zeigt im Status-DIV wie viele Assets bereits
-// extrahiert wurden. Schnell (nur Directory-Counts), kein CUE4Parse-Init.
 async function loadExportStatus() {
     const statusEl = document.getElementById('export-status');
     if (!statusEl) return;
@@ -289,9 +285,6 @@ async function loadExportStatus() {
     }
 }
 
-// Streamt /api/export/building als SSE und schreibt Log-Lines ins globale
-// Footer-Log (#build-log), das via setFooterCollapsed(false) automatisch
-// aufgeklappt wird. Mirrors die SSE-Consumption aus app.js::runSetup.
 function runBuildingExport() {
     const btn = document.getElementById('btn-export-building');
     const statusEl = document.getElementById('export-status');
@@ -302,9 +295,6 @@ function runBuildingExport() {
     btn.textContent = 'Exporting...';
     statusEl.textContent = 'Export running...';
 
-    // Footer aufklappen + Log leeren - exakt das Verhalten von onBuild,
-    // damit ein laufender Export visuell genauso "live" wie ein Build
-    // wirkt (auch wenn das Tab-Pane oben den Status weiter anzeigt).
     setFooterCollapsed(false);
     logEl.replaceChildren();
 
