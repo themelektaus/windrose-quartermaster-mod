@@ -286,6 +286,66 @@ async function slotPatchApply(force) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// UI Scale. Unlike the other Misc sliders this is NOT profile-bound: it edits
+// the per-user UE config directly (%LOCALAPPDATA%\R5\Saved\Config\Windows\
+// Engine.ini -> [/Script/Engine.UserInterfaceSettings] ApplicationScale). So
+// it never touches state.current / markDirty(); the slider mirrors the live
+// file (GET on load) and an explicit Apply button writes it back (POST).
+// ---------------------------------------------------------------------------
+function syncUiScaleReadout() {
+    const slider = document.getElementById('ui-scale');
+    if (!slider) return;
+    const v = parseFloat(slider.value);
+    const pct = isFinite(v) ? Math.round(v * 100) : 100;
+    document.getElementById('ui-scale-value').textContent = pct + '%';
+}
+
+function uiScaleSetStatus(msg) {
+    const el = document.getElementById('ui-scale-status');
+    if (el) el.textContent = msg || '';
+}
+
+async function loadUiScale() {
+    const slider = document.getElementById('ui-scale');
+    if (!slider) return;
+    try {
+        const res = await api('GET', '/api/uiscale');
+        if (!res || !res.supported) {
+            uiScaleSetStatus('No Windrose Engine.ini found yet - launch the game once.');
+            syncUiScaleReadout();
+            return;
+        }
+        let v = parseFloat(res.scale);
+        if (!isFinite(v)) v = 1.0;
+        if (v < 0.5) v = 0.5;
+        if (v > 1.1) v = 1.1;
+        slider.value = String(v);
+        syncUiScaleReadout();
+        uiScaleSetStatus(res.isSet
+            ? 'Current: ' + Math.round(v * 100) + '%.'
+            : 'Not set yet (vanilla 100%).');
+    } catch (e) {
+        uiScaleSetStatus('Could not read current UI scale: ' + e.message);
+        syncUiScaleReadout();
+    }
+}
+
+async function uiScaleApply() {
+    const slider = document.getElementById('ui-scale');
+    if (!slider) return;
+    const v = parseFloat(slider.value) || 1.0;
+    uiScaleSetStatus('Applying ' + Math.round(v * 100) + '%...');
+    try {
+        const res = await api('POST', '/api/uiscale', { scale: v });
+        const pct = Math.round((res.scale != null ? res.scale : v) * 100);
+        uiScaleSetStatus('UI scale set to ' + pct
+            + '%. Close Windrose first if it is running, then launch to see it.');
+    } catch (e) {
+        uiScaleSetStatus('Apply failed: ' + e.message);
+    }
+}
+
 function setBuildingStabilityFromUI() {
     if (!state.current) return;
     const enabled = document.getElementById('building-stability-enabled').checked;
@@ -656,4 +716,10 @@ function bindMiscHandlers() {
     if (bmInput) bmInput.addEventListener('change', onBonfireMusicFileChange);
     const bmVol = document.getElementById('bonfire-music-volume');
     if (bmVol) bmVol.addEventListener('input', setBonfireMusicVolumeFromUI);
+    const uiScale = document.getElementById('ui-scale');
+    if (uiScale) uiScale.addEventListener('input', syncUiScaleReadout);
+    const uiScaleApplyBtn = document.getElementById('ui-scale-apply');
+    if (uiScaleApplyBtn) uiScaleApplyBtn.addEventListener('click', uiScaleApply);
+    // UI scale is install-global (not profile-bound): read the live value once.
+    loadUiScale();
 }

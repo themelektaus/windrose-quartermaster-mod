@@ -270,5 +270,30 @@
       </div>
     </section>
 
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(ui-scale.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>UI Scale</h2>
+        <p class="hint">
+          Global interface scale (Engine.ini ApplicationScale). Writes your
+          local UE config directly - close the game first, it rewrites this
+          file on exit.
+        </p>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="ui-scale" min="0.5" max="1.1" step="0.05" value="1.0">
+            <span class="mult-pill" id="ui-scale-value">100%</span>
+          </div>
+        </div>
+        <div class="bell-row">
+          <button type="button" id="ui-scale-apply" class="btn-secondary">Apply UI scale</button>
+        </div>
+        <p class="hint" id="ui-scale-status" style="margin:.4em 0"></p>
+        <p class="hint">vanilla = 100% (1.0). Range 50% - 110%.</p>
+      </div>
+    </section>
+
   </aside>
 </div>
