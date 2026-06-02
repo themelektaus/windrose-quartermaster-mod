@@ -77,35 +77,6 @@
 
     <section class="card">
       <div class="card-icon">
-        <div data-icon style="background-image: url(rings.png); "></div>
-      </div>
-      <div class="card-content">
-        <h2>Equipment Slots</h2>
-        <p class="hint">Extra ring and necklace equipment slots (vanilla 1 each).</p>
-        <div class="pickup-row">
-          <div class="pickup-slider">
-            <input type="range" id="ring-slots" min="1" max="10" step="1" value="1">
-            <span class="mult-pill" id="ring-slots-value">1</span>
-            <span class="mult-readout">ring slots</span>
-          </div>
-        </div>
-        <div class="pickup-row">
-          <div class="pickup-slider">
-            <input type="range" id="necklace-slots" min="1" max="10" step="1" value="1">
-            <span class="mult-pill" id="necklace-slots-value">1</span>
-            <span class="mult-readout">necklace slots</span>
-          </div>
-        </div>
-        <p class="hint">
-          Affects NEW characters only - existing characters keep the slot count
-          baked into their save. Use the Characters tab to patch an existing
-          character to these counts.
-        </p>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="card-icon">
         <div data-icon style="background-image: url(building-stability.png); "></div>
       </div>
       <div class="card-content">
@@ -254,6 +225,35 @@
             Kilns
           </label>
         </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(rings.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Equipment Slots</h2>
+        <p class="hint">Extra ring and necklace equipment slots (vanilla 1 each).</p>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="ring-slots" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="ring-slots-value">1</span>
+            <span class="mult-readout">ring slots</span>
+          </div>
+        </div>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="necklace-slots" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="necklace-slots-value">1</span>
+            <span class="mult-readout">necklace slots</span>
+          </div>
+        </div>
+        <p class="hint">
+          Affects new characters only - existing characters keep the slot count
+          baked into their save. <b>Use the Characters tab to patch an existing
+          character to these counts.</b>
+        </p>
       </div>
     </section>
 
