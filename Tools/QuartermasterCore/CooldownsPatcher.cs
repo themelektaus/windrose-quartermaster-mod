@@ -253,6 +253,7 @@ namespace Windrose.Quartermaster.Core
     {
         ScalableFloatDuration,
         TopLevelMagnitude,
+        WeaponAbilityCurve,
     }
 
     public sealed class CooldownPatchResult

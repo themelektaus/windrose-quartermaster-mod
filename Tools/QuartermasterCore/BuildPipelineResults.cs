@@ -114,6 +114,7 @@ namespace Windrose.Quartermaster.Core
         TopLevelMagnitude,
         RangedReload,
         ShipCannon,
+        WeaponAbilityCurve,
     }
 
     public sealed class CooldownJob
@@ -123,6 +124,8 @@ namespace Windrose.Quartermaster.Core
         public string VirtualPath;
         public double Multiplier;
         public CooldownJobShape Shape;
+        // Only set for WeaponAbilityCurve: the CurveTable row to scale.
+        public string RowName;
     }
 
     public sealed class CooldownJobResult

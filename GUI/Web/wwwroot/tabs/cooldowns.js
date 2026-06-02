@@ -53,6 +53,12 @@ const COOLDOWN_FAMILIES = [
         vanillaSeconds: 10,
         renderReadout: (mul) => (10 * mul).toFixed(1) + ' s',
     },
+    {
+        key: 'souleater',
+        profileKey: 'soulEaterAbilityMultiplier',
+        vanillaSeconds: 180,
+        renderReadout: (mul) => (180 * mul / 60).toFixed(1) + ' min',
+    },
 ];
 
 const STATION_FAMILIES = [

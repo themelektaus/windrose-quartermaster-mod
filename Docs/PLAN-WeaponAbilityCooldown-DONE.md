@@ -1,8 +1,15 @@
 # Plan: Weapon Special Ability Cooldowns (Soul Eater / Soul Harvest)
 
-Status: **Planungsnotiz** - noch nicht umgesetzt. Aufgegriffen aus einer
+Status: **Umgesetzt** (Scope: nur Soul Eater). Aufgegriffen aus einer
 User-Anfrage (Nexus): *"is it possible to edit Soul Eater's Special Ability
 cooldown? 3 minutes is really long."*
+
+Implementiert via neuem `WeaponAbilityCooldownPatcher` (CurveTable-Row-Patch),
+verdrahtet als Cooldown-Job-Shape `WeaponAbilityCurve`, Profil-Feld
+`Cooldowns.SoulEaterAbilityMultiplier`, plus Slider "Soul Eater - Soul Harvest"
+im Cooldowns-Tab. Die anderen Weapon-Ability-Rows (Halberd/Rapier/Saber) sind
+bewusst nicht verdrahtet (Patcher ist generisch ueber den Row-Namen, also
+trivial nachruestbar).
 
 ## Kurzfassung
 
@@ -103,19 +110,22 @@ Hinweis: `retoc list` / `repak list` geben fuer IoStore nur Chunk-IDs bzw. den
 Pak-Index; die **lesbaren** Asset-Pfade kommen aus `asset-registry`. Die
 `.json`-Assets (R5BusinessRules-Daten) liegen dagegen direkt im legacy `.pak`.
 
-## Offene Fragen (vor Implementierung verifizieren)
+## Offene Fragen (durch Spike geklaert)
 
-1. **Curve-Struktur**: Ist die Row `Greatsword_Souldrinker_AbilityCooldown` eine
-   `RichCurve`/`SimpleCurve` mit einem einzelnen Key (konstant 180), oder
-   level-skaliert (mehrere Keys ueber Item-Level 1..15)? Bestimmt, ob wir einen
-   Key oder alle Keys der Row skalieren. (CurveLevel im JSON ist `0` -> spricht
-   fuer einen flachen/konstanten Wert, aber im uexp gegenpruefen.)
-2. **Base vs Advanced**: Teilen sich beide Waffen-Tiers die *eine* Row
-   `Greatsword_Souldrinker_AbilityCooldown` (kein `_Base`/`_Advanced`-Suffix in
-   der Row gesehen -> wahrscheinlich ja, ein Edit deckt beide).
-3. **UAssetAPI-Zugriff auf CurveTable**: Row als NormalExport finden, Key-Value(s)
-   setzen. Pruefen, welcher PropertyType die Keys traegt (FRichCurveKey-Struct
-   mit `Value`-Float).
+1. **Curve-Struktur** -> **Single-Key-Konstante**. Jede Row in dieser Table ist
+   eine Ein-Key-Kurve (Time=1.0, Value=<seconds>); kein Level-Skalierungs-Array.
+   Soul-Eater-Row `Greatsword_Souldrinker_AbilityCooldown` = **180.0** (= 3 min).
+   -> nur dieser eine Value-Float wird skaliert.
+2. **Base vs Advanced** -> **eine geteilte Row** (kein `_Base`/`_Advanced`-Suffix
+   in der Row). Ein Edit deckt beide Waffen-Tiers ab.
+3. **UAssetAPI-Zugriff** -> UAssetAPI 1.1.0 hat **keinen** UCurveTable-Parser:
+   die ganze RowMap liegt als roher `Extras`-Blob am CurveTable-Export. Verifizierte
+   Serialisierung (UE5.6, R5) pro Row:
+   `FName RowName (int32 idx, int32 0)` (8B) + Curve-Header `00 0B 01 01 00 00 00`
+   (7B) + `float Time` @+15 + `float Value` @+19. Row-FName ist eindeutig.
+   Patcher ankert am FName, prueft Struktur (Time finit/klein), skaliert Value@+19
+   in-place; `asset.Write()` ist byte-stabil (verifiziert), `retoc to-zen` packt
+   die gepatchte Table sauber zum Mod-Triplet.
 
 ## Implementierungs-Skizze
 

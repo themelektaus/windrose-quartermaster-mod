@@ -182,6 +182,18 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
             }
+            if (HasCooldownMultiplier(cd.SoulEaterAbilityMultiplier))
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = "soul-eater",
+                    AssetStem = WeaponAbilityCooldownPatcher.CurveTableStem,
+                    VirtualPath = WeaponAbilityCooldownPatcher.CurveTableVirtualPath,
+                    RowName = WeaponAbilityCooldownPatcher.SoulEaterRow,
+                    Multiplier = cd.SoulEaterAbilityMultiplier.Value,
+                    Shape = CooldownJobShape.WeaponAbilityCurve,
+                });
+            }
             return jobs;
         }
 
@@ -465,6 +477,22 @@ namespace Windrose.Quartermaster.Core
                         EffectiveValue = r.EffectiveReloadTime,
                         BatteryCount = r.BatteryCount,
                         PatchedBatteryCount = r.PatchedCount,
+                    };
+                }
+                case CooldownJobShape.WeaponAbilityCurve:
+                {
+                    var patcher = new WeaponAbilityCooldownPatcher { Log = Log };
+                    var r = patcher.Patch(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.RowName, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = 0,
+                        PatchedBatteryCount = 0,
                     };
                 }
                 default:
