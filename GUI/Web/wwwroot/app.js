@@ -705,6 +705,12 @@ function applyProfileToUI() {
         ftb && ftb.bellCap != null ? ftb.bellCap : 10;
     document.getElementById('signal-fire-cap').value =
         ftb && ftb.signalFireCap != null ? ftb.signalFireCap : 3;
+    const eqs = (p.globals && p.globals.equipmentSlots) || null;
+    document.getElementById('ring-slots').value =
+        eqs && eqs.ringSlots != null ? eqs.ringSlots : 1;
+    document.getElementById('necklace-slots').value =
+        eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1;
+    syncEquipmentSlotsReadout();
     const bs = (p.globals && p.globals.buildingStability) || null;
     document.getElementById('building-stability-enabled').checked =
         !!(bs && bs.enabled === true);

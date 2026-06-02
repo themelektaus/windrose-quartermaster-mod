@@ -13,6 +13,7 @@ namespace Windrose.Quartermaster.Core
         public string VanillaInventoryItems;
         public string VanillaLootTables;
         public string VanillaBuildingLimits;
+        public string VanillaPlayerInventory;
         public string VanillaRecipeLists;
         public string VanillaRecipes;
         public string VanillaInventoryItemsCsv;
@@ -139,6 +140,8 @@ namespace Windrose.Quartermaster.Core
                 "R5BusinessRules", "Content", "LootTables");
             var vanillaBuildLimits = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "BuildingLimits");
+            var vanillaPlayerInv = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "Inventory");
             var vanillaRecipeLists = Path.Combine(vanilla, "R5", "Plugins",
                 "R5BusinessRules", "Content", "RecipeLists");
             var vanillaRecipes = Path.Combine(vanilla, "R5", "Plugins",
@@ -157,6 +160,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaInventoryItems = vanillaInv,
                 VanillaLootTables = vanillaLoot,
                 VanillaBuildingLimits = vanillaBuildLimits,
+                VanillaPlayerInventory = vanillaPlayerInv,
                 VanillaRecipeLists = vanillaRecipeLists,
                 VanillaRecipes = vanillaRecipes,
                 VanillaInventoryItemsCsv = vanillaInvItemsCsv,

@@ -14,6 +14,7 @@ namespace Windrose.Quartermaster.Core
         readonly StackPatcher _patcher;
         readonly LootPatcher _lootPatcher;
         readonly BellLimitsPatcher _bellPatcher;
+        readonly InventorySlotsPatcher _invSlotsPatcher;
         readonly BuyerPatcher _buyerPatcher;
         readonly SellerPatcher _sellerPatcher;
         readonly ItemCreatorPatcher _itemCreatorPatcher;
@@ -47,6 +48,7 @@ namespace Windrose.Quartermaster.Core
             _patcher = new StackPatcher();
             _lootPatcher = new LootPatcher();
             _bellPatcher = new BellLimitsPatcher();
+            _invSlotsPatcher = new InventorySlotsPatcher();
             _buyerPatcher = new BuyerPatcher();
             _sellerPatcher = new SellerPatcher();
             _itemCreatorPatcher = new ItemCreatorPatcher();
@@ -155,6 +157,29 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
+                InventorySlotsPatchResult invSlotsResult = null;
+                if (HasEquipmentSlotsConfiguration(profile))
+                {
+                    LogLine("Patching player inventory slots (ring / necklace)");
+                    var eq = profile.Globals.EquipmentSlots;
+                    invSlotsResult = _invSlotsPatcher.PatchToDirectory(
+                        _paths.VanillaPlayerInventory, tmpDir,
+                        eq.RingSlots, eq.NecklaceSlots);
+                    if (invSlotsResult.Skipped)
+                    {
+                        LogLine("  skipped (resolved counts match vanilla 1/1 - nothing to do)");
+                    }
+                    else if (invSlotsResult.Written)
+                    {
+                        LogLine("  ring " + invSlotsResult.RingSlots + " (vanilla 1), necklace "
+                                + invSlotsResult.NecklaceSlots + " (vanilla 1) - "
+                                + (invSlotsResult.RingPatched ? "ring " : "")
+                                + (invSlotsResult.NecklacePatched ? "necklace " : "")
+                                + "patched. NOTE: only affects NEW characters; existing "
+                                + "characters need the save patcher.");
+                    }
+                }
+
                 BuyerPatchResult buyerResult = null;
                 if (HasBuyerConfiguration(profile))
                 {
@@ -245,6 +270,7 @@ namespace Windrose.Quartermaster.Core
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
+                    + (invSlotsResult != null && invSlotsResult.Written ? 1 : 0)
                     + (buyerResult != null
                         ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
                         : 0)
@@ -426,6 +452,7 @@ namespace Windrose.Quartermaster.Core
                     PatchResult = patchResult,
                     LootPatchResult = lootResult,
                     BellLimitsResult = bellResult,
+                    EquipmentSlotsResult = invSlotsResult,
                     BuyerPatchResult = buyerResult,
                     SellerPatchResult = sellerResult,
                     ItemCreatorResult = itemCreatorResult,

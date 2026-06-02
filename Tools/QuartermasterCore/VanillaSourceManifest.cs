@@ -61,6 +61,15 @@ namespace Windrose.Quartermaster.Core
             },
             new VanillaSourceManifestEntry
             {
+                Key = "playerInventory",
+                Label = "Player inventory blueprint",
+                Description = "R5BusinessRules/Content/Inventory - DA_PlayerInventoryParams (ring / necklace equipment slot counts). Needed by the Equipment Slots slider.",
+                PakIncludePath = WindroseGameSecrets.PlayerInventoryPath,
+                DiskPath = p => p.VanillaPlayerInventory,
+                ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
+            },
+            new VanillaSourceManifestEntry
+            {
                 Key = "recipeLists",
                 Label = "Recipe lists (NPC trade rosters)",
                 Description = "R5BusinessRules/Content/RecipeLists - per-NPC PlayerBuys/PlayerSells rosters. Needed by the Buyers tab.",

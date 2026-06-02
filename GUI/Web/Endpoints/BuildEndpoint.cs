@@ -118,6 +118,20 @@ public static class BuildEndpoint
                         unmatched = br.Unmatched,
                     };
                 }
+                object equipmentSlotsInfo = null;
+                if (result.EquipmentSlotsResult != null)
+                {
+                    var er = result.EquipmentSlotsResult;
+                    equipmentSlotsInfo = new
+                    {
+                        skipped = er.Skipped,
+                        written = er.Written,
+                        ringSlots = er.RingSlots,
+                        necklaceSlots = er.NecklaceSlots,
+                        ringPatched = er.RingPatched,
+                        necklacePatched = er.NecklacePatched,
+                    };
+                }
                 object buildingStabilityInfo = null;
                 if (result.StabilityResult != null)
                 {
@@ -429,6 +443,7 @@ public static class BuildEndpoint
                     lootPatchResult,
                     pickupRadius = pickupRadiusInfo,
                     bellLimits = bellLimitsInfo,
+                    equipmentSlots = equipmentSlotsInfo,
                     buildingStability = buildingStabilityInfo,
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,

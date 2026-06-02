@@ -32,5 +32,11 @@ namespace Windrose.Quartermaster.Core
 
         public const string FarmingCropsPath =
             "R5/Plugins/R5BusinessRules/Content/Farming/Crops";
+
+        public const string PlayerInventoryPath =
+            "R5/Plugins/R5BusinessRules/Content/Inventory";
+
+        public const string PlayerInventoryParamsRelPath =
+            "R5/Plugins/R5BusinessRules/Content/Inventory/DA_PlayerInventoryParams.json";
     }
 }

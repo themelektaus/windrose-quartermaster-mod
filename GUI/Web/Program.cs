@@ -135,6 +135,7 @@ public static class Program
         ExportEndpoint.Map(app, resolvedRoot);
         ReportEndpoint.Map(app, resolvedRoot);
         PlayEndpoint.Map(app, resolvedRoot);
+        SavegameEndpoint.Map(app, resolvedRoot);
 
         app.MapPost("/api/shutdown", (Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime) =>
         {

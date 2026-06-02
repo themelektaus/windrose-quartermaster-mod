@@ -27,6 +27,7 @@ namespace Windrose.Quartermaster.Core
         public LootGlobal Loot;
         public PickupRadiusGlobal PickupRadius;
         public FastTravelBellsGlobal FastTravelBells;
+        public EquipmentSlotsGlobal EquipmentSlots;
         public BuildingStabilityGlobal BuildingStability;
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
@@ -62,6 +63,15 @@ namespace Windrose.Quartermaster.Core
     {
         public int? BellCap;
         public int? SignalFireCap;
+    }
+
+    // Number of Ring / Necklace equipment slots (vanilla 1/1). null = vanilla.
+    // Drives both the pak blueprint (InventorySlotsPatcher) and the existing-
+    // character save patch (InventorySaveSlotsPatcher) so they stay in sync.
+    public sealed class EquipmentSlotsGlobal
+    {
+        public int? RingSlots;
+        public int? NecklaceSlots;
     }
 
     public sealed class BuildingStabilityGlobal

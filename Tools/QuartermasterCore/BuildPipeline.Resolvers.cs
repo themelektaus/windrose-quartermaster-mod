@@ -739,6 +739,17 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        static bool HasEquipmentSlotsConfiguration(Profile profile)
+        {
+            var e = profile.Globals != null ? profile.Globals.EquipmentSlots : null;
+            if (e == null) return false;
+            if (e.RingSlots.HasValue && e.RingSlots.Value != InventorySlotsPatcher.VanillaRingSlots)
+                return true;
+            if (e.NecklaceSlots.HasValue && e.NecklaceSlots.Value != InventorySlotsPatcher.VanillaNecklaceSlots)
+                return true;
+            return false;
+        }
+
         public static string SanitizeForFileName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "Untitled";
