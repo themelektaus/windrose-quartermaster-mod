@@ -294,6 +294,7 @@ namespace Windrose.Quartermaster.Core
                     + (lootResult != null ? lootResult.Written : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (invSlotsResult != null && invSlotsResult.Written ? 1 : 0)
+                    + (shipSlotsResult != null && shipSlotsResult.Written ? shipSlotsResult.FilesWritten : 0)
                     + (buyerResult != null
                         ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
                         : 0)

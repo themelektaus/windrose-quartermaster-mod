@@ -166,38 +166,41 @@ namespace Windrose.Quartermaster.Core
                 int targetCargo = ShipSlotsPatcher.CargoTarget(vanillaBase, cargoMultiplier);
                 int targetCombat = combatOrders;
 
-                bool cargoActive = Math.Abs(cargoMultiplier - ShipSlotsPatcher.VanillaCargoMultiplier) > 1e-9;
-                bool combatActive = targetCombat != ShipSlotsPatcher.VanillaCombatOrders;
-
                 var cargoInfo = LocateModule(value, DefaultModuleTag);
                 var equipInfo = LocateModule(value, EquipmentModuleTag);
 
                 result.OldCargo = cargoInfo?.LiveSlots.Count(e => e.IsTargetKind) ?? 0;
                 result.OldCombat = equipInfo?.LiveSlots.Count(e => e.IsTargetKind) ?? 0;
-                result.NewCargo = cargoActive ? targetCargo : result.OldCargo;
-                result.NewCombat = combatActive ? targetCombat : result.OldCombat;
+                result.NewCargo = cargoInfo != null ? targetCargo : result.OldCargo;
+                result.NewCombat = equipInfo != null ? targetCombat : result.OldCombat;
 
-                // Blocking-item check for any shrink (cargo OR combat) before we
-                // touch anything.
-                var blocking = new List<string>();
-                if (cargoActive && cargoInfo != null)
-                    blocking.AddRange(BlockingOnShrink(value, cargoInfo, targetCargo, "Cargo"));
-                if (combatActive && equipInfo != null)
-                    blocking.AddRange(BlockingOnShrink(value, equipInfo, targetCombat, "Combat order"));
-                if (blocking.Count > 0 && !force)
-                {
-                    result.BlockingItems = blocking;
-                    return result;
-                }
-
-                bool cargoNeeds = cargoActive && cargoInfo != null
+                // "Needs patch" = the save's current state (live count OR blueprint)
+                // differs from the target. The target derives from the vanilla cargo
+                // base * multiplier and the absolute combat count - NEVER from the
+                // current value - so resetting the sliders back to vanilla (x1 / 1)
+                // downgrades a previously-patched ship to vanilla instead of being
+                // wrongly treated as "already up to date".
+                bool cargoNeeds = cargoInfo != null
                     && (result.OldCargo != targetCargo || cargoInfo.BlueprintCount != targetCargo);
-                bool combatNeeds = combatActive && equipInfo != null
+                bool combatNeeds = equipInfo != null
                     && (result.OldCombat != targetCombat || equipInfo.BlueprintCount != targetCombat);
 
                 if (!cargoNeeds && !combatNeeds)
                 {
                     result.AlreadyMatches = true;
+                    return result;
+                }
+
+                // Blocking-item check for any shrink (cargo OR combat) before we
+                // touch anything - this also guards downgrades back toward vanilla.
+                var blocking = new List<string>();
+                if (cargoNeeds)
+                    blocking.AddRange(BlockingOnShrink(value, cargoInfo, targetCargo, "Cargo"));
+                if (combatNeeds)
+                    blocking.AddRange(BlockingOnShrink(value, equipInfo, targetCombat, "Combat order"));
+                if (blocking.Count > 0 && !force)
+                {
+                    result.BlockingItems = blocking;
                     return result;
                 }
 

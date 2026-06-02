@@ -208,11 +208,13 @@ function shipCargoTarget(base, mult) {
 
 function shipNeedsPatch(s, t) {
     if (!s.supported) return false;
-    const cargoActive = Math.abs(t.mult - 1) > 1e-9;
-    const combatActive = t.combat !== 1;
+    // Mirrors ShipSaveSlotsPatcher: the target derives from the vanilla base *
+    // multiplier (cargo) and the absolute combat count - never from the current
+    // value - so a vanilla target (x1 / 1) still flags a previously-patched ship
+    // for a downgrade back to vanilla instead of reading as "up to date".
     const tc = shipCargoTarget(s.vanillaCargoBase, t.mult);
-    const cargoDiff = cargoActive && (s.cargoSlots !== tc || s.blueprintCargo !== tc);
-    const combatDiff = combatActive && (s.combatSlots !== t.combat || s.blueprintCombat !== t.combat);
+    const cargoDiff = s.cargoSlots !== tc || s.blueprintCargo !== tc;
+    const combatDiff = s.combatSlots !== t.combat || s.blueprintCombat !== t.combat;
     return cargoDiff || combatDiff;
 }
 
@@ -247,11 +249,11 @@ function renderShips() {
     if (!cs.ships.length) { shipGlobalStatus('No ships found in any save.'); return; }
 
     const t = shipTarget();
-    const hasTarget = Math.abs(t.mult - 1) > 1e-9 || t.combat !== 1;
-    shipGlobalStatus(hasTarget
-        ? ('Found ' + cs.ships.length + ' ship(s). Profile target: cargo x' + t.mult
-            + ' / combat orders ' + t.combat + '.')
-        : ('Found ' + cs.ships.length + ' ship(s). Set the Ship Slots sliders on the Basic tab to a non-vanilla target first.'));
+    // A vanilla target (x1 / 1) is valid too - it downgrades previously-patched
+    // ships back to vanilla - so always surface the target rather than nagging to
+    // pick a non-vanilla value first.
+    shipGlobalStatus('Found ' + cs.ships.length + ' ship(s). Profile target: cargo x' + t.mult
+        + ' / combat orders ' + t.combat + '.');
 
     for (const s of cs.ships) host.appendChild(buildShipRow(s, t));
 }
