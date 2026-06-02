@@ -34,6 +34,18 @@ A profile bundles tweaks across multiple domains:
   lanterns, wall lamps + signal fires, torches + chandeliers, building-
   center fires and the belt lantern, 0.1-10x sliders
 - **No smoke** - hide smoke / flame Niagara FX on campfires, furnaces, kilns
+- **Equipment slots** - extra ring / necklace equipment slots (vanilla 1
+  each, up to 10); new characters get them automatically, existing saves
+  via the Characters tab
+- **Ship slots** - bigger cargo holds + more Combat Orders slots for the
+  Brig / Frigate / Ketch and their variants; new ships automatic,
+  existing ships via the Characters tab
+- **UI scale** - global interface scale (`Engine.ini` `ApplicationScale`),
+  50-110%, written straight into your local UE config and locked
+  read-only so the game keeps it
+- **Save patcher (Characters tab)** - retro-fit the equipment- and
+  ship-slot counts onto characters / ships already baked into your save,
+  with an automatic per-target backup before each write
 - **Sea Shanties** - replace any of the 10 vanilla shanty slots with your
   own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio), add extra
   tracks alongside the vanilla 10, tune per-track volume, exclude single
@@ -185,12 +197,23 @@ icon to clone an existing one. For each profile you can:
   (furnace, kiln, tannery, mill, trade outpost).
 - **Basic tab** - cards for pickup radius, fast-travel bell caps,
   building stability, minimap range, bonfire radius, pickaxe range,
-  overall light radius and no-smoke FX. Each card has its own toggle /
+  overall light radius, no-smoke FX, equipment slots (ring / necklace)
+  and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
-  is enabled.
+  is enabled. A **UI Scale** card additionally writes the global
+  interface scale straight into your local `Engine.ini`
+  (`ApplicationScale`) via an Apply button and locks the file read-only
+  so the game keeps the value across launches.
 - **Lighting tab** - per-light AttenuationRadius overrides (overrides
   the overall multiplier from the Basic Light Radius card on a per-light
   basis).
+- **Characters tab** - a save patcher that retro-fits the profile's
+  equipment- and ship-slot counts onto characters / ships already in
+  your save (the Basic-tab sliders themselves only affect newly created
+  ones). Each row shows the current vs. target count with a Patch button
+  that appears only when they differ; a per-target backup is written
+  first. Close the game and disable Steam Cloud Sync for Windrose before
+  patching, or the cloud overwrites the patched save on next launch.
 - **Sea Shanties tab** - upload your own audio to replace any of the 10
   vanilla shanty slots, add extra tracks alongside the vanilla 10, tune
   per-track volume, exclude single slots. WAV/MP3/FLAC/OGG inputs are

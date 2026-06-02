@@ -15,8 +15,8 @@ Per-item or global multiplier/absolute caps; weapons, armor and other unstackabl
 1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m).
 [line]
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/cooldown.png[/img]
-[b]Cooldowns[/b]
-Bidirectional sliders (0.1x to 3.0x) on eight families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. 
+[b]Cooldowns, crops & crafting[/b]
+Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).
 [line]
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/pickup-radius.png[/img]
 [b]Pickup radius[/b]
@@ -52,7 +52,19 @@ Hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns.
 [line]
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/lighting.png[/img]
 [b]Lighting[/b]
-Per-light AttenuationRadius multipliers for candle lamps, standing lanterns, wall lamps + signal fires, torches + chandeliers, building-center fires and the belt lantern (0.1x to 10x), on top of an overall light-radius slider on the Basic tab. 
+Per-light AttenuationRadius multipliers for candle lamps, standing lanterns, wall lamps + signal fires, torches + chandeliers, building-center fires and the belt lantern (0.1x to 10x), on top of an overall light-radius slider on the Basic tab.
+[line]
+[img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/rings.png[/img]
+[b]Equipment slots[/b]
+Add extra ring and necklace equipment slots (vanilla 1 each, up to 10). New characters get the slots automatically; the Characters tab retro-fits the counts onto a character already in your save (with an automatic backup first).
+[line]
+[img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/ship-cargo.png[/img]
+[b]Ship slots[/b]
+Bigger ship cargo holds (scales each hull's vanilla capacity) and more Combat Orders slots, for the Brig / Frigate / Ketch and their variants. New ships get the bigger slots automatically; the Characters tab retro-fits the counts onto ships already in your save.
+[line]
+[img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/ui.png[/img]
+[b]UI scale[/b]
+Global interface scale from 50% to 110% (Engine.ini ApplicationScale). Writes your local UE config directly and locks it read-only so the game keeps the value across restarts - close the game before applying.
 [line]
 [img width=128]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/GUI/Web/wwwroot/item-creator.png[/img]
 [b]Item Creator[/b]
