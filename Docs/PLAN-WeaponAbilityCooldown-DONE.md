@@ -7,9 +7,10 @@ cooldown? 3 minutes is really long."*
 Implementiert via neuem `WeaponAbilityCooldownPatcher` (CurveTable-Row-Patch),
 verdrahtet als Cooldown-Job-Shape `WeaponAbilityCurve`, Profil-Feld
 `Cooldowns.SoulEaterAbilityMultiplier`, plus Slider "Soul Eater - Soul Harvest"
-im Cooldowns-Tab. Die anderen Weapon-Ability-Rows (Halberd/Rapier/Saber) sind
-bewusst nicht verdrahtet (Patcher ist generisch ueber den Row-Namen, also
-trivial nachruestbar).
+im Cooldowns-Tab. Die anderen "Cooldown"-Rows (Halberd/Rapier/Saber) wurden
+am 2026-06-02 vermessen und als interne Tick-Intervalle (0,35/0,35/2 s) - keine
+echten Ability-Cooldowns - identifiziert und bewusst nicht verdrahtet (Details
+im Generalisierungs-Abschnitt). Soul Eater bleibt der einzige.
 
 ## Kurzfassung
 
@@ -62,26 +63,31 @@ die Magnitude zeigt auf die Curve. Der Patcher wuerde mit
 
 -> Neuer Shape noetig: **CurveTable-Row-Patcher**.
 
-## Generalisierungs-Potenzial (dieselbe CurveTable)
+## Generalisierungs-Potenzial (dieselbe CurveTable) - VERIFIZIERT, kein Bedarf
 
-`CT_Weapon_GE_Values` haelt GE-Werte vieler Waffen. Cooldown-aehnliche Rows:
+`CT_Weapon_GE_Values` haelt GE-Werte vieler Waffen. Am 2026-06-02 wurde die
+ganze Table frisch gedumpt (UAssetAPI-Probe, FName-verankert) und **jede**
+"Cooldown"-Row mit ihrem Vanilla-Wert vermessen:
 
-| Row | Bedeutung |
-|---|---|
-| `Greatsword_Souldrinker_AbilityCooldown` | **Soul Eater Soul-Harvest-CD (180s)** - die einzige echte "AbilityCooldown" |
-| `Halberd_Corrupted_DmgRegistrationCooldown` | Sub-Mechanik (Damage-Tick), kein klassischer Ability-CD |
-| `Rapier_Eviscerate_HealCooldown` | Sub-Mechanik (Heal-Tick) |
-| `Saber_Corrupted_DmgRegistrationCooldown` | Sub-Mechanik (Damage-Tick) |
+| Row | Vanilla-Wert | Was es WIRKLICH ist |
+|---|---:|---|
+| `Greatsword_Souldrinker_AbilityCooldown` | **180 s** (3 min) | echter Soul-Harvest-`[F]`-Ability-CD - die **einzige** echte "AbilityCooldown" (umgesetzt) |
+| `Halberd_Corrupted_DmgRegistrationCooldown` | **0,35 s** | Damage-Tick-Intervall (Schadens-Registrierung), KEIN Ability-CD |
+| `Rapier_Eviscerate_HealCooldown` | **2 s** | Heal-Tick-Intervall, KEIN Ability-CD |
+| `Saber_Corrupted_DmgRegistrationCooldown` | **0,35 s** | Damage-Tick-Intervall, KEIN Ability-CD |
 
-Andere Waffen-Abilities haben **eigene** Cooldown-GEs mit eventuell anderem
-Shape (vor Generalisierung pruefen):
-- `GE_Wpn_MainHand_Rapier_Eviscerate_Advanced_ScourgeMarkHeal_Cooldown`
-- `GE_Wpn_MainHand_Saber_Corrupted_Base_CorruptionBurst_Cooldown`
-- `GE_Wpn_TwoHand_Halberd_Corrupted_Base_CorruptionBurst_Cooldown`
+Wichtig: Die Cooldown-GEs `GE_..._CorruptionBurst_Cooldown` (Halberd/Saber) und
+`GE_..._ScourgeMarkHeal_Cooldown` (Rapier) **lesen** zwar genau diese Rows -
+aber die gemessenen Werte (0,35 s / 0,35 s / 2 s) zeigen eindeutig: das sind
+interne Mechanik-Intervalle (wie oft Schaden/Heal tickt), **nicht** der
+player-facing "druecke F, warte X Minuten"-Recharge wie bei Soul Eater (180 s).
 
-Empfehlung: **zuerst nur Soul Eater** (eindeutig, der konkrete User-Request).
-Den Patcher aber so bauen, dass weitere `(CurveTable, Row)`-Eintraege spaeter
-trivial dazukommen.
+**Entscheidung (2026-06-02, mit User):** Diese drei Rows werden **nicht**
+verdrahtet. Ein Slider darauf waere irrefuehrend (User erwartet einen Cooldown
+a la Soul Eater) und wuerde bei 0,01x die Tick-Mechanik der Waffen verbiegen,
+ohne nuetzlichen Effekt. Soul Eater bleibt der einzige Weapon-Ability-Cooldown
+im Tool. Der `WeaponAbilityCooldownPatcher` ist generisch ueber den Row-Namen,
+falls je eine echte lange Ability-CD-Row dazukommt (Game-Update).
 
 ## Reproduzierbare Recon (fuer Implementierung)
 
@@ -170,9 +176,10 @@ public double? SoulEaterAbilityMultiplier;   // null/1.0 = vanilla
 Hauptrisiko = der Curve-Key-Zugriff (offene Frage 1+3). Ein 30-min-Spike
 (Row-Export im legacy uexp mit UAssetAPI lesen + dumpen) klaert das vorab.
 
-## Out of Scope (fuer jetzt)
+## Out of Scope (entschieden)
 
-- Die anderen Weapon-Ability-Cooldowns (Halberd/Rapier/Saber) - erst wenn
-  jemand danach fragt; Patcher ist darauf vorbereitet.
+- Halberd/Rapier/Saber "Cooldowns" - **verworfen** (siehe Generalisierungs-
+  Abschnitt): sind interne Tick-Intervalle (0,35/0,35/2 s), keine echten
+  Ability-Cooldowns. Verifiziert am 2026-06-02, bewusst nicht verdrahtet.
 - Absolute Sekunden-Eingabe statt Multiplikator - der Tab nutzt durchgaengig
   Multiplikatoren, dabei bleiben.
