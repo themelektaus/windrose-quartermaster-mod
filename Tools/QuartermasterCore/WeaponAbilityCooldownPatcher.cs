@@ -29,8 +29,8 @@ namespace Windrose.Quartermaster.Core
     // in place and let UAssetAPI re-serialize (verified byte-stable round-trip).
     public sealed class WeaponAbilityCooldownPatcher
     {
-        public const double MinMultiplier = 0.1;
-        public const double MaxMultiplier = 3.0;
+        public const double MinMultiplier = 0.01;
+        public const double MaxMultiplier = 3.00;
 
         public const string CurveTableStem = "CT_Weapon_GE_Values";
         public const string CurveTableVirtualPath =

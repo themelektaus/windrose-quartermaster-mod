@@ -57,7 +57,7 @@ const COOLDOWN_FAMILIES = [
         key: 'souleater',
         profileKey: 'soulEaterAbilityMultiplier',
         vanillaSeconds: 180,
-        renderReadout: (mul) => (180 * mul / 60).toFixed(1) + ' min',
+        renderReadout: (mul) => (180 * mul).toFixed(1) + ' s',
     },
 ];
 
