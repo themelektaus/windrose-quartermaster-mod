@@ -26,6 +26,7 @@ public static class UiScaleEndpoint
                     supported = path != null,
                     scale = current ?? UiScalePatcher.VanillaScale,
                     isSet = current.HasValue,
+                    readOnly = UiScalePatcher.IsReadOnly(),
                     path,
                 });
             }
@@ -53,6 +54,7 @@ public static class UiScaleEndpoint
                     fileExisted = r.FileExisted,
                     sectionExisted = r.SectionExisted,
                     keyExisted = r.KeyExisted,
+                    readOnlySet = r.ReadOnlySet,
                     path = r.Path,
                 });
             }

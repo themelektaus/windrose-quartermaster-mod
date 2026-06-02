@@ -248,7 +248,8 @@ async function loadUiScale() {
         slider.value = String(v);
         syncUiScaleReadout();
         uiScaleSetStatus(res.isSet
-            ? 'Current: ' + Math.round(v * 100) + '%.'
+            ? 'Current: ' + Math.round(v * 100) + '%'
+                + (res.readOnly ? ' (Engine.ini locked read-only).' : '.')
             : 'Not set yet (vanilla 100%).');
     } catch (e) {
         uiScaleSetStatus('Could not read current UI scale: ' + e.message);
@@ -264,8 +265,11 @@ async function uiScaleApply() {
     try {
         const res = await api('POST', '/api/uiscale', { scale: v });
         const pct = Math.round((res.scale != null ? res.scale : v) * 100);
-        uiScaleSetStatus('UI scale set to ' + pct
-            + '%. Close Windrose first if it is running, then launch to see it.');
+        uiScaleSetStatus('UI scale set to ' + pct + '%'
+            + (res.readOnlySet
+                ? ' and Engine.ini locked (read-only) so the game keeps it.'
+                : '. WARNING: could not set Engine.ini read-only - the game may reset it on launch.')
+            + ' Close Windrose first if it is running, then launch to see it.');
     } catch (e) {
         uiScaleSetStatus('Apply failed: ' + e.message);
     }

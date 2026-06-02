@@ -16,6 +16,11 @@ namespace Windrose.Quartermaster.Core
     // than persist it on a profile. UE rewrites this file on exit, so the game
     // must be closed for an edit to stick.
     //
+    // UE also rewrites Engine.ini on launch and would revert ApplicationScale,
+    // so after writing we mark the file read-only to make the value stick. We
+    // clear the read-only flag before every write (otherwise the write itself
+    // would throw) so re-edits from this tool keep working.
+    //
     // The writer is surgical: it preserves every other line, the section
     // ordering, and the file's newline style. If the section or key is absent
     // it adds just that section / key; the rest of the file is untouched.
@@ -35,6 +40,7 @@ namespace Windrose.Quartermaster.Core
             public bool FileExisted;
             public bool SectionExisted;
             public bool KeyExisted;
+            public bool ReadOnlySet;
             public string Path;
         }
 
@@ -176,11 +182,50 @@ namespace Windrose.Quartermaster.Core
                 lines.Add(keyLine);
             }
 
+            // Clear an existing read-only flag (set by a prior Apply, or the
+            // user) so the write below doesn't throw. Best effort.
+            ClearReadOnly(path);
+
             // Join + single trailing newline (idempotent against SplitLines).
             File.WriteAllText(path, string.Join(newline, lines) + newline,
                 new UTF8Encoding(false));
             result.Written = true;
+
+            // Lock the file so the game can't rewrite ApplicationScale on its
+            // next launch. Best effort - the value is written regardless.
+            result.ReadOnlySet = SetReadOnly(path);
             return result;
+        }
+
+        // True when the live Engine.ini exists and carries the read-only flag.
+        public static bool IsReadOnly()
+        {
+            var path = EngineIniPath();
+            if (path == null || !File.Exists(path)) return false;
+            try { return (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0; }
+            catch { return false; }
+        }
+
+        static void ClearReadOnly(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return;
+                var attrs = File.GetAttributes(path);
+                if ((attrs & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(path, attrs & ~FileAttributes.ReadOnly);
+            }
+            catch { /* best effort */ }
+        }
+
+        static bool SetReadOnly(string path)
+        {
+            try
+            {
+                File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.ReadOnly);
+                return true;
+            }
+            catch { return false; }
         }
 
         // Splits on CRLF / LF, dropping the single trailing empty entry a
