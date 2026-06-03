@@ -47,10 +47,6 @@
           text-transform: unset;
           color: var(--text);
         }
-
-        .hint:last-child {
-          margin-top: 1em;
-        }
       }
     }
   }
@@ -189,7 +185,6 @@ fieldset .indent input[type="number"] {
 
 .bonfire-music-status .bonfire-music-vanilla {
   color: var(--text-dim);
-  font-style: italic;
 }
 
 .bonfire-music-status .bonfire-music-ready {

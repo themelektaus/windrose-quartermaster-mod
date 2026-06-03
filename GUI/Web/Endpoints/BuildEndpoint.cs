@@ -178,6 +178,14 @@ public static class BuildEndpoint
                         },
                     };
                 }
+                object noFogInfo = null;
+                if (result.NoFogResult != null)
+                {
+                    noFogInfo = new
+                    {
+                        enabled = result.NoFogResult.Enabled,
+                    };
+                }
                 object bonfireRadiusInfo = null;
                 if (result.BonfireResult != null)
                 {
@@ -461,6 +469,7 @@ public static class BuildEndpoint
                     buildingStability = buildingStabilityInfo,
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,
+                    noFog = noFogInfo,
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,

@@ -314,6 +314,7 @@ namespace Windrose.Quartermaster.Core
                 bool noSmokeActive = noSmokeCategories.Count > 0;
                 double minimapMultiplier = ResolveMinimapMultiplier(profile);
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
+                bool noFogActive = ResolveNoFogEnabled(profile);
                 double bonfireMultiplier = ResolveBonfireMultiplier(profile);
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
                 double pickaxeMultiplier = ResolvePickaxeRangeMultiplier(profile);
@@ -332,7 +333,7 @@ namespace Windrose.Quartermaster.Core
                 var lightingJobs = ResolveLightingJobs(profile);
                 bool lightingActive = lightingJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -392,12 +393,15 @@ namespace Windrose.Quartermaster.Core
 
                 BuildingStabilityResult stabilityResult = null;
                 MinimapRangeResult minimapResult = null;
-                if (stabilityActive || minimapActive)
+                NoFogResult noFogResult = null;
+                if (stabilityActive || minimapActive || noFogActive)
                 {
                     var rawOut = BuildRawCompanion(profile, outDir, rawBaseName,
-                                                   stabilityActive, minimapActive, minimapMultiplier);
+                                                   stabilityActive, minimapActive, minimapMultiplier,
+                                                   noFogActive);
                     stabilityResult = rawOut.Stability;
                     minimapResult = rawOut.Minimap;
+                    noFogResult = rawOut.NoFog;
                 }
 
                 PakBuildResult pakResult = null;
@@ -488,6 +492,7 @@ namespace Windrose.Quartermaster.Core
                     StabilityResult = stabilityResult,
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
+                    NoFogResult = noFogResult,
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
                     CooldownsResult = cooldownsResult,
@@ -1780,9 +1785,10 @@ namespace Windrose.Quartermaster.Core
 
         BuildRawCompanionOutput BuildRawCompanion(
             Profile profile, string outDir, string rawBaseName,
-            bool stabilityActive, bool minimapActive, double minimapMultiplier)
+            bool stabilityActive, bool minimapActive, double minimapMultiplier,
+            bool noFogActive)
         {
-            if (!stabilityActive && !minimapActive)
+            if (!stabilityActive && !minimapActive && !noFogActive)
             {
                 throw new InvalidOperationException(
                     "BuildRawCompanion called with no active feature - this is a "
@@ -1808,14 +1814,19 @@ namespace Windrose.Quartermaster.Core
                     out srcUcas, out srcUtoc, out stubPak);
             }
 
-            // Minimap's real .pak displaces any stub from the stability step.
+            // The map-settings real .pak (minimap range and/or no-fog) displaces
+            // any stub from the stability step. Both edits share ONE pak and ONE
+            // +MapsConfig tuple - never two competing tuples.
             MinimapRangeResult minimapResult = null;
+            NoFogResult noFogResult = null;
             string srcRealPak = null;
-            if (minimapActive)
+            if (minimapActive || noFogActive)
             {
-                minimapResult = BuildMinimapPakInsideRawRoot(
+                var mapOut = BuildMapSettingsPakInsideRawRoot(
                     profile, rawRoot, rawBaseName, minimapMultiplier,
-                    out srcRealPak);
+                    minimapActive, noFogActive, out srcRealPak);
+                minimapResult = mapOut.Minimap;
+                noFogResult = mapOut.NoFog;
             }
 
             // Stub .pak is used only when no real minimap pak exists.
@@ -1851,6 +1862,11 @@ namespace Windrose.Quartermaster.Core
                 minimapResult.PakPath = finalPak;
                 minimapResult.PakSize = finalPakSize;
             }
+            if (noFogResult != null)
+            {
+                noFogResult.PakPath = finalPak;
+                noFogResult.PakSize = finalPakSize;
+            }
 
             var emittedFiles = ".pak"
                 + (finalUcasSize > 0 ? ",ucas" : "")
@@ -1866,6 +1882,7 @@ namespace Windrose.Quartermaster.Core
             {
                 Stability = stabilityResult,
                 Minimap = minimapResult,
+                NoFog = noFogResult,
             };
         }
 
@@ -1982,9 +1999,13 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        MinimapRangeResult BuildMinimapPakInsideRawRoot(
+        // Builds the single DefaultR5MapSettings.ini pak that carries the minimap
+        // range edit and/or the no-fog flip. When only no-fog is requested the
+        // range pass runs at identity (1.0x), so the emitted +MapsConfig tuple
+        // still ships vanilla reveal values and both features share one tuple.
+        MapSettingsPakOutput BuildMapSettingsPakInsideRawRoot(
             Profile profile, string rawRoot, string rawBaseName, double multiplier,
-            out string srcRealPak)
+            bool minimapActive, bool noFogActive, out string srcRealPak)
         {
             var configExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
             var vanillaIniPath = configExtractor.EnsureMapSettings();
@@ -1993,8 +2014,9 @@ namespace Windrose.Quartermaster.Core
             var stagedIni = Path.Combine(minimapStageRoot,
                 "R5", "Config", "DefaultR5MapSettings.ini");
 
+            var effMultiplier = minimapActive ? multiplier : 1.0;
             var patcher = new MinimapRangePatcher { Log = Log };
-            var minimapPatch = patcher.PatchToFile(vanillaIniPath, stagedIni, multiplier);
+            var mapPatch = patcher.PatchToFile(vanillaIniPath, stagedIni, effMultiplier, noFogActive);
 
             LogLine("Resolving repak.exe...");
             _repakResolver.Log = Log;
@@ -2007,18 +2029,33 @@ namespace Windrose.Quartermaster.Core
             var builder = new PakBuilder(repakExe) { Log = Log };
             builder.Build(minimapStageRoot, srcRealPak, overwrite: true);
 
-            return new MinimapRangeResult
+            return new MapSettingsPakOutput
             {
-                Enabled = true,
-                Multiplier = multiplier,
-                Patch = minimapPatch,
+                Minimap = minimapActive
+                    ? new MinimapRangeResult
+                    {
+                        Enabled = true,
+                        Multiplier = multiplier,
+                        Patch = mapPatch,
+                    }
+                    : null,
+                NoFog = noFogActive
+                    ? new NoFogResult { Enabled = true }
+                    : null,
             };
+        }
+
+        sealed class MapSettingsPakOutput
+        {
+            public MinimapRangeResult Minimap;
+            public NoFogResult NoFog;
         }
 
         sealed class BuildRawCompanionOutput
         {
             public BuildingStabilityResult Stability;
             public MinimapRangeResult Minimap;
+            public NoFogResult NoFog;
         }
 
         void RunRetoc(string retocExe, string[] args)

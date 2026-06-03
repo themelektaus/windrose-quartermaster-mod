@@ -42,6 +42,9 @@ public static partial class ProfilesEndpoint
                                     && p.Globals.MinimapRange != null
                                     && p.Globals.MinimapRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.MinimapRange.Multiplier.Value - 1.0) > 1e-9,
+            hasGlobalNoFog = p.Globals != null
+                             && p.Globals.NoFog != null
+                             && p.Globals.NoFog.Enabled.GetValueOrDefault(false),
             hasGlobalBonfireRadius = p.Globals != null
                                      && p.Globals.BonfireRadius != null
                                      && p.Globals.BonfireRadius.Multiplier.HasValue

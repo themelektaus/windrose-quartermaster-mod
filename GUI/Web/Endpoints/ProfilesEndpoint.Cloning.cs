@@ -61,6 +61,12 @@ public static partial class ProfilesEndpoint
                 {
                     Multiplier = g.MinimapRange.Multiplier,
                 },
+            NoFog = g.NoFog == null
+                ? null
+                : new NoFogGlobal
+                {
+                    Enabled = g.NoFog.Enabled,
+                },
             BonfireRadius = g.BonfireRadius == null
                 ? null
                 : new BonfireRadiusGlobal

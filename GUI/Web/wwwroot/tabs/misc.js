@@ -316,6 +316,18 @@ function setBuildingStabilityFromUI() {
     markDirty();
 }
 
+function setNoFogFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('nofog-enabled').checked;
+    state.current.globals = state.current.globals || {};
+    if (enabled) {
+        state.current.globals.noFog = { enabled: true };
+    } else {
+        delete state.current.globals.noFog;
+    }
+    markDirty();
+}
+
 function setMinimapRangeFromUI() {
     if (!state.current) return;
     syncMinimapReadout();
@@ -666,6 +678,7 @@ function bindMiscHandlers() {
     document.getElementById('nosmoke-kiln').addEventListener('change',     setNoSmokeFromUI);
     document.getElementById('minimap-enabled').addEventListener('change', setMinimapRangeFromUI);
     document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
+    document.getElementById('nofog-enabled').addEventListener('change', setNoFogFromUI);
     document.getElementById('bonfire-enabled').addEventListener('change', setBonfireRadiusFromUI);
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);
     document.getElementById('pickaxe-enabled').addEventListener('change', setPickaxeRangeFromUI);

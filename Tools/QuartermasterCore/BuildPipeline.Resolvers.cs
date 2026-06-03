@@ -33,6 +33,13 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static bool ResolveNoFogEnabled(Profile profile)
+        {
+            var nf = profile.Globals != null ? profile.Globals.NoFog : null;
+            if (nf == null) return false;
+            return nf.Enabled.GetValueOrDefault(false);
+        }
+
         static double ResolveBonfireMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.BonfireRadius == null) return 1.0;

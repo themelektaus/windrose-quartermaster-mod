@@ -26,6 +26,7 @@ namespace Windrose.Quartermaster.Core
         public BuildingStabilityResult StabilityResult;
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
+        public NoFogResult NoFogResult;
         public BonfireRadiusResult BonfireResult;
         public PickaxeRangeResult PickaxeRangeResult;
         public CooldownsResult CooldownsResult;
@@ -70,6 +71,13 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public MinimapRangePatchResult Patch;
+        public string PakPath;
+        public long PakSize;
+    }
+
+    public sealed class NoFogResult
+    {
+        public bool Enabled;
         public string PakPath;
         public long PakSize;
     }

@@ -32,6 +32,7 @@ namespace Windrose.Quartermaster.Core
         public BuildingStabilityGlobal BuildingStability;
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
+        public NoFogGlobal NoFog;
         public BonfireRadiusGlobal BonfireRadius;
         public BonfireMusicGlobal BonfireMusic;
         public PickaxeRangeGlobal PickaxeRange;
@@ -101,6 +102,16 @@ namespace Windrose.Quartermaster.Core
     public sealed class MinimapRangeGlobal
     {
         public double? Multiplier;
+    }
+
+    // Disables fog of war on both the minimap and the fullscreen world map (the
+    // "Windrose No Fog of War" mod). One shared toggle: vanilla flips
+    // bFogEnabled=True->False in DefaultR5MapSettings.ini, which covers both
+    // maps (the minimap material inherits the worldmap's fog source). Rides the
+    // same map-settings pak / +MapsConfig tuple as MinimapRange.
+    public sealed class NoFogGlobal
+    {
+        public bool? Enabled;
     }
 
     public sealed class BonfireRadiusGlobal

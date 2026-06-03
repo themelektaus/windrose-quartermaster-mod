@@ -99,13 +99,20 @@
         <div data-icon style="background-image: url(minimap-range.png); "></div>
       </div>
       <div class="card-content">
-        <h2>Minimap Range</h2>
-        <p class="hint">Scales the reveal-range fields.</p>
+        <h2>Map</h2>
+        <div class="pickup-row">
+          <label class="check-row">
+            <input type="checkbox" id="nofog-enabled">
+            Disable fog of war
+          </label>
+          <p class="hint">Disables for of war on minimap and world map</p>
+        </div>
         <div class="pickup-row">
           <label class="check-row">
             <input type="checkbox" id="minimap-enabled">
             Enable minimap-range patch
           </label>
+          <p class="hint">Scales the reveal-range fields.</p>
           <div class="pickup-slider indent">
             <input type="range" id="minimap-multiplier" min="1.0" max="5.0" step="0.1" value="2.0" style="max-width: 8.5em; ">
             <span class="mult-pill" id="minimap-multiplier-value">2.0x</span>

@@ -756,6 +756,9 @@ function applyProfileToUI() {
     document.getElementById('minimap-multiplier').value =
         minimapOn ? minimapMul : 2.0;
     syncMinimapReadout();
+    const nofog = (p.globals && p.globals.noFog) || null;
+    document.getElementById('nofog-enabled').checked =
+        !!(nofog && nofog.enabled === true);
     const br = (p.globals && p.globals.bonfireRadius) || null;
     const bonfireMul = br && br.multiplier != null ? br.multiplier : null;
     const bonfireOn = bonfireMul != null && Math.abs(bonfireMul - 1.0) > 1e-9;
@@ -1232,6 +1235,10 @@ async function onBuild() {
                     + ', ship ' + mr.vanilla.shipBrush + '/' + mr.vanilla.shipDistance + ' -> '
                     + mr.effective.shipBrush + '/' + mr.effective.shipDistance + ')' });
             }
+            if (data.noFog && data.noFog.enabled) {
+                lines.push({ kind: 'ok', msg:
+                    'DONE - fog of war disabled (minimap + world map)' });
+            }
             if (data.bonfireRadius) {
                 const bo = data.bonfireRadius;
                 const mul = (bo.multiplier || 1.0).toFixed(1);
@@ -1382,7 +1389,7 @@ async function onBuild() {
                 }
             }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange && !data.bonfireRadius
+                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.cropGrowth && !data.cookingDuration
