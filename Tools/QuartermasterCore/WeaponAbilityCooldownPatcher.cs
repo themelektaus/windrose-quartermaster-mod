@@ -33,8 +33,11 @@ namespace Windrose.Quartermaster.Core
     // in place and let UAssetAPI re-serialize (verified byte-stable round-trip).
     public sealed class WeaponAbilityCooldownPatcher
     {
+        // Safety backstop only ("the GUI should have clamped this"); the per-slider UI range is
+        // the real limit. Shared by Soul Eater (Patch, UI slider capped at 3x) and Food Buff
+        // Duration (PatchRowsBySuffix, UI slider 0.1x-10x) - hence the 10x ceiling here.
         public const double MinMultiplier = 0.01;
-        public const double MaxMultiplier = 3.00;
+        public const double MaxMultiplier = 10.00;
 
         public const string CurveTableStem = "CT_Weapon_GE_Values";
         public const string CurveTableVirtualPath =
