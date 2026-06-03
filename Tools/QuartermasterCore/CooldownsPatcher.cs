@@ -254,6 +254,7 @@ namespace Windrose.Quartermaster.Core
         ScalableFloatDuration,
         TopLevelMagnitude,
         WeaponAbilityCurve,
+        FoodDurationCurve,
     }
 
     public sealed class CooldownPatchResult
@@ -263,6 +264,8 @@ namespace Windrose.Quartermaster.Core
         public double Multiplier;
         public float VanillaValue;
         public float EffectiveValue;
+        // >1 only for multi-row curve patches (food durations); single-value patches leave it 0.
+        public int RowsPatched;
         public CooldownPatchShape Shape;
     }
 }

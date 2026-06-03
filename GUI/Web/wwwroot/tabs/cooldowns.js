@@ -59,6 +59,12 @@ const COOLDOWN_FAMILIES = [
         vanillaSeconds: 180,
         renderReadout: (mul) => (180 * mul).toFixed(1) + ' s',
     },
+    {
+        key: 'foodduration',
+        profileKey: 'foodBuffDurationMultiplier',
+        vanillaSeconds: 900,
+        renderReadout: (mul) => formatSeconds(900 * mul),
+    },
 ];
 
 const STATION_FAMILIES = [

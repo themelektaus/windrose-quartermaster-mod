@@ -75,7 +75,9 @@ public static partial class ProfilesEndpoint
             || IsActive(cd.BoarWhistleMultiplier)
             || IsActive(cd.ShipSummonMultiplier)
             || IsActive(cd.RangedReloadMultiplier)
-            || IsActive(cd.ShipCannonMultiplier);
+            || IsActive(cd.ShipCannonMultiplier)
+            || IsActive(cd.SoulEaterAbilityMultiplier)
+            || IsActive(cd.FoodBuffDurationMultiplier);
     }
 
     static bool AnyProductionTimeActive(ProductionTimesGlobal pt)

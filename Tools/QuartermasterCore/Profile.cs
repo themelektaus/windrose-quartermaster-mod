@@ -141,6 +141,7 @@ namespace Windrose.Quartermaster.Core
         public double? RangedReloadMultiplier;
         public double? ShipCannonMultiplier;
         public double? SoulEaterAbilityMultiplier;
+        public double? FoodBuffDurationMultiplier;
     }
 
     public sealed class ProductionTimesGlobal

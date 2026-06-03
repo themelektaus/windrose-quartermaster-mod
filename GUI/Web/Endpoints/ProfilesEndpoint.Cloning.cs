@@ -98,6 +98,8 @@ public static partial class ProfilesEndpoint
                     ShipSummonMultiplier     = g.Cooldowns.ShipSummonMultiplier,
                     RangedReloadMultiplier   = g.Cooldowns.RangedReloadMultiplier,
                     ShipCannonMultiplier     = g.Cooldowns.ShipCannonMultiplier,
+                    SoulEaterAbilityMultiplier  = g.Cooldowns.SoulEaterAbilityMultiplier,
+                    FoodBuffDurationMultiplier  = g.Cooldowns.FoodBuffDurationMultiplier,
                 },
             ProductionTimes = g.ProductionTimes == null
                 ? null

@@ -125,6 +125,7 @@ namespace Windrose.Quartermaster.Core
         RangedReload,
         ShipCannon,
         WeaponAbilityCurve,
+        FoodDurationCurve,
     }
 
     public sealed class CooldownJob

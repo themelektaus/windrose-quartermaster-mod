@@ -201,6 +201,17 @@ namespace Windrose.Quartermaster.Core
                     Shape = CooldownJobShape.WeaponAbilityCurve,
                 });
             }
+            if (HasCooldownMultiplier(cd.FoodBuffDurationMultiplier))
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = "food-duration",
+                    AssetStem = WeaponAbilityCooldownPatcher.FoodCurveTableStem,
+                    VirtualPath = WeaponAbilityCooldownPatcher.FoodCurveTableVirtualPath,
+                    Multiplier = cd.FoodBuffDurationMultiplier.Value,
+                    Shape = CooldownJobShape.FoodDurationCurve,
+                });
+            }
             return jobs;
         }
 
@@ -500,6 +511,24 @@ namespace Windrose.Quartermaster.Core
                         EffectiveValue = r.EffectiveValue,
                         BatteryCount = 0,
                         PatchedBatteryCount = 0,
+                    };
+                }
+                case CooldownJobShape.FoodDurationCurve:
+                {
+                    var patcher = new WeaponAbilityCooldownPatcher { Log = Log };
+                    var r = patcher.PatchRowsBySuffix(
+                        legacyAssetPath, legacyAssetPath, usmapPath,
+                        WeaponAbilityCooldownPatcher.DurationRowSuffix, job.Multiplier);
+                    // Re-use Battery counters as "rows found / rows patched" for the readout.
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = r.RowsPatched,
+                        PatchedBatteryCount = r.RowsPatched,
                     };
                 }
                 default:
