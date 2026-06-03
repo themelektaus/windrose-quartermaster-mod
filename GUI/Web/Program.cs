@@ -88,6 +88,12 @@ public static class Program
 
         Windrose.Quartermaster.Core.WindrosePaths.ConfigureNativeDllDir(resolvedRoot);
 
+        // Pre-load the RocksDB native via the standard .NET resolver so the save
+        // patchers work in a PublishSingleFile build (RocksDbSharp's own loader
+        // can't see the self-extracted native -> /api/savegame/characters|ships
+        // would silently return empty). No-op in dev. See RocksDbNativeLoader.
+        Windrose.Quartermaster.Core.RocksDbNativeLoader.EnsurePreloaded();
+
         Windrose.Quartermaster.Core.GameInstallOverride.ConfigureDataRoot(resolvedRoot);
 
         if (isDeployed)
