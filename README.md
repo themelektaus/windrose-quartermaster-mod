@@ -40,6 +40,11 @@ A profile bundles tweaks across multiple domains:
 - **Ship slots** - bigger cargo holds + more Combat Orders slots for the
   Brig / Frigate / Ketch and their variants; new ships automatic,
   existing ships via the Characters tab
+- **Ship speed** - per-ship-type motor-speed multipliers (0.1-10x) for
+  every hull's drive curve (Shallow Boat / Brig / Cutter / Frigate /
+  Ketch, each with player / AI / service / faction variants), scaled
+  from the live vanilla motor curve, on top of an overall ship-speed
+  slider
 - **UI scale** - global interface scale (`Engine.ini` `ApplicationScale`),
   50-110%, written straight into your local UE config and locked
   read-only so the game keeps it
@@ -197,8 +202,8 @@ icon to clone an existing one. For each profile you can:
   (furnace, kiln, tannery, mill, trade outpost).
 - **Basic tab** - cards for pickup radius, fast-travel bell caps,
   building stability, minimap range, bonfire radius, pickaxe range,
-  overall light radius, no-smoke FX, equipment slots (ring / necklace)
-  and ship slots (cargo / combat orders). Each card has its own toggle /
+  overall light radius, overall ship speed, no-smoke FX, equipment slots
+  (ring / necklace) and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
   is enabled. A **UI Scale** card additionally writes the global
   interface scale straight into your local `Engine.ini`
@@ -207,6 +212,10 @@ icon to clone an existing one. For each profile you can:
 - **Lighting tab** - per-light AttenuationRadius overrides (overrides
   the overall multiplier from the Basic Light Radius card on a per-light
   basis).
+- **Ship Speed tab** - per-ship-type motor-speed overrides grouped by
+  hull (Shallow Boat / Brig / Cutter / Frigate / Ketch, with player /
+  AI / service / faction variants); overrides the overall multiplier
+  from the Basic Ship Speed card on a per-curve basis.
 - **Characters tab** - a save patcher that retro-fits the profile's
   equipment- and ship-slot counts onto characters / ships already in
   your save (the Basic-tab sliders themselves only affect newly created

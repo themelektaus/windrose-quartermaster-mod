@@ -1,6 +1,6 @@
 [size=3][b]Description[/b][/size]
 
-Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, trade, cooldowns, building, lighting, navigation, FX and audio, then bakes them into a single "_P.pak" you drop into the "~mods" folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
+Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, trade, cooldowns, building, lighting, navigation, ship handling, FX and audio, then bakes them into a single "_P.pak" you drop into the "~mods" folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
 
 
 
@@ -127,6 +127,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Bigger ship cargo holds (scales each hull's vanilla capacity) and more Combat Orders slots, for the Brig / Frigate / Ketch and their variants. New ships get the bigger slots automatically; the Characters tab retro-fits the counts onto ships already in your save.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Ship-Slots.png[/img]
+
+
+
+
+
+[size=4][b]Ship speed[/b][/size]
+[color=#b6b6b6]Per-ship-type motor-speed multipliers (0.1x to 10x) for every hull's drive curve - Shallow Boat, Brig, Cutter, Frigate and Ketch, each split into player, AI, service and faction (BlackBeard / Brethren) variants where they exist - on top of an overall ship-speed slider on the Basic tab. Every value is scaled from the live vanilla motor curve, so nothing else about the ships changes.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Ship-Speed.png[/img]
 
 
 
