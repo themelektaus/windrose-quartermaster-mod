@@ -103,6 +103,19 @@ public static class BuildEndpoint
                         multiplier = result.PickupMultiplier,
                     };
                 }
+                object shipPickupInfo = null;
+                if (result.ShipPickupResult != null)
+                {
+                    var sp = result.ShipPickupResult;
+                    shipPickupInfo = new
+                    {
+                        multiplier = sp.Multiplier,
+                        assetsPatched = sp.AssetsPatched,
+                        valuesScaled = sp.ValuesScaled,
+                        ucasPath = sp.UcasPath,
+                        utocPath = sp.UtocPath,
+                    };
+                }
                 object bellLimitsInfo = null;
                 if (result.BellLimitsResult != null)
                 {
@@ -524,6 +537,7 @@ public static class BuildEndpoint
                     },
                     lootPatchResult,
                     pickupRadius = pickupRadiusInfo,
+                    shipPickup = shipPickupInfo,
                     bellLimits = bellLimitsInfo,
                     equipmentSlots = equipmentSlotsInfo,
                     shipSlots = shipSlotsInfo,

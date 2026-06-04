@@ -33,6 +33,9 @@ public static partial class ProfilesEndpoint
             hasGlobalPickupRadius = p.Globals != null && p.Globals.PickupRadius != null
                                     && p.Globals.PickupRadius.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickupRadius.Multiplier.Value - 1.0) > 1e-9,
+            hasGlobalShipPickup = p.Globals != null && p.Globals.ShipPickup != null
+                                    && p.Globals.ShipPickup.Multiplier.HasValue
+                                    && Math.Abs(p.Globals.ShipPickup.Multiplier.Value - 1.0) > 1e-9,
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null

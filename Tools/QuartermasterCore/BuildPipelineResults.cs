@@ -23,6 +23,7 @@ namespace Windrose.Quartermaster.Core
         public string PakPath;
         public PickupTripletResult PickupResult;
         public double? PickupMultiplier;
+        public ShipPickupResult ShipPickupResult;
         public BuildingStabilityResult StabilityResult;
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
@@ -121,6 +122,17 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public BonfireRadiusPatchResult Patch;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class ShipPickupResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public int AssetsPatched;
+        public int ValuesScaled;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

@@ -18,6 +18,14 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveShipPickupMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.ShipPickup == null) return 1.0;
+            var sp = profile.Globals.ShipPickup;
+            if (sp.Multiplier.HasValue) return sp.Multiplier.Value;
+            return 1.0;
+        }
+
         static bool ResolveStabilityEnabled(Profile profile)
         {
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;

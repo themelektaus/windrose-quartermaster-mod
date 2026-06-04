@@ -749,6 +749,14 @@ function applyProfileToUI() {
     document.getElementById('pickup-multiplier').value =
         pickupOn ? pickupMul : 2.0;
     syncPickupReadout();
+    const sp = (p.globals && p.globals.shipPickup) || null;
+    const shipPickupMul = sp && sp.multiplier != null ? sp.multiplier : null;
+    const shipPickupOn = shipPickupMul != null && Math.abs(shipPickupMul - 1.0) > 1e-9;
+    document.getElementById('ship-pickup-enabled').checked = shipPickupOn;
+    document.getElementById('ship-pickup-multiplier').value =
+        shipPickupOn ? shipPickupMul : 2.0;
+    syncShipPickupReadout();
+    syncShipPickupInputState();
     const ftb = (p.globals && p.globals.fastTravelBells) || null;
     document.getElementById('bell-cap').value =
         ftb && ftb.bellCap != null ? ftb.bellCap : 10;
@@ -1116,7 +1124,7 @@ function miscTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     if (!g) return false;
     const presenceKeys = [
-        'stackSize', 'pickupRadius', 'fastTravelBells', 'equipmentSlots',
+        'stackSize', 'pickupRadius', 'shipPickup', 'fastTravelBells', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
@@ -1442,6 +1450,13 @@ async function onBuild() {
                     + 'MagnetRadius=' + pr.magnetRadius + ', ' + totalKb + ' KB) -> '
                     + target });
             }
+            if (data.shipPickup) {
+                const sp = data.shipPickup;
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship pickup radius (' + (sp.multiplier || 1).toFixed(1) + 'x, '
+                    + sp.valuesScaled + ' shape values across ' + sp.assetsPatched
+                    + ' assets)' });
+            }
             if (data.bellLimits && data.bellLimits.written) {
                 const bl = data.bellLimits;
                 lines.push({ kind: 'ok', msg:
@@ -1662,7 +1677,7 @@ async function onBuild() {
                     }
                 }
             }
-            if (!data.pakPath && !data.pickupRadius && !data.buildingStability
+            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.keepStatus && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting

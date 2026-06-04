@@ -27,6 +27,7 @@ namespace Windrose.Quartermaster.Core
         public StackSizeGlobal StackSize;
         public LootGlobal Loot;
         public PickupRadiusGlobal PickupRadius;
+        public ShipPickupGlobal ShipPickup;
         public FastTravelBellsGlobal FastTravelBells;
         public EquipmentSlotsGlobal EquipmentSlots;
         public ShipSlotsGlobal ShipSlots;
@@ -87,6 +88,15 @@ namespace Windrose.Quartermaster.Core
     }
 
     public sealed class PickupRadiusGlobal
+    {
+        public double? Multiplier;
+    }
+
+    // "Extended Ship Pickup Radius": MULTIPLIER on every overlap-shape Radius /
+    // HalfHeight in the ship interaction-zone DataAssets (floating sea-loot pickup
+    // sphere + per-ship-type interaction zones). 1.0 = vanilla. Applied on top of
+    // freshly-extracted vanilla values, so no drift across game updates.
+    public sealed class ShipPickupGlobal
     {
         public double? Multiplier;
     }

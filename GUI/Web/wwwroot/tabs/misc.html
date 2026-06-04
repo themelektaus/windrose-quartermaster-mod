@@ -48,6 +48,16 @@
         <p class="hint">
           vanilla pickup radius: 4 m
         </p>
+        <label class="check-row">
+          <input type="checkbox" id="ship-pickup-enabled"> Extended ship pickup radius
+        </label>
+        <div class="pickup-slider indent">
+          <input type="range" id="ship-pickup-multiplier" min="1.0" max="4.0" step="0.1" value="2.0">
+          <span class="mult-pill" id="ship-pickup-multiplier-value">2.0x</span>
+        </div>
+        <p class="hint">
+          Range for floating sea loot and ship interaction zones.
+        </p>
       </div>
     </section>
 

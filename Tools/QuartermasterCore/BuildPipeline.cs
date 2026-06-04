@@ -328,6 +328,8 @@ namespace Windrose.Quartermaster.Core
                     + CountBuildableBuildings(profile);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
+                double shipPickupMultiplier = ResolveShipPickupMultiplier(profile);
+                bool shipPickupActive = shipPickupMultiplier > 0.0 && Math.Abs(shipPickupMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
                 var noSmokeCategories = ResolveNoSmokeCategories(profile);
                 bool noSmokeActive = noSmokeCategories.Count > 0;
@@ -357,7 +359,7 @@ namespace Windrose.Quartermaster.Core
                 var shipSpeedJobs = ResolveShipSpeedJobs(profile);
                 bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || shipPickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -376,6 +378,7 @@ namespace Windrose.Quartermaster.Core
                 // Build the IoStore composite first, so a later repak overwrites
                 // retoc's .pak stub with the real Pak1 content.
                 PickupTripletResult pickupResult = null;
+                ShipPickupResult shipPickupResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
                 LandFastTravelResult landFastTravelResult = null;
@@ -390,11 +393,12 @@ namespace Windrose.Quartermaster.Core
                 LightingResult lightingResult = null;
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || shipPickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
+                        shipPickupMultiplier, shipPickupActive,
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
                         landFastTravelActive,
@@ -413,6 +417,7 @@ namespace Windrose.Quartermaster.Core
                         buildingsActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
+                    shipPickupResult = compositeResult.ShipPickup;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
                     landFastTravelResult = compositeResult.LandFastTravel;
@@ -525,6 +530,7 @@ namespace Windrose.Quartermaster.Core
                     PakPath = pakPath,
                     PickupResult = pickupResult,
                     PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
+                    ShipPickupResult = shipPickupResult,
                     StabilityResult = stabilityResult,
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
@@ -574,6 +580,7 @@ namespace Windrose.Quartermaster.Core
         BuildIoStoreCompositeOutput BuildIoStoreComposite(
             Profile profile, string outDir,
             double pickupMultiplier, bool pickupActive,
+            double shipPickupMultiplier, bool shipPickupActive,
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
             bool landFastTravelActive,
@@ -624,6 +631,7 @@ namespace Windrose.Quartermaster.Core
             var sources = new List<IoStoreCompositeSource>();
             PickupBlueprintPatchResult pickupPatchResult = null;
             float magnetRadius = 0f;
+            ShipPickupPatchResult shipPickupPatchResult = null;
 
             if (pickupActive)
             {
@@ -655,6 +663,26 @@ namespace Windrose.Quartermaster.Core
                         var patcher = new PickupBlueprintPatcher { Log = Log };
                         pickupPatchResult = patcher.Patch(
                             legacyAssetPath, legacyAssetPath, usmapPath, magnetRadius);
+                    },
+                });
+            }
+
+            if (shipPickupActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Ship pickup source: vanilla "
+                        + string.Join(", ", ShipPickupPatcher.AssetFilterStems)
+                        + " (multiplier=" + shipPickupMultiplier + ")");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "ship-pickup",
+                    InputDir = gamePaksDir,
+                    Filters = ShipPickupPatcher.AssetFilterStems.ToList(),
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new ShipPickupPatcher { Log = Log };
+                        shipPickupPatchResult = patcher.Patch(
+                            stagingDir, usmapPath, shipPickupMultiplier);
                     },
                 });
             }
@@ -1777,6 +1805,21 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            ShipPickupResult shipPickupOut = null;
+            if (shipPickupActive)
+            {
+                shipPickupOut = new ShipPickupResult
+                {
+                    Enabled = true,
+                    Multiplier = shipPickupMultiplier,
+                    AssetsPatched = shipPickupPatchResult != null ? shipPickupPatchResult.AssetsPatched : 0,
+                    ValuesScaled = shipPickupPatchResult != null ? shipPickupPatchResult.ValuesScaled : 0,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             BonfireRadiusResult bonfireOut = null;
             if (bonfireActive)
             {
@@ -1947,6 +1990,7 @@ namespace Windrose.Quartermaster.Core
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
+                ShipPickup = shipPickupOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
                 LandFastTravel = landFastTravelOut,
@@ -1968,6 +2012,7 @@ namespace Windrose.Quartermaster.Core
         sealed class BuildIoStoreCompositeOutput
         {
             public PickupTripletResult Pickup;
+            public ShipPickupResult ShipPickup;
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
             public LandFastTravelResult LandFastTravel;

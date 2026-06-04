@@ -34,6 +34,12 @@ public static partial class ProfilesEndpoint
                 {
                     Multiplier = g.PickupRadius.Multiplier,
                 },
+            ShipPickup = g.ShipPickup == null
+                ? null
+                : new ShipPickupGlobal
+                {
+                    Multiplier = g.ShipPickup.Multiplier,
+                },
             FastTravelBells = g.FastTravelBells == null
                 ? null
                 : new FastTravelBellsGlobal

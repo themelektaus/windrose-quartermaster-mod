@@ -48,6 +48,20 @@ function syncPickupReadout() {
         (4.0 * mul).toFixed(1) + ' m';
 }
 
+function syncShipPickupInputState() {
+    const enabled = document.getElementById('ship-pickup-enabled');
+    const slider  = document.getElementById('ship-pickup-multiplier');
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
+}
+
+function syncShipPickupReadout() {
+    const slider = document.getElementById('ship-pickup-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('ship-pickup-multiplier-value').textContent =
+        mul.toFixed(1) + 'x';
+}
+
 function syncBellInputState() {
     document.getElementById('bell-cap').disabled = false;
     document.getElementById('signal-fire-cap').disabled = false;
@@ -161,6 +175,22 @@ function setPickupRadiusFromUI() {
     }
     syncPickupReadout();
     syncPickupInputState();
+    markDirty();
+}
+
+function setShipPickupFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('ship-pickup-enabled').checked;
+    const slider  = document.getElementById('ship-pickup-multiplier');
+    const mul     = parseFloat(slider.value) || 1.0;
+    state.current.globals = state.current.globals || {};
+    if (enabled && Math.abs(mul - 1.0) > 1e-9) {
+        state.current.globals.shipPickup = { multiplier: mul };
+    } else {
+        delete state.current.globals.shipPickup;
+    }
+    syncShipPickupReadout();
+    syncShipPickupInputState();
     markDirty();
 }
 
@@ -717,6 +747,8 @@ function bindMiscHandlers() {
     }
     document.getElementById('pickup-enabled').addEventListener('change', setPickupRadiusFromUI);
     document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
+    document.getElementById('ship-pickup-enabled').addEventListener('change', setShipPickupFromUI);
+    document.getElementById('ship-pickup-multiplier').addEventListener('input', setShipPickupFromUI);
     document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);
