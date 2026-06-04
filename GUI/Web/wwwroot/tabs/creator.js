@@ -168,11 +168,12 @@ async function onCreatorNew() {
         itemTexture: null,
         vanityText: '',
     });
-    state.isDirty = true;
     syncCustomItemsIntoCatalog();
     renderItemCreator();
     renderItemCreatorStatus();
-    updateButtons();
+    // markDirty() (not bare updateButtons) so the Creator tab's has-mods
+    // indicator refreshes immediately - adding an item flips that state.
+    markDirty();
 }
 
 function onCreatorListChange(e) {
@@ -207,10 +208,9 @@ function onCreatorListChange(e) {
     } else {
         return;
     }
-    state.isDirty = true;
     syncCustomItemsIntoCatalog();
     renderItemCreatorStatus();
-    updateButtons();
+    markDirty();
 }
 
 async function onCreatorListClick(e) {
@@ -229,11 +229,12 @@ async function onCreatorListClick(e) {
         const label = c.name || c.id;
         if (!await confirm('Delete custom item "' + label + '"?')) return;
         customs.splice(index, 1);
-        state.isDirty = true;
         syncCustomItemsIntoCatalog();
         renderItemCreator();
         renderItemCreatorStatus();
-        updateButtons();
+        // markDirty() so the Creator tab's has-mods indicator clears when the
+        // last custom item is removed (was stale until F5 with bare updateButtons).
+        markDirty();
     } else if (action === 'icon-upload') {
         const c = customs[index];
         const savedIds = state.savedCustomItemIds || new Set();

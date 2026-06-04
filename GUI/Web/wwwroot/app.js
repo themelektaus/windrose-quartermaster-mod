@@ -802,7 +802,7 @@ function applyProfileToUI() {
         syncBonfireMusicVolumeFromState();
     }
     renderProfileMeta();
-    updateMiscTabIndicator();
+    updateTabIndicators();
 }
 
 function renderProfileMeta() {
@@ -1060,16 +1060,23 @@ function syncPickerInputToType(selectEl) {
 
 // ---------------------------------------------------------------------------
 // Tab modification indicators. A profile can touch many features spread across
-// the Basic (misc) tab; this flags the tab button so it is obvious at a glance
-// which tabs a profile modifies. Styling (.tab.has-mods) is left to misc.css.
+// every tab; this flags the tab button (.tab.has-mods, styled generically in
+// app.css) so it is obvious at a glance which tabs a profile modifies.
 //
-// Misc detection is presence-based: every Misc feature deletes its globals key
-// when it returns to vanilla (see tabs/misc.js set*FromUI), so the mere presence
-// of a key means "this profile modifies it". bonfireMusic is the one exception -
-// its node can linger in a vanilla state (no filename, volume back at 1.0), so
-// it gets an explicit check. UI scale is also special: it is a machine-wide
-// Engine.ini setting (not part of the profile globals), so it is tracked via
-// state.uiScaleModified, set in tabs/misc.js loadUiScale/uiScaleApply.
+// Each tab gets a predicate that returns true when THAT tab's own editable
+// data deviates from vanilla. Most checks are presence-based: a tab deletes its
+// profile key when it returns to vanilla (see the set*FromUI / prune* helpers
+// in each tab), so the mere presence of the key means "this profile modifies
+// it". Multiplier-style features keep an explicit !=1 check because they can
+// linger at the vanilla value (1.0). The mods and characters tabs never write
+// to the profile (mods manages on-disk .paks, characters patches save games),
+// so they have no predicate and never light up.
+
+// Misc: presence of any Misc globals key. bonfireMusic is the exception - its
+// node can linger in a vanilla state (no filename, volume back at 1.0), so it
+// gets an explicit check. UI scale is special too: it is a machine-wide
+// Engine.ini setting (not part of the profile globals), tracked via
+// state.uiScaleModified (set in tabs/misc.js loadUiScale/uiScaleApply).
 function miscTabHasMods() {
     if (state.uiScaleModified) return true;
     const g = (state.current && state.current.globals) || null;
@@ -1091,6 +1098,149 @@ function miscTabHasMods() {
     return false;
 }
 
+// Items: per-item stack-size overrides (state.current.overrides) OR the global
+// stack-size setting (globals.stackSize). The global setting is also surfaced
+// in the Misc tab/card, so the Items tab intentionally lights up alongside it
+// (it drives this tab's contents). globals.stackSize is pruned to null when at
+// vanilla, so its mere presence is a real change.
+function itemsTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    if (g && g.stackSize != null) return true;
+    const overrides = (state.current && state.current.overrides) || null;
+    if (!overrides) return false;
+    for (const k in overrides) {
+        if (overrides[k] && overrides[k].stackSize != null) return true;
+    }
+    return false;
+}
+
+// Creator / Buildings: any user-created custom entry.
+function creatorTabHasMods() {
+    const customs = (state.current && state.current.customItems) || null;
+    return Array.isArray(customs) && customs.some(c => c && c.id);
+}
+function buildingsTabHasMods() {
+    const customs = (state.current && state.current.customBuildings) || null;
+    return Array.isArray(customs) && customs.some(c => c && c.id);
+}
+
+// Loot: a per-category multiplier != 1, or any loot-table override that adds /
+// removes / edits entries (mirrors computeLtChanged in tabs/loot.js).
+function lootTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    if (g && g.loot && g.loot.byCategory) {
+        for (const cat in g.loot.byCategory) {
+            const m = g.loot.byCategory[cat];
+            if (m != null && m !== 1) return true;
+        }
+    }
+    const lo = (state.current && state.current.lootOverrides) || null;
+    if (lo) {
+        for (const id in lo) {
+            const ovr = lo[id];
+            if (!ovr) continue;
+            if (ovr.added && ovr.added.length > 0) return true;
+            if (ovr.removed && ovr.removed.length > 0) return true;
+            if (ovr.entries && Object.keys(ovr.entries).length > 0) return true;
+        }
+    }
+    return false;
+}
+
+// Buyers / Sellers share an identical override shape: a recipes map (any entry
+// is an edited recipe) plus a lists map that is pruned to drop empty
+// add/remove/reorder overrides (see prune*ListOverride), so any surviving key
+// is a real change.
+function recipeShopHasMods(recipes, lists) {
+    if (recipes && Object.keys(recipes).length > 0) return true;
+    if (lists && Object.keys(lists).length > 0) return true;
+    return false;
+}
+function buyersTabHasMods() {
+    return recipeShopHasMods(state.current && state.current.buyerRecipes,
+                             state.current && state.current.buyerLists);
+}
+function sellersTabHasMods() {
+    return recipeShopHasMods(state.current && state.current.sellerRecipes,
+                             state.current && state.current.sellerLists);
+}
+
+// Cooldowns: a cooldown or production-time multiplier that differs from 1.0
+// (entries at 1.0 are pruned in tabs/cooldowns.js, but check defensively).
+function cooldownsTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    if (!g) return false;
+    for (const bag of [g.cooldowns, g.productionTimes]) {
+        if (!bag) continue;
+        for (const k in bag) {
+            const m = bag[k];
+            if (m != null && Math.abs(m - 1.0) > 1e-9) return true;
+        }
+    }
+    return false;
+}
+
+// Ship music: any per-slot volume override, any excluded vanilla slot, or any
+// user-added track. Exclusions persist server-side in globals.shipMusic
+// .excludedSlots (POST/DELETE .../exclude), which rides back into the profile
+// on loadProfile -> applyProfileToUI, so the predicate sees them.
+function shipMusicTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    if (!g) return false;
+    if (g.shipMusic && g.shipMusic.songs && Object.keys(g.shipMusic.songs).length > 0) return true;
+    if (g.shipMusic && Array.isArray(g.shipMusic.excludedSlots) && g.shipMusic.excludedSlots.length > 0) return true;
+    if (g.shipMusicAdd && Array.isArray(g.shipMusicAdd.tracks) && g.shipMusicAdd.tracks.length > 0) return true;
+    return false;
+}
+
+// Lighting / Ship speed: an overall multiplier != 1, or any per-entry override
+// (both prune back to vanilla, so the maps only hold real changes).
+function multiplierGlobalHasMods(node) {
+    if (!node) return false;
+    if (typeof node.overallMultiplier === 'number'
+        && Math.abs(node.overallMultiplier - 1.0) > 1e-9) return true;
+    if (node.overrides && Object.keys(node.overrides).length > 0) return true;
+    return false;
+}
+function lightingTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    return multiplierGlobalHasMods(g && g.lighting);
+}
+function shipSpeedTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    return multiplierGlobalHasMods(g && g.shipSpeed);
+}
+
+// Registry of tab -> predicate. Tabs absent here (mods, characters) never
+// modify the profile, so they never receive the indicator.
+const TAB_MOD_CHECKS = {
+    misc: miscTabHasMods,
+    items: itemsTabHasMods,
+    creator: creatorTabHasMods,
+    buildings: buildingsTabHasMods,
+    loot: lootTabHasMods,
+    buyers: buyersTabHasMods,
+    sellers: sellersTabHasMods,
+    cooldowns: cooldownsTabHasMods,
+    shipmusic: shipMusicTabHasMods,
+    lighting: lightingTabHasMods,
+    shipspeed: shipSpeedTabHasMods,
+};
+
+// Refresh the has-mods indicator on every tab. Called on profile load
+// (applyProfileToUI) and on every edit (markDirty).
+function updateTabIndicators() {
+    for (const tab in TAB_MOD_CHECKS) {
+        const btn = document.querySelector('.tab[data-tab="' + tab + '"]');
+        if (!btn) continue;
+        let on = false;
+        try { on = !!TAB_MOD_CHECKS[tab](); } catch (_) { on = false; }
+        btn.classList.toggle('has-mods', on);
+    }
+}
+
+// Misc-only refresh, retained for the auto-saved Misc handlers (bonfire music,
+// UI scale) that mutate state outside the markDirty() flow.
 function updateMiscTabIndicator() {
     const btn = document.querySelector('.tab[data-tab="misc"]');
     if (btn) btn.classList.toggle('has-mods', miscTabHasMods());
@@ -1100,7 +1250,7 @@ function markDirty() {
     state.isDirty = true;
     updateButtons();
     renderProfileMeta();
-    updateMiscTabIndicator();
+    updateTabIndicators();
 }
 
 function updateButtons() {

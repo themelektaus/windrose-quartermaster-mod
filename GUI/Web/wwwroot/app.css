@@ -141,7 +141,11 @@ footer {
   position: relative;
   
   &.has-mods::after {
-    content: '💥';
+    content: '';
+    width: 1.5em;
+    height: 1.5em;
+    background-image: url(dirty.svg);
+    background-size: 100%;
     right: .5em;
     top: .25em;
     position: absolute;
