@@ -108,6 +108,187 @@ namespace Windrose.Quartermaster.Core
         }
 
         // ------------------------------------------------------------------
+        // Diagnostic: an annotated dump of the SaveProfiles tree that mirrors
+        // the exact discovery filters above, so a bug report can show WHY a
+        // character was (or was not) listed. Only folder names + flags are
+        // emitted - never save contents - so it is safe to ship in a report.
+        // Never throws: any failure is folded into the returned text.
+        // ------------------------------------------------------------------
+        public static string DiagnoseSaveProfiles()
+        {
+            var sb = new StringBuilder();
+            try
+            {
+                var local = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+                sb.AppendLine("=== Windrose SaveProfiles diagnostic ===");
+                sb.AppendLine("LOCALAPPDATA = " + (string.IsNullOrEmpty(local) ? "(NOT SET!)" : local));
+
+                var root = string.IsNullOrEmpty(local)
+                    ? null : Path.Combine(local, "R5", "Saved", "SaveProfiles");
+                bool rootExists = root != null && Directory.Exists(root);
+                sb.AppendLine("SaveProfiles root = " + (root ?? "(cannot resolve)")
+                    + "  [" + (rootExists ? "EXISTS" : "MISSING") + "]");
+                sb.AppendLine();
+                sb.AppendLine("Scan rule: only profile folders whose name is ALL DIGITS (a real");
+                sb.AppendLine("Steam ID) are read. Non-numeric siblings (backups, or non-Steam");
+                sb.AppendLine("launchers such as Epic / Game Pass / Microsoft Store) are skipped.");
+                sb.AppendLine("A character is only listed if its DB opens and contains an");
+                sb.AppendLine("\"" + JewelryTag + "\" entry.");
+                sb.AppendLine();
+
+                if (!rootExists)
+                {
+                    sb.AppendLine(">> Root does not exist -> the Characters tab shows");
+                    sb.AppendLine("   \"No Windrose save profiles found on this machine.\"");
+                    sb.AppendLine("   Likely a non-Steam install (Game Pass / Microsoft Store keep");
+                    sb.AppendLine("   saves under %LOCALAPPDATA%\\Packages\\...), or the game has");
+                    sb.AppendLine("   never been launched on this machine yet.");
+                    return sb.ToString();
+                }
+
+                int listed = 0, dropped = 0;
+                var droppedFolders = new List<string>();
+
+                foreach (var steamDir in Directory.GetDirectories(root)
+                    .OrderBy(d => d, StringComparer.Ordinal))
+                {
+                    var name = Path.GetFileName(steamDir);
+                    bool numeric = name.Length > 0 && name.All(char.IsDigit);
+                    if (!numeric)
+                    {
+                        sb.AppendLine("[profile] " + name + "   non-numeric -> SKIPPED "
+                            + "(not a Steam ID; backups / non-Steam launchers are never scanned)");
+                        continue;
+                    }
+                    sb.AppendLine("[profile] " + name + "   numeric -> SCANNED");
+
+                    var rocks = Path.Combine(steamDir, "RocksDB_v2");
+                    if (!Directory.Exists(rocks))
+                    {
+                        sb.AppendLine("  RocksDB_v2  [MISSING]  -> nothing to read for this profile");
+                        continue;
+                    }
+                    sb.AppendLine("  RocksDB_v2  [present]");
+
+                    // Replicate newest-version-wins so superseded copies are flagged.
+                    var winner = new Dictionary<string, string>(StringComparer.Ordinal);
+                    var versionDirs = Directory.GetDirectories(rocks)
+                        .OrderBy(d => d, StringComparer.Ordinal).ToList();
+                    foreach (var versionDir in versionDirs)
+                    {
+                        var players0 = Path.Combine(versionDir, "Players");
+                        if (!Directory.Exists(players0)) continue;
+                        foreach (var charDir in Directory.GetDirectories(players0))
+                            if (IsCharacterDbDir(charDir))
+                                winner[Path.GetFileName(charDir)] = charDir;
+                    }
+
+                    foreach (var versionDir in versionDirs)
+                    {
+                        sb.AppendLine("    " + Path.GetFileName(versionDir));
+                        var players = Path.Combine(versionDir, "Players");
+                        if (!Directory.Exists(players))
+                        {
+                            sb.AppendLine("      Players  [MISSING]");
+                            continue;
+                        }
+                        sb.AppendLine("      Players  [present]");
+                        var charDirs = Directory.GetDirectories(players)
+                            .OrderBy(d => d, StringComparer.Ordinal).ToList();
+                        if (charDirs.Count == 0)
+                            sb.AppendLine("        (no character folders)");
+                        foreach (var charDir in charDirs)
+                        {
+                            var cName = Path.GetFileName(charDir);
+                            if (!File.Exists(Path.Combine(charDir, "CURRENT")))
+                            {
+                                sb.AppendLine("        " + cName
+                                    + "   CURRENT=no  -> SKIPPED (not a character DB)");
+                                continue;
+                            }
+                            bool isWinner = winner.TryGetValue(cName, out var w)
+                                && string.Equals(w, charDir, StringComparison.OrdinalIgnoreCase);
+                            if (!isWinner)
+                            {
+                                sb.AppendLine("        " + cName
+                                    + "   CURRENT=yes  (older version, superseded by newest - not listed)");
+                                continue;
+                            }
+                            var probe = ProbeCharacterDb(charDir);
+                            if (probe.Error != null)
+                            {
+                                sb.AppendLine("        " + cName + "   CURRENT=yes  jewelry=?  -> DROPPED"
+                                    + " (DB read error: " + probe.Error
+                                    + ")  [is the game still running? it locks the save]");
+                                dropped++; droppedFolders.Add(charDir + " (read error)");
+                            }
+                            else if (!probe.HasJewelry)
+                            {
+                                sb.AppendLine("        " + cName + "   CURRENT=yes  jewelry=NO  -> DROPPED"
+                                    + " (no Jewelry module in save)");
+                                dropped++; droppedFolders.Add(charDir + " (no Jewelry module)");
+                            }
+                            else
+                            {
+                                sb.AppendLine("        " + cName + "   CURRENT=yes  jewelry=YES  name=\""
+                                    + (probe.PlayerName ?? "?") + "\"  -> LISTED");
+                                listed++;
+                            }
+                        }
+                    }
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("Summary: the Characters tab would list " + listed + " character(s).");
+                if (dropped > 0)
+                {
+                    sb.AppendLine("Dropped " + dropped
+                        + " character DB folder(s) present on disk but filtered out:");
+                    foreach (var d in droppedFolders) sb.AppendLine("  - " + d);
+                }
+                if (listed == 0)
+                    sb.AppendLine("=> UI shows \"No characters found.\""
+                        + " (root exists but nothing survived the scan).");
+            }
+            catch (Exception e)
+            {
+                sb.AppendLine();
+                sb.AppendLine("!! diagnostic aborted: " + e);
+            }
+            return sb.ToString();
+        }
+
+        // Read-only probe of a single character DB: does it open, does it carry a
+        // Jewelry character, and what is the player name. Never throws.
+        static DbProbeResult ProbeCharacterDb(string dbFolder)
+        {
+            try
+            {
+                var (dbOpts, cfs) = OpenOptions(dbFolder);
+                using var db = RocksDb.OpenReadOnly(dbOpts, dbFolder, cfs, false);
+                var cf = db.GetColumnFamily(PlayerCf);
+                var (_, value) = FindJewelryCharacter(db, cf);
+                if (value == null) return new DbProbeResult(false, null, null);
+                return new DbProbeResult(true, GetPlayerName(value), null);
+            }
+            catch (Exception e)
+            {
+                return new DbProbeResult(false, null, e.Message);
+            }
+        }
+
+        readonly struct DbProbeResult
+        {
+            public readonly bool HasJewelry;
+            public readonly string PlayerName;
+            public readonly string Error;
+            public DbProbeResult(bool hasJewelry, string playerName, string error)
+            {
+                HasJewelry = hasJewelry; PlayerName = playerName; Error = error;
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Read-only peek (non-mutating): name + current ring/necklace counts.
         // ------------------------------------------------------------------
 

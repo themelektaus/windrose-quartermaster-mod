@@ -120,6 +120,13 @@ public static class Program
             }
 
             var txt = new StringBuilder();
+            var nickname = payload.Nickname?.Trim();
+            if (!string.IsNullOrEmpty(nickname))
+            {
+                txt.AppendLine("Nickname:");
+                txt.AppendLine(nickname);
+                txt.AppendLine();
+            }
             txt.AppendLine("Title:");
             txt.AppendLine(payload.Title.Trim());
             txt.AppendLine();
@@ -187,6 +194,8 @@ public static class Program
         public string Title { get; set; }
         [JsonPropertyName("description")]
         public string Description { get; set; }
+        [JsonPropertyName("nickname")]
+        public string Nickname { get; set; }
         [JsonPropertyName("attachmentName")]
         public string AttachmentName { get; set; }
         [JsonPropertyName("attachment")]

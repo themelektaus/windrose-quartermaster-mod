@@ -1605,6 +1605,18 @@ function openReportModal() {
       + 'until you click "Send".';
     card.appendChild(intro);
 
+    const nickLabel = document.createElement('label');
+    nickLabel.textContent = 'Nickname';
+    nickLabel.style.fontWeight = 'bold';
+    card.appendChild(nickLabel);
+
+    const nickInput = document.createElement('input');
+    nickInput.type = 'text';
+    nickInput.className = 'modal-input';
+    nickInput.maxLength = 80;
+    nickInput.placeholder = 'How we can reach you? (optional)';
+    card.appendChild(nickInput);
+
     const titleLabel = document.createElement('label');
     titleLabel.textContent = 'Title';
     titleLabel.style.fontWeight = 'bold';
@@ -1669,6 +1681,7 @@ function openReportModal() {
     send.addEventListener('click', async () => {
         const title = titleInput.value.trim();
         const description = descInput.value.trim();
+        const nickname = nickInput.value.trim();
         if (!title) {
             setReportStatus(status, 'error', 'Title is required.');
             titleInput.focus();
@@ -1681,6 +1694,7 @@ function openReportModal() {
         }
 
         // Disable form during submit
+        nickInput.disabled = true;
         titleInput.disabled = true;
         descInput.disabled = true;
         send.disabled = true;
@@ -1694,7 +1708,7 @@ function openReportModal() {
             const r = await fetch('/api/report', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, description }),
+                body: JSON.stringify({ title, description, nickname }),
             });
             try { data = await r.json(); } catch { data = null; }
         } catch (ex) {

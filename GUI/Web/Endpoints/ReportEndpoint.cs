@@ -58,6 +58,12 @@ public static class ReportEndpoint
                 });
             }
 
+            // Nickname is optional; trim and cap so a stray value can't bloat
+            // the metadata. Empty -> null so consumers can treat "anonymous".
+            var nickname = body.Nickname?.Trim();
+            if (string.IsNullOrEmpty(nickname)) nickname = null;
+            else if (nickname.Length > 80) nickname = nickname.Substring(0, 80);
+
             string modsDir = null;
             try { modsDir = SteamLocator.FindModsDir(); }
             catch { }
@@ -130,10 +136,21 @@ public static class ReportEndpoint
                     AddTextToZip(zip, "mods.txt", modsListing.ToString());
                     collected.Add("mods.txt");
 
+                    // Annotated SaveProfiles tree - mirrors the Characters-tab
+                    // discovery filters so "no characters found" reports are
+                    // self-diagnosing (numeric-Steam-ID gate, CURRENT, Jewelry
+                    // module). Folder names + flags only, never save contents.
+                    string saveProfilesDiag;
+                    try { saveProfilesDiag = InventorySaveSlotsPatcher.DiagnoseSaveProfiles(); }
+                    catch (Exception ex) { saveProfilesDiag = "diagnostic failed: " + ex; }
+                    AddTextToZip(zip, "saveprofiles.txt", saveProfilesDiag);
+                    collected.Add("saveprofiles.txt");
+
                     var metaObj = new
                     {
                         title = body.Title,
                         description = body.Description,
+                        nickname = nickname,
                         timestampUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
                         quartermasterVersion = GetAssemblyVersion(),
                         os = Environment.OSVersion.VersionString,
@@ -173,6 +190,7 @@ public static class ReportEndpoint
             {
                 title = body.Title,
                 description = body.Description,
+                nickname = nickname,
                 attachmentName = "quartermaster-report-" +
                     DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".zip",
                 attachment = Convert.ToBase64String(zipBytes),
@@ -276,5 +294,6 @@ public static class ReportEndpoint
     {
         public string Title { get; set; }
         public string Description { get; set; }
+        public string Nickname { get; set; }
     }
 }
