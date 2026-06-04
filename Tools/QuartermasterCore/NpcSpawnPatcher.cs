@@ -102,8 +102,12 @@ namespace Windrose.Quartermaster.Core
                 // the schema but must not be swept by "more NPCs / faster respawn".
                 // Per-spawner overrides still apply to anything the user picks.
                 bool isNpc = IsNpcSpawner(root);
+                // "Unique" NPCs (named characters & town citizens) must not be
+                // count-multiplied - doubling would place two innkeepers / two of a
+                // named merchant. The respawn multiplier still applies to them.
+                bool isUnique = isNpc && IsUniqueNpcSpawner(root, relSlash);
                 bool respawnApplies = respawnGlobalActive && isNpc;
-                bool countApplies = countGlobalActive && isNpc;
+                bool countApplies = countGlobalActive && isNpc && !isUnique;
 
                 // --- RespawnInterval (only present on R5GameplaySpawnerParams) ---
                 if (root["RespawnInterval"] is JsonObject ri
@@ -239,6 +243,32 @@ namespace Windrose.Quartermaster.Core
                     if (string.IsNullOrEmpty(s)) continue;
                     if (s.IndexOf("/Character/", StringComparison.OrdinalIgnoreCase) >= 0
                         || s.IndexOf("/A2_Spawners/AI_", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        // "Unique" NPC spawners the global count multiplier must skip: single named
+        // characters & town citizens. Doubling these would spawn two innkeepers /
+        // two of a named merchant. Matches the reference mod's count scope exactly
+        // (validated 563/563 against its pak): keep vanilla count for any spawner
+        // under /Tortuga/ (citizens, moored ships, port boats) and any spawner whose
+        // actor lives under /Character/AI/NPC/ (Citizen, Employee, QuestStatic, named
+        // recruits like BlackAxel). Enemy mobs (/Character/AI/Mob/, /Simple/) and
+        // spawner collections are still multiplied.
+        public static bool IsUniqueNpcSpawner(JsonObject root, string relSlash)
+        {
+            if (!string.IsNullOrEmpty(relSlash)
+                && ("/" + relSlash).IndexOf("/Tortuga/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            foreach (var assets in CollectAssetArrays(root))
+            {
+                foreach (var a in assets)
+                {
+                    var s = a?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(s)
+                        && s.IndexOf("/Character/AI/NPC/", StringComparison.OrdinalIgnoreCase) >= 0)
                         return true;
                 }
             }

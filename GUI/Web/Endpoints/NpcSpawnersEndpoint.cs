@@ -69,6 +69,10 @@ public static class NpcSpawnersEndpoint
             // Collect Amount blocks + mobs from both shapes.
             int min = int.MaxValue, max = int.MinValue, blocks = 0;
             bool isNpc = false;
+            // Unique = single named character / town citizen: actor under
+            // /Character/AI/NPC/ or any spawner beneath /Tortuga/. Mirrors
+            // NpcSpawnPatcher.IsUniqueNpcSpawner so the UI projection matches the build.
+            bool isUnique = ("/" + idSlash).IndexOf("/Tortuga/", StringComparison.OrdinalIgnoreCase) >= 0;
             var mobs = new List<string>();
             var mobSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -92,10 +96,16 @@ public static class NpcSpawnersEndpoint
                         {
                             if (a.ValueKind != JsonValueKind.String) continue;
                             var ap = a.GetString();
-                            if (!isNpc && ap != null
-                                && (ap.IndexOf("/Character/", StringComparison.OrdinalIgnoreCase) >= 0
-                                 || ap.IndexOf("/A2_Spawners/AI_", StringComparison.OrdinalIgnoreCase) >= 0))
-                                isNpc = true;
+                            if (ap != null)
+                            {
+                                if (!isNpc
+                                    && (ap.IndexOf("/Character/", StringComparison.OrdinalIgnoreCase) >= 0
+                                     || ap.IndexOf("/A2_Spawners/AI_", StringComparison.OrdinalIgnoreCase) >= 0))
+                                    isNpc = true;
+                                if (!isUnique
+                                    && ap.IndexOf("/Character/AI/NPC/", StringComparison.OrdinalIgnoreCase) >= 0)
+                                    isUnique = true;
+                            }
                             var stem = StemOf(ap);
                             if (!string.IsNullOrEmpty(stem) && mobSeen.Add(stem)) mobs.Add(stem);
                         }
@@ -135,6 +145,7 @@ public static class NpcSpawnersEndpoint
                 name = name,
                 category = category,
                 kind = isNpc ? "npc" : "other",
+                isUniqueNpc = isNpc && isUnique,
                 type = type,
                 hasRespawn = hasRespawn,
                 respawnMinutes = respawnMinutes,

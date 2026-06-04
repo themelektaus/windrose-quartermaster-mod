@@ -45,7 +45,9 @@ function npcEffRespawnMin(s) {
 }
 
 function npcEffCount(s, vanillaVal) {
-    if (npcGlobalActive() && s.kind === 'npc') {
+    // Unique NPCs (named characters / town citizens) are exempt from the count
+    // multiplier - doubling would spawn two innkeepers / two of a merchant.
+    if (npcGlobalActive() && s.kind === 'npc' && !s.isUniqueNpc) {
         const m = npcCountMult();
         if (Math.abs(m - 1.0) > 1e-9) {
             return Math.max(vanillaVal > 0 ? 1 : 0, Math.round(vanillaVal * m));
@@ -167,6 +169,7 @@ function buildNpcRow(s) {
     const badges = li.querySelector('.npc-badges');
     badges.appendChild(npcBadge(s.category, 'cat'));
     if (s.kind !== 'npc') badges.appendChild(npcBadge('other', 'other'));
+    else if (s.isUniqueNpc) badges.appendChild(npcBadge('single', 'single'));
     const o = state.current && state.current.npcSpawnOverrides && state.current.npcSpawnOverrides[s.id];
     if (o && (o.respawnMinutes != null || o.countMin != null || o.countMax != null)) {
         badges.appendChild(npcBadge('override', 'ovr'));

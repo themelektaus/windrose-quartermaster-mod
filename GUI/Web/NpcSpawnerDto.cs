@@ -8,6 +8,7 @@ sealed class NpcSpawnerDto
     public string name;        // display name (file stem)
     public string category;    // first path segment under A2_Spawners ("(root)" if none)
     public string kind;        // "npc" (swept by the global multipliers) or "other" (resources / chests / nodes)
+    public bool isUniqueNpc;   // named character / town citizen: respawn-multiplied but NOT count-multiplied
     public string type;        // $type ("R5GameplaySpawnerParams" / "R5GameplaySpawnerVariantPreset")
     public bool hasRespawn;    // true when the file carries a RespawnInterval
     public int respawnMinutes; // vanilla RespawnInterval.Min / 60 (0 when none)

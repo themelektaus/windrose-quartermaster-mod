@@ -23,6 +23,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: auto;
 }
 
 .npc-row {
@@ -48,8 +49,9 @@
   background: #2a2f3a;
   color: #aab2c2;
 }
-.npc-badge.other { background: #4a3a1e; color: #e0bd7a; }
-.npc-badge.ovr   { background: #1e3a4a; color: #7ac3e0; }
+.npc-badge.other  { background: #4a3a1e; color: #e0bd7a; }
+.npc-badge.ovr    { background: #1e3a4a; color: #7ac3e0; }
+.npc-badge.single { background: #3a2e4a; color: #c39ae0; }
 
 .npc-fields { display: flex; align-items: flex-end; gap: 0.5rem; flex: 0 0 auto; }
 .npc-fields .value { display: flex; flex-direction: column; gap: 1px; }
