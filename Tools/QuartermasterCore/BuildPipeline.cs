@@ -658,20 +658,21 @@ namespace Windrose.Quartermaster.Core
             LandFastTravelPatchResult landFastTravelPatch = null;
             if (landFastTravelActive)
             {
-                var templateDir = _paths.LandFastTravelTemplateDir;
-                LogLine("LandFastTravel source: vanilla fast-travel bells -> inland-placement "
-                        + "override (" + LandFastTravelPatcher.AssetFilterStems.Length + " DataAssets)");
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("LandFastTravel source: vanilla fast-travel bells -> widen "
+                        + "CoastlineDistanceRange to [-1e6,+1e6] (" + LandFastTravelPatcher.AssetFilterStems.Length
+                        + " DataAssets, derived from vanilla)");
                 sources.Add(new IoStoreCompositeSource
                 {
                     Name = "land-fast-travel",
                     InputDir = gamePaksDir,
                     Filters = new List<string>(LandFastTravelPatcher.AssetFilterStems),
-                    // Extract the vanilla bells (version sanity gate) then overwrite
-                    // them with the prebuilt overrides before the shared to-zen.
+                    // Extract the vanilla bells (version sanity gate) then inject/widen
+                    // the CoastlineDistanceRange property in place before the shared to-zen.
                     AfterExtract = stagingDir =>
                     {
                         var patcher = new LandFastTravelPatcher { Log = Log };
-                        landFastTravelPatch = patcher.StageInto(stagingDir, templateDir);
+                        landFastTravelPatch = patcher.Patch(stagingDir, usmapPath);
                     },
                 });
             }

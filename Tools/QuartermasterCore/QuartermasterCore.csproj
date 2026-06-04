@@ -54,6 +54,16 @@
       stale-cache freshness checks.
     -->
     <ProjectReference Include="..\IconExtractor\IconExtractor.csproj" />
+
+    <!--
+      CUE4Parse is the robust cooked-asset reader for this game's unversioned
+      format (incl. custom-serialized structs UAssetAPI can't parse).
+      LandFastTravelPatcher uses it to analyze + verify the fast-travel-bell
+      DataAssets when injecting CoastlineDistanceRange. (Already pulled in
+      transitively via IconExtractor; referenced directly so the dependency is
+      explicit where its types are used.)
+    -->
+    <ProjectReference Include="..\CUE4Parse\CUE4Parse\CUE4Parse.csproj" />
   </ItemGroup>
 
 </Project>
