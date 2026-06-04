@@ -33,6 +33,7 @@ namespace Windrose.Quartermaster.Core
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
         public NoFogGlobal NoFog;
+        public LandFastTravelGlobal LandFastTravel;
         public BonfireRadiusGlobal BonfireRadius;
         public BonfireMusicGlobal BonfireMusic;
         public PickaxeRangeGlobal PickaxeRange;
@@ -110,6 +111,15 @@ namespace Windrose.Quartermaster.Core
     // maps (the minimap material inherits the worldmap's fog source). Rides the
     // same map-settings pak / +MapsConfig tuple as MinimapRange.
     public sealed class NoFogGlobal
+    {
+        public bool? Enabled;
+    }
+
+    // Lets the fast-travel bell be placed inland, not just near the coast (the
+    // "Land Fast Travel" mod). Vanilla restricts placement via the R5BuildingItem
+    // CoastlineDistanceRange; the override widens that range on both fast-travel-
+    // bell DataAssets. Ships prebuilt override assets through the IoStore composite.
+    public sealed class LandFastTravelGlobal
     {
         public bool? Enabled;
     }

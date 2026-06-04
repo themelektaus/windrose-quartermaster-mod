@@ -45,6 +45,9 @@ public static partial class ProfilesEndpoint
             hasGlobalNoFog = p.Globals != null
                              && p.Globals.NoFog != null
                              && p.Globals.NoFog.Enabled.GetValueOrDefault(false),
+            hasGlobalLandFastTravel = p.Globals != null
+                             && p.Globals.LandFastTravel != null
+                             && p.Globals.LandFastTravel.Enabled.GetValueOrDefault(false),
             hasGlobalBonfireRadius = p.Globals != null
                                      && p.Globals.BonfireRadius != null
                                      && p.Globals.BonfireRadius.Multiplier.HasValue

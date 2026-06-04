@@ -186,6 +186,15 @@ public static class BuildEndpoint
                         enabled = result.NoFogResult.Enabled,
                     };
                 }
+                object landFastTravelInfo = null;
+                if (result.LandFastTravelResult != null)
+                {
+                    landFastTravelInfo = new
+                    {
+                        enabled = result.LandFastTravelResult.Enabled,
+                        assetsReplaced = result.LandFastTravelResult.AssetsReplaced,
+                    };
+                }
                 object bonfireRadiusInfo = null;
                 if (result.BonfireResult != null)
                 {
@@ -470,6 +479,7 @@ public static class BuildEndpoint
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,
                     noFog = noFogInfo,
+                    landFastTravel = landFastTravelInfo,
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
                     cooldowns = cooldownsInfo,

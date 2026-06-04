@@ -102,6 +102,13 @@ namespace Windrose.Quartermaster.Core
             get { return Path.Combine(Tools, "Templates", "DefaultTextures"); }
         }
 
+        // Prebuilt "Land Fast Travel" override DataAssets (vanilla fast-travel bells
+        // + the CoastlineDistanceRange property that lets them be placed inland).
+        public string LandFastTravelTemplateDir
+        {
+            get { return Path.Combine(Tools, "Templates", "LandFastTravel"); }
+        }
+
         public string NativeDllDir
         {
             get { return ModRoot; }

@@ -315,6 +315,7 @@ namespace Windrose.Quartermaster.Core
                 double minimapMultiplier = ResolveMinimapMultiplier(profile);
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
                 bool noFogActive = ResolveNoFogEnabled(profile);
+                bool landFastTravelActive = ResolveLandFastTravelEnabled(profile);
                 double bonfireMultiplier = ResolveBonfireMultiplier(profile);
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
                 double pickaxeMultiplier = ResolvePickaxeRangeMultiplier(profile);
@@ -333,7 +334,7 @@ namespace Windrose.Quartermaster.Core
                 var lightingJobs = ResolveLightingJobs(profile);
                 bool lightingActive = lightingJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -354,6 +355,7 @@ namespace Windrose.Quartermaster.Core
                 PickupTripletResult pickupResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
+                LandFastTravelResult landFastTravelResult = null;
                 PickaxeRangeResult pickaxeResult = null;
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
@@ -361,13 +363,14 @@ namespace Windrose.Quartermaster.Core
                 BonfireMusicResult bonfireMusicResult = null;
                 LightingResult lightingResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
+                        landFastTravelActive,
                         pickaxeMultiplier, pickaxeActive,
                         cooldownJobs,
                         shipMusicJobs,
@@ -381,6 +384,7 @@ namespace Windrose.Quartermaster.Core
                     pickupResult = compositeResult.Pickup;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
+                    landFastTravelResult = compositeResult.LandFastTravel;
                     pickaxeResult = compositeResult.PickaxeRange;
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
@@ -493,6 +497,7 @@ namespace Windrose.Quartermaster.Core
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
                     NoFogResult = noFogResult,
+                    LandFastTravelResult = landFastTravelResult,
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
                     CooldownsResult = cooldownsResult,
@@ -535,6 +540,7 @@ namespace Windrose.Quartermaster.Core
             double pickupMultiplier, bool pickupActive,
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
+            bool landFastTravelActive,
             double pickaxeMultiplier, bool pickaxeActive,
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
@@ -644,6 +650,27 @@ namespace Windrose.Quartermaster.Core
                         var patcher = new BonfireRadiusPatcher { Log = Log };
                         bonfirePatchResult = patcher.Patch(
                             legacyAssetPath, legacyAssetPath, usmapPath, bonfireMultiplier);
+                    },
+                });
+            }
+
+            LandFastTravelPatchResult landFastTravelPatch = null;
+            if (landFastTravelActive)
+            {
+                var templateDir = _paths.LandFastTravelTemplateDir;
+                LogLine("LandFastTravel source: vanilla fast-travel bells -> inland-placement "
+                        + "override (" + LandFastTravelPatcher.AssetFilterStems.Length + " DataAssets)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "land-fast-travel",
+                    InputDir = gamePaksDir,
+                    Filters = new List<string>(LandFastTravelPatcher.AssetFilterStems),
+                    // Extract the vanilla bells (version sanity gate) then overwrite
+                    // them with the prebuilt overrides before the shared to-zen.
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new LandFastTravelPatcher { Log = Log };
+                        landFastTravelPatch = patcher.StageInto(stagingDir, templateDir);
                     },
                 });
             }
@@ -1619,6 +1646,19 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            LandFastTravelResult landFastTravelOut = null;
+            if (landFastTravelActive)
+            {
+                landFastTravelOut = new LandFastTravelResult
+                {
+                    Enabled = true,
+                    AssetsReplaced = landFastTravelPatch != null ? landFastTravelPatch.AssetsReplaced : 0,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             PickaxeRangeResult pickaxeOut = null;
             if (pickaxeActive)
             {
@@ -1710,6 +1750,7 @@ namespace Windrose.Quartermaster.Core
                 Pickup = pickupOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
+                LandFastTravel = landFastTravelOut,
                 PickaxeRange = pickaxeOut,
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
@@ -1726,6 +1767,7 @@ namespace Windrose.Quartermaster.Core
             public PickupTripletResult Pickup;
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
+            public LandFastTravelResult LandFastTravel;
             public PickaxeRangeResult PickaxeRange;
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;

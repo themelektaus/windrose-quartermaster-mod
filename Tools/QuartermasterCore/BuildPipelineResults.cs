@@ -27,6 +27,7 @@ namespace Windrose.Quartermaster.Core
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
         public NoFogResult NoFogResult;
+        public LandFastTravelResult LandFastTravelResult;
         public BonfireRadiusResult BonfireResult;
         public PickaxeRangeResult PickaxeRangeResult;
         public CooldownsResult CooldownsResult;
@@ -80,6 +81,15 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public string PakPath;
         public long PakSize;
+    }
+
+    public sealed class LandFastTravelResult
+    {
+        public bool Enabled;
+        public int AssetsReplaced;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
     }
 
     public sealed class BonfireRadiusResult

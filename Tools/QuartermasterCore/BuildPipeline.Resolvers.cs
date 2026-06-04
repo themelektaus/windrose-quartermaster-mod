@@ -40,6 +40,13 @@ namespace Windrose.Quartermaster.Core
             return nf.Enabled.GetValueOrDefault(false);
         }
 
+        static bool ResolveLandFastTravelEnabled(Profile profile)
+        {
+            var lft = profile.Globals != null ? profile.Globals.LandFastTravel : null;
+            if (lft == null) return false;
+            return lft.Enabled.GetValueOrDefault(false);
+        }
+
         static double ResolveBonfireMultiplier(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.BonfireRadius == null) return 1.0;

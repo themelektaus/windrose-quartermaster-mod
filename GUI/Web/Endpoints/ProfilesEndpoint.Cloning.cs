@@ -67,6 +67,12 @@ public static partial class ProfilesEndpoint
                 {
                     Enabled = g.NoFog.Enabled,
                 },
+            LandFastTravel = g.LandFastTravel == null
+                ? null
+                : new LandFastTravelGlobal
+                {
+                    Enabled = g.LandFastTravel.Enabled,
+                },
             BonfireRadius = g.BonfireRadius == null
                 ? null
                 : new BonfireRadiusGlobal

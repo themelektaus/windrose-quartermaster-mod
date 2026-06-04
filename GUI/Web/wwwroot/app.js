@@ -759,6 +759,9 @@ function applyProfileToUI() {
     const nofog = (p.globals && p.globals.noFog) || null;
     document.getElementById('nofog-enabled').checked =
         !!(nofog && nofog.enabled === true);
+    const lft = (p.globals && p.globals.landFastTravel) || null;
+    document.getElementById('land-fast-travel-enabled').checked =
+        !!(lft && lft.enabled === true);
     const br = (p.globals && p.globals.bonfireRadius) || null;
     const bonfireMul = br && br.multiplier != null ? br.multiplier : null;
     const bonfireOn = bonfireMul != null && Math.abs(bonfireMul - 1.0) > 1e-9;
@@ -1239,6 +1242,10 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE - fog of war disabled (minimap + world map)' });
             }
+            if (data.landFastTravel && data.landFastTravel.enabled) {
+                lines.push({ kind: 'ok', msg:
+                    'DONE - inland fast-travel placement enabled' });
+            }
             if (data.bonfireRadius) {
                 const bo = data.bonfireRadius;
                 const mul = (bo.multiplier || 1.0).toFixed(1);
@@ -1389,7 +1396,7 @@ async function onBuild() {
                 }
             }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.bonfireRadius
+                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.cropGrowth && !data.cookingDuration
