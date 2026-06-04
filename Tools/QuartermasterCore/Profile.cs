@@ -33,6 +33,7 @@ namespace Windrose.Quartermaster.Core
         public NoSmokeGlobal NoSmoke;
         public MinimapRangeGlobal MinimapRange;
         public NoFogGlobal NoFog;
+        public PersistentLootGlobal PersistentLoot;
         public LandFastTravelGlobal LandFastTravel;
         public BonfireRadiusGlobal BonfireRadius;
         public BonfireMusicGlobal BonfireMusic;
@@ -112,6 +113,11 @@ namespace Windrose.Quartermaster.Core
     // maps (the minimap material inherits the worldmap's fog source). Rides the
     // same map-settings pak / +MapsConfig tuple as MinimapRange.
     public sealed class NoFogGlobal
+    {
+        public bool? Enabled;
+    }
+
+    public sealed class PersistentLootGlobal
     {
         public bool? Enabled;
     }

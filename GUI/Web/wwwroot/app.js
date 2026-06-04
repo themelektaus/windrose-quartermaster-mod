@@ -760,6 +760,9 @@ function applyProfileToUI() {
     const nofog = (p.globals && p.globals.noFog) || null;
     document.getElementById('nofog-enabled').checked =
         !!(nofog && nofog.enabled === true);
+    const ploot = (p.globals && p.globals.persistentLoot) || null;
+    document.getElementById('persistent-loot-enabled').checked =
+        !!(ploot && ploot.enabled === true);
     const lft = (p.globals && p.globals.landFastTravel) || null;
     document.getElementById('land-fast-travel-enabled').checked =
         !!(lft && lft.enabled === true);
@@ -1083,7 +1086,7 @@ function miscTabHasMods() {
     if (!g) return false;
     const presenceKeys = [
         'stackSize', 'pickupRadius', 'fastTravelBells', 'equipmentSlots',
-        'shipSlots', 'buildingStability', 'noFog', 'landFastTravel',
+        'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
     ];
@@ -1434,6 +1437,10 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE - fog of war disabled (minimap + world map)' });
             }
+            if (data.persistentLoot && data.persistentLoot.enabled) {
+                lines.push({ kind: 'ok', msg:
+                    'DONE - death loot persists (posthumous container -> storage bag)' });
+            }
             if (data.landFastTravel && data.landFastTravel.enabled) {
                 lines.push({ kind: 'ok', msg:
                     'DONE - inland fast-travel placement enabled' });
@@ -1603,7 +1610,7 @@ async function onBuild() {
                 }
             }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.landFastTravel && !data.bonfireRadius
+                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed

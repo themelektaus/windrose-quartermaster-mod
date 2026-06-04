@@ -186,6 +186,14 @@ public static class BuildEndpoint
                         enabled = result.NoFogResult.Enabled,
                     };
                 }
+                object persistentLootInfo = null;
+                if (result.PersistentLootResult != null)
+                {
+                    persistentLootInfo = new
+                    {
+                        enabled = result.PersistentLootResult.Enabled,
+                    };
+                }
                 object landFastTravelInfo = null;
                 if (result.LandFastTravelResult != null)
                 {
@@ -501,6 +509,7 @@ public static class BuildEndpoint
                     noSmoke = noSmokeInfo,
                     minimapRange = minimapRangeInfo,
                     noFog = noFogInfo,
+                    persistentLoot = persistentLootInfo,
                     landFastTravel = landFastTravelInfo,
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,

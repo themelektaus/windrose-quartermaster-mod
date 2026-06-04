@@ -40,6 +40,13 @@ namespace Windrose.Quartermaster.Core
             return nf.Enabled.GetValueOrDefault(false);
         }
 
+        static bool ResolvePersistentLootEnabled(Profile profile)
+        {
+            var pl = profile.Globals != null ? profile.Globals.PersistentLoot : null;
+            if (pl == null) return false;
+            return pl.Enabled.GetValueOrDefault(false);
+        }
+
         static bool ResolveLandFastTravelEnabled(Profile profile)
         {
             var lft = profile.Globals != null ? profile.Globals.LandFastTravel : null;
