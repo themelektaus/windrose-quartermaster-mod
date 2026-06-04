@@ -17,16 +17,8 @@ namespace Windrose.Quartermaster.Core
 
         public Action<string> Log;
 
-        // The exact byte representation of the fog toggle inside the cooked
-        // +MapsConfig tuple. Flipping this one key clears fog of war on BOTH the
-        // minimap and the fullscreen world map (the minimap material inherits the
-        // worldmap's fog source), so a single replace covers both.
-        const string FogVanilla = "bFogEnabled=True";
-        const string FogPatched = "bFogEnabled=False";
-
         public MinimapRangePatchResult PatchToFile(
-            string vanillaIniPath, string outIniPath, double multiplier,
-            bool disableFog = false)
+            string vanillaIniPath, string outIniPath, double multiplier)
         {
             if (string.IsNullOrEmpty(vanillaIniPath))
                 throw new ArgumentNullException("vanillaIniPath");
@@ -131,27 +123,6 @@ namespace Windrose.Quartermaster.Core
                     + "to force a re-extract, or update the vanilla constants.");
             }
 
-            // Fog-of-war toggle. Composed onto the SAME emitted +MapsConfig tuple
-            // as the range edits above (never a second, competing tuple), so the
-            // minimap-range and no-fog features stack cleanly in one pak.
-            int fogHits = 0;
-            if (disableFog)
-            {
-                raw = Regex.Replace(raw, Regex.Escape(FogVanilla), m => { fogHits++; return FogPatched; });
-                if (fogHits < 1)
-                {
-                    throw new InvalidOperationException(
-                        "MinimapRangePatcher: no-fog requested but '" + FogVanilla
-                        + "' was not found in " + vanillaIniPath
-                        + " - the vanilla DefaultR5MapSettings.ini layout may have "
-                        + "changed. Delete the cached file under Sources/Vanilla/ to "
-                        + "force a re-extract, or update the fog-key constant.");
-                }
-                LogLine("NoFog: flipped " + FogVanilla + " -> " + FogPatched
-                        + " (" + fogHits + " site" + (fogHits == 1 ? "" : "s")
-                        + ") - clears fog on minimap + world map");
-            }
-
             var outDir = Path.GetDirectoryName(outIniPath);
             if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
             File.WriteAllText(outIniPath, raw);
@@ -171,8 +142,6 @@ namespace Windrose.Quartermaster.Core
             return new MinimapRangePatchResult
             {
                 Multiplier = multiplier,
-                FogDisabled = disableFog,
-                FogSites = fogHits,
                 FootBrushSites = footBrushHits,
                 FootDistanceSites = footDistHits,
                 ShipBrushSites = shipBrushHits,
@@ -213,8 +182,6 @@ namespace Windrose.Quartermaster.Core
     public sealed class MinimapRangePatchResult
     {
         public double Multiplier;
-        public bool FogDisabled;
-        public int FogSites;
         public int FootBrushSites;
         public int FootDistanceSites;
         public int ShipBrushSites;

@@ -356,6 +356,7 @@ namespace Windrose.Quartermaster.Core
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
                 LandFastTravelResult landFastTravelResult = null;
+                NoFogResult noFogResult = null;
                 PickaxeRangeResult pickaxeResult = null;
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
@@ -363,7 +364,7 @@ namespace Windrose.Quartermaster.Core
                 BonfireMusicResult bonfireMusicResult = null;
                 LightingResult lightingResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -371,6 +372,7 @@ namespace Windrose.Quartermaster.Core
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
                         landFastTravelActive,
+                        noFogActive,
                         pickaxeMultiplier, pickaxeActive,
                         cooldownJobs,
                         shipMusicJobs,
@@ -385,6 +387,7 @@ namespace Windrose.Quartermaster.Core
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
                     landFastTravelResult = compositeResult.LandFastTravel;
+                    noFogResult = compositeResult.NoFog;
                     pickaxeResult = compositeResult.PickaxeRange;
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
@@ -397,15 +400,12 @@ namespace Windrose.Quartermaster.Core
 
                 BuildingStabilityResult stabilityResult = null;
                 MinimapRangeResult minimapResult = null;
-                NoFogResult noFogResult = null;
-                if (stabilityActive || minimapActive || noFogActive)
+                if (stabilityActive || minimapActive)
                 {
                     var rawOut = BuildRawCompanion(profile, outDir, rawBaseName,
-                                                   stabilityActive, minimapActive, minimapMultiplier,
-                                                   noFogActive);
+                                                   stabilityActive, minimapActive, minimapMultiplier);
                     stabilityResult = rawOut.Stability;
                     minimapResult = rawOut.Minimap;
-                    noFogResult = rawOut.NoFog;
                 }
 
                 PakBuildResult pakResult = null;
@@ -541,6 +541,7 @@ namespace Windrose.Quartermaster.Core
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
             bool landFastTravelActive,
+            bool noFogActive,
             double pickaxeMultiplier, bool pickaxeActive,
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
@@ -671,6 +672,28 @@ namespace Windrose.Quartermaster.Core
                     {
                         var patcher = new LandFastTravelPatcher { Log = Log };
                         landFastTravelPatch = patcher.StageInto(stagingDir, templateDir);
+                    },
+                });
+            }
+
+            NoFogPatchResult noFogPatch = null;
+            if (noFogActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("NoFog source: vanilla M_Map -> repoint fog RenderTarget import "
+                        + "RT_MapFog -> RT_MapFog_d (derived from vanilla)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "no-fog",
+                    InputDir = gamePaksDir,
+                    Filter = NoFogPatcher.AssetFilterStem,
+                    // Extract vanilla M_Map (version sanity gate) then rename the fog
+                    // RenderTarget import in place and drop the filter's collateral
+                    // (e.g. M_MapFog_Brush) before the shared to-zen.
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new NoFogPatcher { Log = Log };
+                        noFogPatch = patcher.Patch(stagingDir, usmapPath);
                     },
                 });
             }
@@ -1659,6 +1682,19 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            NoFogResult noFogOut = null;
+            if (noFogActive)
+            {
+                noFogOut = new NoFogResult
+                {
+                    Enabled = true,
+                    AssetsReplaced = noFogPatch != null ? noFogPatch.AssetsReplaced : 0,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             PickaxeRangeResult pickaxeOut = null;
             if (pickaxeActive)
             {
@@ -1751,6 +1787,7 @@ namespace Windrose.Quartermaster.Core
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
                 LandFastTravel = landFastTravelOut,
+                NoFog = noFogOut,
                 PickaxeRange = pickaxeOut,
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
@@ -1768,6 +1805,7 @@ namespace Windrose.Quartermaster.Core
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
             public LandFastTravelResult LandFastTravel;
+            public NoFogResult NoFog;
             public PickaxeRangeResult PickaxeRange;
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;
@@ -1827,10 +1865,9 @@ namespace Windrose.Quartermaster.Core
 
         BuildRawCompanionOutput BuildRawCompanion(
             Profile profile, string outDir, string rawBaseName,
-            bool stabilityActive, bool minimapActive, double minimapMultiplier,
-            bool noFogActive)
+            bool stabilityActive, bool minimapActive, double minimapMultiplier)
         {
-            if (!stabilityActive && !minimapActive && !noFogActive)
+            if (!stabilityActive && !minimapActive)
             {
                 throw new InvalidOperationException(
                     "BuildRawCompanion called with no active feature - this is a "
@@ -1856,19 +1893,16 @@ namespace Windrose.Quartermaster.Core
                     out srcUcas, out srcUtoc, out stubPak);
             }
 
-            // The map-settings real .pak (minimap range and/or no-fog) displaces
-            // any stub from the stability step. Both edits share ONE pak and ONE
-            // +MapsConfig tuple - never two competing tuples.
+            // The map-settings real .pak (minimap range) displaces any stub from
+            // the stability step.
             MinimapRangeResult minimapResult = null;
-            NoFogResult noFogResult = null;
             string srcRealPak = null;
-            if (minimapActive || noFogActive)
+            if (minimapActive)
             {
                 var mapOut = BuildMapSettingsPakInsideRawRoot(
                     profile, rawRoot, rawBaseName, minimapMultiplier,
-                    minimapActive, noFogActive, out srcRealPak);
+                    out srcRealPak);
                 minimapResult = mapOut.Minimap;
-                noFogResult = mapOut.NoFog;
             }
 
             // Stub .pak is used only when no real minimap pak exists.
@@ -1904,11 +1938,6 @@ namespace Windrose.Quartermaster.Core
                 minimapResult.PakPath = finalPak;
                 minimapResult.PakSize = finalPakSize;
             }
-            if (noFogResult != null)
-            {
-                noFogResult.PakPath = finalPak;
-                noFogResult.PakSize = finalPakSize;
-            }
 
             var emittedFiles = ".pak"
                 + (finalUcasSize > 0 ? ",ucas" : "")
@@ -1924,7 +1953,6 @@ namespace Windrose.Quartermaster.Core
             {
                 Stability = stabilityResult,
                 Minimap = minimapResult,
-                NoFog = noFogResult,
             };
         }
 
@@ -2042,12 +2070,13 @@ namespace Windrose.Quartermaster.Core
         }
 
         // Builds the single DefaultR5MapSettings.ini pak that carries the minimap
-        // range edit and/or the no-fog flip. When only no-fog is requested the
-        // range pass runs at identity (1.0x), so the emitted +MapsConfig tuple
-        // still ships vanilla reveal values and both features share one tuple.
+        // range edit. (No-fog used to ride this same INI by flipping bFogEnabled,
+        // but that disabled the fog subsystem and crashed the game on world load;
+        // no-fog now ships as an M_Map material override via the IoStore composite
+        // instead - see NoFogPatcher.)
         MapSettingsPakOutput BuildMapSettingsPakInsideRawRoot(
             Profile profile, string rawRoot, string rawBaseName, double multiplier,
-            bool minimapActive, bool noFogActive, out string srcRealPak)
+            out string srcRealPak)
         {
             var configExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
             var vanillaIniPath = configExtractor.EnsureMapSettings();
@@ -2056,9 +2085,8 @@ namespace Windrose.Quartermaster.Core
             var stagedIni = Path.Combine(minimapStageRoot,
                 "R5", "Config", "DefaultR5MapSettings.ini");
 
-            var effMultiplier = minimapActive ? multiplier : 1.0;
             var patcher = new MinimapRangePatcher { Log = Log };
-            var mapPatch = patcher.PatchToFile(vanillaIniPath, stagedIni, effMultiplier, noFogActive);
+            var mapPatch = patcher.PatchToFile(vanillaIniPath, stagedIni, multiplier);
 
             LogLine("Resolving repak.exe...");
             _repakResolver.Log = Log;
@@ -2073,31 +2101,24 @@ namespace Windrose.Quartermaster.Core
 
             return new MapSettingsPakOutput
             {
-                Minimap = minimapActive
-                    ? new MinimapRangeResult
-                    {
-                        Enabled = true,
-                        Multiplier = multiplier,
-                        Patch = mapPatch,
-                    }
-                    : null,
-                NoFog = noFogActive
-                    ? new NoFogResult { Enabled = true }
-                    : null,
+                Minimap = new MinimapRangeResult
+                {
+                    Enabled = true,
+                    Multiplier = multiplier,
+                    Patch = mapPatch,
+                },
             };
         }
 
         sealed class MapSettingsPakOutput
         {
             public MinimapRangeResult Minimap;
-            public NoFogResult NoFog;
         }
 
         sealed class BuildRawCompanionOutput
         {
             public BuildingStabilityResult Stability;
             public MinimapRangeResult Minimap;
-            public NoFogResult NoFog;
         }
 
         void RunRetoc(string retocExe, string[] args)

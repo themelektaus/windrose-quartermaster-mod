@@ -79,8 +79,10 @@ namespace Windrose.Quartermaster.Core
     public sealed class NoFogResult
     {
         public bool Enabled;
+        public int AssetsReplaced;
         public string PakPath;
-        public long PakSize;
+        public string UcasPath;
+        public string UtocPath;
     }
 
     public sealed class LandFastTravelResult
