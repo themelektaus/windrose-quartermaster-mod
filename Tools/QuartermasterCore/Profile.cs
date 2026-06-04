@@ -35,6 +35,7 @@ namespace Windrose.Quartermaster.Core
         public MinimapRangeGlobal MinimapRange;
         public NoFogGlobal NoFog;
         public PersistentLootGlobal PersistentLoot;
+        public KeepStatusGlobal KeepStatus;
         public LandFastTravelGlobal LandFastTravel;
         public BonfireRadiusGlobal BonfireRadius;
         public BonfireMusicGlobal BonfireMusic;
@@ -144,6 +145,14 @@ namespace Windrose.Quartermaster.Core
     }
 
     public sealed class PersistentLootGlobal
+    {
+        public bool? Enabled;
+    }
+
+    // Keeps food/elixir/comfort buffs through death (the "Keep Status" mod). Vanilla
+    // strips every GAS.Effect.Status effect on death; this swaps that broad removal
+    // for a curated set of transient sub-prefixes so the buffs survive.
+    public sealed class KeepStatusGlobal
     {
         public bool? Enabled;
     }

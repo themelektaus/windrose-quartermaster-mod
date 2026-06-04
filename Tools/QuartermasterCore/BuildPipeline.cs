@@ -335,6 +335,7 @@ namespace Windrose.Quartermaster.Core
                 bool minimapActive = minimapMultiplier > 0.0 && Math.Abs(minimapMultiplier - 1.0) > 1e-9;
                 bool noFogActive = ResolveNoFogEnabled(profile);
                 bool persistentLootActive = ResolvePersistentLootEnabled(profile);
+                bool keepStatusActive = ResolveKeepStatusEnabled(profile);
                 bool landFastTravelActive = ResolveLandFastTravelEnabled(profile);
                 double bonfireMultiplier = ResolveBonfireMultiplier(profile);
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
@@ -356,7 +357,7 @@ namespace Windrose.Quartermaster.Core
                 var shipSpeedJobs = ResolveShipSpeedJobs(profile);
                 bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -380,6 +381,7 @@ namespace Windrose.Quartermaster.Core
                 LandFastTravelResult landFastTravelResult = null;
                 NoFogResult noFogResult = null;
                 PersistentLootResult persistentLootResult = null;
+                KeepStatusResult keepStatusResult = null;
                 PickaxeRangeResult pickaxeResult = null;
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
@@ -388,7 +390,7 @@ namespace Windrose.Quartermaster.Core
                 LightingResult lightingResult = null;
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -398,6 +400,7 @@ namespace Windrose.Quartermaster.Core
                         landFastTravelActive,
                         noFogActive,
                         persistentLootActive,
+                        keepStatusActive,
                         pickaxeMultiplier, pickaxeActive,
                         cooldownJobs,
                         shipMusicJobs,
@@ -415,6 +418,7 @@ namespace Windrose.Quartermaster.Core
                     landFastTravelResult = compositeResult.LandFastTravel;
                     noFogResult = compositeResult.NoFog;
                     persistentLootResult = compositeResult.PersistentLoot;
+                    keepStatusResult = compositeResult.KeepStatus;
                     pickaxeResult = compositeResult.PickaxeRange;
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
@@ -526,6 +530,7 @@ namespace Windrose.Quartermaster.Core
                     MinimapResult = minimapResult,
                     NoFogResult = noFogResult,
                     PersistentLootResult = persistentLootResult,
+                    KeepStatusResult = keepStatusResult,
                     LandFastTravelResult = landFastTravelResult,
                     BonfireResult = bonfireResult,
                     PickaxeRangeResult = pickaxeResult,
@@ -574,6 +579,7 @@ namespace Windrose.Quartermaster.Core
             bool landFastTravelActive,
             bool noFogActive,
             bool persistentLootActive,
+            bool keepStatusActive,
             double pickaxeMultiplier, bool pickaxeActive,
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
@@ -750,6 +756,29 @@ namespace Windrose.Quartermaster.Core
                     {
                         var patcher = new PersistentLootPatcher { Log = Log };
                         persistentLootPatch = patcher.Patch(stagingDir, usmapPath);
+                    },
+                });
+            }
+
+            KeepStatusPatchResult keepStatusPatch = null;
+            if (keepStatusActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Keep Status source: vanilla DA_Hero_ActorDeathParams -> swap broad "
+                        + "GAS.Effect.Status removal for curated sub-prefixes "
+                        + "(food/elixir/comfort kept on death, derived from vanilla)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "keep-status",
+                    InputDir = gamePaksDir,
+                    Filter = KeepStatusPatcher.AssetFilterStem,
+                    // Extract the vanilla death-params asset (version sanity gate) then
+                    // rewrite the RemoveEffectWithTagPrefix tag container in place before
+                    // the shared to-zen.
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new KeepStatusPatcher { Log = Log };
+                        keepStatusPatch = patcher.Patch(stagingDir, usmapPath);
                     },
                 });
             }
@@ -1801,6 +1830,19 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            KeepStatusResult keepStatusOut = null;
+            if (keepStatusActive)
+            {
+                keepStatusOut = new KeepStatusResult
+                {
+                    Enabled = true,
+                    AssetsReplaced = keepStatusPatch != null ? keepStatusPatch.AssetsReplaced : 0,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             PickaxeRangeResult pickaxeOut = null;
             if (pickaxeActive)
             {
@@ -1910,6 +1952,7 @@ namespace Windrose.Quartermaster.Core
                 LandFastTravel = landFastTravelOut,
                 NoFog = noFogOut,
                 PersistentLoot = persistentLootOut,
+                KeepStatus = keepStatusOut,
                 PickaxeRange = pickaxeOut,
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
@@ -1930,6 +1973,7 @@ namespace Windrose.Quartermaster.Core
             public LandFastTravelResult LandFastTravel;
             public NoFogResult NoFog;
             public PersistentLootResult PersistentLoot;
+            public KeepStatusResult KeepStatus;
             public PickaxeRangeResult PickaxeRange;
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;

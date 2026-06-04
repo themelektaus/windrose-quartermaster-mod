@@ -786,6 +786,9 @@ function applyProfileToUI() {
     const ploot = (p.globals && p.globals.persistentLoot) || null;
     document.getElementById('persistent-loot-enabled').checked =
         !!(ploot && ploot.enabled === true);
+    const kstatus = (p.globals && p.globals.keepStatus) || null;
+    document.getElementById('keep-status-enabled').checked =
+        !!(kstatus && kstatus.enabled === true);
     const lft = (p.globals && p.globals.landFastTravel) || null;
     document.getElementById('land-fast-travel-enabled').checked =
         !!(lft && lft.enabled === true);
@@ -1114,7 +1117,7 @@ function miscTabHasMods() {
     if (!g) return false;
     const presenceKeys = [
         'stackSize', 'pickupRadius', 'fastTravelBells', 'equipmentSlots',
-        'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'landFastTravel',
+        'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
     ];
@@ -1477,6 +1480,10 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE - death loot persists (posthumous container -> storage bag)' });
             }
+            if (data.keepStatus && data.keepStatus.enabled) {
+                lines.push({ kind: 'ok', msg:
+                    'DONE - status effects kept on death (food / elixir / comfort)' });
+            }
             if (data.landFastTravel && data.landFastTravel.enabled) {
                 lines.push({ kind: 'ok', msg:
                     'DONE - inland fast-travel placement enabled' });
@@ -1656,7 +1663,7 @@ async function onBuild() {
                 }
             }
             if (!data.pakPath && !data.pickupRadius && !data.buildingStability
-                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.landFastTravel && !data.bonfireRadius
+                && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.keepStatus && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed

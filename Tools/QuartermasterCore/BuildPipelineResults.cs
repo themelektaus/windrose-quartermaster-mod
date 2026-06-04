@@ -28,6 +28,7 @@ namespace Windrose.Quartermaster.Core
         public MinimapRangeResult MinimapResult;
         public NoFogResult NoFogResult;
         public PersistentLootResult PersistentLootResult;
+        public KeepStatusResult KeepStatusResult;
         public LandFastTravelResult LandFastTravelResult;
         public BonfireRadiusResult BonfireResult;
         public PickaxeRangeResult PickaxeRangeResult;
@@ -89,6 +90,15 @@ namespace Windrose.Quartermaster.Core
     }
 
     public sealed class PersistentLootResult
+    {
+        public bool Enabled;
+        public int AssetsReplaced;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class KeepStatusResult
     {
         public bool Enabled;
         public int AssetsReplaced;

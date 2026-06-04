@@ -137,13 +137,18 @@
         <div data-icon style="background-image: url(death-loot.png); "></div>
       </div>
       <div class="card-content">
-        <h2>Persistent loot</h2>
+        <h2>On death</h2>
         <div class="pickup-row">
           <label class="check-row">
             <input type="checkbox" id="persistent-loot-enabled">
             Keep death loot from despawning
           </label>
           <p class="hint">Spawns a persistent storage bag at the death spot instead of the timed posthumous container, so dropped items stay in the world.</p>
+          <label class="check-row">
+            <input type="checkbox" id="keep-status-enabled">
+            Keep status effects
+          </label>
+          <p class="hint">Keeps food, elixir and comfort buffs through death instead of wiping them. Transient debuffs (damage-over-time, stagger, wet, ...) are still cleared.</p>
         </div>
       </div>
     </section>

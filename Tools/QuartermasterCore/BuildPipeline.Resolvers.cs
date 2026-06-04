@@ -47,6 +47,13 @@ namespace Windrose.Quartermaster.Core
             return pl.Enabled.GetValueOrDefault(false);
         }
 
+        static bool ResolveKeepStatusEnabled(Profile profile)
+        {
+            var ks = profile.Globals != null ? profile.Globals.KeepStatus : null;
+            if (ks == null) return false;
+            return ks.Enabled.GetValueOrDefault(false);
+        }
+
         static bool ResolveLandFastTravelEnabled(Profile profile)
         {
             var lft = profile.Globals != null ? profile.Globals.LandFastTravel : null;

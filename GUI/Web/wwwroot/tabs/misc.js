@@ -352,6 +352,18 @@ function setPersistentLootFromUI() {
     markDirty();
 }
 
+function setKeepStatusFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('keep-status-enabled').checked;
+    state.current.globals = state.current.globals || {};
+    if (enabled) {
+        state.current.globals.keepStatus = { enabled: true };
+    } else {
+        delete state.current.globals.keepStatus;
+    }
+    markDirty();
+}
+
 function setLandFastTravelFromUI() {
     if (!state.current) return;
     const enabled = document.getElementById('land-fast-travel-enabled').checked;
@@ -720,6 +732,7 @@ function bindMiscHandlers() {
     document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
     document.getElementById('nofog-enabled').addEventListener('change', setNoFogFromUI);
     document.getElementById('persistent-loot-enabled').addEventListener('change', setPersistentLootFromUI);
+    document.getElementById('keep-status-enabled').addEventListener('change', setKeepStatusFromUI);
     document.getElementById('land-fast-travel-enabled').addEventListener('change', setLandFastTravelFromUI);
     document.getElementById('bonfire-enabled').addEventListener('change', setBonfireRadiusFromUI);
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);

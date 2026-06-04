@@ -194,6 +194,15 @@ public static class BuildEndpoint
                         enabled = result.PersistentLootResult.Enabled,
                     };
                 }
+                object keepStatusInfo = null;
+                if (result.KeepStatusResult != null)
+                {
+                    keepStatusInfo = new
+                    {
+                        enabled = result.KeepStatusResult.Enabled,
+                        assetsReplaced = result.KeepStatusResult.AssetsReplaced,
+                    };
+                }
                 object landFastTravelInfo = null;
                 if (result.LandFastTravelResult != null)
                 {
@@ -523,6 +532,7 @@ public static class BuildEndpoint
                     minimapRange = minimapRangeInfo,
                     noFog = noFogInfo,
                     persistentLoot = persistentLootInfo,
+                    keepStatus = keepStatusInfo,
                     landFastTravel = landFastTravelInfo,
                     bonfireRadius = bonfireRadiusInfo,
                     pickaxeRange = pickaxeRangeInfo,
