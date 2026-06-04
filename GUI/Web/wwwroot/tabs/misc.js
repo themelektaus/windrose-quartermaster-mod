@@ -268,6 +268,8 @@ async function loadUiScale() {
         if (!res || !res.supported) {
             uiScaleSetStatus('No Windrose Engine.ini found yet - launch the game once.');
             syncUiScaleReadout();
+            state.uiScaleModified = false;
+            updateMiscTabIndicator();
             return;
         }
         let v = parseFloat(res.scale);
@@ -280,9 +282,16 @@ async function loadUiScale() {
             ? 'Current: ' + Math.round(v * 100) + '%'
                 + (res.readOnly ? ' (Engine.ini locked read-only).' : '.')
             : 'Not set yet (vanilla 100%).');
+        // UI scale lives in Engine.ini (machine-wide, not profile globals), so
+        // flag it for the Misc tab indicator: modified = set to a non-vanilla
+        // (!= 100%) value.
+        state.uiScaleModified = !!res.isSet && Math.abs(v - 1.0) > 1e-6;
+        updateMiscTabIndicator();
     } catch (e) {
         uiScaleSetStatus('Could not read current UI scale: ' + e.message);
         syncUiScaleReadout();
+        state.uiScaleModified = false;
+        updateMiscTabIndicator();
     }
 }
 
@@ -293,7 +302,10 @@ async function uiScaleApply() {
     uiScaleSetStatus('Applying ' + Math.round(v * 100) + '%...');
     try {
         const res = await api('POST', '/api/uiscale', { scale: v });
-        const pct = Math.round((res.scale != null ? res.scale : v) * 100);
+        const applied = res.scale != null ? res.scale : v;
+        const pct = Math.round(applied * 100);
+        state.uiScaleModified = Math.abs(applied - 1.0) > 1e-6;
+        updateMiscTabIndicator();
         uiScaleSetStatus('UI scale set to ' + pct + '%'
             + (res.readOnlySet
                 ? ' and Engine.ini locked (read-only) so the game keeps it.'
@@ -539,6 +551,8 @@ async function onBonfireMusicFileChange(e) {
             originalFilename: dto.originalFilename,
             wavBytes: dto.wavBytes,
         });
+        // Auto-saved (no markDirty), so refresh the Misc tab indicator here.
+        updateMiscTabIndicator();
     } catch (err) {
         await alert('Bonfire-music upload failed: ' + (err && err.message ? err.message : err));
         // Reload meta to recover the displayed state.
@@ -661,6 +675,8 @@ async function clearBonfireMusic() {
         }
         if (state.current.globals) state.current.globals.bonfireMusic = null;
         renderBonfireMusicStatus(null);
+        // Auto-saved (no markDirty), so refresh the Misc tab indicator here.
+        updateMiscTabIndicator();
     } catch (err) {
         await alert('Could not clear bonfire music: ' + (err && err.message ? err.message : err));
     }

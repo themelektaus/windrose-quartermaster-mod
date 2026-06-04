@@ -15,6 +15,7 @@ const state = {
     current: null,
     isDirty: false,
     activeTab: 'misc',
+    uiScaleModified: false,
 
     mods: {
         loaded: false,
@@ -800,6 +801,7 @@ function applyProfileToUI() {
         syncBonfireMusicVolumeFromState();
     }
     renderProfileMeta();
+    updateMiscTabIndicator();
 }
 
 function renderProfileMeta() {
@@ -1055,10 +1057,48 @@ function syncPickerInputToType(selectEl) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tab modification indicators. A profile can touch many features spread across
+// the Basic (misc) tab; this flags the tab button so it is obvious at a glance
+// which tabs a profile modifies. Styling (.tab.has-mods) is left to misc.css.
+//
+// Misc detection is presence-based: every Misc feature deletes its globals key
+// when it returns to vanilla (see tabs/misc.js set*FromUI), so the mere presence
+// of a key means "this profile modifies it". bonfireMusic is the one exception -
+// its node can linger in a vanilla state (no filename, volume back at 1.0), so
+// it gets an explicit check. UI scale is also special: it is a machine-wide
+// Engine.ini setting (not part of the profile globals), so it is tracked via
+// state.uiScaleModified, set in tabs/misc.js loadUiScale/uiScaleApply.
+function miscTabHasMods() {
+    if (state.uiScaleModified) return true;
+    const g = (state.current && state.current.globals) || null;
+    if (!g) return false;
+    const presenceKeys = [
+        'stackSize', 'pickupRadius', 'fastTravelBells', 'equipmentSlots',
+        'shipSlots', 'buildingStability', 'noFog', 'landFastTravel',
+        'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
+    ];
+    for (const k of presenceKeys) {
+        if (g[k] != null) return true;
+    }
+    const bm = g.bonfireMusic;
+    if (bm && (bm.originalFilename
+            || (typeof bm.volume === 'number' && Math.abs(bm.volume - 1.0) > 1e-6))) {
+        return true;
+    }
+    return false;
+}
+
+function updateMiscTabIndicator() {
+    const btn = document.querySelector('.tab[data-tab="misc"]');
+    if (btn) btn.classList.toggle('has-mods', miscTabHasMods());
+}
+
 function markDirty() {
     state.isDirty = true;
     updateButtons();
     renderProfileMeta();
+    updateMiscTabIndicator();
 }
 
 function updateButtons() {

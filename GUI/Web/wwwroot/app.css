@@ -138,6 +138,15 @@ footer {
   width: 100%;
   text-align: left;
   padding: .5em .75em;
+  position: relative;
+  
+  &.has-mods::after {
+    content: '💥';
+    right: .5em;
+    top: .25em;
+    position: absolute;
+    font-size: var(--font-size-big);
+  }
 }
 
 .sidebar .tabs .tab.active {
