@@ -39,6 +39,7 @@ namespace Windrose.Quartermaster.Core
         public ShipSpeedResult ShipSpeedResult;
         public CropGrowthPatchResult CropGrowthResult;
         public CookingDurationPatchResult CookingDurationResult;
+        public NpcSpawnPatchResult NpcSpawnResult;
         public List<BuildingPatchResult> BuildingResults;
         public string TmpDir;
         public bool Success;

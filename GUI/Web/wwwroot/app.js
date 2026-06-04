@@ -7,6 +7,8 @@ const state = {
     lootById: new Map(),
     lootCategories: [],
     lootTypes: [],
+    npcSpawners: [],
+    npcCategories: [],
     itemPathsByItemId: new Map(),
     tablePathsByLtId:  new Map(),
     expandedLts: new Set(),
@@ -104,12 +106,15 @@ function cloneTemplate(id) {
 }
 
 async function loadAppData() {
-    const [profiles, items, lootTables] = await Promise.all([
+    const [profiles, items, lootTables, npcSpawners] = await Promise.all([
         api('GET', '/api/profiles'),
         api('GET', '/api/items'),
         api('GET', '/api/loot-tables'),
+        api('GET', '/api/npc-spawners'),
     ]);
     state.profiles = profiles;
+    state.npcSpawners = npcSpawners || [];
+    indexNpcCategories();
     state.items = items
         .filter(i => typeof i.maxCountInSlot === 'number')
         .map(i => Object.assign({}, i, { vanillaStack: i.maxCountInSlot }));
@@ -125,6 +130,7 @@ async function loadAppData() {
     populateValueFilter('filter-class',  'itemClass', 'All classes');
     populateValueFilter('filter-rarity', 'rarity',    'All rarities');
     populateLootCategoryFilter();
+    populateNpcCategoryFilter();
 
     if (state.profiles.length > 0) {
         await loadProfile(state.profiles[0].id);
@@ -162,6 +168,16 @@ function indexLootCrossReferences() {
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => a.name.localeCompare(b.name));
     state.lootTypes = Array.from(types).sort();
+}
+
+function indexNpcCategories() {
+    const counts = new Map();
+    for (const s of state.npcSpawners) {
+        if (s.category) counts.set(s.category, (counts.get(s.category) || 0) + 1);
+    }
+    state.npcCategories = Array.from(counts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Hard-break migration for the Etappe G mesh-driven schema.
@@ -283,7 +299,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -615,6 +631,9 @@ function setActiveTab(tab) {
         renderLootTables();
         renderLootStatus();
     }
+    if (tab === 'npcspawns') {
+        renderNpcTab();
+    }
     if (tab === 'mods') {
         if (!state.mods.loaded) {
             loadMods();
@@ -668,6 +687,7 @@ async function loadProfile(id) {
     state.current.globals       = state.current.globals || {};
     state.current.overrides     = state.current.overrides || {};
     state.current.lootOverrides = state.current.lootOverrides || {};
+    state.current.npcSpawnOverrides = state.current.npcSpawnOverrides || {};
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
     state.current.sellerRecipes = state.current.sellerRecipes || {};
@@ -690,6 +710,9 @@ async function loadProfile(id) {
         renderLootGlobals();
         renderLootTables();
         renderLootStatus();
+    }
+    if (state.activeTab === 'npcspawns') {
+        renderNpcTab();
     }
     if (state.activeTab === 'buyers' && state.buyers.loaded) {
         renderBuyers();
@@ -1222,6 +1245,7 @@ const TAB_MOD_CHECKS = {
     creator: creatorTabHasMods,
     buildings: buildingsTabHasMods,
     loot: lootTabHasMods,
+    npcspawns: npcSpawnTabHasMods,
     buyers: buyersTabHasMods,
     sellers: sellersTabHasMods,
     cooldowns: cooldownsTabHasMods,
@@ -1277,6 +1301,7 @@ async function onSave() {
         createdAt: p.createdAt,
         globals: p.globals, overrides: p.overrides,
         lootOverrides: p.lootOverrides,
+        npcSpawnOverrides: p.npcSpawnOverrides,
         buyerRecipes: p.buyerRecipes,
         buyerLists: p.buyerLists,
         sellerRecipes: p.sellerRecipes,
@@ -1289,6 +1314,7 @@ async function onSave() {
     state.current.globals       = state.current.globals       || {};
     state.current.overrides     = state.current.overrides     || {};
     state.current.lootOverrides = state.current.lootOverrides || {};
+    state.current.npcSpawnOverrides = state.current.npcSpawnOverrides || {};
     state.current.buyerRecipes  = state.current.buyerRecipes  || {};
     state.current.buyerLists    = state.current.buyerLists    || {};
     state.current.sellerRecipes = state.current.sellerRecipes || {};
@@ -1590,6 +1616,16 @@ async function onBuild() {
                         + ' merged with buyer/seller trade edits' });
                 }
             }
+            if (data.npcSpawn) {
+                const ns = data.npcSpawn;
+                lines.push({ kind: 'ok', msg:
+                    'DONE - NPC spawners patched: ' + ns.written + ' file'
+                    + (ns.written === 1 ? '' : 's')
+                    + ' (' + ns.respawnChanged + ' respawn, ' + ns.amountBlocks
+                    + ' count block' + (ns.amountBlocks === 1 ? '' : 's')
+                    + (ns.overrides > 0 ? ', ' + ns.overrides + ' per-spawner override' + (ns.overrides === 1 ? '' : 's') : '')
+                    + ')' });
+            }
             if (data.customBuildings && data.customBuildings.count > 0) {
                 const cb = data.customBuildings;
                 lines.push({ kind: 'ok', msg:
@@ -1614,7 +1650,7 @@ async function onBuild() {
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed
-                && !data.cropGrowth && !data.cookingDuration
+                && !data.cropGrowth && !data.cookingDuration && !data.npcSpawn
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }
@@ -2008,6 +2044,7 @@ function bindHandlers() {
     bindMiscHandlers();
     bindItemsHandlers();
     bindLootHandlers();
+    bindNpcSpawnHandlers();
     bindModsHandlers();
     bindBuyersHandlers();
     bindSellersHandlers();

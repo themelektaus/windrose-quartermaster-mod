@@ -113,6 +113,15 @@ namespace Windrose.Quartermaster.Core
                 DiskPath = p => p.VanillaCrops,
                 ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
             },
+            new VanillaSourceManifestEntry
+            {
+                Key = "aiSpawners",
+                Label = "AI spawner configs",
+                Description = "R5/Content/Gameplay/Actor/SpawnPoints/A2_Spawners - R5GameplaySpawnerParams / VariantPreset .json with RespawnInterval + Amount. Needed by the NPC Spawns tab.",
+                PakIncludePath = WindroseGameSecrets.AiSpawnersPath,
+                DiskPath = p => p.VanillaAiSpawners,
+                ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
+            },
         };
 
         public static bool Probe(VanillaSourceManifestEntry entry, WindrosePaths paths)

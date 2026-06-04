@@ -1,0 +1,89 @@
+<div class="tab-page" data-tab="npcspawns" hidden>
+  <aside class="pane left">
+    <section class="card">
+      <h2>Global NPC tuning</h2>
+      <p class="hint">Multipliers derived from each spawner's vanilla values. Applies to NPC / enemy spawners only - resource, chest and mineral-node spawners are left alone.</p>
+
+      <label class="check-row">
+        <input type="checkbox" id="npc-enabled">
+        Enable global NPC tuning
+      </label>
+
+      <div id="npc-global-body" class="npc-global-body">
+        <div class="npc-slider-row">
+          <label>Respawn time</label>
+          <input type="range" id="npc-respawn-mult" min="0.1" max="2.0" step="0.05" value="1.0">
+          <span class="mult-pill" id="npc-respawn-mult-value">1.0x</span>
+          <span class="mult-readout" id="npc-respawn-readout">120 min</span>
+        </div>
+        <p class="hint indent">Multiplier on each spawner's vanilla respawn interval. Readout shows a standard 120 min spawner.</p>
+
+        <div class="npc-slider-row">
+          <label>NPC count</label>
+          <input type="range" id="npc-count-mult" min="1.0" max="3.0" step="0.1" value="1.0">
+          <span class="mult-pill" id="npc-count-mult-value">1.0x</span>
+        </div>
+        <p class="hint indent">Multiplier on every spawn Min and Max (rounded).</p>
+
+        <label class="check-row">
+          <input type="checkbox" id="npc-include-special">
+          Also speed up rare / boss timers (vanilla &gt; 120 min)
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <dl id="npc-status-summary">
+        <dt>NPC spawners</dt><dd id="npc-stat-npc">-</dd>
+        <dt>Other (resources / chests)</dt><dd id="npc-stat-other">-</dd>
+        <dt>Per-spawner overrides</dt><dd id="npc-stat-overrides">-</dd>
+        <dt>Will be modified</dt><dd id="npc-stat-modified">-</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <section class="pane right">
+    <div class="item-controls">
+      <input type="search" id="npc-filter" placeholder="Search" title="Filter by spawner id, name, mob, category">
+      <select id="npc-filter-category"><option value="">All categories</option></select>
+      <select id="npc-filter-kind">
+        <option value="npc">NPCs only</option>
+        <option value="other">Other only</option>
+        <option value="all">NPCs + other</option>
+      </select>
+      <select id="npc-filter-changed">
+        <option value="all">Show all</option>
+        <option value="overridden">Only overridden</option>
+      </select>
+      <span id="npc-count" class="item-count"></span>
+    </div>
+    <ul id="npc-list" class="npc-list"></ul>
+  </section>
+
+  <!-- Cloned + filled in npcspawns.js. -->
+  <template id="tpl-npc-row">
+    <li class="npc-row">
+      <div class="npc-info">
+        <span class="npc-name"></span>
+        <span class="npc-badges"></span>
+        <small class="npc-mobs"></small>
+      </div>
+      <div class="npc-fields">
+        <div class="value">
+          <label>Respawn (min)</label>
+          <input type="number" class="num" min="0" step="1" data-npc-field="respawn">
+        </div>
+        <div class="value">
+          <label>Count min</label>
+          <input type="number" class="num" min="0" step="1" data-npc-field="countMin">
+        </div>
+        <div class="value">
+          <label>Count max</label>
+          <input type="number" class="num" min="0" step="1" data-npc-field="countMax">
+        </div>
+        <button type="button" class="reset" data-npc-reset title="Reset this spawner to vanilla / global">x</button>
+      </div>
+    </li>
+  </template>
+</div>

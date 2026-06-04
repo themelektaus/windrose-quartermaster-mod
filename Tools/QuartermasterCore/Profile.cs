@@ -13,6 +13,7 @@ namespace Windrose.Quartermaster.Core
         public ProfileGlobals Globals;
         public Dictionary<string, ItemOverride> Overrides;
         public Dictionary<string, LootTableOverride> LootOverrides;
+        public Dictionary<string, NpcSpawnOverride> NpcSpawnOverrides;
         public Dictionary<string, BuyerRecipeOverride> BuyerRecipes;
         public Dictionary<string, BuyerListOverride> BuyerLists;
         public Dictionary<string, SellerRecipeOverride> SellerRecipes;
@@ -44,6 +45,7 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicAddGlobal ShipMusicAdd;
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
+        public NpcSpawnGlobal NpcSpawn;
     }
 
     public sealed class StackSizeGlobal
@@ -57,6 +59,30 @@ namespace Windrose.Quartermaster.Core
     public sealed class LootGlobal
     {
         public Dictionary<string, double> ByCategory;
+    }
+
+    // Global NPC-spawn tuning. Respawn is a MULTIPLIER on each spawner's vanilla
+    // RespawnInterval (so relative rarity is preserved); by default it only
+    // touches "standard" spawners (vanilla interval <= 120 min) so boss / rare
+    // long-timer spawners keep their cadence unless IncludeSpecialTimers is set.
+    // Count is a MULTIPLIER on every Amount Min/Max. 1.0 = unchanged.
+    public sealed class NpcSpawnGlobal
+    {
+        public bool? Enabled;
+        public double? RespawnMultiplier;
+        public double? CountMultiplier;
+        public bool? IncludeSpecialTimers;
+    }
+
+    // Per-spawner override (keyed by spawner id = pak-relative path under
+    // A2_Spawners without the .json). Absolute values; any set field wins over
+    // the global. RespawnMinutes applies only to files that have a
+    // RespawnInterval. CountMin/CountMax apply to every Amount block in the file.
+    public sealed class NpcSpawnOverride
+    {
+        public int? RespawnMinutes;
+        public int? CountMin;
+        public int? CountMax;
     }
 
     public sealed class PickupRadiusGlobal

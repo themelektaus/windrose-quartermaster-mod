@@ -33,6 +33,12 @@ namespace Windrose.Quartermaster.Core
         public const string FarmingCropsPath =
             "R5/Plugins/R5BusinessRules/Content/Farming/Crops";
 
+        // R5JsonRuntimeDA spawner configs (R5GameplaySpawnerParams +
+        // R5GameplaySpawnerVariantPreset) read at runtime as raw .json. Shipped
+        // in the legacy pakchunk0 .pak (not the .ucas), so repak extracts them.
+        public const string AiSpawnersPath =
+            "R5/Content/Gameplay/Actor/SpawnPoints/A2_Spawners";
+
         public const string PlayerInventoryPath =
             "R5/Plugins/R5BusinessRules/Content/Inventory";
 

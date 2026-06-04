@@ -131,6 +131,7 @@ public static class Program
         VanillaMaterialsEndpoint.Map(app, resolvedRoot);
         VanillaResourcesEndpoint.Map(app, resolvedRoot);
         LootTablesEndpoint.Map(app, resolvedRoot);
+        NpcSpawnersEndpoint.Map(app, resolvedRoot);
         BuyersEndpoint.Map(app, resolvedRoot);
         SellersEndpoint.Map(app, resolvedRoot);
         ProfilesEndpoint.Map(app, resolvedRoot);

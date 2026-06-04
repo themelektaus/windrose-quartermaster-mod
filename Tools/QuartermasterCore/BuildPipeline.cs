@@ -21,6 +21,7 @@ namespace Windrose.Quartermaster.Core
         readonly ItemCreatorPatcher _itemCreatorPatcher;
         readonly CropGrowthPatcher _cropGrowthPatcher;
         readonly CookingDurationPatcher _cookingDurationPatcher;
+        readonly NpcSpawnPatcher _npcSpawnPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
@@ -56,6 +57,7 @@ namespace Windrose.Quartermaster.Core
             _itemCreatorPatcher = new ItemCreatorPatcher();
             _cropGrowthPatcher = new CropGrowthPatcher();
             _cookingDurationPatcher = new CookingDurationPatcher();
+            _npcSpawnPatcher = new NpcSpawnPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
@@ -265,6 +267,22 @@ namespace Windrose.Quartermaster.Core
                             + cookingDurationResult.Skipped + " skipped)");
                 }
 
+                NpcSpawnPatchResult npcSpawnResult = null;
+                if (HasNpcSpawnConfiguration(profile))
+                {
+                    var tmpSpawnDir = Path.Combine(tmpDir, "R5", "Content",
+                        "Gameplay", "Actor", "SpawnPoints", "A2_Spawners");
+                    LogLine("Patching NPC spawners -> " + tmpSpawnDir);
+                    npcSpawnResult = _npcSpawnPatcher.PatchToDirectory(
+                        _paths.VanillaAiSpawners, tmpSpawnDir, profile);
+                    LogLine("Patched NPC spawners: " + npcSpawnResult.Written
+                            + " written (" + npcSpawnResult.RespawnChanged + " respawn, "
+                            + npcSpawnResult.CountChanged + " amount blocks, "
+                            + npcSpawnResult.OverriddenFiles + " per-spawner override(s); "
+                            + npcSpawnResult.Scanned + " scanned)");
+                    foreach (var w in npcSpawnResult.Warnings) LogLine("  warn: " + w);
+                }
+
                 // Resolve bake jobs before the item-creator patcher: it needs to
                 // know whether each item's ItemTexture points at a baked icon.
                 var iconBakeJobs = ResolveIconBakeJobs(profile);
@@ -306,6 +324,7 @@ namespace Windrose.Quartermaster.Core
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
                     + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
+                    + (npcSpawnResult != null ? npcSpawnResult.Written : 0)
                     + CountBuildableBuildings(profile);
                 double pickupMultiplier = ResolvePickupMultiplier(profile);
                 bool pickupActive = pickupMultiplier > 0.0 && Math.Abs(pickupMultiplier - 1.0) > 1e-9;
@@ -518,6 +537,7 @@ namespace Windrose.Quartermaster.Core
                     ShipSpeedResult = shipSpeedResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
+                    NpcSpawnResult = npcSpawnResult,
                     BuildingResults = buildingResults,
                     TmpDir = tmpDir,
                     Success = true,

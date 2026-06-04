@@ -617,6 +617,25 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        static bool HasNpcSpawnConfiguration(Profile profile)
+        {
+            if (profile.NpcSpawnOverrides != null)
+            {
+                foreach (var kv in profile.NpcSpawnOverrides)
+                {
+                    var o = kv.Value;
+                    if (o != null && (o.RespawnMinutes.HasValue || o.CountMin.HasValue || o.CountMax.HasValue))
+                        return true;
+                }
+            }
+            var g = profile.Globals != null ? profile.Globals.NpcSpawn : null;
+            if (g == null || !g.Enabled.GetValueOrDefault(false)) return false;
+            double r = g.RespawnMultiplier ?? 1.0;
+            double c = g.CountMultiplier ?? 1.0;
+            return (r > 0.0 && Math.Abs(r - 1.0) > 1e-9)
+                || (c > 0.0 && Math.Abs(c - 1.0) > 1e-9);
+        }
+
         static bool HasCustomItemsConfiguration(Profile profile)
         {
             var customs = profile.CustomItems;

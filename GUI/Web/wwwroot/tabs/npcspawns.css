@@ -1,0 +1,58 @@
+/* NPC Spawns tab */
+
+.npc-global-body { margin-top: 0.5rem; }
+.npc-global-body.disabled { opacity: 0.45; pointer-events: none; }
+
+.npc-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem 0 0.1rem;
+}
+.npc-slider-row > label {
+  flex: 0 0 6.5em;
+  font-size: 0.85rem;
+}
+.npc-slider-row input[type="range"] { flex: 1 1 auto; max-width: 11em; }
+.npc-global-body .indent { margin-left: 7.1em; margin-top: 0; }
+
+.npc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.npc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 6px;
+  background: var(--card, #1b1f27);
+}
+
+.npc-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.npc-name { font-weight: 600; }
+.npc-mobs { color: var(--muted, #8b93a3); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.npc-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.npc-badge {
+  font-size: 0.68rem;
+  padding: 0 0.4em;
+  line-height: 1.5;
+  border-radius: 4px;
+  background: #2a2f3a;
+  color: #aab2c2;
+}
+.npc-badge.other { background: #4a3a1e; color: #e0bd7a; }
+.npc-badge.ovr   { background: #1e3a4a; color: #7ac3e0; }
+
+.npc-fields { display: flex; align-items: flex-end; gap: 0.5rem; flex: 0 0 auto; }
+.npc-fields .value { display: flex; flex-direction: column; gap: 1px; }
+.npc-fields .value label { font-size: 0.65rem; color: var(--muted, #8b93a3); }
+.npc-fields .num { width: 5em; }
+.npc-fields .reset { align-self: center; }

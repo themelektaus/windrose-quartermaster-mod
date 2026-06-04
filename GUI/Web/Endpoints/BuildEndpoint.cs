@@ -438,6 +438,19 @@ public static class BuildEndpoint
                         families = familyArr,
                     };
                 }
+                object npcSpawnInfo = null;
+                if (result.NpcSpawnResult != null && result.NpcSpawnResult.Written > 0)
+                {
+                    var ns = result.NpcSpawnResult;
+                    npcSpawnInfo = new
+                    {
+                        written = ns.Written,
+                        respawnChanged = ns.RespawnChanged,
+                        amountBlocks = ns.CountChanged,
+                        overrides = ns.OverriddenFiles,
+                        scanned = ns.Scanned,
+                    };
+                }
                 object customBuildingsInfo = null;
                 if (result.BuildingResults != null && result.BuildingResults.Count > 0)
                 {
@@ -521,6 +534,7 @@ public static class BuildEndpoint
                     shipSpeed = shipSpeedInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,
+                    npcSpawn = npcSpawnInfo,
                     customBuildings = customBuildingsInfo,
                     log,
                 });
