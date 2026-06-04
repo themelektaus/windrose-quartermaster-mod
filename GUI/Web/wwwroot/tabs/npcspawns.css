@@ -1,6 +1,6 @@
 /* NPC Spawns tab */
 
-.npc-global-body { margin-top: 0.5rem; }
+.npc-global-body { margin-top: 0.5rem; width: 20em; }
 .npc-global-body.disabled { opacity: 0.45; pointer-events: none; }
 
 .npc-slider-row {
@@ -13,7 +13,7 @@
   flex: 0 0 6.5em;
   font-size: 0.85rem;
 }
-.npc-slider-row input[type="range"] { flex: 1 1 auto; max-width: 11em; }
+.npc-slider-row input[type="range"] { flex: 1 1 auto; max-width: 6em; }
 .npc-global-body .indent { margin-left: 7.1em; margin-top: 0; }
 
 .npc-list {

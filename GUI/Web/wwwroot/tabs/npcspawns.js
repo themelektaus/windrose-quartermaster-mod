@@ -57,30 +57,59 @@ function npcEffCount(s, vanillaVal) {
 }
 
 // ---- global card ----
+// The NPC global is driven from two places: the NPC Spawns tab's own card and a
+// mirror card on the Misc tab (m-* ids). Both share the same state, so every
+// render / setter iterates over these id-sets and the cards stay in sync.
+const NPC_GLOBAL_CARDS = [
+    {
+        enabled: 'npc-enabled', body: 'npc-global-body',
+        respawn: 'npc-respawn-mult', respawnVal: 'npc-respawn-mult-value', respawnRead: 'npc-respawn-readout',
+        count: 'npc-count-mult', countVal: 'npc-count-mult-value',
+        special: 'npc-include-special',
+    },
+    {
+        enabled: 'm-npc-enabled', body: 'm-npc-global-body',
+        respawn: 'm-npc-respawn-mult', respawnVal: 'm-npc-respawn-mult-value', respawnRead: 'm-npc-respawn-readout',
+        count: 'm-npc-count-mult', countVal: 'm-npc-count-mult-value',
+        special: 'm-npc-include-special',
+    },
+];
+
+// First existing slider value for a given multiplier (cards mirror each other,
+// so any present slider holds the same value). Falls back to 1.0.
+function npcFirstSliderValue(which) {
+    for (const c of NPC_GLOBAL_CARDS) {
+        const el = document.getElementById(which === 'respawn' ? c.respawn : c.count);
+        if (el) { const v = parseFloat(el.value); if (isFinite(v) && v > 0) return v; }
+    }
+    return 1.0;
+}
+
 function renderNpcGlobals() {
     const enabled = npcGlobalActive();
-    const en = document.getElementById('npc-enabled');
-    if (en) en.checked = enabled;
-
-    const body = document.getElementById('npc-global-body');
-    if (body) body.classList.toggle('disabled', !enabled);
-
     const rm = npcRespawnMult();
     const cm = npcCountMult();
-    const rmSlider = document.getElementById('npc-respawn-mult');
-    const cmSlider = document.getElementById('npc-count-mult');
-    if (rmSlider) rmSlider.value = rm;
-    if (cmSlider) cmSlider.value = cm;
-    const rmVal = document.getElementById('npc-respawn-mult-value');
-    const cmVal = document.getElementById('npc-count-mult-value');
-    if (rmVal) rmVal.textContent = fmtMult(rm);
-    if (cmVal) cmVal.textContent = fmtMult(cm);
-    const rmRead = document.getElementById('npc-respawn-readout');
-    if (rmRead) rmRead.textContent = Math.round(NPC_STANDARD_MAX_MIN * rm) + ' min';
-
     const ns = npcGlobal();
-    const sp = document.getElementById('npc-include-special');
-    if (sp) sp.checked = !!(ns && ns.includeSpecialTimers);
+    const special = !!(ns && ns.includeSpecialTimers);
+
+    for (const c of NPC_GLOBAL_CARDS) {
+        const en = document.getElementById(c.enabled);
+        if (en) en.checked = enabled;
+        const body = document.getElementById(c.body);
+        if (body) body.classList.toggle('disabled', !enabled);
+        const rmSlider = document.getElementById(c.respawn);
+        if (rmSlider) rmSlider.value = rm;
+        const cmSlider = document.getElementById(c.count);
+        if (cmSlider) cmSlider.value = cm;
+        const rmVal = document.getElementById(c.respawnVal);
+        if (rmVal) rmVal.textContent = fmtMult(rm);
+        const cmVal = document.getElementById(c.countVal);
+        if (cmVal) cmVal.textContent = fmtMult(cm);
+        const rmRead = document.getElementById(c.respawnRead);
+        if (rmRead) rmRead.textContent = Math.round(NPC_STANDARD_MAX_MIN * rm) + ' min';
+        const sp = document.getElementById(c.special);
+        if (sp) sp.checked = special;
+    }
 }
 
 function renderNpcStatus() {
@@ -245,15 +274,18 @@ function resetNpcOverride(id) {
 }
 
 // ---- global setters ----
-function setNpcEnabledFromUI() {
+// Setters are source-agnostic: the toggled value comes from the event target
+// (whichever card fired), state is the single source of truth, and
+// renderNpcGlobals() repaints every mirror card.
+function setNpcEnabledFromUI(e) {
     if (!state.current) return;
-    const on = document.getElementById('npc-enabled').checked;
+    const on = e && e.target ? e.target.checked : npcGlobalActive();
     state.current.globals = state.current.globals || {};
     if (on) {
         const ns = state.current.globals.npcSpawn || {};
         ns.enabled = true;
-        if (typeof ns.respawnMultiplier !== 'number') ns.respawnMultiplier = parseFloat(document.getElementById('npc-respawn-mult').value) || 1.0;
-        if (typeof ns.countMultiplier !== 'number') ns.countMultiplier = parseFloat(document.getElementById('npc-count-mult').value) || 1.0;
+        if (typeof ns.respawnMultiplier !== 'number') ns.respawnMultiplier = npcFirstSliderValue('respawn');
+        if (typeof ns.countMultiplier !== 'number') ns.countMultiplier = npcFirstSliderValue('count');
         state.current.globals.npcSpawn = ns;
     } else if (state.current.globals.npcSpawn) {
         delete state.current.globals.npcSpawn;
@@ -275,22 +307,20 @@ function setNpcMultFromUI(which, rawValue) {
         else ns.countMultiplier = n;
     }
     state.current.globals.npcSpawn = ns;
-    document.getElementById('npc-enabled').checked = true;
     markDirty();
     renderNpcGlobals();
     renderNpcSpawners();
     renderNpcStatus();
 }
 
-function setNpcIncludeSpecialFromUI() {
+function setNpcIncludeSpecialFromUI(e) {
     if (!state.current) return;
     state.current.globals = state.current.globals || {};
     const ns = state.current.globals.npcSpawn || { enabled: true };
     ns.enabled = true;
-    ns.includeSpecialTimers = document.getElementById('npc-include-special').checked;
+    ns.includeSpecialTimers = e && e.target ? e.target.checked : !!ns.includeSpecialTimers;
     if (!ns.includeSpecialTimers) delete ns.includeSpecialTimers;
     state.current.globals.npcSpawn = ns;
-    document.getElementById('npc-enabled').checked = true;
     markDirty();
     renderNpcGlobals();
     renderNpcSpawners();
@@ -317,14 +347,27 @@ function renderNpcTab() {
 }
 
 function bindNpcSpawnHandlers() {
-    const en = document.getElementById('npc-enabled');
-    if (!en) return; // tab html not present
-    en.addEventListener('change', setNpcEnabledFromUI);
-    document.getElementById('npc-respawn-mult').addEventListener('input', e => setNpcMultFromUI('respawn', e.target.value));
-    document.getElementById('npc-count-mult').addEventListener('input', e => setNpcMultFromUI('count', e.target.value));
-    document.getElementById('npc-include-special').addEventListener('change', setNpcIncludeSpecialFromUI);
+    // Global card(s): the NPC Spawns tab card and the Misc-tab mirror. Bind
+    // whichever are present so both drive the same shared global.
+    let bound = false;
+    for (const c of NPC_GLOBAL_CARDS) {
+        const en = document.getElementById(c.enabled);
+        if (!en) continue;
+        bound = true;
+        en.addEventListener('change', setNpcEnabledFromUI);
+        const rs = document.getElementById(c.respawn);
+        if (rs) rs.addEventListener('input', e => setNpcMultFromUI('respawn', e.target.value));
+        const cs = document.getElementById(c.count);
+        if (cs) cs.addEventListener('input', e => setNpcMultFromUI('count', e.target.value));
+        const sp = document.getElementById(c.special);
+        if (sp) sp.addEventListener('change', setNpcIncludeSpecialFromUI);
+    }
+    if (!bound) return; // tab html not present
 
-    document.getElementById('npc-filter').addEventListener('input', renderNpcSpawners);
+    // Per-spawner list lives only on the NPC Spawns tab.
+    const filter = document.getElementById('npc-filter');
+    if (!filter) return;
+    filter.addEventListener('input', renderNpcSpawners);
     document.getElementById('npc-filter-category').addEventListener('change', renderNpcSpawners);
     document.getElementById('npc-filter-kind').addEventListener('change', renderNpcSpawners);
     document.getElementById('npc-filter-changed').addEventListener('change', renderNpcSpawners);
@@ -344,10 +387,17 @@ function bindNpcSpawnHandlers() {
     });
 }
 
-// NPC tab has mods if global is active with a non-1 multiplier, or any override exists.
+// Global is "modded" when active with a non-1 multiplier. Shared by the NPC
+// Spawns tab indicator and the Misc-tab indicator (the mirror card surfaces the
+// same global, so both tabs light up - mirrors the stack-size precedent).
+function npcSpawnGlobalHasMods() {
+    if (!npcGlobalActive()) return false;
+    return Math.abs(npcRespawnMult() - 1.0) > 1e-9 || Math.abs(npcCountMult() - 1.0) > 1e-9;
+}
+
+// NPC tab has mods if the global is modded, or any per-spawner override exists.
 function npcSpawnTabHasMods() {
     const o = state.current && state.current.npcSpawnOverrides;
     if (o && Object.keys(o).length > 0) return true;
-    if (!npcGlobalActive()) return false;
-    return Math.abs(npcRespawnMult() - 1.0) > 1e-9 || Math.abs(npcCountMult() - 1.0) > 1e-9;
+    return npcSpawnGlobalHasMods();
 }

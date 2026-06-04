@@ -816,6 +816,11 @@ function applyProfileToUI() {
     syncMinimapInputState();
     syncBonfireInputState();
     syncPickaxeInputState();
+    // NPC global lives on its own tab but is mirrored as a Misc-tab card;
+    // repaint both from state on profile load / switch.
+    if (typeof renderNpcGlobals === 'function') {
+        renderNpcGlobals();
+    }
     // Bonfire-music card: fire-and-forget refresh against the server
     // (the on-disk WAV is the source of truth, not state.current).
     if (typeof refreshBonfireMusicStatus === 'function') {
@@ -1119,6 +1124,11 @@ function miscTabHasMods() {
     const bm = g.bonfireMusic;
     if (bm && (bm.originalFilename
             || (typeof bm.volume === 'number' && Math.abs(bm.volume - 1.0) > 1e-6))) {
+        return true;
+    }
+    // The NPC global is surfaced as a mirror card on this tab, so light up
+    // alongside the NPC Spawns tab when its multipliers are non-vanilla.
+    if (typeof npcSpawnGlobalHasMods === 'function' && npcSpawnGlobalHasMods()) {
         return true;
     }
     return false;
