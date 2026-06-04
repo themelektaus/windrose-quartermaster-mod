@@ -350,6 +350,22 @@ function pruneSellerListOverride(sellerId) {
     if (!state.current || !state.current.sellerLists) return;
     const lo = state.current.sellerLists[sellerId];
     if (!lo) return;
+    // A recipeOrder that matches the natural (vanilla minus removed, plus added)
+    // order is a no-op -> drop it so reordering back to vanilla clears the override.
+    if (Array.isArray(lo.recipeOrder)) {
+        const seller = state.sellers.list.find(s => s.id === sellerId);
+        if (seller) {
+            const removedSet = new Set(lo.removedRecipeIds || []);
+            const defaultOrder = (seller.entries || [])
+                .filter(e => e.resolved && !removedSet.has(e.recipeId))
+                .map(e => e.recipeId)
+                .concat(lo.addedRecipeIds || []);
+            if (lo.recipeOrder.length === defaultOrder.length
+                && lo.recipeOrder.every((id, i) => id === defaultOrder[i])) {
+                delete lo.recipeOrder;
+            }
+        }
+    }
     const emptyAdd   = !lo.addedRecipeIds   || lo.addedRecipeIds.length   === 0;
     const emptyRem   = !lo.removedRecipeIds || lo.removedRecipeIds.length === 0;
     const hasOrder   = Array.isArray(lo.recipeOrder);
@@ -386,6 +402,7 @@ function moveSellerEntry(sellerId, recipeId, delta) {
     if (newIdx < 0 || newIdx >= arr.length) return;
     arr.splice(idx, 1);
     arr.splice(newIdx, 0, recipeId);
+    pruneSellerListOverride(sellerId);
     markDirty();
     refreshSellerCard(sellerId);
 }

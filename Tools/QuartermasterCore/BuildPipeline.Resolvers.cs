@@ -793,6 +793,7 @@ namespace Windrose.Quartermaster.Core
                     if (v == null) continue;
                     if (v.AddedRecipeIds != null && v.AddedRecipeIds.Count > 0) return true;
                     if (v.RemovedRecipeIds != null && v.RemovedRecipeIds.Count > 0) return true;
+                    if (v.RecipeOrder != null && v.RecipeOrder.Count > 0) return true;
                 }
             }
             return false;
@@ -809,6 +810,7 @@ namespace Windrose.Quartermaster.Core
                     if (v == null) continue;
                     if (v.AddedRecipeIds != null && v.AddedRecipeIds.Count > 0) return true;
                     if (v.RemovedRecipeIds != null && v.RemovedRecipeIds.Count > 0) return true;
+                    if (v.RecipeOrder != null && v.RecipeOrder.Count > 0) return true;
                 }
             }
             return false;
