@@ -35,6 +35,7 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicAddResult ShipMusicAddResult;
         public BonfireMusicResult BonfireMusicResult;
         public LightingResult LightingResult;
+        public ShipSpeedResult ShipSpeedResult;
         public CropGrowthPatchResult CropGrowthResult;
         public CookingDurationPatchResult CookingDurationResult;
         public List<BuildingPatchResult> BuildingResults;
@@ -125,6 +126,22 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double OverallMultiplier;
         public List<LightingPatchResult> AssetResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class ShipSpeedJob
+    {
+        public ShipSpeedPatcher.CurveInfo Info;
+        public double Multiplier;
+    }
+
+    public sealed class ShipSpeedResult
+    {
+        public bool Enabled;
+        public double OverallMultiplier;
+        public List<ShipSpeedPatchResult> AssetResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

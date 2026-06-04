@@ -283,7 +283,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -781,6 +781,7 @@ function applyProfileToUI() {
     applyStationsToUI();
     applyShipMusicToUI();
     applyLightingToUI();
+    applyShipSpeedToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -1077,6 +1078,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'fastTravelBells', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
+        'shipSpeed',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
@@ -1387,6 +1389,21 @@ async function onBuild() {
                         + vanM + 'm -> ' + effM + 'm' });
                 }
             }
+            if (data.shipSpeed) {
+                const ss = data.shipSpeed;
+                const overall = (ss.overallMultiplier != null ? ss.overallMultiplier : 1.0).toFixed(2);
+                const curves = ss.curves || [];
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship speed patched (' + curves.length + ' curve'
+                    + (curves.length === 1 ? '' : 's')
+                    + '; overall ' + overall + 'x)' });
+                for (const c of curves) {
+                    const mul = (c.multiplier || 1.0).toFixed(2);
+                    lines.push({ kind: 'ok', msg:
+                        '  ' + c.stem + ' (' + c.shipType + '/' + c.role + ', '
+                        + mul + 'x): peak ' + c.vanilla + ' -> ' + c.effective });
+                }
+            }
             if (data.cropGrowth) {
                 const cg = data.cropGrowth;
                 const mul = (cg.multiplier || 1.0).toFixed(2);
@@ -1439,6 +1456,7 @@ async function onBuild() {
                 && !data.noSmoke && !data.minimapRange && !data.noFog && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
+                && !data.shipSpeed
                 && !data.cropGrowth && !data.cookingDuration
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
@@ -1842,6 +1860,7 @@ function bindHandlers() {
     bindStationsHandlers();
     bindShipMusicHandlers();
     bindLightingHandlers();
+    bindShipSpeedHandlers();
     bindCharactersHandlers();
 }
 

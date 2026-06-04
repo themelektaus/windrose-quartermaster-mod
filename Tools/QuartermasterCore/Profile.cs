@@ -42,6 +42,7 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicGlobal ShipMusic;
         public ShipMusicAddGlobal ShipMusicAdd;
         public LightingGlobal Lighting;
+        public ShipSpeedGlobal ShipSpeed;
     }
 
     public sealed class StackSizeGlobal
@@ -194,6 +195,15 @@ namespace Windrose.Quartermaster.Core
     }
 
     public sealed class LightingGlobal
+    {
+        public double? OverallMultiplier;
+        public Dictionary<string, double> Overrides;
+    }
+
+    // Per-motor-curve speed multipliers. OverallMultiplier scales every ship
+    // curve; Overrides (keyed by CRV_*Motor stem) win over the overall for an
+    // individual curve. A 1.0 value (overall or override) is vanilla = no-op.
+    public sealed class ShipSpeedGlobal
     {
         public double? OverallMultiplier;
         public Dictionary<string, double> Overrides;

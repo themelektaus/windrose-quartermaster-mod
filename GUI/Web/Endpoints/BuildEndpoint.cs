@@ -256,6 +256,28 @@ public static class BuildEndpoint
                             }).ToArray(),
                     };
                 }
+                object shipSpeedInfo = null;
+                if (result.ShipSpeedResult != null)
+                {
+                    var ss = result.ShipSpeedResult;
+                    shipSpeedInfo = new
+                    {
+                        overallMultiplier = ss.OverallMultiplier,
+                        ucasPath = ss.UcasPath,
+                        utocPath = ss.UtocPath,
+                        curves = ss.AssetResults == null
+                            ? null
+                            : ss.AssetResults.Select(ar => new
+                            {
+                                stem = ar.Stem,
+                                shipType = ar.ShipType,
+                                role = ar.Role,
+                                multiplier = ar.Multiplier,
+                                vanilla = ar.VanillaMaxValue,
+                                effective = ar.EffectiveMaxValue,
+                            }).ToArray(),
+                    };
+                }
                 object cooldownsInfo = null;
                 if (result.CooldownsResult != null)
                 {
@@ -487,6 +509,7 @@ public static class BuildEndpoint
                     shipMusicAdd = shipMusicAddInfo,
                     bonfireMusic = bonfireMusicInfo,
                     lighting = lightingInfo,
+                    shipSpeed = shipSpeedInfo,
                     cropGrowth = cropGrowthInfo,
                     cookingDuration = cookingDurationInfo,
                     customBuildings = customBuildingsInfo,

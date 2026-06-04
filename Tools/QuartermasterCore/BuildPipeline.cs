@@ -333,8 +333,10 @@ namespace Windrose.Quartermaster.Core
                 bool shipMusicDaActive = shipMusicAddActive || shipMusicExcludesActive;
                 var lightingJobs = ResolveLightingJobs(profile);
                 bool lightingActive = lightingJobs.Count > 0;
+                var shipSpeedJobs = ResolveShipSpeedJobs(profile);
+                bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -363,8 +365,9 @@ namespace Windrose.Quartermaster.Core
                 ShipMusicAddResult shipMusicAddResult = null;
                 BonfireMusicResult bonfireMusicResult = null;
                 LightingResult lightingResult = null;
+                ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -380,6 +383,7 @@ namespace Windrose.Quartermaster.Core
                         shipMusicExcludedIndices,
                         bonfireMusicJob,
                         lightingJobs,
+                        shipSpeedJobs,
                         iconBakeJobs,
                         buildingsActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
@@ -394,6 +398,7 @@ namespace Windrose.Quartermaster.Core
                     shipMusicAddResult = compositeResult.ShipMusicAdd;
                     bonfireMusicResult = compositeResult.BonfireMusic;
                     lightingResult = compositeResult.Lighting;
+                    shipSpeedResult = compositeResult.ShipSpeed;
                     iconBakeResults = compositeResult.Icons;
                     buildingResults = compositeResult.Buildings;
                 }
@@ -505,6 +510,7 @@ namespace Windrose.Quartermaster.Core
                     ShipMusicAddResult = shipMusicAddResult,
                     BonfireMusicResult = bonfireMusicResult,
                     LightingResult = lightingResult,
+                    ShipSpeedResult = shipSpeedResult,
                     CropGrowthResult = cropGrowthResult,
                     CookingDurationResult = cookingDurationResult,
                     BuildingResults = buildingResults,
@@ -549,6 +555,7 @@ namespace Windrose.Quartermaster.Core
             IReadOnlyCollection<int> shipMusicExcludedIndices,
             BonfireMusicJob bonfireMusicJob,
             List<LightingJob> lightingJobs,
+            List<ShipSpeedJob> shipSpeedJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
@@ -773,6 +780,43 @@ namespace Windrose.Quartermaster.Core
                         },
                     });
                 }
+            }
+
+            var shipSpeedPatchResults = new List<ShipSpeedPatchResult>();
+            if (shipSpeedJobs != null && shipSpeedJobs.Count > 0)
+            {
+                LogLine("Faster Ships source: " + shipSpeedJobs.Count + " motor curve"
+                        + (shipSpeedJobs.Count == 1 ? "" : "s")
+                        + " (vanilla FRichCurve key values scaled per-curve)");
+                var localJobs = shipSpeedJobs;
+                var keepStems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var filterStems = new List<string>();
+                foreach (var j in localJobs)
+                {
+                    keepStems.Add(j.Info.Stem);
+                    filterStems.Add(j.Info.Stem);
+                }
+                // One source, one to-legacy call: retoc OR-matches all the curve
+                // stems at once into the shared staging tree.
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "shipspeed",
+                    InputDir = gamePaksDir,
+                    Filters = filterStems,
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new ShipSpeedPatcher { Log = Log };
+                        foreach (var j in localJobs)
+                        {
+                            var r = patcher.PatchCurve(stagingDir, j.Multiplier, j.Info);
+                            shipSpeedPatchResults.Add(r);
+                        }
+                        // Substring filters (e.g. "CRV_BrigMotor") also drag in the
+                        // faction siblings (_BlackBeard/_Brethren); drop any catalog
+                        // curve we did not patch so to-zen ships only the intended ones.
+                        patcher.RemoveCollateral(stagingDir, keepStems);
+                    },
+                });
             }
 
             var cooldownPatchResults = new List<CooldownJobResult>();
@@ -1782,6 +1826,21 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            ShipSpeedResult shipSpeedOut = null;
+            if (shipSpeedPatchResults.Count > 0)
+            {
+                double overall = ResolveShipSpeedOverallMultiplier(profile);
+                shipSpeedOut = new ShipSpeedResult
+                {
+                    Enabled = true,
+                    OverallMultiplier = overall,
+                    AssetResults = shipSpeedPatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             return new BuildIoStoreCompositeOutput
             {
                 Pickup = pickupOut,
@@ -1795,6 +1854,7 @@ namespace Windrose.Quartermaster.Core
                 ShipMusicAdd = shipMusicAddOut,
                 BonfireMusic = bonfireMusicOut,
                 Lighting = lightingOut,
+                ShipSpeed = shipSpeedOut,
                 Icons = iconResults,
                 Buildings = buildingResults,
             };
@@ -1813,6 +1873,7 @@ namespace Windrose.Quartermaster.Core
             public ShipMusicAddResult ShipMusicAdd;
             public BonfireMusicResult BonfireMusic;
             public LightingResult Lighting;
+            public ShipSpeedResult ShipSpeed;
             public List<IconBakerPatcher.BakeResult> Icons;
             public List<BuildingPatchResult> Buildings;
         }

@@ -106,6 +106,49 @@ namespace Windrose.Quartermaster.Core
             return jobs;
         }
 
+        static double ResolveShipSpeedOverallMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.ShipSpeed == null) return 1.0;
+            var ss = profile.Globals.ShipSpeed;
+            if (ss.OverallMultiplier.HasValue) return ss.OverallMultiplier.Value;
+            return 1.0;
+        }
+
+        static double ResolveShipSpeedMultiplierFor(Profile profile, string stem)
+        {
+            if (profile.Globals == null || profile.Globals.ShipSpeed == null) return 1.0;
+            var ss = profile.Globals.ShipSpeed;
+            double overall = ss.OverallMultiplier.HasValue ? ss.OverallMultiplier.Value : 1.0;
+            if (ss.Overrides != null && stem != null)
+            {
+                foreach (var kv in ss.Overrides)
+                {
+                    if (string.Equals(kv.Key, stem, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // A 1.0 override means "follow the overall multiplier".
+                        if (Math.Abs(kv.Value - 1.0) > 1e-9) return kv.Value;
+                        break;
+                    }
+                }
+            }
+            return overall;
+        }
+
+        static List<ShipSpeedJob> ResolveShipSpeedJobs(Profile profile)
+        {
+            var jobs = new List<ShipSpeedJob>();
+            if (profile == null || profile.Globals == null || profile.Globals.ShipSpeed == null)
+                return jobs;
+            foreach (var info in ShipSpeedPatcher.Curves)
+            {
+                double m = ResolveShipSpeedMultiplierFor(profile, info.Stem);
+                if (Math.Abs(m - 1.0) < 1e-9) continue;
+                if (m < ShipSpeedPatcher.MinMultiplier || m > ShipSpeedPatcher.MaxMultiplier) continue;
+                jobs.Add(new ShipSpeedJob { Info = info, Multiplier = m });
+            }
+            return jobs;
+        }
+
         static double ResolveCropGrowthMultiplier(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
