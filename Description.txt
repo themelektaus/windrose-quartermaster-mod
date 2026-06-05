@@ -87,10 +87,10 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
-[size=4][b]NPC spawns[/b][/size]
+[size=4][b]NPC Spawns[/b][/size]
 [color=#b6b6b6]Global multipliers for enemy spawn counts (1.0x to 4.0x on each spawner's Min/Max) and respawn time (0.1x to 2.0x), applied to NPC / enemy spawners only - resource, chest and mineral-node spawners are left alone. Optionally also speed up rare / boss timers. A dedicated NPC Spawns tab lets you override individual spawners (respawn minutes, count min/max) on top of the global values.[/color]
 
-[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/NPC-spawns.png[/img]
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/NPC-Spawns.png[/img]
 
 
 

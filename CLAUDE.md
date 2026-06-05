@@ -95,7 +95,8 @@ Mehr Details in `README.md`.
 - **Vanilla-Paks sind AES-verschlüsselt;** der Key liegt zentral in
   `WindroseGameSecrets` (Core), nicht über den Code verstreut.
 - **Git:** Conventional-Commits-Stil (`refactor(core): ...`, `fix(install): ...`),
-  Commits direkt auf `main`, kein `git push` ohne ausdrückliches OK.
+  Commits direkt auf `main`. **NIEMALS `git push`** - niemals, auch nicht auf
+  Nachfrage oder bei "OK". Nur lokal committen; der User pusht selbst.
 
 ## Pak-Mod Build (Asset-Mods)
 
