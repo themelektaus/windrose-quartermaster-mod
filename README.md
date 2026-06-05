@@ -23,7 +23,10 @@ A profile bundles tweaks across multiple domains:
 - **Crop growth & crafting durations** - 0.1-3.0x sliders for crop grow
   times plus furnace / kiln / tannery / mill / trade-outpost recipe
   durations
-- **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider
+- **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider,
+  plus an optional 1.0-4.0x **ship pickup** multiplier (same card) that
+  widens the collection range for floating sea-loot and the Brig /
+  Frigate / Ketch interaction zones
 - **Fast-travel bells & signal fires** - raise the placement caps
 - **Building stability** - structures hold longer cantilevers / taller towers
 - **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
@@ -34,6 +37,16 @@ A profile bundles tweaks across multiple domains:
   lanterns, wall lamps + signal fires, torches + chandeliers, building-
   center fires and the belt lantern, 0.1-10x sliders
 - **No smoke** - hide smoke / flame Niagara FX on campfires, furnaces, kilns
+- **On death** - keep death loot from despawning (a persistent storage
+  bag replaces the timed posthumous container, on land and at sea) and /
+  or keep food / elixir / comfort buffs through death (transient debuffs
+  still clear)
+- **NPC spawns** - global multipliers for enemy spawn counts (1.0-4.0x)
+  and respawn time (0.1-2.0x) on NPC / enemy spawners only, with optional
+  per-spawner overrides; resource / chest / mineral-node spawners untouched
+- **Deposit visuals** - re-skin the iron and / or sulfur deposit base
+  (albedo) texture from a dropdown of in-game textures so nodes stand out
+  (iron visible at night, sulfur told apart from stone); no extra download
 - **Equipment slots** - extra ring / necklace equipment slots (vanilla 1
   each, up to 10); new characters get them automatically, existing saves
   via the Characters tab
@@ -200,8 +213,9 @@ icon to clone an existing one. For each profile you can:
   Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon
   Reload), plus crop grow times and crafting / processing durations
   (furnace, kiln, tannery, mill, trade outpost).
-- **Basic tab** - cards for pickup radius, fast-travel bell caps,
-  building stability, minimap range, bonfire radius, pickaxe range,
+- **Basic tab** - cards for pickup radius (+ ship pickup), fast-travel
+  bell caps, building stability, minimap range, bonfire radius, pickaxe
+  range, NPC spawns, on-death loot / status retention, deposit visuals,
   overall light radius, overall ship speed, no-smoke FX, equipment slots
   (ring / necklace) and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
@@ -216,6 +230,11 @@ icon to clone an existing one. For each profile you can:
   hull (Shallow Boat / Brig / Cutter / Frigate / Ketch, with player /
   AI / service / faction variants); overrides the overall multiplier
   from the Basic Ship Speed card on a per-curve basis.
+- **NPC Spawns tab** - the global count / respawn-time multipliers from
+  the Basic NPC Spawns card, plus per-spawner overrides (respawn minutes,
+  count min / max) with search + category filters. Only NPC / enemy
+  spawners are touched; resource, chest and mineral-node spawners are
+  left alone.
 - **Characters tab** - a save patcher that retro-fits the profile's
   equipment- and ship-slot counts onto characters / ships already in
   your save (the Basic-tab sliders themselves only affect newly created

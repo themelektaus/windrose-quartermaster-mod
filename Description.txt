@@ -42,6 +42,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
+[size=4][b]Ship pickup radius[/b][/size]
+[color=#b6b6b6]Optional 1.0x to 4.0x multiplier (right in the Pickup radius card) that widens the collection range for floating sea-loot and the interaction zones of the Brig, Frigate and Ketch, so you scoop up drifting cargo from further out.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Ship-pickup-radius.png[/img]
+
+
+
+
+
 [size=4][b]Fast-travel bells & signal fires[/b][/size]
 [color=#b6b6b6]Raise the placement caps (vanilla 10 / 3).[/color]
 
@@ -64,6 +73,24 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Per-category Min/Max multipliers (mobs, plants, chests, fishing, ...) leave everything else alone.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Loot-tables.png[/img]
+
+
+
+
+
+[size=4][b]On death[/b][/size]
+[color=#b6b6b6]Two independent toggles. Keep death loot from despawning - a persistent storage bag spawns at the death spot instead of the timed posthumous container, so your dropped items stay in the world (land and at sea). Keep status effects - food, elixir and comfort buffs survive death instead of being wiped, while transient debuffs (damage-over-time, stagger, wet, ...) still clear.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/On-death.png[/img]
+
+
+
+
+
+[size=4][b]NPC spawns[/b][/size]
+[color=#b6b6b6]Global multipliers for enemy spawn counts (1.0x to 4.0x on each spawner's Min/Max) and respawn time (0.1x to 2.0x), applied to NPC / enemy spawners only - resource, chest and mineral-node spawners are left alone. Optionally also speed up rare / boss timers. A dedicated NPC Spawns tab lets you override individual spawners (respawn minutes, count min/max) on top of the global values.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/NPC-spawns.png[/img]
 
 
 
@@ -100,6 +127,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Hide the smoke and flame Niagara FX on campfires/bonfires, furnaces or kilns.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/No-smoke.png[/img]
+
+
+
+
+
+[size=4][b]Deposit visuals[/b][/size]
+[color=#b6b6b6]Re-skin a deposit's base (albedo) texture so the node stands out - iron stays spottable at night, sulfur is easier to tell apart from stone. Pick a replacement per deposit (iron, sulfur) from a dropdown of textures already in the game, so nothing extra is downloaded.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Deposit-visuals.png[/img]
 
 
 
