@@ -1125,13 +1125,23 @@ function miscTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     if (!g) return false;
     const presenceKeys = [
-        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'fastTravelBells', 'equipmentSlots',
+        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
+    }
+    // fastTravelBells is not purely presence-based: the key can linger at the
+    // vanilla caps (bell 10 / signal-fire 3) - e.g. carried over by a clone or a
+    // loaded profile - while the setter only deletes it on a fresh vanilla edit.
+    // Mirror the backend's value-aware HasFastTravelBellsConfig so a lingering
+    // vanilla node does not keep the tab lit.
+    const ftb = g.fastTravelBells;
+    if (ftb && ((ftb.bellCap != null && ftb.bellCap !== 10)
+             || (ftb.signalFireCap != null && ftb.signalFireCap !== 3))) {
+        return true;
     }
     const bm = g.bonfireMusic;
     if (bm && (bm.originalFilename
