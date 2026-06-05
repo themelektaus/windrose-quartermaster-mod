@@ -40,6 +40,15 @@ public static partial class ProfilesEndpoint
                 {
                     Multiplier = g.ShipPickup.Multiplier,
                 },
+            DepositVisual = g.DepositVisual == null
+                ? null
+                : new DepositVisualGlobal
+                {
+                    Iron = g.DepositVisual.Iron,
+                    IronTexture = g.DepositVisual.IronTexture,
+                    Sulfur = g.DepositVisual.Sulfur,
+                    SulfurTexture = g.DepositVisual.SulfurTexture,
+                },
             FastTravelBells = g.FastTravelBells == null
                 ? null
                 : new FastTravelBellsGlobal

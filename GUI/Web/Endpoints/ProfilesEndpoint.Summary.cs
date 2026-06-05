@@ -36,6 +36,9 @@ public static partial class ProfilesEndpoint
             hasGlobalShipPickup = p.Globals != null && p.Globals.ShipPickup != null
                                     && p.Globals.ShipPickup.Multiplier.HasValue
                                     && Math.Abs(p.Globals.ShipPickup.Multiplier.Value - 1.0) > 1e-9,
+            hasGlobalDepositVisual = p.Globals != null && p.Globals.DepositVisual != null
+                                    && (p.Globals.DepositVisual.Iron.GetValueOrDefault(false)
+                                        || p.Globals.DepositVisual.Sulfur.GetValueOrDefault(false)),
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null

@@ -620,6 +620,48 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
+        // Builds the Albedo-swap jobs for the "Deposit visuals" feature. A deposit
+        // contributes a job only when enabled AND its chosen texture differs from the
+        // untouched game look (selecting the vanilla texture is a no-op, so we drop it
+        // rather than ship an identical asset). Unknown texture keys fall back to the
+        // deposit's reference default.
+        static List<DepositVisualJob> ResolveDepositVisualJobs(Profile profile)
+        {
+            var jobs = new List<DepositVisualJob>();
+            var dv = profile.Globals != null ? profile.Globals.DepositVisual : null;
+            if (dv == null) return jobs;
+
+            foreach (var deposit in DepositVisualCatalog.Deposits)
+            {
+                bool enabled;
+                string chosenKey;
+                if (deposit.Key == "iron")        { enabled = dv.Iron.GetValueOrDefault(false);   chosenKey = dv.IronTexture; }
+                else if (deposit.Key == "sulfur") { enabled = dv.Sulfur.GetValueOrDefault(false); chosenKey = dv.SulfurTexture; }
+                else continue;
+                if (!enabled) continue;
+
+                var texture = DepositVisualCatalog.FindTexture(chosenKey)
+                              ?? DepositVisualCatalog.FindTexture(deposit.DefaultTextureKey);
+                if (texture == null) continue;
+
+                // Selecting the vanilla texture means "no visible change" - skip it.
+                if (string.Equals(texture.Key, deposit.VanillaTextureKey, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                jobs.Add(new DepositVisualJob
+                {
+                    DepositKey            = deposit.Key,
+                    AssetStem             = deposit.AssetStem,
+                    AssetVirtualPath      = deposit.AssetVirtualPath,
+                    ParamName             = deposit.ParamName,
+                    NewTextureStem        = texture.Stem,
+                    NewTexturePackagePath = texture.PackagePath,
+                    TextureLabel          = texture.Label,
+                });
+            }
+            return jobs;
+        }
+
         static bool HasLootConfiguration(Profile profile)
         {
             if (profile.LootOverrides != null && profile.LootOverrides.Count > 0) return true;

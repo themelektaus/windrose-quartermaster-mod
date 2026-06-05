@@ -48,6 +48,21 @@ namespace Windrose.Quartermaster.Core
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
         public NpcSpawnGlobal NpcSpawn;
+        public DepositVisualGlobal DepositVisual;
+    }
+
+    // "Deposit visuals" (the Iron / Sulfur "Visual Tweak" reference mods): per
+    // deposit, re-point the deposit material's "Albedo" texture at a stock game
+    // texture so the node reads more clearly. The *Texture fields hold a
+    // DepositVisualCatalog texture key; null = the reference default for that
+    // deposit. A deposit only ships if enabled AND its chosen texture differs from
+    // the untouched game look.
+    public sealed class DepositVisualGlobal
+    {
+        public bool? Iron;
+        public string IronTexture;
+        public bool? Sulfur;
+        public string SulfurTexture;
     }
 
     public sealed class StackSizeGlobal

@@ -168,6 +168,27 @@ fieldset .indent input[type="number"] {
   margin-left: 1.6em;
 }
 
+.deposit-visual-row {
+  display: flex;
+  align-items: center;
+  gap: .5em;
+  padding-left: 1.6em;
+}
+
+.deposit-visual-row .deposit-visual-label {
+  font-size: var(--font-size-small);
+  color: var(--text-dim);
+}
+
+.deposit-visual-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.deposit-visual-row:has([disabled]) {
+  opacity: .5;
+}
+
 .bonfire-music-controls {
   display: flex;
   align-items: center;

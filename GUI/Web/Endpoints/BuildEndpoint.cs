@@ -116,6 +116,19 @@ public static class BuildEndpoint
                         utocPath = sp.UtocPath,
                     };
                 }
+                object depositVisualInfo = null;
+                if (result.DepositVisualResult != null)
+                {
+                    var dv = result.DepositVisualResult;
+                    depositVisualInfo = new
+                    {
+                        enabled = dv.Enabled,
+                        assetsPatched = dv.AssetsPatched,
+                        applied = dv.Applied,
+                        ucasPath = dv.UcasPath,
+                        utocPath = dv.UtocPath,
+                    };
+                }
                 object bellLimitsInfo = null;
                 if (result.BellLimitsResult != null)
                 {
@@ -538,6 +551,7 @@ public static class BuildEndpoint
                     lootPatchResult,
                     pickupRadius = pickupRadiusInfo,
                     shipPickup = shipPickupInfo,
+                    depositVisual = depositVisualInfo,
                     bellLimits = bellLimitsInfo,
                     equipmentSlots = equipmentSlotsInfo,
                     shipSlots = shipSlotsInfo,

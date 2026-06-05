@@ -129,6 +129,7 @@ public static class Program
         BuildingTemplatesEndpoint.Map(app, resolvedRoot);
         BuildingsEndpoint.Map(app, resolvedRoot);
         VanillaMaterialsEndpoint.Map(app, resolvedRoot);
+        DepositVisualEndpoint.Map(app, resolvedRoot);
         VanillaResourcesEndpoint.Map(app, resolvedRoot);
         LootTablesEndpoint.Map(app, resolvedRoot);
         NpcSpawnersEndpoint.Map(app, resolvedRoot);

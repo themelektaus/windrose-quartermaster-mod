@@ -5,6 +5,48 @@ const STACK_SIZE_SETS = [
     { name: 'ssmode-misc', mult: 'm-ss-mult', cap: 'm-ss-cap', abs: 'm-ss-abs' },
 ];
 
+// "Deposit visuals" catalog (deposits + selectable albedo textures), fetched once.
+let DEPOSIT_VISUAL_CATALOG = null;
+
+async function loadDepositVisualCatalog() {
+    if (DEPOSIT_VISUAL_CATALOG) return DEPOSIT_VISUAL_CATALOG;
+    try {
+        const resp = await fetch('/api/deposit-visual/catalog');
+        if (resp.ok) DEPOSIT_VISUAL_CATALOG = await resp.json();
+    } catch (_) { /* leave null; selects stay empty until reachable */ }
+    return DEPOSIT_VISUAL_CATALOG;
+}
+
+function populateDepositVisualSelects() {
+    const cat = DEPOSIT_VISUAL_CATALOG;
+    if (!cat || !cat.textures) return;
+    for (const id of ['deposit-iron-texture', 'deposit-sulfur-texture']) {
+        const el = document.getElementById(id);
+        if (!el || el.options.length) continue; // populate once
+        for (const t of cat.textures) {
+            const o = document.createElement('option');
+            o.value = t.key;
+            o.textContent = t.label;
+            el.appendChild(o);
+        }
+    }
+}
+
+function depositDefaultTexture(depositKey) {
+    const cat = DEPOSIT_VISUAL_CATALOG;
+    if (!cat || !cat.deposits) return null;
+    const d = cat.deposits.find(x => x.key === depositKey);
+    return d ? d.defaultTexture : null;
+}
+
+function setSelectValueIfPresent(id, val) {
+    const el = document.getElementById(id);
+    if (!el || val == null) return;
+    for (const o of el.options) {
+        if (o.value === val) { el.value = val; return; }
+    }
+}
+
 function syncStackSizeUIFromState() {
     const ss = (state.current && state.current.globals && state.current.globals.stackSize) || {};
     const mode = ss.absolute != null ? 'absolute'
@@ -394,6 +436,44 @@ function setKeepStatusFromUI() {
     markDirty();
 }
 
+function syncDepositVisualInputState() {
+    document.getElementById('deposit-iron-texture').disabled =
+        !document.getElementById('deposit-iron-enabled').checked;
+    document.getElementById('deposit-sulfur-texture').disabled =
+        !document.getElementById('deposit-sulfur-enabled').checked;
+}
+
+function applyDepositVisualToUI(p) {
+    populateDepositVisualSelects();
+    const dv = (p && p.globals && p.globals.depositVisual) || null;
+    document.getElementById('deposit-iron-enabled').checked = !!(dv && dv.iron === true);
+    setSelectValueIfPresent('deposit-iron-texture',
+        (dv && dv.ironTexture) || depositDefaultTexture('iron'));
+    document.getElementById('deposit-sulfur-enabled').checked = !!(dv && dv.sulfur === true);
+    setSelectValueIfPresent('deposit-sulfur-texture',
+        (dv && dv.sulfurTexture) || depositDefaultTexture('sulfur'));
+    syncDepositVisualInputState();
+}
+
+function setDepositVisualFromUI() {
+    if (!state.current) return;
+    const ironOn    = document.getElementById('deposit-iron-enabled').checked;
+    const ironTex   = document.getElementById('deposit-iron-texture').value || null;
+    const sulfurOn  = document.getElementById('deposit-sulfur-enabled').checked;
+    const sulfurTex = document.getElementById('deposit-sulfur-texture').value || null;
+    state.current.globals = state.current.globals || {};
+    if (ironOn || sulfurOn) {
+        const dv = {};
+        if (ironOn)   { dv.iron = true;   if (ironTex)   dv.ironTexture = ironTex; }
+        if (sulfurOn) { dv.sulfur = true; if (sulfurTex) dv.sulfurTexture = sulfurTex; }
+        state.current.globals.depositVisual = dv;
+    } else {
+        delete state.current.globals.depositVisual;
+    }
+    syncDepositVisualInputState();
+    markDirty();
+}
+
 function setLandFastTravelFromUI() {
     if (!state.current) return;
     const enabled = document.getElementById('land-fast-travel-enabled').checked;
@@ -765,6 +845,13 @@ function bindMiscHandlers() {
     document.getElementById('nofog-enabled').addEventListener('change', setNoFogFromUI);
     document.getElementById('persistent-loot-enabled').addEventListener('change', setPersistentLootFromUI);
     document.getElementById('keep-status-enabled').addEventListener('change', setKeepStatusFromUI);
+    document.getElementById('deposit-iron-enabled').addEventListener('change', setDepositVisualFromUI);
+    document.getElementById('deposit-iron-texture').addEventListener('change', setDepositVisualFromUI);
+    document.getElementById('deposit-sulfur-enabled').addEventListener('change', setDepositVisualFromUI);
+    document.getElementById('deposit-sulfur-texture').addEventListener('change', setDepositVisualFromUI);
+    // Catalog is static: load once, fill the dropdowns, then re-apply the current
+    // profile so the persisted selection sticks even if it arrived before the fetch.
+    loadDepositVisualCatalog().then(() => applyDepositVisualToUI(state.current));
     document.getElementById('land-fast-travel-enabled').addEventListener('change', setLandFastTravelFromUI);
     document.getElementById('bonfire-enabled').addEventListener('change', setBonfireRadiusFromUI);
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);

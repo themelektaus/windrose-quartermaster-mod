@@ -797,6 +797,7 @@ function applyProfileToUI() {
     const kstatus = (p.globals && p.globals.keepStatus) || null;
     document.getElementById('keep-status-enabled').checked =
         !!(kstatus && kstatus.enabled === true);
+    applyDepositVisualToUI(p);
     const lft = (p.globals && p.globals.landFastTravel) || null;
     document.getElementById('land-fast-travel-enabled').checked =
         !!(lft && lft.enabled === true);
@@ -1124,7 +1125,7 @@ function miscTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     if (!g) return false;
     const presenceKeys = [
-        'stackSize', 'pickupRadius', 'shipPickup', 'fastTravelBells', 'equipmentSlots',
+        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'fastTravelBells', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
@@ -1457,6 +1458,11 @@ async function onBuild() {
                     + sp.valuesScaled + ' shape values across ' + sp.assetsPatched
                     + ' assets)' });
             }
+            if (data.depositVisual && data.depositVisual.enabled) {
+                const dv = data.depositVisual;
+                lines.push({ kind: 'ok', msg:
+                    'DONE - deposit visuals (' + ((dv.applied || []).join(', ') || dv.assetsPatched + ' materials') + ')' });
+            }
             if (data.bellLimits && data.bellLimits.written) {
                 const bl = data.bellLimits;
                 lines.push({ kind: 'ok', msg:
@@ -1677,7 +1683,7 @@ async function onBuild() {
                     }
                 }
             }
-            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.buildingStability
+            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.depositVisual && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.keepStatus && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting

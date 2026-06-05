@@ -24,6 +24,7 @@ namespace Windrose.Quartermaster.Core
         public PickupTripletResult PickupResult;
         public double? PickupMultiplier;
         public ShipPickupResult ShipPickupResult;
+        public DepositVisualResult DepositVisualResult;
         public BuildingStabilityResult StabilityResult;
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
@@ -133,6 +134,16 @@ namespace Windrose.Quartermaster.Core
         public double Multiplier;
         public int AssetsPatched;
         public int ValuesScaled;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class DepositVisualResult
+    {
+        public bool Enabled;
+        public int AssetsPatched;
+        public System.Collections.Generic.List<string> Applied;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
