@@ -276,6 +276,28 @@ namespace Windrose.Quartermaster.Core
                             + cannonReloadResult.Skipped + " skipped)");
                 }
 
+                // Building Degrees of Freedom (Misc tab): adds finer rotation steps
+                // (1/5/10 deg) to building mode. RotationSteps is config-backed, so
+                // this ships as a loose DefaultR5BuildingSettings.ini in the main pak
+                // (like crops/cannons) - no DLL / UE4SS needed.
+                BuildingRotationResult buildingRotationResult = null;
+                var rotationFineSteps = ResolveBuildingRotationFineSteps(profile);
+                bool buildingRotationActive = rotationFineSteps.Count > 0;
+                if (buildingRotationActive)
+                {
+                    LogLine("Patching building rotation steps (adding "
+                            + string.Join("/", rotationFineSteps) + " deg)");
+                    var cfgExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
+                    var vanillaBuildingIni = cfgExtractor.EnsureBuildingSettings();
+                    var outBuildingIni = Path.Combine(tmpDir,
+                        "R5", "Config", "DefaultR5BuildingSettings.ini");
+                    var rotPatcher = new BuildingRotationPatcher { Log = Log };
+                    buildingRotationResult = rotPatcher.PatchToFile(
+                        vanillaBuildingIni, outBuildingIni, rotationFineSteps);
+                    LogLine("Patched building rotation: steps = ["
+                            + string.Join(", ", buildingRotationResult.FinalSteps) + "]");
+                }
+
                 CookingDurationPatchResult cookingDurationResult = null;
                 var cookingFamilies = ResolveCookingFamilies(profile);
                 bool cookingDurationActive = cookingFamilies != null && cookingFamilies.AnyActive();
@@ -350,6 +372,7 @@ namespace Windrose.Quartermaster.Core
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
                     + (cannonReloadResult != null ? cannonReloadResult.Written : 0)
+                    + (buildingRotationResult != null ? 1 : 0)
                     + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
                     + (npcSpawnResult != null ? npcSpawnResult.Written : 0)
                     + CountBuildableBuildings(profile);
@@ -595,6 +618,7 @@ namespace Windrose.Quartermaster.Core
                     ShipSpeedResult = shipSpeedResult,
                     CropGrowthResult = cropGrowthResult,
                     CannonReloadResult = cannonReloadResult,
+                    BuildingRotationResult = buildingRotationResult,
                     CookingDurationResult = cookingDurationResult,
                     NpcSpawnResult = npcSpawnResult,
                     BuildingResults = buildingResults,

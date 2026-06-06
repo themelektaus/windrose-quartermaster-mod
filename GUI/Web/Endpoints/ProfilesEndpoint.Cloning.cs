@@ -75,6 +75,14 @@ public static partial class ProfilesEndpoint
                 {
                     Enabled = g.BuildingStability.Enabled,
                 },
+            BuildingRotation = g.BuildingRotation == null
+                ? null
+                : new BuildingRotationGlobal
+                {
+                    Add1 = g.BuildingRotation.Add1,
+                    Add5 = g.BuildingRotation.Add5,
+                    Add10 = g.BuildingRotation.Add10,
+                },
             NoSmoke = g.NoSmoke == null
                 ? null
                 : new NoSmokeGlobal

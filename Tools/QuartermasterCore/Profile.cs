@@ -51,6 +51,20 @@ namespace Windrose.Quartermaster.Core
         public DepositVisualGlobal DepositVisual;
         public CropOverlapGlobal CropOverlap;
         public PlayerStatsGlobal PlayerStats;
+        public BuildingRotationGlobal BuildingRotation;
+    }
+
+    // "Building Degrees of Freedom": adds finer rotation steps (1/5/10 deg) to the
+    // building-mode rotation cycle. R5BuildingSettings.RotationSteps is config-backed
+    // (DefaultR5BuildingSettings.ini), so the override ships as a loose INI in the
+    // main pak - no DLL / UE4SS needed. Vanilla steps (15/30/45/90) and the vanilla
+    // DefaultRotationStep (30) are preserved; the enabled fine steps are merged in.
+    // Each flag is purely additive; null/false = that step is not added.
+    public sealed class BuildingRotationGlobal
+    {
+        public bool? Add1;
+        public bool? Add5;
+        public bool? Add10;
     }
 
     // "Better Crop Overlap": MULTIPLIER on every plantable crop's CapsuleRadius

@@ -51,6 +51,11 @@ public static partial class ProfilesEndpoint
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null
                                          && p.Globals.BuildingStability.Enabled.GetValueOrDefault(false),
+            hasGlobalBuildingRotation = p.Globals != null
+                                        && p.Globals.BuildingRotation != null
+                                        && (p.Globals.BuildingRotation.Add1.GetValueOrDefault(false)
+                                            || p.Globals.BuildingRotation.Add5.GetValueOrDefault(false)
+                                            || p.Globals.BuildingRotation.Add10.GetValueOrDefault(false)),
             hasGlobalNoSmoke = HasAnyNoSmokeCategory(p),
             hasGlobalMinimapRange = p.Globals != null
                                     && p.Globals.MinimapRange != null

@@ -622,6 +622,24 @@ function setNoSmokeFromUI() {
     markDirty();
 }
 
+function setBuildingRotationFromUI() {
+    if (!state.current) return;
+    const a1  = document.getElementById('building-rot-1').checked;
+    const a5  = document.getElementById('building-rot-5').checked;
+    const a10 = document.getElementById('building-rot-10').checked;
+    state.current.globals = state.current.globals || {};
+    if (!a1 && !a5 && !a10) {
+        delete state.current.globals.buildingRotation;
+    } else {
+        const br = {};
+        if (a1)  br.add1 = true;
+        if (a5)  br.add5 = true;
+        if (a10) br.add10 = true;
+        state.current.globals.buildingRotation = br;
+    }
+    markDirty();
+}
+
 // ---------------------------------------------------------------------------
 // Bonfire / building-center hearth-music ("The Hearth") replacement.
 //
@@ -919,6 +937,9 @@ function bindMiscHandlers() {
     document.getElementById('nosmoke-campfire').addEventListener('change', setNoSmokeFromUI);
     document.getElementById('nosmoke-furnace').addEventListener('change',  setNoSmokeFromUI);
     document.getElementById('nosmoke-kiln').addEventListener('change',     setNoSmokeFromUI);
+    document.getElementById('building-rot-1').addEventListener('change',  setBuildingRotationFromUI);
+    document.getElementById('building-rot-5').addEventListener('change',  setBuildingRotationFromUI);
+    document.getElementById('building-rot-10').addEventListener('change', setBuildingRotationFromUI);
     document.getElementById('minimap-enabled').addEventListener('change', setMinimapRangeFromUI);
     document.getElementById('minimap-multiplier').addEventListener('input', setMinimapRangeFromUI);
     document.getElementById('nofog-enabled').addEventListener('change', setNoFogFromUI);

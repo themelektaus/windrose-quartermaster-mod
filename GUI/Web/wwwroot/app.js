@@ -796,6 +796,10 @@ function applyProfileToUI() {
     const bs = (p.globals && p.globals.buildingStability) || null;
     document.getElementById('building-stability-enabled').checked =
         !!(bs && bs.enabled === true);
+    const brot = (p.globals && p.globals.buildingRotation) || null;
+    document.getElementById('building-rot-1').checked  = !!(brot && brot.add1 === true);
+    document.getElementById('building-rot-5').checked  = !!(brot && brot.add5 === true);
+    document.getElementById('building-rot-10').checked = !!(brot && brot.add10 === true);
     const ns = (p.globals && p.globals.noSmoke) || null;
     document.getElementById('nosmoke-campfire').checked = !!(ns && ns.campfire === true);
     document.getElementById('nosmoke-furnace').checked  = !!(ns && ns.furnace === true);
@@ -1145,7 +1149,7 @@ function miscTabHasMods() {
     if (!g) return false;
     const presenceKeys = [
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
-        'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
+        'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
     ];
@@ -1521,6 +1525,14 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE - enhanced building stability bundled (787 DA_BI* assets)' });
             }
+            if (data.buildingRotation && data.buildingRotation.enabled) {
+                const brd = data.buildingRotation;
+                const added = (brd.addedSteps || []).map(s => s + '°').join(', ');
+                const finalList = (brd.finalSteps || []).map(s => s + '°').join(' / ');
+                lines.push({ kind: 'ok', msg:
+                    'DONE - building rotation (added ' + (added || 'none')
+                    + '; steps ' + finalList + ')' });
+            }
             if (data.noSmoke) {
                 const ns = data.noSmoke;
                 const cats = (ns.categories || []).join(', ') || '?';
@@ -1754,7 +1766,7 @@ async function onBuild() {
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed
-                && !data.cropGrowth && !data.cannonReload && !data.cookingDuration && !data.npcSpawn
+                && !data.cropGrowth && !data.cannonReload && !data.buildingRotation && !data.cookingDuration && !data.npcSpawn
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }

@@ -500,6 +500,17 @@ public static class BuildEndpoint
                         sampleEffectiveRangeMax = first != null ? first.EffectiveRangeMax : 0L,
                     };
                 }
+                object buildingRotationInfo = null;
+                if (result.BuildingRotationResult != null)
+                {
+                    var br = result.BuildingRotationResult;
+                    buildingRotationInfo = new
+                    {
+                        enabled = br.Enabled,
+                        addedSteps = br.AddedSteps,
+                        finalSteps = br.FinalSteps,
+                    };
+                }
                 object cookingDurationInfo = null;
                 if (result.CookingDurationResult != null
                     && result.CookingDurationResult.FamilySummaries != null
@@ -625,6 +636,7 @@ public static class BuildEndpoint
                     shipSpeed = shipSpeedInfo,
                     cropGrowth = cropGrowthInfo,
                     cannonReload = cannonReloadInfo,
+                    buildingRotation = buildingRotationInfo,
                     cookingDuration = cookingDurationInfo,
                     npcSpawn = npcSpawnInfo,
                     customBuildings = customBuildingsInfo,

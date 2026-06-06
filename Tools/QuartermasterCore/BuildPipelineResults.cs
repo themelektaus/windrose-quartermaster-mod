@@ -44,6 +44,7 @@ namespace Windrose.Quartermaster.Core
         public ShipSpeedResult ShipSpeedResult;
         public CropGrowthPatchResult CropGrowthResult;
         public CannonReloadPatchResult CannonReloadResult;
+        public BuildingRotationResult BuildingRotationResult;
         public CookingDurationPatchResult CookingDurationResult;
         public NpcSpawnPatchResult NpcSpawnResult;
         public List<BuildingPatchResult> BuildingResults;
@@ -61,6 +62,14 @@ namespace Windrose.Quartermaster.Core
         public long PakSize;
         public long UcasSize;
         public long UtocSize;
+    }
+
+    public sealed class BuildingRotationResult
+    {
+        public bool Enabled;
+        public List<int> AddedSteps;    // the fine steps actually added (subset of 1/5/10)
+        public List<int> FinalSteps;    // full merged rotation-step list
+        public List<int> VanillaSteps;  // the vanilla list read from the INI
     }
 
     public sealed class NoSmokeResult

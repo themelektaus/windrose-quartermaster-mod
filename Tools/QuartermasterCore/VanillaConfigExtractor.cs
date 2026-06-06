@@ -24,6 +24,13 @@ namespace Windrose.Quartermaster.Core
                 includePrefix:  "R5/Config/DefaultR5MapSettings.ini");
         }
 
+        public string EnsureBuildingSettings()
+        {
+            return EnsureFile(
+                vanillaRelPath: "R5/Config/DefaultR5BuildingSettings.ini",
+                includePrefix:  "R5/Config/DefaultR5BuildingSettings.ini");
+        }
+
         public string EnsureFile(string vanillaRelPath, string includePrefix)
         {
             if (string.IsNullOrEmpty(vanillaRelPath))

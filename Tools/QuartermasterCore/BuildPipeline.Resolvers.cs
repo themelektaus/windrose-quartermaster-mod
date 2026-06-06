@@ -219,6 +219,19 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        // The enabled fine rotation steps (subset of {1,5,10}), ascending. Empty =
+        // feature off. Purely additive: vanilla steps are merged in by the patcher.
+        static List<int> ResolveBuildingRotationFineSteps(Profile profile)
+        {
+            var steps = new List<int>();
+            var br = profile.Globals != null ? profile.Globals.BuildingRotation : null;
+            if (br == null) return steps;
+            if (br.Add1.GetValueOrDefault(false)) steps.Add(1);
+            if (br.Add5.GetValueOrDefault(false)) steps.Add(5);
+            if (br.Add10.GetValueOrDefault(false)) steps.Add(10);
+            return steps;
+        }
+
         static CookingDurationPatcher.FamilyMultipliers ResolveCookingFamilies(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
