@@ -42,6 +42,11 @@ public static partial class ProfilesEndpoint
             hasGlobalCropOverlap = p.Globals != null && p.Globals.CropOverlap != null
                                     && p.Globals.CropOverlap.Multiplier.HasValue
                                     && Math.Abs(p.Globals.CropOverlap.Multiplier.Value - 1.0) > 1e-9,
+            hasGlobalPlayerStats = p.Globals != null && p.Globals.PlayerStats != null
+                                    && ((p.Globals.PlayerStats.HealthMultiplier.HasValue
+                                         && Math.Abs(p.Globals.PlayerStats.HealthMultiplier.Value - 1.0) > 1e-9)
+                                        || (p.Globals.PlayerStats.StaminaMultiplier.HasValue
+                                            && Math.Abs(p.Globals.PlayerStats.StaminaMultiplier.Value - 1.0) > 1e-9)),
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null

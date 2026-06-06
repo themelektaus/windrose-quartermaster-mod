@@ -143,6 +143,21 @@ public static class BuildEndpoint
                         utocPath = co.UtocPath,
                     };
                 }
+                object playerStatsInfo = null;
+                if (result.PlayerStatsResult != null)
+                {
+                    var ps = result.PlayerStatsResult;
+                    playerStatsInfo = new
+                    {
+                        enabled = ps.Enabled,
+                        healthMultiplier = ps.HealthMultiplier,
+                        staminaMultiplier = ps.StaminaMultiplier,
+                        healthRowsPatched = ps.HealthRowsPatched,
+                        staminaRowsPatched = ps.StaminaRowsPatched,
+                        ucasPath = ps.UcasPath,
+                        utocPath = ps.UtocPath,
+                    };
+                }
                 object bellLimitsInfo = null;
                 if (result.BellLimitsResult != null)
                 {
@@ -567,6 +582,7 @@ public static class BuildEndpoint
                     shipPickup = shipPickupInfo,
                     depositVisual = depositVisualInfo,
                     cropOverlap = cropOverlapInfo,
+                    playerStats = playerStatsInfo,
                     bellLimits = bellLimitsInfo,
                     equipmentSlots = equipmentSlotsInfo,
                     shipSlots = shipSlotsInfo,

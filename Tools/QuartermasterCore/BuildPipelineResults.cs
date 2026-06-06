@@ -26,6 +26,7 @@ namespace Windrose.Quartermaster.Core
         public ShipPickupResult ShipPickupResult;
         public DepositVisualResult DepositVisualResult;
         public CropOverlapResult CropOverlapResult;
+        public PlayerStatsResult PlayerStatsResult;
         public BuildingStabilityResult StabilityResult;
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
@@ -156,6 +157,18 @@ namespace Windrose.Quartermaster.Core
         public double Multiplier;
         public int CropsPatched;
         public int ValuesScaled;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class PlayerStatsResult
+    {
+        public bool Enabled;
+        public double HealthMultiplier;
+        public double StaminaMultiplier;
+        public int HealthRowsPatched;
+        public int StaminaRowsPatched;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

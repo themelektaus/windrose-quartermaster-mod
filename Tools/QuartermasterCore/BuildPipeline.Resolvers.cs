@@ -34,6 +34,22 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolvePlayerStatsHealthMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.PlayerStats == null) return 1.0;
+            var ps = profile.Globals.PlayerStats;
+            if (ps.HealthMultiplier.HasValue) return ps.HealthMultiplier.Value;
+            return 1.0;
+        }
+
+        static double ResolvePlayerStatsStaminaMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.PlayerStats == null) return 1.0;
+            var ps = profile.Globals.PlayerStats;
+            if (ps.StaminaMultiplier.HasValue) return ps.StaminaMultiplier.Value;
+            return 1.0;
+        }
+
         static bool ResolveStabilityEnabled(Profile profile)
         {
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;

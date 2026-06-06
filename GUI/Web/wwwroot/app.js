@@ -765,6 +765,17 @@ function applyProfileToUI() {
         cropOverlapOn ? cropOverlapMul : 0.4;
     syncCropOverlapReadout();
     syncCropOverlapInputState();
+    const ps = (p.globals && p.globals.playerStats) || null;
+    const psHealth = ps && ps.healthMultiplier != null ? ps.healthMultiplier : null;
+    const psStamina = ps && ps.staminaMultiplier != null ? ps.staminaMultiplier : null;
+    const healthOn = psHealth != null && Math.abs(psHealth - 1.0) > 1e-9;
+    const staminaOn = psStamina != null && Math.abs(psStamina - 1.0) > 1e-9;
+    document.getElementById('player-stats-health-enabled').checked = healthOn;
+    document.getElementById('player-stats-stamina-enabled').checked = staminaOn;
+    document.getElementById('player-stats-health').value = healthOn ? psHealth : 2.0;
+    document.getElementById('player-stats-stamina').value = staminaOn ? psStamina : 5.0;
+    syncPlayerStatsReadout();
+    syncPlayerStatsInputState();
     const ftb = (p.globals && p.globals.fastTravelBells) || null;
     document.getElementById('bell-cap').value =
         ftb && ftb.bellCap != null ? ftb.bellCap : 10;
@@ -1133,7 +1144,7 @@ function miscTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     if (!g) return false;
     const presenceKeys = [
-        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'equipmentSlots',
+        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
@@ -1488,6 +1499,16 @@ async function onBuild() {
                     + co.valuesScaled + ' CapsuleRadius across ' + co.cropsPatched
                     + ' crops)' });
             }
+            if (data.playerStats && data.playerStats.enabled) {
+                const ps = data.playerStats;
+                const parts = [];
+                if (ps.healthRowsPatched > 0)
+                    parts.push('health ' + (ps.healthMultiplier || 1).toFixed(1) + 'x');
+                if (ps.staminaRowsPatched > 0)
+                    parts.push('stamina ' + (ps.staminaMultiplier || 1).toFixed(1) + 'x');
+                lines.push({ kind: 'ok', msg:
+                    'DONE - player stats (' + (parts.join(', ') || 'no rows') + ')' });
+            }
             if (data.bellLimits && data.bellLimits.written) {
                 const bl = data.bellLimits;
                 lines.push({ kind: 'ok', msg:
@@ -1708,7 +1729,7 @@ async function onBuild() {
                     }
                 }
             }
-            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.depositVisual && !data.cropOverlap && !data.buildingStability
+            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.depositVisual && !data.cropOverlap && !data.playerStats && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.keepStatus && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting

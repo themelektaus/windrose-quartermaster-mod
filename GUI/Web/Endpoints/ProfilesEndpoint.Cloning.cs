@@ -55,6 +55,13 @@ public static partial class ProfilesEndpoint
                 {
                     Multiplier = g.CropOverlap.Multiplier,
                 },
+            PlayerStats = g.PlayerStats == null
+                ? null
+                : new PlayerStatsGlobal
+                {
+                    HealthMultiplier = g.PlayerStats.HealthMultiplier,
+                    StaminaMultiplier = g.PlayerStats.StaminaMultiplier,
+                },
             FastTravelBells = g.FastTravelBells == null
                 ? null
                 : new FastTravelBellsGlobal

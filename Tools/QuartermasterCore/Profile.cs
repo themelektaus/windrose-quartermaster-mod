@@ -50,6 +50,7 @@ namespace Windrose.Quartermaster.Core
         public NpcSpawnGlobal NpcSpawn;
         public DepositVisualGlobal DepositVisual;
         public CropOverlapGlobal CropOverlap;
+        public PlayerStatsGlobal PlayerStats;
     }
 
     // "Better Crop Overlap": MULTIPLIER on every plantable crop's CapsuleRadius
@@ -60,6 +61,17 @@ namespace Windrose.Quartermaster.Core
     public sealed class CropOverlapGlobal
     {
         public double? Multiplier;
+    }
+
+    // "More Stamina (+ Health)": independent MULTIPLIERS on the player's base Health
+    // and Stamina attributes in CT_CharactersAttributes. 1.0 = vanilla. Health scales
+    // Hero_Health/Hero_MaxHealth; Stamina scales Hero_Stamina/Hero_MaxStamina/
+    // Hero_StaminaRegRate. Applied on top of freshly-extracted vanilla values, so no
+    // drift across game updates.
+    public sealed class PlayerStatsGlobal
+    {
+        public double? HealthMultiplier;
+        public double? StaminaMultiplier;
     }
 
     // "Deposit visuals" (the Iron / Sulfur "Visual Tweak" reference mods): per

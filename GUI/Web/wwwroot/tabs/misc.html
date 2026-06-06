@@ -211,6 +211,39 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(health-and-stamina.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Player Stats</h2>
+        <p class="hint">
+          Scales the player's base Health and Stamina above vanilla. Health scales
+          the health bar; Stamina scales the bar and its refill speed. 1.0x = vanilla.
+        </p>
+        <div id="player-stats-body" class="npc-global-body">
+          <div class="npc-slider-row">
+            <label class="check-row">
+              <input type="checkbox" id="player-stats-health-enabled">
+              Health
+            </label>
+            <input type="range" id="player-stats-health" min="1.0" max="10.0" step="0.5" value="2.0">
+            <span class="mult-pill" id="player-stats-health-value">2.0x</span>
+            <span class="mult-readout" id="player-stats-health-readout">640 HP</span>
+          </div>
+          <div class="npc-slider-row">
+            <label class="check-row">
+              <input type="checkbox" id="player-stats-stamina-enabled">
+              Stamina
+            </label>
+            <input type="range" id="player-stats-stamina" min="1.0" max="10.0" step="0.5" value="5.0">
+            <span class="mult-pill" id="player-stats-stamina-value">5.0x</span>
+            <span class="mult-readout" id="player-stats-stamina-readout">750 stamina</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(massive-spawn.png); "></div>
       </div>
       <div class="card-content">

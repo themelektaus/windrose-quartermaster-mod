@@ -120,6 +120,28 @@ function syncCropOverlapReadout() {
         pct === 0 ? 'vanilla' : pct + '% footprint';
 }
 
+// Vanilla CT_CharactersAttributes player bases (Hero_MaxHealth / Hero_MaxStamina).
+const VANILLA_HERO_HEALTH = 320;
+const VANILLA_HERO_STAMINA = 150;
+
+function syncPlayerStatsInputState() {
+    const healthOn  = document.getElementById('player-stats-health-enabled').checked;
+    const staminaOn = document.getElementById('player-stats-stamina-enabled').checked;
+    document.getElementById('player-stats-health').disabled  = !healthOn;
+    document.getElementById('player-stats-stamina').disabled = !staminaOn;
+}
+
+function syncPlayerStatsReadout() {
+    const health  = parseFloat(document.getElementById('player-stats-health').value) || 1.0;
+    const stamina = parseFloat(document.getElementById('player-stats-stamina').value) || 1.0;
+    document.getElementById('player-stats-health-value').textContent = health.toFixed(1) + 'x';
+    document.getElementById('player-stats-stamina-value').textContent = stamina.toFixed(1) + 'x';
+    document.getElementById('player-stats-health-readout').textContent =
+        Math.round(VANILLA_HERO_HEALTH * health) + ' HP';
+    document.getElementById('player-stats-stamina-readout').textContent =
+        Math.round(VANILLA_HERO_STAMINA * stamina) + ' stamina';
+}
+
 function syncBellInputState() {
     document.getElementById('bell-cap').disabled = false;
     document.getElementById('signal-fire-cap').disabled = false;
@@ -265,6 +287,25 @@ function setCropOverlapFromUI() {
     }
     syncCropOverlapReadout();
     syncCropOverlapInputState();
+    markDirty();
+}
+
+function setPlayerStatsFromUI() {
+    if (!state.current) return;
+    const healthOn  = document.getElementById('player-stats-health-enabled').checked;
+    const staminaOn = document.getElementById('player-stats-stamina-enabled').checked;
+    const health  = parseFloat(document.getElementById('player-stats-health').value) || 1.0;
+    const stamina = parseFloat(document.getElementById('player-stats-stamina').value) || 1.0;
+    state.current.globals = state.current.globals || {};
+    const hMul = (healthOn  && Math.abs(health  - 1.0) > 1e-9) ? health  : 1.0;
+    const sMul = (staminaOn && Math.abs(stamina - 1.0) > 1e-9) ? stamina : 1.0;
+    if (Math.abs(hMul - 1.0) > 1e-9 || Math.abs(sMul - 1.0) > 1e-9) {
+        state.current.globals.playerStats = { healthMultiplier: hMul, staminaMultiplier: sMul };
+    } else {
+        delete state.current.globals.playerStats;
+    }
+    syncPlayerStatsReadout();
+    syncPlayerStatsInputState();
     markDirty();
 }
 
@@ -863,6 +904,10 @@ function bindMiscHandlers() {
     document.getElementById('ship-pickup-multiplier').addEventListener('input', setShipPickupFromUI);
     document.getElementById('crop-overlap-enabled').addEventListener('change', setCropOverlapFromUI);
     document.getElementById('crop-overlap-multiplier').addEventListener('input', setCropOverlapFromUI);
+    document.getElementById('player-stats-health-enabled').addEventListener('change', setPlayerStatsFromUI);
+    document.getElementById('player-stats-stamina-enabled').addEventListener('change', setPlayerStatsFromUI);
+    document.getElementById('player-stats-health').addEventListener('input', setPlayerStatsFromUI);
+    document.getElementById('player-stats-stamina').addEventListener('input', setPlayerStatsFromUI);
     document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);
