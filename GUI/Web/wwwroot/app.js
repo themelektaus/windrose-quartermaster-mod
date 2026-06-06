@@ -1681,6 +1681,17 @@ async function onBuild() {
                     + ', sample ' + cg.sampleVanillaTicks
                     + ' -> ' + cg.sampleEffectiveTicks + ' ticks)' });
             }
+            if (data.cannonReload) {
+                const cr = data.cannonReload;
+                const mul = (cr.multiplier || 1.0).toFixed(2);
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship cannon reload patched (player only, ' + mul + 'x; '
+                    + cr.cannonCount + ' cannon'
+                    + (cr.cannonCount === 1 ? '' : 's')
+                    + ', ' + cr.enemyCannonsLeftVanilla + ' enemy left vanilla; sample '
+                    + (cr.sampleVanillaSeconds || 0).toFixed(1) + 's -> '
+                    + (cr.sampleEffectiveSeconds || 0).toFixed(1) + 's)' });
+            }
             if (data.cookingDuration) {
                 const cdr = data.cookingDuration;
                 const families = cdr.families || [];
@@ -1734,7 +1745,7 @@ async function onBuild() {
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed
-                && !data.cropGrowth && !data.cookingDuration && !data.npcSpawn
+                && !data.cropGrowth && !data.cannonReload && !data.cookingDuration && !data.npcSpawn
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }

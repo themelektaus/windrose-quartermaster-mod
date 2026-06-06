@@ -478,6 +478,23 @@ public static class BuildEndpoint
                         sampleEffectiveTicks = first != null ? first.EffectiveTicks : 0L,
                     };
                 }
+                object cannonReloadInfo = null;
+                if (result.CannonReloadResult != null && result.CannonReloadResult.Written > 0)
+                {
+                    var cr = result.CannonReloadResult;
+                    var first = cr.PatchedCannons != null && cr.PatchedCannons.Count > 0
+                        ? cr.PatchedCannons[0]
+                        : null;
+                    cannonReloadInfo = new
+                    {
+                        multiplier = cr.Multiplier,
+                        cannonCount = cr.Written,
+                        enemyCannonsLeftVanilla = cr.SkippedAi,
+                        sampleStem = first != null ? first.Stem : null,
+                        sampleVanillaSeconds = first != null ? first.VanillaSeconds : 0.0,
+                        sampleEffectiveSeconds = first != null ? first.EffectiveSeconds : 0.0,
+                    };
+                }
                 object cookingDurationInfo = null;
                 if (result.CookingDurationResult != null
                     && result.CookingDurationResult.FamilySummaries != null
@@ -602,6 +619,7 @@ public static class BuildEndpoint
                     lighting = lightingInfo,
                     shipSpeed = shipSpeedInfo,
                     cropGrowth = cropGrowthInfo,
+                    cannonReload = cannonReloadInfo,
                     cookingDuration = cookingDurationInfo,
                     npcSpawn = npcSpawnInfo,
                     customBuildings = customBuildingsInfo,

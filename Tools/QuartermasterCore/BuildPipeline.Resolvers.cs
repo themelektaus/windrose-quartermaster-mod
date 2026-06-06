@@ -203,6 +203,14 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveShipCannonMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipCannonMultiplier.HasValue) return cd.ShipCannonMultiplier.Value;
+            return 1.0;
+        }
+
         static CookingDurationPatcher.FamilyMultipliers ResolveCookingFamilies(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;
@@ -271,20 +279,11 @@ namespace Windrose.Quartermaster.Core
                     });
                 }
             }
-            if (HasCooldownMultiplier(cd.ShipCannonMultiplier))
-            {
-                foreach (var kv in ShipCannonPatcher.HullAssets)
-                {
-                    jobs.Add(new CooldownJob
-                    {
-                        Family = "ship-cannon",
-                        AssetStem = kv.Key,
-                        VirtualPath = kv.Value,
-                        Multiplier = cd.ShipCannonMultiplier.Value,
-                        Shape = CooldownJobShape.ShipCannon,
-                    });
-                }
-            }
+            // NOTE: Ship Cannons reload is NOT a cooldown job. It patches the loose
+            // R5CannonParams .json (player-only) into the legacy pak via
+            // CannonReloadPatcher - see ResolveShipCannonMultiplier + the main
+            // BuildAsync flow. The old DA_BatteryManagerParams uasset patch had no
+            // in-game effect.
             if (HasCooldownMultiplier(cd.SoulEaterAbilityMultiplier))
             {
                 jobs.Add(new CooldownJob
@@ -575,22 +574,6 @@ namespace Windrose.Quartermaster.Core
                         EffectiveValue = r.EffectiveReloadTime,
                         BatteryCount = 0,
                         PatchedBatteryCount = 0,
-                    };
-                }
-                case CooldownJobShape.ShipCannon:
-                {
-                    var patcher = new ShipCannonPatcher { Log = Log };
-                    var r = patcher.Patch(
-                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
-                    return new CooldownJobResult
-                    {
-                        Family = job.Family,
-                        AssetStem = r.AssetStem,
-                        Multiplier = job.Multiplier,
-                        VanillaValue = r.VanillaReloadTime,
-                        EffectiveValue = r.EffectiveReloadTime,
-                        BatteryCount = r.BatteryCount,
-                        PatchedBatteryCount = r.PatchedCount,
                     };
                 }
                 case CooldownJobShape.WeaponAbilityCurve:

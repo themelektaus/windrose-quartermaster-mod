@@ -43,6 +43,7 @@ namespace Windrose.Quartermaster.Core
         public LightingResult LightingResult;
         public ShipSpeedResult ShipSpeedResult;
         public CropGrowthPatchResult CropGrowthResult;
+        public CannonReloadPatchResult CannonReloadResult;
         public CookingDurationPatchResult CookingDurationResult;
         public NpcSpawnPatchResult NpcSpawnResult;
         public List<BuildingPatchResult> BuildingResults;
@@ -221,7 +222,6 @@ namespace Windrose.Quartermaster.Core
         ScalableFloatDuration,
         TopLevelMagnitude,
         RangedReload,
-        ShipCannon,
         WeaponAbilityCurve,
         FoodDurationCurve,
     }

@@ -21,6 +21,7 @@ namespace Windrose.Quartermaster.Core
         public string VanillaBuildingItemsCsv;
         public string VanillaCrops;
         public string VanillaAiSpawners;
+        public string VanillaCannonParams;
         public string Builds;
         public string Profiles;
         public string BuildTmp;
@@ -157,6 +158,8 @@ namespace Windrose.Quartermaster.Core
                 "R5BusinessRules", "Content", "Farming", "Crops");
             var vanillaAiSpawners = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "Actor", "SpawnPoints", "A2_Spawners");
+            var vanillaCannonParams = Path.Combine(vanilla, "R5", "Content",
+                "Gameplay", "Water", "Character", "Guns", "Cannons");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -173,6 +176,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaBuildingItemsCsv = vanillaBldgItemsCsv,
                 VanillaCrops = vanillaCrops,
                 VanillaAiSpawners = vanillaAiSpawners,
+                VanillaCannonParams = vanillaCannonParams,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),

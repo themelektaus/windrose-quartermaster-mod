@@ -50,8 +50,8 @@ const COOLDOWN_FAMILIES = [
     {
         key: 'cannon',
         profileKey: 'shipCannonMultiplier',
-        vanillaSeconds: 10,
-        renderReadout: (mul) => (10 * mul).toFixed(1) + ' s',
+        vanillaSeconds: 12,
+        renderReadout: (mul) => '~' + (12 * mul).toFixed(1) + ' s',
     },
     {
         key: 'souleater',

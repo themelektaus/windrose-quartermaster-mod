@@ -39,6 +39,13 @@ namespace Windrose.Quartermaster.Core
         public const string AiSpawnersPath =
             "R5/Content/Gameplay/Actor/SpawnPoints/A2_Spawners";
 
+        // R5CannonParams configs read at runtime as raw .json (shipped in the
+        // legacy pakchunk0 .pak, so repak extracts them). DA_Cannon_* are the
+        // PLAYER cannons; DA_AI_Cannon_* are the enemy/NPC variants. The cannon
+        // reload feature patches only DA_Cannon_* so enemy ships stay vanilla.
+        public const string CannonParamsPath =
+            "R5/Content/Gameplay/Water/Character/Guns/Cannons";
+
         public const string PlayerInventoryPath =
             "R5/Plugins/R5BusinessRules/Content/Inventory";
 

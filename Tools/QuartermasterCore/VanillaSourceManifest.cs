@@ -122,6 +122,15 @@ namespace Windrose.Quartermaster.Core
                 DiskPath = p => p.VanillaAiSpawners,
                 ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
             },
+            new VanillaSourceManifestEntry
+            {
+                Key = "cannonParams",
+                Label = "Cannon params",
+                Description = "R5/Content/Gameplay/Water/Character/Guns/Cannons - R5CannonParams .json with CannonAimingData.ReloadTime. The Cooldowns tab's Ship Cannons slider patches the player DA_Cannon_* (enemy DA_AI_Cannon_* left vanilla).",
+                PakIncludePath = WindroseGameSecrets.CannonParamsPath,
+                DiskPath = p => p.VanillaCannonParams,
+                ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
+            },
         };
 
         public static bool Probe(VanillaSourceManifestEntry entry, WindrosePaths paths)

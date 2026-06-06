@@ -20,6 +20,7 @@ namespace Windrose.Quartermaster.Core
         readonly SellerPatcher _sellerPatcher;
         readonly ItemCreatorPatcher _itemCreatorPatcher;
         readonly CropGrowthPatcher _cropGrowthPatcher;
+        readonly CannonReloadPatcher _cannonReloadPatcher;
         readonly CookingDurationPatcher _cookingDurationPatcher;
         readonly NpcSpawnPatcher _npcSpawnPatcher;
         readonly RepakResolver _repakResolver;
@@ -56,6 +57,7 @@ namespace Windrose.Quartermaster.Core
             _sellerPatcher = new SellerPatcher();
             _itemCreatorPatcher = new ItemCreatorPatcher();
             _cropGrowthPatcher = new CropGrowthPatcher();
+            _cannonReloadPatcher = new CannonReloadPatcher();
             _cookingDurationPatcher = new CookingDurationPatcher();
             _npcSpawnPatcher = new NpcSpawnPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
@@ -250,6 +252,23 @@ namespace Windrose.Quartermaster.Core
                             + cropGrowthResult.Skipped + " skipped)");
                 }
 
+                // Ship Cannons reload (Cooldowns tab): patches the loose
+                // R5CannonParams .json for the PLAYER cannons only (DA_Cannon_*),
+                // leaving enemy DA_AI_Cannon_* at vanilla. Loose JSON -> legacy pak.
+                CannonReloadPatchResult cannonReloadResult = null;
+                double cannonReloadMul = ResolveShipCannonMultiplier(profile);
+                bool cannonReloadActive = cannonReloadMul > 0.0 && Math.Abs(cannonReloadMul - 1.0) > 1e-9;
+                if (cannonReloadActive)
+                {
+                    LogLine("Patching ship cannon reload (player only, " + cannonReloadMul.ToString("0.##") + "x)");
+                    cannonReloadResult = _cannonReloadPatcher.PatchToDirectory(
+                        _paths.VanillaCannonParams, tmpDir, cannonReloadMul);
+                    LogLine("Patched player cannons: " + cannonReloadResult.Written
+                            + " written (" + cannonReloadResult.Scanned + " scanned, "
+                            + cannonReloadResult.SkippedAi + " enemy AI cannons left vanilla, "
+                            + cannonReloadResult.Skipped + " skipped)");
+                }
+
                 CookingDurationPatchResult cookingDurationResult = null;
                 var cookingFamilies = ResolveCookingFamilies(profile);
                 bool cookingDurationActive = cookingFamilies != null && cookingFamilies.AnyActive();
@@ -323,6 +342,7 @@ namespace Windrose.Quartermaster.Core
                         ? itemCreatorResult.ItemsWritten
                         : 0)
                     + (cropGrowthResult != null ? cropGrowthResult.Written : 0)
+                    + (cannonReloadResult != null ? cannonReloadResult.Written : 0)
                     + (cookingDurationResult != null ? cookingDurationResult.Written : 0)
                     + (npcSpawnResult != null ? npcSpawnResult.Written : 0)
                     + CountBuildableBuildings(profile);
@@ -567,6 +587,7 @@ namespace Windrose.Quartermaster.Core
                     LightingResult = lightingResult,
                     ShipSpeedResult = shipSpeedResult,
                     CropGrowthResult = cropGrowthResult,
+                    CannonReloadResult = cannonReloadResult,
                     CookingDurationResult = cookingDurationResult,
                     NpcSpawnResult = npcSpawnResult,
                     BuildingResults = buildingResults,
