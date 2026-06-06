@@ -93,6 +93,7 @@ public static partial class ProfilesEndpoint
             || IsActive(cd.ShipSummonMultiplier)
             || IsActive(cd.RangedReloadMultiplier)
             || IsActive(cd.ShipCannonMultiplier)
+            || IsActive(cd.ShipCannonRangeMultiplier)
             || IsActive(cd.SoulEaterAbilityMultiplier)
             || IsActive(cd.FoodBuffDurationMultiplier);
     }

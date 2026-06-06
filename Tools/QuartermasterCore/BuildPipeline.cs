@@ -257,14 +257,21 @@ namespace Windrose.Quartermaster.Core
                 // leaving enemy DA_AI_Cannon_* at vanilla. Loose JSON -> legacy pak.
                 CannonReloadPatchResult cannonReloadResult = null;
                 double cannonReloadMul = ResolveShipCannonMultiplier(profile);
+                double cannonRangeMul = ResolveShipCannonRangeMultiplier(profile);
                 bool cannonReloadActive = cannonReloadMul > 0.0 && Math.Abs(cannonReloadMul - 1.0) > 1e-9;
-                if (cannonReloadActive)
+                bool cannonRangeActive = cannonRangeMul > 0.0 && Math.Abs(cannonRangeMul - 1.0) > 1e-9;
+                if (cannonReloadActive || cannonRangeActive)
                 {
-                    LogLine("Patching ship cannon reload (player only, " + cannonReloadMul.ToString("0.##") + "x)");
+                    LogLine("Patching ship cannons (player only"
+                            + (cannonReloadActive ? ", reload " + cannonReloadMul.ToString("0.##") + "x" : "")
+                            + (cannonRangeActive ? ", range " + cannonRangeMul.ToString("0.##") + "x" : "")
+                            + ")");
                     cannonReloadResult = _cannonReloadPatcher.PatchToDirectory(
-                        _paths.VanillaCannonParams, tmpDir, cannonReloadMul);
+                        _paths.VanillaCannonParams, tmpDir, cannonReloadMul, cannonRangeMul);
                     LogLine("Patched player cannons: " + cannonReloadResult.Written
-                            + " written (" + cannonReloadResult.Scanned + " scanned, "
+                            + " written (" + cannonReloadResult.ReloadPatched + " reload, "
+                            + cannonReloadResult.RangePatched + " range; "
+                            + cannonReloadResult.Scanned + " scanned, "
                             + cannonReloadResult.SkippedAi + " enemy AI cannons left vanilla, "
                             + cannonReloadResult.Skipped + " skipped)");
                 }

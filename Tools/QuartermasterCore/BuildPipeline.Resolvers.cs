@@ -211,6 +211,14 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveShipCannonRangeMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipCannonRangeMultiplier.HasValue) return cd.ShipCannonRangeMultiplier.Value;
+            return 1.0;
+        }
+
         static CookingDurationPatcher.FamilyMultipliers ResolveCookingFamilies(Profile profile)
         {
             var pt = profile.Globals != null ? profile.Globals.ProductionTimes : null;

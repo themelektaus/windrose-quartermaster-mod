@@ -54,6 +54,13 @@ const COOLDOWN_FAMILIES = [
         renderReadout: (mul) => '~' + (12 * mul).toFixed(1) + ' s',
     },
     {
+        key: 'cannonrange',
+        profileKey: 'shipCannonRangeMultiplier',
+        // Player cannon firing range (ShotRangeInterval.Max): ~180-200 m vanilla.
+        // 180 m (18000 units) is the representative caliber for the readout.
+        renderReadout: (mul) => '~' + Math.round(180 * mul) + ' m',
+    },
+    {
         key: 'souleater',
         profileKey: 'soulEaterAbilityMultiplier',
         vanillaSeconds: 180,

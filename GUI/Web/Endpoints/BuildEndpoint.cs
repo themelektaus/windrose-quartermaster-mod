@@ -488,11 +488,16 @@ public static class BuildEndpoint
                     cannonReloadInfo = new
                     {
                         multiplier = cr.Multiplier,
+                        rangeMultiplier = cr.RangeMultiplier,
                         cannonCount = cr.Written,
+                        reloadPatched = cr.ReloadPatched,
+                        rangePatched = cr.RangePatched,
                         enemyCannonsLeftVanilla = cr.SkippedAi,
                         sampleStem = first != null ? first.Stem : null,
                         sampleVanillaSeconds = first != null ? first.VanillaSeconds : 0.0,
                         sampleEffectiveSeconds = first != null ? first.EffectiveSeconds : 0.0,
+                        sampleVanillaRangeMax = first != null ? first.VanillaRangeMax : 0L,
+                        sampleEffectiveRangeMax = first != null ? first.EffectiveRangeMax : 0L,
                     };
                 }
                 object cookingDurationInfo = null;

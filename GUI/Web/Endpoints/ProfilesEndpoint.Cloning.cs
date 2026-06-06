@@ -132,6 +132,7 @@ public static partial class ProfilesEndpoint
                     ShipSummonMultiplier     = g.Cooldowns.ShipSummonMultiplier,
                     RangedReloadMultiplier   = g.Cooldowns.RangedReloadMultiplier,
                     ShipCannonMultiplier     = g.Cooldowns.ShipCannonMultiplier,
+                    ShipCannonRangeMultiplier = g.Cooldowns.ShipCannonRangeMultiplier,
                     SoulEaterAbilityMultiplier  = g.Cooldowns.SoulEaterAbilityMultiplier,
                     FoodBuffDurationMultiplier  = g.Cooldowns.FoodBuffDurationMultiplier,
                 },

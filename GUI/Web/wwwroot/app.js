@@ -1683,14 +1683,23 @@ async function onBuild() {
             }
             if (data.cannonReload) {
                 const cr = data.cannonReload;
-                const mul = (cr.multiplier || 1.0).toFixed(2);
+                const parts = [];
+                if (cr.reloadPatched > 0) {
+                    parts.push('reload ' + (cr.multiplier || 1.0).toFixed(2) + 'x ('
+                        + (cr.sampleVanillaSeconds || 0).toFixed(1) + 's -> '
+                        + (cr.sampleEffectiveSeconds || 0).toFixed(1) + 's)');
+                }
+                if (cr.rangePatched > 0) {
+                    parts.push('range ' + (cr.rangeMultiplier || 1.0).toFixed(2) + 'x ('
+                        + Math.round((cr.sampleVanillaRangeMax || 0) / 100) + 'm -> '
+                        + Math.round((cr.sampleEffectiveRangeMax || 0) / 100) + 'm)');
+                }
                 lines.push({ kind: 'ok', msg:
-                    'DONE - ship cannon reload patched (player only, ' + mul + 'x; '
+                    'DONE - ship cannons patched (player only; '
                     + cr.cannonCount + ' cannon'
                     + (cr.cannonCount === 1 ? '' : 's')
-                    + ', ' + cr.enemyCannonsLeftVanilla + ' enemy left vanilla; sample '
-                    + (cr.sampleVanillaSeconds || 0).toFixed(1) + 's -> '
-                    + (cr.sampleEffectiveSeconds || 0).toFixed(1) + 's)' });
+                    + ', ' + cr.enemyCannonsLeftVanilla + ' enemy left vanilla'
+                    + (parts.length ? '; ' + parts.join(', ') : '') + ')' });
             }
             if (data.cookingDuration) {
                 const cdr = data.cookingDuration;
