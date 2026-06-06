@@ -42,6 +42,7 @@
 #include "qm_crash.hpp"
 #include "qm_hook.hpp"
 #include "qm_config.hpp"
+#include "qm_weather.hpp"
 
 // Implemented in passthrough.cpp - resolves real dxgi.dll into the g_real_*
 // table that the MASM trampolines in passthrough_asm.asm jmp through.
@@ -107,14 +108,20 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
     // to keep Loader-Lock clean.
     QmConfigLoad();
 
+    // Weather PoC (Option B): sentinel-driven CheatWeatherID writer. Init here
+    // so a weather-only deploy (no injectable items) still keeps the DLL active
+    // - the heartbeat rides the lifecycle hook installed by the UE probe below.
+    const bool weatherEnabled = QmWeather_Init();
+
     // Self-disable mode: when no JSON files matched or zero items merged, this DLL
     // is along for the ride (e.g. profile has only custom items / recipes -
     // those don't need injection). Skip MinHook + UE probe entirely so we have
     // zero per-frame overhead and zero crash surface. Re-loading requires a
-    // game restart anyway (Build button replaces the pak too).
-    if (g_injectableItemCount == 0)
+    // game restart anyway (Build button replaces the pak too). The weather
+    // sentinel overrides idle: weather needs the UE probe + lifecycle hook live.
+    if (g_injectableItemCount == 0 && !weatherEnabled)
     {
-        QM_LOG_INFO("[Config] no injectable items configured - DLL goes idle (no MinHook, no UE probe)");
+        QM_LOG_INFO("[Config] no injectable items and no weather sentinel - DLL goes idle (no MinHook, no UE probe)");
         return 0;
     }
 

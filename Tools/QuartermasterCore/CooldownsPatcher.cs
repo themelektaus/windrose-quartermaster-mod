@@ -14,8 +14,8 @@ namespace Windrose.Quartermaster.Core
 {
     public sealed class CooldownsPatcher
     {
-        public const double MinMultiplier = 0.1;
-        public const double MaxMultiplier = 3.0;
+        public const double MinMultiplier = 0.01;
+        public const double MaxMultiplier = 3.00;
 
         public const string DurationMagnitudeProp     = "DurationMagnitude";
         public const string ScalableFloatMagnitudeProp = "ScalableFloatMagnitude";

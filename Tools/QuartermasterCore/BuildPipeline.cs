@@ -417,7 +417,9 @@ namespace Windrose.Quartermaster.Core
                 var shipSpeedJobs = ResolveShipSpeedJobs(profile);
                 bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                var weatherWhistleIds = ResolveWeatherWhistleIds(profile);
+                bool weatherWhistlesActive = weatherWhistleIds.Count > 0;
+                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherWhistlesActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -454,7 +456,8 @@ namespace Windrose.Quartermaster.Core
                 LightingResult lightingResult = null;
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                WeatherWhistleStageResult weatherWhistleResult = null;
+                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherWhistlesActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -479,6 +482,7 @@ namespace Windrose.Quartermaster.Core
                         shipSpeedJobs,
                         iconBakeJobs,
                         buildingsActive,
+                        weatherWhistleIds, weatherWhistlesActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     shipPickupResult = compositeResult.ShipPickup;
@@ -500,6 +504,7 @@ namespace Windrose.Quartermaster.Core
                     shipSpeedResult = compositeResult.ShipSpeed;
                     iconBakeResults = compositeResult.Icons;
                     buildingResults = compositeResult.Buildings;
+                    weatherWhistleResult = compositeResult.WeatherWhistles;
                 }
 
                 BuildingStabilityResult stabilityResult = null;
@@ -545,34 +550,42 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
-                // Only touch the game folder when the buildings feature was
-                // used - never inject the DLL for a stack/loot-only profile.
+                // Touch the game folder when the DLL is needed - buildings (item
+                // JSON inject) OR Weather Whistles (weather trigger config). Never
+                // inject the DLL for a stack/loot-only profile.
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
-                if (buildingsCount > 0)
+                var weatherClones = weatherWhistleResult != null ? weatherWhistleResult.Clones : null;
+                bool weatherDeployActive = weatherClones != null && weatherClones.Count > 0;
+                if (buildingsCount > 0 || weatherDeployActive)
                 {
-                    LogLine("Deploying DLL + qm_items_" + safeName + ".json to game Binaries/Win64");
+                    LogLine("Deploying DLL to game Binaries/Win64"
+                            + (buildingsCount > 0 ? " + qm_items_" + safeName + ".json" : "")
+                            + (weatherDeployActive ? " + qm_weather_trigger.txt (" + weatherClones.Count + " weather)" : ""));
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
                     // EnsureDllInstalled returns false on non-Windows; skip the
-                    // JSON write too so no orphaned config is left in Win64.
+                    // config writes too so no orphaned files are left in Win64.
                     if (deployer.EnsureDllInstalled())
                     {
-                        deployer.WriteItemsJson(safeName, buildingResults);
+                        // Empty list deletes this profile's building JSON.
+                        deployer.WriteItemsJson(safeName, buildingResults ?? new List<BuildingPatchResult>());
+                        deployer.WriteWeatherTriggerConfig(weatherClones);
                     }
                 }
                 else
                 {
-                    // No buildings now: if the DLL was previously deployed,
-                    // delete this profile's JSON so it stops injecting stale
-                    // items. Never touch the game folder if no DLL exists.
+                    // No buildings and no weather now: if the DLL was previously
+                    // deployed, delete this profile's JSON + the weather trigger so
+                    // they stop affecting the game. Never touch the folder if no DLL.
                     try
                     {
                         var deployer = new GameDeployer(_paths.ModRoot);
                         deployer.Log = Log;
                         if (File.Exists(deployer.TargetDllPath()))
                         {
-                            // Empty list deletes the per-profile JSON.
+                            // Empty list / null removes the per-profile JSON + trigger.
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
+                            deployer.WriteWeatherTriggerConfig(null);
                             deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }
@@ -672,6 +685,7 @@ namespace Windrose.Quartermaster.Core
             List<ShipSpeedJob> shipSpeedJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
+            IReadOnlyCollection<int> weatherWhistleIds, bool weatherWhistlesActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -1904,6 +1918,31 @@ namespace Windrose.Quartermaster.Core
                 });
             }
 
+            // Weather Whistle ConsumableData clones (one per distinct weather).
+            // Pre-staged source: we extract DA_ConsumableAbilityData_SpawnerBoar
+            // ourselves WITH the AES key (the composite builder's to-legacy runs
+            // keyless), then clone + clear-cooldown into the shared staging dir.
+            WeatherWhistleStageResult weatherWhistleResult = null;
+            if (weatherWhistlesActive && weatherWhistleIds != null && weatherWhistleIds.Count > 0)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                var weatherTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__weatherwhistle");
+                LogLine("Weather Whistle source: " + weatherWhistleIds.Count
+                        + " distinct weather(s)");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "weather-whistle",
+                    InputDir = null,  // pre-staged: extraction happens in AfterExtract
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new WeatherWhistlePatcher { Log = Log };
+                        weatherWhistleResult = patcher.StageClones(
+                            stagingDir, retocExe, usmapPath, gamePaksDir,
+                            WindroseGameSecrets.AesKey, weatherTmp, weatherWhistleIds);
+                    },
+                });
+            }
+
             LogLine("Building IoStore composite triplet -> staging ("
                     + sources.Count + " source" + (sources.Count == 1 ? "" : "s") + ")");
 
@@ -2202,6 +2241,7 @@ namespace Windrose.Quartermaster.Core
                 ShipSpeed = shipSpeedOut,
                 Icons = iconResults,
                 Buildings = buildingResults,
+                WeatherWhistles = weatherWhistleResult,
             };
         }
 
@@ -2227,6 +2267,25 @@ namespace Windrose.Quartermaster.Core
             public ShipSpeedResult ShipSpeed;
             public List<IconBakerPatcher.BakeResult> Icons;
             public List<BuildingPatchResult> Buildings;
+            public WeatherWhistleStageResult WeatherWhistles;
+        }
+
+        // Distinct, valid weather ids requested by Weather Whistle custom items.
+        // One ConsumableData clone is staged per distinct id; items sharing a
+        // weather share the clone.
+        static List<int> ResolveWeatherWhistleIds(Profile profile)
+        {
+            var ids = new List<int>();
+            if (profile == null || profile.CustomItems == null) return ids;
+            var seen = new HashSet<int>();
+            foreach (var ci in profile.CustomItems)
+            {
+                if (ci == null || !ci.WeatherId.HasValue) continue;
+                int id = ci.WeatherId.Value;
+                if (!WeatherWhistlePatcher.IsValidWeatherId(id)) continue;
+                if (seen.Add(id)) ids.Add(id);
+            }
+            return ids;
         }
 
         static int CountBuildableBuildings(Profile profile)

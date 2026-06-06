@@ -14,8 +14,8 @@ namespace Windrose.Quartermaster.Core
 {
     public sealed class RangedReloadPatcher
     {
-        public const double MinMultiplier = 0.1;
-        public const double MaxMultiplier = 3.0;
+        public const double MinMultiplier = 0.01;
+        public const double MaxMultiplier = 3.00;
 
         public const string PassiveReloadGPDataProp = "PassiveReloadGPData";
         public const string ReloadTimeProp          = "ReloadTime";

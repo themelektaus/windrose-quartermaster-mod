@@ -1,3 +1,11 @@
+// Weather ids 0..13 - index IS the weather id; MUST match the C# WeatherWhistle
+// patcher and the dxgi DLL (qm_weather.cpp WeatherName).
+const WEATHER_WHISTLE_NAMES = [
+    'Sunny', 'Cloudy', 'Fog', 'Mist', 'Rain', 'Rain (heavy)', 'Storm',
+    'Windy', 'High pressure', 'Rainbow', 'Overcast', 'Ashlands fog',
+    'Tortuga mist', 'Default',
+];
+
 async function loadItemTemplates() {
     const errBox = document.getElementById('creator-error');
     errBox.hidden = true;
@@ -127,6 +135,24 @@ function buildCustomItemCardNode(custom, index) {
     raritySelect.value = rarity;
 
     card.querySelector('input[data-creator-field="keepInInventoryOnDeath"]').checked = keepOnDeath;
+
+    // Weather Whistle use-effect dropdown: only shown for weather-capable
+    // templates. "(vanilla)" = no weather effect (value ""); else weather id 0..13.
+    const weatherField = card.querySelector('.creator-field-weather');
+    const weatherSelect = card.querySelector('select[data-creator-field="weatherId"]');
+    if (weatherField && weatherSelect) {
+        if (tpl && tpl.supportsWeather) {
+            weatherSelect.appendChild(new Option('(vanilla) - no weather effect', ''));
+            for (let i = 0; i < WEATHER_WHISTLE_NAMES.length; i++) {
+                weatherSelect.appendChild(new Option('Change weather: ' + WEATHER_WHISTLE_NAMES[i], String(i)));
+            }
+            weatherSelect.value = (custom.weatherId != null) ? String(custom.weatherId) : '';
+            weatherField.style.display = '';
+        } else {
+            weatherField.style.display = 'none';
+        }
+    }
+
     card.querySelector('.creator-fields > label:last-child input').value = iconPath;
     return card;
 }
@@ -167,6 +193,7 @@ async function onCreatorNew() {
         keepInInventoryOnDeath: null,
         itemTexture: null,
         vanityText: '',
+        weatherId: null,
     });
     syncCustomItemsIntoCatalog();
     renderItemCreator();
@@ -202,8 +229,14 @@ function onCreatorListChange(e) {
         custom.keepInInventoryOnDeath = !!t.checked;
     } else if (field === 'vanityText') {
         custom.vanityText = t.value || '';
+    } else if (field === 'weatherId') {
+        const n = parseInt(t.value, 10);
+        custom.weatherId = (t.value !== '' && isFinite(n)) ? n : null;
     } else if (field === 'templateId') {
         custom.templateId = t.value;
+        // Switching away from a weather template clears any stale weather pick.
+        const newTpl = state.itemTemplates.byId.get(t.value) || null;
+        if (!newTpl || !newTpl.supportsWeather) custom.weatherId = null;
         renderItemCreator();
     } else {
         return;

@@ -303,6 +303,7 @@ public static partial class ProfilesEndpoint
                 ItemTexture = c.ItemTexture,
                 VanityText = c.VanityText,
                 IconPath = c.IconPath,
+                WeatherId = c.WeatherId,
             });
         }
         return result;

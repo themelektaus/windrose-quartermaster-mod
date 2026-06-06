@@ -797,4 +797,86 @@ namespace QmUE
         }
         return nullptr;
     }
+
+    // ---- UGameplayAbility::GetAbilitySystemComponentFromActorInfo wrapper ----
+    //
+    // Function:  GameplayAbilities.GameplayAbility.GetAbilitySystemComponentFromActorInfo
+    // Signature: UAbilitySystemComponent* GetAbilitySystemComponentFromActorInfo() const
+    // Param block (GameplayAbilities_parameters.hpp:649, size 0x08):
+    //   0x00 UAbilitySystemComponent* ReturnValue
+    //
+    // We find the UFunction by walking the ability instance's own class up the
+    // SuperStruct chain (FindFunctionOnClass already does this), so we don't have
+    // to resolve the base UGameplayAbility class by short name. The function is
+    // cached after the first successful lookup.
+    static UFunction* s_getASCFunc = nullptr;
+
+    UObject* GetAbilitySystemComponentFromAbility(UObject* ability)
+    {
+        if (!ability || !IsReady() || !g_processEvent) return nullptr;
+        if (!ability->Class) return nullptr;
+
+        if (!s_getASCFunc)
+            s_getASCFunc = FindFunctionOnClass(ability->Class, "GetAbilitySystemComponentFromActorInfo");
+        if (!s_getASCFunc) return nullptr;
+
+        struct Params { UObject* ReturnValue; };
+        Params parms = {};
+
+        uint32 oldFlags = s_getASCFunc->FunctionFlags;
+        s_getASCFunc->FunctionFlags = oldFlags | 0x400;   // FUNC_Native (mirror SpawnObject)
+        bool ok = CallProcessEvent(ability, s_getASCFunc, &parms);
+        s_getASCFunc->FunctionFlags = oldFlags;
+
+        if (!ok) return nullptr;
+        return parms.ReturnValue;
+    }
+
+    // ---- UAbilitySystemComponent::RemoveActiveEffectsWithGrantedTags wrapper --
+    //
+    // Function:  GameplayAbilities.AbilitySystemComponent.RemoveActiveEffectsWithGrantedTags
+    // Signature: int32 RemoveActiveEffectsWithGrantedTags(const FGameplayTagContainer& Tags)
+    // Param block (GameplayAbilities_parameters.hpp:3408, size 0x28):
+    //   0x00 FGameplayTagContainer Tags (0x20)
+    //   0x20 int32 ReturnValue
+    //
+    // FGameplayTagContainer (GameplayTags_structs.hpp:86, 0x20) =
+    //   { TArray<FGameplayTag> GameplayTags @0x00; TArray<FGameplayTag> ParentTags @0x10 }
+    // FGameplayTag (0x08) = { FName TagName }, layout-identical to FName.
+    // We point GameplayTags at a 1-element stack array; ParentTags stays empty
+    // (the native code derives parents itself or ignores them for removal).
+    static UFunction* s_removeGrantedFunc = nullptr;
+
+    int32 RemoveActiveEffectsWithGrantedTag(UObject* asc, const FName& grantedTag)
+    {
+        if (!asc || !IsReady() || !g_processEvent) return -1;
+        if (!asc->Class) return -1;
+        if (grantedTag.IsNone()) return -1;
+
+        if (!s_removeGrantedFunc)
+            s_removeGrantedFunc = FindFunctionOnClass(asc->Class, "RemoveActiveEffectsWithGrantedTags");
+        if (!s_removeGrantedFunc) return -1;
+
+        FGameplayTag tagArr[1] = { grantedTag };
+
+        struct Params {
+            FTArrayHeader GameplayTags;   // 0x00 -> {tagArr, 1, 1}
+            FTArrayHeader ParentTags;     // 0x10 -> empty
+            int32         ReturnValue;    // 0x20
+            int32         _pad;           // 0x24 (struct padded to 0x28)
+        };
+        Params parms = {};
+        parms.GameplayTags.Data = tagArr;
+        parms.GameplayTags.Num  = 1;
+        parms.GameplayTags.Max  = 1;
+        parms.ReturnValue       = 0;
+
+        uint32 oldFlags = s_removeGrantedFunc->FunctionFlags;
+        s_removeGrantedFunc->FunctionFlags = oldFlags | 0x400;   // FUNC_Native
+        bool ok = CallProcessEvent(asc, s_removeGrantedFunc, &parms);
+        s_removeGrantedFunc->FunctionFlags = oldFlags;
+
+        if (!ok) return -1;
+        return parms.ReturnValue;
+    }
 } // namespace QmUE

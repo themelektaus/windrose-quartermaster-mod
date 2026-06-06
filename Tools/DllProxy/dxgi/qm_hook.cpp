@@ -14,6 +14,7 @@
 #include "qm_inject.hpp"
 #include "qm_diag.hpp"
 #include "qm_alloc.hpp"
+#include "qm_weather.hpp"
 
 // ============================================================================
 // Detour.
@@ -616,6 +617,15 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
             QM_LOG_ERROR("[PreWarm] *** EXCEPTION inside pre-warm sweep - lifecycle hook caught fault, "
                          "forwarding original anyway");
         }
+
+        // Weather PoC heartbeat (Option B). Same game-thread + gameplay-map
+        // gating as pre-warm; pins the live R5N_WeatherComponent::CheatWeatherID
+        // to the qm_weather.txt sentinel value. No-op unless the sentinel armed.
+        __try { QmWeather_Heartbeat(); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_ERROR("[Weather] *** EXCEPTION inside weather heartbeat - lifecycle hook caught fault");
+        }
     }
 
     if (g_origLifecycleFunc)
@@ -725,6 +735,677 @@ static bool TryProbeLifecycleHook(int passNumber)
                      "will retry in 2s. Class registration happens as the map BP loads.",
             passNumber, kLifecycleTargetCount);
     return false;
+}
+
+// ============================================================================
+// Stage-2 item-use detection RECON: hook R5ConsumeAbility::EventReceived.
+// ----------------------------------------------------------------------------
+// Goal of stage 2 (Docs/PLAN-WeatherControl-WIP.md): when the player USES a
+// consumable, identify WHICH item it was so a future "Weather Whistle" can
+// trigger a weather change. EventReceived is the native handler the consume
+// ability runs when its montage / GAS event lands; signature is
+//   EventReceived(FGameplayTag EventTag, FGameplayEventData EventData)
+// (R5_classes.hpp:16310). We hook its ExecFunction (game-thread dispatch, same
+// pattern as the other hooks) and log every candidate item-identity field so a
+// SINGLE in-game test answers the two open unknowns: (1) does this ExecFunction
+// thunk fire at all on item use, and (2) which field carries the consumed
+// inventory-item DA (so we can match our custom item by name next).
+//
+// Fields logged:
+//   - Context  = the UR5ConsumeAbility instance (class + own name)
+//   - Context->Params_0 @ 0x3C0 = UR5ConsumeAbilityData (e.g.
+//     DA_ConsumableAbilityData_SpawnerBoar). NOTE: a boar-whistle CLONE shares
+//     this asset, so Params_0 alone is NOT a per-item discriminator - hence we
+//     need the consumed-item DA below.
+//   - EventTag (the GAS event)
+//   - EventData.Instigator / Target / OptionalObject / OptionalObject2.
+//     OptionalObject (FGameplayEventData @ +0x18, GameplayAbilities_structs.hpp:
+//     1010) is the prime candidate for the consumed item DA - confirm in-game.
+//
+// Params come from the FFrame: when EventReceived is dispatched via
+// ProcessEvent, FFrame.Locals (@ Stack+0x28, same layout DiagInspectInputs
+// uses) points at the flat {EventTag@0x00, EventData@0x08} parms buffer (the
+// Code==null path). All reads SEH-guarded. RECON ONLY - forwards the original
+// unchanged, touches no weather state.
+// ============================================================================
+static QmUE::FNativeFuncPtr g_origConsumeEventReceived = nullptr;
+static QmUE::FNativeFuncPtr g_origConsumeOnMontageEnd  = nullptr;
+static QmUE::FNativeFuncPtr g_origConsumeFinishAbility  = nullptr;
+static volatile LONG        g_consumeHits             = 0;
+
+// R5ConsumeAbility::Params_0 (UR5ConsumeAbilityData*) - R5_classes.hpp:16301
+static constexpr size_t kOffConsumeParams0 = 0x3C0;
+
+// Which UR5ConsumeAbility UFunction a detour belongs to. EventReceived is the
+// activation entry (fires for BP-driven food/bandage via the script thunk, but
+// NOT for the purely-native spawner whistle); OnMontageEnd / FinishAbility are
+// completion callbacks bound as montage-task dynamic delegates - those DO route
+// through ProcessEvent for the whistle, so they are our spawner-whistle hook.
+enum class ConsumeFnKind { EventReceived = 0, OnMontageEnd = 1, FinishAbility = 2 };
+
+static void LogConsumeObjIdentity(const char* label, QmUE::UObject* obj, long n)
+{
+    if (!obj)
+    {
+        QM_LOG_INFO("[Consume] hit#%ld   %-24s = null", n, label);
+        return;
+    }
+    char cls[128] = { 0 }, name[192] = { 0 };
+    TryResolveContextClassName(obj, cls, sizeof(cls));
+    __try { QmUE::ResolveFNameNarrow(obj->Name, name, sizeof(name)); }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+    QM_LOG_INFO("[Consume] hit#%ld   %-24s = 0x%p Cls='%s' Name='%s'",
+        n, label, obj, cls[0] ? cls : "<?>", name[0] ? name : "<?>");
+}
+
+// ============================================================================
+// Stage 2c-4 (DLL per-item cooldown) - decouple our weather whistle from the
+// shared spawner cooldown.
+// ----------------------------------------------------------------------------
+// Our custom weather whistle still triggers the SHARED GA_SpawnerConsumableAbility
+// (its item ActivationAbilityTag is the registered Activate.Spawner). That ability
+// commits GE_SpawnerCooldown on use, which grants GAS.Cooldown.Cons.Spawner onto
+// the player's ASC for a few seconds - and THAT tag is exactly what gates the
+// vanilla boar whistle (its ConsumableData checks Cons.Spawner). So using our
+// whistle briefly blocks the boar whistle.
+//
+// Fix (chosen by user 2026-06-06): right after our whistle fires, strip the
+// Cons.Spawner cooldown straight back off the ASC. The ability has already
+// committed the cooldown by the time its completion (K2_OnEndAbility / OnMontageEnd)
+// reaches our hook, so removal is well-defined. ASC is fetched from the ability
+// via GetAbilitySystemComponentFromActorInfo (reflected UFunction), then
+// RemoveActiveEffectsWithGrantedTags({Cons.Spawner}) clears it.
+//
+// Gating: called only when the weather trigger actually fired (applied >= 0),
+// which the weather module already debounces to once per use AND only for our
+// clone's ConsumableData name - so exactly one strip per whistle use. Idempotent
+// regardless. Accepted edge case: this also clears any boar-whistle cooldown that
+// happened to be running at that moment.
+static const wchar_t* const kWhistleCooldownTag = L"GAS.Cooldown.Cons.Spawner";
+
+static void StripSpawnerCooldownAfterWhistle(QmUE::UObject* ability)
+{
+    if (!ability) return;
+
+    // Intern the (already-registered) cooldown tag once. Latch failure so a
+    // broken lookup doesn't re-walk GObjects on every subsequent whistle use.
+    static QmUE::FName s_cdTag = { 0, 0 };
+    static bool        s_cdTagResolved = false;
+    static bool        s_cdTagFailed   = false;
+    if (!s_cdTagResolved)
+    {
+        if (s_cdTagFailed) return;
+        if (QmUE::FNameFromString(kWhistleCooldownTag, &s_cdTag) && !s_cdTag.IsNone())
+        {
+            s_cdTagResolved = true;
+        }
+        else
+        {
+            s_cdTagFailed = true;
+            QM_LOG_WARN("[Whistle-CD] could not intern tag '%ls' - cooldown strip disabled", kWhistleCooldownTag);
+            return;
+        }
+    }
+
+    QmUE::UObject* asc = QmUE::GetAbilitySystemComponentFromAbility(ability);
+    if (!asc)
+    {
+        QM_LOG_WARN("[Whistle-CD] no ASC from ability=0x%p - Cons.Spawner cooldown NOT stripped", ability);
+        return;
+    }
+
+    int removed = QmUE::RemoveActiveEffectsWithGrantedTag(asc, s_cdTag);
+    if (removed >= 0)
+        QM_LOG_INFO("[Whistle-CD] stripped Cons.Spawner cooldown after whistle use (ASC=0x%p removed=%d)", asc, removed);
+    else
+        QM_LOG_WARN("[Whistle-CD] RemoveActiveEffectsWithGrantedTag failed (ASC=0x%p)", asc);
+}
+
+// Shared detour core for all three UR5ConsumeAbility UFunctions. Reads the
+// Params_0 (ConsumableData) discriminator + (for the tag-carrying functions)
+// the EventTag, logs the identity (throttled), then routes to the right weather
+// trigger: the spend-tag-gated path for EventReceived (food/bandage), or the
+// completion path for OnMontageEnd/FinishAbility (the spawner whistle, whose
+// native entry never reaches the EventReceived thunk). SEH-guarded; POD locals
+// only (no C++ destructors) so __try is legal here.
+static void ConsumeHitCore(ConsumeFnKind kind, const char* fnName, void* Context, void* Stack)
+{
+    long n = InterlockedIncrement(&g_consumeHits);
+
+    // Consume events are user-driven and rare; log full identity for the first
+    // 50 hits, then a thin heartbeat, so a spammy caller (if any) can't flood.
+    const bool verbose = (n <= 50) || (n % 25 == 0);
+
+    QmUE::UObject* ability = reinterpret_cast<QmUE::UObject*>(Context);
+
+    // ---- read the discriminators on EVERY hit (cheap; needed for the trigger) ----
+    // Context->Params_0 -> the R5ConsumeAbilityData (e.g. DA_ConsumableAbilityData_Bandages_T01).
+    QmUE::UObject* params0 = nullptr;
+    char params0Name[192] = { 0 };
+    if (ability)
+    {
+        __try { params0 = *reinterpret_cast<QmUE::UObject**>(
+                    reinterpret_cast<uint8_t*>(ability) + kOffConsumeParams0); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { params0 = nullptr; }
+        if (params0)
+        {
+            __try { QmUE::ResolveFNameNarrow(params0->Name, params0Name, sizeof(params0Name)); }
+            __except (EXCEPTION_EXECUTE_HANDLER) { params0Name[0] = '\0'; }
+        }
+    }
+
+    // EventReceived + OnMontageEnd carry (FGameplayTag EventTag, FGameplayEventData
+    // EventData); FinishAbility takes no params, so skip the FFrame read for it.
+    const bool hasTagParam = (kind == ConsumeFnKind::EventReceived ||
+                              kind == ConsumeFnKind::OnMontageEnd);
+    void* locals = nullptr;
+    if (hasTagParam && Stack)
+    {
+        __try { locals = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(Stack) + 0x28); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { locals = nullptr; }
+    }
+    char evTagStr[200] = { 0 };
+    if (locals)
+    {
+        QmUE::FName evTag = {};
+        __try { evTag = *reinterpret_cast<QmUE::FName*>(reinterpret_cast<uint8_t*>(locals) + 0x00); }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        if (!evTag.IsNone() && !QmUE::ResolveFNameNarrow(evTag, evTagStr, sizeof(evTagStr)))
+            snprintf(evTagStr, sizeof(evTagStr), "<cmp=%d num=%u>", evTag.ComparisonIndex, evTag.Number);
+    }
+
+    if (verbose)
+    {
+        QM_LOG_INFO("[Consume] *** %s hit#%ld *** TID=%lu Ctx=0x%p Stack=0x%p",
+            fnName, n, GetCurrentThreadId(), Context, Stack);
+        LogConsumeObjIdentity("ability", ability, n);
+        LogConsumeObjIdentity("Params_0(abilityData)", params0, n);
+        if (hasTagParam)
+            QM_LOG_INFO("[Consume] hit#%ld   EventTag                  = '%s'", n, evTagStr[0] ? evTagStr : "<none>");
+
+        if (locals)
+        {
+            uint8_t* p = reinterpret_cast<uint8_t*>(locals);
+            // EventData @ +0x08: Instigator@+0x08 Target@+0x10 OptionalObject@+0x18 OptionalObject2@+0x20
+            QmUE::UObject *instig = nullptr, *target = nullptr, *opt1 = nullptr, *opt2 = nullptr;
+            __try {
+                instig = *reinterpret_cast<QmUE::UObject**>(p + 0x08 + 0x08);
+                target = *reinterpret_cast<QmUE::UObject**>(p + 0x08 + 0x10);
+                opt1   = *reinterpret_cast<QmUE::UObject**>(p + 0x08 + 0x18);
+                opt2   = *reinterpret_cast<QmUE::UObject**>(p + 0x08 + 0x20);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {}
+            LogConsumeObjIdentity("EventData.Instigator", instig, n);
+            LogConsumeObjIdentity("EventData.Target", target, n);
+            LogConsumeObjIdentity("EventData.OptionalObject", opt1, n);
+            LogConsumeObjIdentity("EventData.OptionalObject2", opt2, n);
+        }
+        else if (hasTagParam)
+        {
+            QM_LOG_INFO("[Consume] hit#%ld   FFrame.Locals null - params unreadable via Locals (Code!=null path?)", n);
+        }
+    }
+
+    // ---- weather trigger -----------------------------------------------------
+    // EventReceived: spend-tag-gated (food/bandage path, proven in stage 2b).
+    // OnMontageEnd / FinishAbility: completion path - substring match only,
+    // which is how the purely-native spawner whistle gets caught (its entry
+    // EventReceived never hits this thunk). The weather module owns the match +
+    // write + debounce; we just feed it the discriminators.
+    if (params0Name[0])
+    {
+        int applied = -1;
+        if (kind == ConsumeFnKind::EventReceived)
+        {
+            if (evTagStr[0]) applied = QmWeather_TryConsumableTrigger(params0Name, evTagStr);
+        }
+        else
+        {
+            applied = QmWeather_TryConsumableTriggerOnComplete(params0Name, fnName);
+        }
+        if (applied >= 0)
+        {
+            QM_LOG_INFO("[Consume] hit#%ld   -> WEATHER TRIGGERED (id=%d) by '%s' via %s", n, applied, params0Name, fnName);
+            // Our whistle fired -> peel its shared Cons.Spawner cooldown back off
+            // so it doesn't gate the vanilla boar whistle (see StripSpawnerCooldownAfterWhistle).
+            StripSpawnerCooldownAfterWhistle(ability);
+        }
+    }
+}
+
+static void __fastcall Hook_ConsumeEventReceived(void* Context, void* Stack, void* Result)
+{
+    ConsumeHitCore(ConsumeFnKind::EventReceived, "EventReceived", Context, Stack);
+    if (g_origConsumeEventReceived)
+    {
+        __try { g_origConsumeEventReceived(Context, Stack, Result); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        { QM_LOG_ERROR("[Consume] *** EXCEPTION inside original EventReceived ***"); }
+    }
+}
+
+static void __fastcall Hook_ConsumeOnMontageEnd(void* Context, void* Stack, void* Result)
+{
+    ConsumeHitCore(ConsumeFnKind::OnMontageEnd, "OnMontageEnd", Context, Stack);
+    if (g_origConsumeOnMontageEnd)
+    {
+        __try { g_origConsumeOnMontageEnd(Context, Stack, Result); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        { QM_LOG_ERROR("[Consume] *** EXCEPTION inside original OnMontageEnd ***"); }
+    }
+}
+
+static void __fastcall Hook_ConsumeFinishAbility(void* Context, void* Stack, void* Result)
+{
+    ConsumeHitCore(ConsumeFnKind::FinishAbility, "FinishAbility", Context, Stack);
+    if (g_origConsumeFinishAbility)
+    {
+        __try { g_origConsumeFinishAbility(Context, Stack, Result); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        { QM_LOG_ERROR("[Consume] *** EXCEPTION inside original FinishAbility ***"); }
+    }
+}
+
+static bool g_consumeHookInstalled = false;
+
+// Generic single-UFunction exec-thunk hook installer. Returns true on success.
+static bool InstallConsumeFnHook(QmUE::UClass* cls, const char* fnName,
+                                 LPVOID detour, QmUE::FNativeFuncPtr* origOut)
+{
+    QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cls, fnName);
+    if (!fn || !fn->ExecFunction)
+    {
+        QM_LOG_WARN("[Consume] R5ConsumeAbility::%s missing/no-exec - skipped", fnName);
+        return false;
+    }
+    LPVOID execAddr = reinterpret_cast<LPVOID>(fn->ExecFunction);
+    MH_STATUS st = MH_CreateHook(execAddr, detour, reinterpret_cast<LPVOID*>(origOut));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[Consume] MH_CreateHook(%s @ 0x%p) FAILED: %s", fnName, execAddr, MH_StatusToString(st));
+        return false;
+    }
+    st = MH_EnableHook(execAddr);
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[Consume] MH_EnableHook(%s @ 0x%p) FAILED: %s", fnName, execAddr, MH_StatusToString(st));
+        return false;
+    }
+    QM_LOG_INFO("[Consume] *** INSTALLED *** R5ConsumeAbility::%s ExecFn=0x%p detour=0x%p trampoline=0x%p Flags=0x%08X",
+        fnName, execAddr, detour, (void*)*origOut, fn->FunctionFlags);
+    return true;
+}
+
+// Probe for the native R5ConsumeAbility class and hook its three UFunctions.
+// EventReceived (REQUIRED) catches BP-driven food/bandage; OnMontageEnd +
+// FinishAbility (best-effort) catch the purely-native spawner whistle, whose
+// entry EventReceived runs natively and never hits the script thunk. Native
+// classes register early, so this typically installs on pass#1.
+static bool TryProbeConsumeHook(int passNumber)
+{
+    if (g_consumeHookInstalled) return true;
+    QmUE::UClass* cls = QmUE::FindClassByName("R5ConsumeAbility");
+    if (!cls)
+    {
+        if (passNumber <= 3 || (passNumber % 30) == 0)
+            QM_LOG_TRACE("[Consume] probe#%d R5ConsumeAbility not in GObjects yet", passNumber);
+        return false;
+    }
+    QmUE::UFunction* evFn = QmUE::FindFunctionOnClass(cls, "EventReceived");
+    if (!evFn || !evFn->ExecFunction)
+    {
+        if (passNumber <= 3 || (passNumber % 30) == 0)
+            QM_LOG_TRACE("[Consume] probe#%d R5ConsumeAbility found but EventReceived missing/no-exec", passNumber);
+        return false;
+    }
+    QM_LOG_INFO("[Consume] probe#%d HIT: R5ConsumeAbility cls=0x%p - installing EventReceived/OnMontageEnd/FinishAbility hooks",
+        passNumber, cls);
+
+    // EventReceived is the required hook; the loop must keep retrying until it
+    // installs. The two completion hooks are best-effort (whistle path).
+    if (!InstallConsumeFnHook(cls, "EventReceived", reinterpret_cast<LPVOID>(&Hook_ConsumeEventReceived), &g_origConsumeEventReceived))
+        return false;
+
+    InstallConsumeFnHook(cls, "OnMontageEnd",  reinterpret_cast<LPVOID>(&Hook_ConsumeOnMontageEnd),  &g_origConsumeOnMontageEnd);
+    InstallConsumeFnHook(cls, "FinishAbility", reinterpret_cast<LPVOID>(&Hook_ConsumeFinishAbility), &g_origConsumeFinishAbility);
+
+    g_consumeHookInstalled = true;
+    if (QmWeather_TriggerArmed())
+        QM_LOG_INFO("[Consume] weather trigger ARMED - food/bandage via spend-tag (EventReceived), spawner whistle via completion (OnMontageEnd/FinishAbility); substring='match' decides (see [Weather] *** TRIGGER ***)");
+    else
+        QM_LOG_INFO("[Consume] recon mode (no qm_weather_trigger.txt) - logs the consumed item identity on each consumable use");
+    return true;
+}
+
+// ============================================================================
+// Stage 2c-1c: global ProcessEvent net-hook for the purely-native spawner whistle
+// ----------------------------------------------------------------------------
+// In-game 2026-06-06 proved the spawner whistle (GA_SpawnerConsumableAbility_C, an
+// EMPTY native UR5ConsumeAbility subclass) dispatches NONE of its three UFunctions
+// (EventReceived/OnMontageEnd/FinishAbility) through the per-UFunction script-VM
+// exec thunks we detour - zero [Consume] hits despite a confirmed whistle use.
+// ProcessEvent is the ONE central dispatcher every script-routed UFunction passes
+// through, so a single detour on it catches whatever the whistle DOES route via
+// the VM (montage / anim-notify / ability-task dynamic delegates, gameplay events,
+// BlueprintCallable spawns) - without us having to guess the function a 3rd time.
+//
+// Two jobs, both kept cheap (PE fires 10k-100k times/frame):
+//   (1) FUNCTIONAL: when `self` derives from UR5ConsumeAbility, read its Params_0
+//       (ConsumableData @ 0x3C0) and feed the name to the SAME completion-trigger
+//       the thunk path uses (substring + 1.5s debounce live in qm_weather). ANY
+//       PE dispatch on the spawner ability during a use -> storm. The debounce is
+//       shared with the thunk path, so food/bandage can't double-fire, and the
+//       "SpawnerBoar" substring means non-spawner consumables never match.
+//   (2) RECON: log distinct PE calls whose owning class name matches a spawner/
+//       montage/consumable keyword (rate-limited per UFunction). If (1) never fires
+//       (PE never targets the ability object), this still reveals the real
+//       chokepoint so the next iteration can wire it precisely.
+//
+// Cost control: a direct-mapped class memo (keyed by UClass*) caches the per-class
+// verdict so the expensive name-resolve + super-chain walk runs ONCE per class,
+// never per call; after warmup the hot path is a deref + array lookup. Installed
+// ONLY when the weather trigger is armed, so non-weather users pay nothing.
+// SEH-guarded; always forwards the original ProcessEvent.
+// ============================================================================
+static QmUE::ProcessEventFn g_origProcessEvent    = nullptr;
+static QmUE::UClass*        g_consumeAbilityClass  = nullptr;   // UR5ConsumeAbility (ancestry test)
+static volatile LONG        g_peHookInstalled      = 0;
+static volatile LONG        g_peAbilityHits        = 0;         // PE calls on a consume-ability (diagnostic)
+
+static constexpr uint8_t PE_VALID   = 0x80;
+static constexpr uint8_t PE_ABILITY = 0x01;   // self derives from UR5ConsumeAbility
+static constexpr uint8_t PE_RECON   = 0x02;   // class name matches a recon keyword
+
+struct PeClassMemo { void* cls; volatile uint8_t verdict; };
+static const uint32_t kPeClassCacheMask = (1u << 15) - 1;       // 32768 slots * ~16B = 512KB
+static PeClassMemo     g_peClassCache[kPeClassCacheMask + 1];
+
+struct PeFuncMemo { void* fn; volatile ULONGLONG tick; };
+static const uint32_t kPeFuncCacheMask = (1u << 13) - 1;        // 8192 slots
+static PeFuncMemo      g_peFuncCache[kPeFuncCacheMask + 1];
+
+// Pointer walk up the SuperStruct chain (no string work). Bounded as a cycle guard.
+static bool ClassDerivesFromConsumeAbility(QmUE::UClass* cls)
+{
+    if (!g_consumeAbilityClass || !cls) return false;
+    QmUE::UStruct* s = cls;
+    for (int i = 0; i < 32 && s; ++i)
+    {
+        if (s == static_cast<QmUE::UStruct*>(g_consumeAbilityClass)) return true;
+        s = s->SuperStruct;
+    }
+    return false;
+}
+
+// Case-sensitive (UE class names are PascalCase, keywords match the real casing).
+static bool ClassNameIsReconInteresting(QmUE::UClass* cls)
+{
+    char nm[160] = { 0 };
+    __try { if (!QmUE::ResolveFNameNarrow(cls->Name, nm, sizeof(nm)) || !nm[0]) return false; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    static const char* const kKeywords[] = {
+        "Spawn", "Boar", "Whistle", "Montage", "Consum", "Cooldown", "Notify"
+    };
+    for (const char* k : kKeywords)
+        if (strstr(nm, k)) return true;
+    return false;
+}
+
+// Memoized per-class verdict. Direct-mapped; collisions just recompute. Races are
+// benign (worst case: one extra recompute, or one mis-flagged call that the
+// substring/SEH guards absorb).
+static uint8_t PeClassVerdict(QmUE::UClass* cls)
+{
+    PeClassMemo& slot = g_peClassCache[(((uintptr_t)cls) >> 4) & kPeClassCacheMask];
+    if (slot.cls == cls && (slot.verdict & PE_VALID))
+        return slot.verdict;
+    uint8_t v = PE_VALID;
+    if (ClassDerivesFromConsumeAbility(cls)) v |= PE_ABILITY;
+    if (ClassNameIsReconInteresting(cls))    v |= PE_RECON;
+    // Publish order matters: invalidate, set key, then publish the verdict last.
+    // Under MSVC /volatile:ms (x64 default) the volatile `verdict` writes carry
+    // release semantics, so the `cls` store can't float past the final publish.
+    slot.verdict = 0;          // invalidate while we publish
+    slot.cls     = cls;
+    slot.verdict = v;          // publish complete verdict
+    return v;
+}
+
+// Recon log for an "interesting" class, rate-limited per UFunction (<= 1 / 2s) so a
+// busy scene can't flood and a whistle use still emits fresh, timestamped lines.
+static void PeReconLog(QmUE::UObject* self, QmUE::UClass* cls, QmUE::UFunction* func)
+{
+    PeFuncMemo& slot = g_peFuncCache[(((uintptr_t)func) >> 4) & kPeFuncCacheMask];
+    ULONGLONG now = GetTickCount64();
+    if (slot.fn == func && slot.tick != 0 && (now - slot.tick) < 2000) return;
+    slot.fn = func; slot.tick = now;
+
+    char clsNm[160] = { 0 }, fnNm[160] = { 0 };
+    QmUE::ResolveFNameNarrow(cls->Name,  clsNm, sizeof(clsNm));
+    QmUE::ResolveFNameNarrow(func->Name, fnNm,  sizeof(fnNm));
+    QM_LOG_INFO("[PE-recon] %s::%s  self=0x%p", clsNm[0] ? clsNm : "?", fnNm[0] ? fnNm : "?", self);
+}
+
+// ============================================================================
+// Stage 2c-4 (DLL per-item cooldown) - per-item DISCRIMINATOR recon.
+// ----------------------------------------------------------------------------
+// At a consume-ability PE hit for the spawner whistle, Params_0 (ConsumableData)
+// is SHARED by boar/croc/all clones, so it can't tell items apart. The per-item
+// identity (ItemTag 'ConsData.Misc.SpawnerBoar.L2.T02', or the source DA_CID_*
+// object) must live behind the OPAQUE InventoryView (@0x3E0) or be cached in the
+// ability's padding. UR5BLInventoryView has no reflected members, so we can't
+// navigate it by offset - instead we cast a wide net (the Stage-2a methodology):
+// raw-scan the ability instance + InventoryView memory for
+//   (a) plausible UObject pointers  -> log Class+Name (DA_CID_* / Slot / Item = prize)
+//   (b) FName-shaped 8-byte values   -> resolve to a string (tag = prize)
+// All reads SEH-guarded; rate-limited (1 scan / 3s) so a normal use logs once.
+// One L1-vs-L2 in-game test then reveals whether ANYTHING here distinguishes the
+// item. If yes -> discriminator solved (per-item cooldown AND per-item weather).
+// ============================================================================
+static volatile ULONGLONG g_peDiscLastTick = 0;
+
+static bool DiscLooksLikePtr(const void* p)
+{
+    uintptr_t v = reinterpret_cast<uintptr_t>(p);
+    return v > 0x10000 && v < 0x00007FFFFFFFFFFFull && (v & 0x7) == 0;
+}
+
+static bool DiscSafeReadPtr(const void* at, void** out)
+{
+    __try { *out = *reinterpret_cast<void* const*>(at); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { *out = nullptr; return false; }
+}
+
+// SEH-guarded: resolve a candidate pointer as a live UObject (Class + Name).
+static bool DiscTryUObject(void* cand, char* cls, int clsCap, char* name, int nameCap)
+{
+    cls[0] = '\0'; name[0] = '\0';
+    if (!DiscLooksLikePtr(cand)) return false;
+    __try
+    {
+        QmUE::UObject* o = reinterpret_cast<QmUE::UObject*>(cand);
+        if (!DiscLooksLikePtr(*reinterpret_cast<void**>(o))) return false;            // vtable
+        QmUE::UClass* c = *reinterpret_cast<QmUE::UClass**>(reinterpret_cast<uint8_t*>(o) + 0x10);
+        if (!DiscLooksLikePtr(c)) return false;                                       // Class
+        if (!QmUE::ResolveFNameNarrow(o->Name, name, nameCap) || !name[0]) return false;
+        if (!QmUE::ResolveFNameNarrow(c->Name, cls,  clsCap)  || !cls[0])  return false;
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { cls[0] = '\0'; name[0] = '\0'; return false; }
+}
+
+// SEH-guarded: interpret an 8-byte value as an FName and resolve it. Index
+// bounds keep garbage out of AppendString.
+static bool DiscTryFName(const void* slot, char* out, int cap)
+{
+    out[0] = '\0';
+    __try
+    {
+        QmUE::FName fn = *reinterpret_cast<const QmUE::FName*>(slot);
+        if (fn.ComparisonIndex <= 0 || fn.ComparisonIndex > 4000000) return false;
+        if (fn.Number > 0x10000) return false;
+        if (!QmUE::ResolveFNameNarrow(fn, out, cap) || !out[0]) return false;
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
+}
+
+// A resolved string is "interesting" if it looks like a tag/asset path.
+static bool DiscInterestingStr(const char* s)
+{
+    return strchr(s, '.') || strstr(s, "ConsData") || strstr(s, "Spawner")
+        || strstr(s, "DA_") || strstr(s, "Whistle") || strstr(s, "Boar");
+}
+
+static void PeConsumeDiscriminatorRecon(QmUE::UObject* self)
+{
+    ULONGLONG now = GetTickCount64();
+    if (g_peDiscLastTick != 0 && (now - g_peDiscLastTick) < 3000) return;
+    g_peDiscLastTick = now;
+
+    void* invView = nullptr;
+    DiscSafeReadPtr(reinterpret_cast<uint8_t*>(self) + 0x3E0, &invView);
+    char ivCls[128] = { 0 }, ivNm[192] = { 0 };
+    if (invView) DiscTryUObject(invView, ivCls, sizeof(ivCls), ivNm, sizeof(ivNm));
+    QM_LOG_INFO("[PE-disc] === ability=0x%p InventoryView=0x%p Cls='%s' ===",
+        self, invView, ivCls[0] ? ivCls : "?");
+
+    // Two scan regions: ability tail (Params_0..pad @0x3C0+0x80) and the
+    // InventoryView head (@0x00+0x300). 8-byte stride.
+    uint8_t* bases[2] = { reinterpret_cast<uint8_t*>(self) + 0x3C0,
+                          reinterpret_cast<uint8_t*>(invView) };
+    int      sizes[2] = { 0x80, invView ? 0x300 : 0 };
+    const char* tags[2] = { "abil", "view" };
+
+    for (int r = 0; r < 2; ++r)
+    {
+        for (int off = 0; off < sizes[r]; off += 8)
+        {
+            void* val = nullptr;
+            if (!DiscSafeReadPtr(bases[r] + off, &val)) continue;
+
+            char cls[128], nm[192];
+            if (DiscTryUObject(val, cls, sizeof(cls), nm, sizeof(nm)))
+            {
+                QM_LOG_INFO("[PE-disc]   %s+0x%03X -> 0x%p Cls='%s' Name='%s'",
+                    tags[r], off, val, cls, nm);
+                // One level deeper for itemish objects (view -> slot/item -> DA).
+                bool itemish = strstr(nm, "DA_") || strstr(cls, "Item")
+                            || strstr(cls, "Slot") || strstr(cls, "Inventory");
+                if (itemish)
+                {
+                    uint8_t* ib = reinterpret_cast<uint8_t*>(val);
+                    for (int io = 0; io < 0x140; io += 8)
+                    {
+                        char tnm[192];
+                        if (DiscTryFName(ib + io, tnm, sizeof(tnm)) && DiscInterestingStr(tnm))
+                            QM_LOG_INFO("[PE-disc]       %s+0x%03X .fname+0x%02X = '%s'", tags[r], off, io, tnm);
+                        void* v2 = nullptr;
+                        if (!DiscSafeReadPtr(ib + io, &v2)) continue;
+                        char c2[128], n2[192];
+                        if (DiscTryUObject(v2, c2, sizeof(c2), n2, sizeof(n2))
+                            && (strstr(n2, "DA_") || strstr(c2, "Item")))
+                            QM_LOG_INFO("[PE-disc]       %s+0x%03X .obj+0x%02X -> Cls='%s' Name='%s'", tags[r], off, io, c2, n2);
+                    }
+                }
+                continue;
+            }
+
+            char fnm[192];
+            if (DiscTryFName(bases[r] + off, fnm, sizeof(fnm)) && DiscInterestingStr(fnm))
+                QM_LOG_INFO("[PE-disc]   %s+0x%03X fname = '%s'", tags[r], off, fnm);
+        }
+    }
+    QM_LOG_INFO("[PE-disc] === scan end ===");
+}
+
+static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms)
+{
+    __try
+    {
+        QmUE::UClass* cls = (self && func) ? self->Class : nullptr;
+        if (cls)
+        {
+            uint8_t v = PeClassVerdict(cls);
+
+            if (v & PE_ABILITY)
+            {
+                // FUNCTIONAL: this is a consume-ability instance. Read its Params_0
+                // (ConsumableData) and hand it to the shared completion-trigger.
+                long h = InterlockedIncrement(&g_peAbilityHits);
+                QmUE::UObject* params0 = *reinterpret_cast<QmUE::UObject**>(
+                    reinterpret_cast<uint8_t*>(self) + kOffConsumeParams0);
+                char p0[192] = { 0 };
+                if (params0)
+                    QmUE::ResolveFNameNarrow(params0->Name, p0, sizeof(p0));
+                if (p0[0])
+                {
+                    char fnNm[128] = { 0 }, via[160];
+                    QmUE::ResolveFNameNarrow(func->Name, fnNm, sizeof(fnNm));
+                    snprintf(via, sizeof(via), "PE:%s", fnNm[0] ? fnNm : "?");
+                    int applied = QmWeather_TryConsumableTriggerOnComplete(p0, via);
+                    if (applied >= 0)
+                    {
+                        QM_LOG_INFO("[PE] *** weather triggered (id=%d) *** via %s Params_0='%s'", applied, via, p0);
+                        // Our whistle fired -> strip its shared Cons.Spawner cooldown
+                        // off the ASC so the vanilla boar whistle stays usable.
+                        StripSpawnerCooldownAfterWhistle(self);
+                    }
+                    else if (h <= 40)   // first hits: show what PE-on-ability looks like even when no match
+                        QM_LOG_INFO("[PE] ability-call#%ld %s Params_0='%s' (no trigger)", h, via, p0);
+                }
+
+                // Stage 2c-4 (DLL per-item cooldown): on a spawner-whistle PE hit,
+                // cast a wide net for the per-item discriminator. Recon only,
+                // rate-limited + SEH-guarded; forwards the original untouched.
+                if (p0[0] && strstr(p0, "Spawner"))
+                    PeConsumeDiscriminatorRecon(self);
+            }
+
+            if (v & PE_RECON)
+                PeReconLog(self, cls, func);
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+    if (g_origProcessEvent)
+        g_origProcessEvent(self, func, parms);
+}
+
+// Install the global ProcessEvent detour. Requires GObjects ready + ProcessEvent
+// resolved (both true once we're in the probe loop). Idempotent.
+static bool InstallProcessEventHook()
+{
+    if (InterlockedCompareExchange(&g_peHookInstalled, 1, 0) != 0) return true;
+
+    void* pe = reinterpret_cast<void*>(QmUE::GetProcessEventFn());
+    if (!pe)
+    {
+        QM_LOG_WARN("[PE] ProcessEvent unresolved - global net-hook skipped");
+        InterlockedExchange(&g_peHookInstalled, 0);
+        return false;
+    }
+    // For the ancestry test. If null, the FUNCTIONAL path stays off but recon runs.
+    g_consumeAbilityClass = QmUE::FindClassByName("R5ConsumeAbility");
+
+    MH_STATUS st = MH_CreateHook(pe, reinterpret_cast<LPVOID>(&Hook_ProcessEvent),
+                                 reinterpret_cast<LPVOID*>(&g_origProcessEvent));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PE] MH_CreateHook(ProcessEvent @ 0x%p) FAILED: %s", pe, MH_StatusToString(st));
+        InterlockedExchange(&g_peHookInstalled, 0);
+        return false;
+    }
+    st = MH_EnableHook(pe);
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PE] MH_EnableHook(ProcessEvent @ 0x%p) FAILED: %s", pe, MH_StatusToString(st));
+        InterlockedExchange(&g_peHookInstalled, 0);
+        return false;
+    }
+    QM_LOG_INFO("[PE] *** INSTALLED *** global ProcessEvent net-hook @ 0x%p (R5ConsumeAbility cls=0x%p) - "
+                "functional spawner trigger + spawner/montage recon active",
+        pe, g_consumeAbilityClass);
+    return true;
 }
 
 // ============================================================================
@@ -952,8 +1633,15 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
 #endif
     bool buildMenuFound = false;
     bool lifecycleFound = false;
+    bool consumeFound   = false;
+    // Global ProcessEvent net-hook is only needed (and only paid for) when the
+    // weather trigger is armed. If not armed, treat it as already done so the
+    // probe loop's exit condition isn't held open by it.
+    bool peNetDone      = !QmWeather_TriggerArmed();
     int  buildMenuFoundOnPass = 0;
     int  lifecycleFoundOnPass = 0;
+    int  consumeFoundOnPass   = 0;
+    int  peNetDoneOnPass      = 0;
 
     for (int p = 0; p < kProbeMaxAttempts; ++p)
     {
@@ -970,11 +1658,28 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
                         "next BeginPlay/Tick will trigger pre-warm of %d DA package(s)",
                 p + 1, g_injectableItemCount);
         }
-
-        if (buildMenuFound && lifecycleFound)
+        // Stage-2 item-use detection recon (native class -> installs ~pass#1).
+        if (!consumeFound && TryProbeConsumeHook(p + 1))
         {
-            QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d - probe loop exiting",
-                buildMenuFoundOnPass, lifecycleFoundOnPass);
+            consumeFound = true;
+            consumeFoundOnPass = p + 1;
+            QM_LOG_INFO("[Consume] hook installed on probe pass#%d - using any consumable will now log its item identity",
+                p + 1);
+        }
+        // Stage-2c global ProcessEvent net-hook (only when weather trigger armed).
+        // Same prerequisites as the consume hook (GObjects ready + ProcessEvent
+        // resolved), so install it right after the consume hook lands.
+        if (!peNetDone && consumeFound && InstallProcessEventHook())
+        {
+            peNetDone = true;
+            peNetDoneOnPass = p + 1;
+        }
+
+        if (buildMenuFound && lifecycleFound && consumeFound && peNetDone)
+        {
+            QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d consume=pass#%d pe-net=%s - probe loop exiting",
+                buildMenuFoundOnPass, lifecycleFoundOnPass, consumeFoundOnPass,
+                peNetDoneOnPass ? "installed" : "skipped(not armed)");
             return 0;
         }
 
@@ -1007,5 +1712,11 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
                     "placed custom buildings will be invisible after savegame load until first build action",
             kProbeMaxAttempts, buildMenuFound ? "still works" : "ALSO disabled");
     }
-    return (buildMenuFound || lifecycleFound) ? 0 : 1;
+    if (!consumeFound)
+    {
+        QM_LOG_WARN("[Consume] *** TIMEOUT *** R5ConsumeAbility::EventReceived never resolved in %d attempts - "
+                    "item-use detection recon NOT installed (class name drift after a game update?)",
+            kProbeMaxAttempts);
+    }
+    return (buildMenuFound || lifecycleFound || consumeFound) ? 0 : 1;
 }

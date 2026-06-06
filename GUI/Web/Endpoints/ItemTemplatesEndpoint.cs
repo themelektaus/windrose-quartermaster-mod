@@ -32,6 +32,20 @@ public static class ItemTemplatesEndpoint
             defaultKeepInInventoryOnDeath = false,
             defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_TradeCraft_Alcohol_Rum.T_ItemIcon_TradeCraft_Alcohol_Rum",
         },
+        // Weather Whistle: cloned from the L2 boar whistle (no boar spawn). With a
+        // weather picked, the build clones its ConsumableData per-weather and the
+        // dxgi DLL sets that weather on use; "(vanilla)" ships an inert whistle.
+        new TemplateDto
+        {
+            id = "DA_CID_Misc_SpawnerBoar_L2_T02",
+            label = "Weather Whistle",
+            kind = "Consumable",
+            defaultMaxCountInSlot = 1,
+            defaultRarity = "Legendary",
+            defaultKeepInInventoryOnDeath = true,
+            defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T02_SpawnerBoar.T_ItemIcon_Consumables_T02_SpawnerBoar",
+            supportsWeather = true,
+        },
     };
 
     public static void Map(WebApplication app, string repoRoot)
@@ -51,5 +65,8 @@ public static class ItemTemplatesEndpoint
         public string defaultRarity;
         public bool defaultKeepInInventoryOnDeath;
         public string defaultItemTexture;
+        // When true the Item Creator shows a weather-effect dropdown for this
+        // template (Weather Whistle). Maps to CustomItem.WeatherId on build.
+        public bool supportsWeather;
     }
 }
