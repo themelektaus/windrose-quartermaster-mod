@@ -757,6 +757,14 @@ function applyProfileToUI() {
         shipPickupOn ? shipPickupMul : 2.0;
     syncShipPickupReadout();
     syncShipPickupInputState();
+    const co = (p.globals && p.globals.cropOverlap) || null;
+    const cropOverlapMul = co && co.multiplier != null ? co.multiplier : null;
+    const cropOverlapOn = cropOverlapMul != null && Math.abs(cropOverlapMul - 1.0) > 1e-9;
+    document.getElementById('crop-overlap-enabled').checked = cropOverlapOn;
+    document.getElementById('crop-overlap-multiplier').value =
+        cropOverlapOn ? cropOverlapMul : 0.4;
+    syncCropOverlapReadout();
+    syncCropOverlapInputState();
     const ftb = (p.globals && p.globals.fastTravelBells) || null;
     document.getElementById('bell-cap').value =
         ftb && ftb.bellCap != null ? ftb.bellCap : 10;
@@ -1125,7 +1133,7 @@ function miscTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     if (!g) return false;
     const presenceKeys = [
-        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'equipmentSlots',
+        'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed',
@@ -1473,6 +1481,13 @@ async function onBuild() {
                 lines.push({ kind: 'ok', msg:
                     'DONE - deposit visuals (' + ((dv.applied || []).join(', ') || dv.assetsPatched + ' materials') + ')' });
             }
+            if (data.cropOverlap && data.cropOverlap.enabled) {
+                const co = data.cropOverlap;
+                lines.push({ kind: 'ok', msg:
+                    'DONE - crop overlap (' + (co.multiplier || 1).toFixed(2) + 'x, '
+                    + co.valuesScaled + ' CapsuleRadius across ' + co.cropsPatched
+                    + ' crops)' });
+            }
             if (data.bellLimits && data.bellLimits.written) {
                 const bl = data.bellLimits;
                 lines.push({ kind: 'ok', msg:
@@ -1693,7 +1708,7 @@ async function onBuild() {
                     }
                 }
             }
-            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.depositVisual && !data.buildingStability
+            if (!data.pakPath && !data.pickupRadius && !data.shipPickup && !data.depositVisual && !data.cropOverlap && !data.buildingStability
                 && !data.noSmoke && !data.minimapRange && !data.noFog && !data.persistentLoot && !data.keepStatus && !data.landFastTravel && !data.bonfireRadius
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting

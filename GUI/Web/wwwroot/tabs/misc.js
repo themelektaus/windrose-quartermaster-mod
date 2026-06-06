@@ -104,6 +104,22 @@ function syncShipPickupReadout() {
         mul.toFixed(1) + 'x';
 }
 
+function syncCropOverlapInputState() {
+    const enabled = document.getElementById('crop-overlap-enabled');
+    const slider  = document.getElementById('crop-overlap-multiplier');
+    enabled.disabled = false;
+    slider.disabled  = !enabled.checked;
+}
+
+function syncCropOverlapReadout() {
+    const slider = document.getElementById('crop-overlap-multiplier');
+    const mul = parseFloat(slider.value) || 1.0;
+    document.getElementById('crop-overlap-multiplier-value').textContent = mul.toFixed(2) + 'x';
+    const pct = Math.round((mul - 1.0) * 100.0);
+    document.getElementById('crop-overlap-readout').textContent =
+        pct === 0 ? 'vanilla' : pct + '% footprint';
+}
+
 function syncBellInputState() {
     document.getElementById('bell-cap').disabled = false;
     document.getElementById('signal-fire-cap').disabled = false;
@@ -233,6 +249,22 @@ function setShipPickupFromUI() {
     }
     syncShipPickupReadout();
     syncShipPickupInputState();
+    markDirty();
+}
+
+function setCropOverlapFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('crop-overlap-enabled').checked;
+    const slider  = document.getElementById('crop-overlap-multiplier');
+    const mul     = parseFloat(slider.value) || 1.0;
+    state.current.globals = state.current.globals || {};
+    if (enabled && Math.abs(mul - 1.0) > 1e-9) {
+        state.current.globals.cropOverlap = { multiplier: mul };
+    } else {
+        delete state.current.globals.cropOverlap;
+    }
+    syncCropOverlapReadout();
+    syncCropOverlapInputState();
     markDirty();
 }
 
@@ -829,6 +861,8 @@ function bindMiscHandlers() {
     document.getElementById('pickup-multiplier').addEventListener('input', setPickupRadiusFromUI);
     document.getElementById('ship-pickup-enabled').addEventListener('change', setShipPickupFromUI);
     document.getElementById('ship-pickup-multiplier').addEventListener('input', setShipPickupFromUI);
+    document.getElementById('crop-overlap-enabled').addEventListener('change', setCropOverlapFromUI);
+    document.getElementById('crop-overlap-multiplier').addEventListener('input', setCropOverlapFromUI);
     document.getElementById('bell-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);

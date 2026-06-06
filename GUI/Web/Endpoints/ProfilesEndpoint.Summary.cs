@@ -39,6 +39,9 @@ public static partial class ProfilesEndpoint
             hasGlobalDepositVisual = p.Globals != null && p.Globals.DepositVisual != null
                                     && (p.Globals.DepositVisual.Iron.GetValueOrDefault(false)
                                         || p.Globals.DepositVisual.Sulfur.GetValueOrDefault(false)),
+            hasGlobalCropOverlap = p.Globals != null && p.Globals.CropOverlap != null
+                                    && p.Globals.CropOverlap.Multiplier.HasValue
+                                    && Math.Abs(p.Globals.CropOverlap.Multiplier.Value - 1.0) > 1e-9,
             hasGlobalFastTravelBells = HasFastTravelBellsConfig(p),
             hasGlobalBuildingStability = p.Globals != null
                                          && p.Globals.BuildingStability != null

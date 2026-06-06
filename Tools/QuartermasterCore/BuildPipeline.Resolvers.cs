@@ -26,6 +26,14 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveCropOverlapMultiplier(Profile profile)
+        {
+            if (profile.Globals == null || profile.Globals.CropOverlap == null) return 1.0;
+            var co = profile.Globals.CropOverlap;
+            if (co.Multiplier.HasValue) return co.Multiplier.Value;
+            return 1.0;
+        }
+
         static bool ResolveStabilityEnabled(Profile profile)
         {
             var bs = profile.Globals != null ? profile.Globals.BuildingStability : null;

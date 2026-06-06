@@ -189,6 +189,28 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(crops.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Crop Overlap</h2>
+        <p class="hint">
+          Shrinks the planting-collision footprint of every crop so seeds can be
+          placed closer together. Lower = more overlap; 1.0x = vanilla.
+        </p>
+        <label class="check-row">
+          <input type="checkbox" id="crop-overlap-enabled">
+          Better crop overlap
+        </label>
+        <div class="pickup-slider indent">
+          <input type="range" id="crop-overlap-multiplier" min="0.1" max="1.0" step="0.05" value="0.4">
+          <span class="mult-pill" id="crop-overlap-multiplier-value">0.4x</span>
+          <span class="mult-readout" id="crop-overlap-readout">-60% footprint</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(massive-spawn.png); "></div>
       </div>
       <div class="card-content">

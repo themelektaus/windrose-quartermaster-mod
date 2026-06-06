@@ -49,6 +49,17 @@ namespace Windrose.Quartermaster.Core
         public ShipSpeedGlobal ShipSpeed;
         public NpcSpawnGlobal NpcSpawn;
         public DepositVisualGlobal DepositVisual;
+        public CropOverlapGlobal CropOverlap;
+    }
+
+    // "Better Crop Overlap": MULTIPLIER on every plantable crop's CapsuleRadius
+    // (the horizontal planting-collision footprint in the BP_Farming actors).
+    // 1.0 = vanilla; lower lets crops be planted closer together / overlapping.
+    // Applied on top of freshly-extracted vanilla values, so no drift across
+    // game updates.
+    public sealed class CropOverlapGlobal
+    {
+        public double? Multiplier;
     }
 
     // "Deposit visuals" (the Iron / Sulfur "Visual Tweak" reference mods): per

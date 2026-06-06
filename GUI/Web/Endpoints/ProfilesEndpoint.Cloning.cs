@@ -49,6 +49,12 @@ public static partial class ProfilesEndpoint
                     Sulfur = g.DepositVisual.Sulfur,
                     SulfurTexture = g.DepositVisual.SulfurTexture,
                 },
+            CropOverlap = g.CropOverlap == null
+                ? null
+                : new CropOverlapGlobal
+                {
+                    Multiplier = g.CropOverlap.Multiplier,
+                },
             FastTravelBells = g.FastTravelBells == null
                 ? null
                 : new FastTravelBellsGlobal

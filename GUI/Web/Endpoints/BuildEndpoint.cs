@@ -129,6 +129,20 @@ public static class BuildEndpoint
                         utocPath = dv.UtocPath,
                     };
                 }
+                object cropOverlapInfo = null;
+                if (result.CropOverlapResult != null)
+                {
+                    var co = result.CropOverlapResult;
+                    cropOverlapInfo = new
+                    {
+                        enabled = co.Enabled,
+                        multiplier = co.Multiplier,
+                        cropsPatched = co.CropsPatched,
+                        valuesScaled = co.ValuesScaled,
+                        ucasPath = co.UcasPath,
+                        utocPath = co.UtocPath,
+                    };
+                }
                 object bellLimitsInfo = null;
                 if (result.BellLimitsResult != null)
                 {
@@ -552,6 +566,7 @@ public static class BuildEndpoint
                     pickupRadius = pickupRadiusInfo,
                     shipPickup = shipPickupInfo,
                     depositVisual = depositVisualInfo,
+                    cropOverlap = cropOverlapInfo,
                     bellLimits = bellLimitsInfo,
                     equipmentSlots = equipmentSlotsInfo,
                     shipSlots = shipSlotsInfo,

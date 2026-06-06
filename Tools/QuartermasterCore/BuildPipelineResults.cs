@@ -25,6 +25,7 @@ namespace Windrose.Quartermaster.Core
         public double? PickupMultiplier;
         public ShipPickupResult ShipPickupResult;
         public DepositVisualResult DepositVisualResult;
+        public CropOverlapResult CropOverlapResult;
         public BuildingStabilityResult StabilityResult;
         public NoSmokeResult NoSmokeResult;
         public MinimapRangeResult MinimapResult;
@@ -144,6 +145,17 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public int AssetsPatched;
         public System.Collections.Generic.List<string> Applied;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class CropOverlapResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public int CropsPatched;
+        public int ValuesScaled;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;

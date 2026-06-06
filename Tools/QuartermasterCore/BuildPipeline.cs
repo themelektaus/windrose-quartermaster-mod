@@ -332,6 +332,8 @@ namespace Windrose.Quartermaster.Core
                 bool shipPickupActive = shipPickupMultiplier > 0.0 && Math.Abs(shipPickupMultiplier - 1.0) > 1e-9;
                 var depositVisualJobs = ResolveDepositVisualJobs(profile);
                 bool depositVisualActive = depositVisualJobs.Count > 0;
+                double cropOverlapMultiplier = ResolveCropOverlapMultiplier(profile);
+                bool cropOverlapActive = cropOverlapMultiplier > 0.0 && Math.Abs(cropOverlapMultiplier - 1.0) > 1e-9;
                 bool stabilityActive = ResolveStabilityEnabled(profile);
                 var noSmokeCategories = ResolveNoSmokeCategories(profile);
                 bool noSmokeActive = noSmokeCategories.Count > 0;
@@ -361,7 +363,7 @@ namespace Windrose.Quartermaster.Core
                 var shipSpeedJobs = ResolveShipSpeedJobs(profile);
                 bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -382,6 +384,7 @@ namespace Windrose.Quartermaster.Core
                 PickupTripletResult pickupResult = null;
                 ShipPickupResult shipPickupResult = null;
                 DepositVisualResult depositVisualResult = null;
+                CropOverlapResult cropOverlapResult = null;
                 NoSmokeResult noSmokeResult = null;
                 BonfireRadiusResult bonfireResult = null;
                 LandFastTravelResult landFastTravelResult = null;
@@ -396,13 +399,14 @@ namespace Windrose.Quartermaster.Core
                 LightingResult lightingResult = null;
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
+                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
                         profile, outDir, pickupMultiplier, pickupActive,
                         shipPickupMultiplier, shipPickupActive,
                         depositVisualJobs, depositVisualActive,
+                        cropOverlapMultiplier, cropOverlapActive,
                         noSmokeCategories,
                         bonfireMultiplier, bonfireActive,
                         landFastTravelActive,
@@ -423,6 +427,7 @@ namespace Windrose.Quartermaster.Core
                     pickupResult = compositeResult.Pickup;
                     shipPickupResult = compositeResult.ShipPickup;
                     depositVisualResult = compositeResult.DepositVisual;
+                    cropOverlapResult = compositeResult.CropOverlap;
                     noSmokeResult = compositeResult.NoSmoke;
                     bonfireResult = compositeResult.Bonfire;
                     landFastTravelResult = compositeResult.LandFastTravel;
@@ -537,6 +542,7 @@ namespace Windrose.Quartermaster.Core
                     PickupMultiplier = pickupActive ? (double?)pickupMultiplier : null,
                     ShipPickupResult = shipPickupResult,
                     DepositVisualResult = depositVisualResult,
+                    CropOverlapResult = cropOverlapResult,
                     StabilityResult = stabilityResult,
                     NoSmokeResult = noSmokeResult,
                     MinimapResult = minimapResult,
@@ -588,6 +594,7 @@ namespace Windrose.Quartermaster.Core
             double pickupMultiplier, bool pickupActive,
             double shipPickupMultiplier, bool shipPickupActive,
             List<DepositVisualJob> depositVisualJobs, bool depositVisualActive,
+            double cropOverlapMultiplier, bool cropOverlapActive,
             List<NoSmokeCategory> noSmokeCategories,
             double bonfireMultiplier, bool bonfireActive,
             bool landFastTravelActive,
@@ -711,6 +718,26 @@ namespace Windrose.Quartermaster.Core
                         var patcher = new DepositVisualPatcher { Log = Log };
                         depositVisualPatchResult = patcher.Patch(
                             stagingDir, usmapPath, depositVisualJobs);
+                    },
+                });
+            }
+
+            CropOverlapPatchResult cropOverlapPatchResult = null;
+            if (cropOverlapActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Crop overlap source: vanilla " + CropOverlapPatcher.AssetFilter
+                        + " (multiplier=" + cropOverlapMultiplier + ")");
+                sources.Add(new IoStoreCompositeSource
+                {
+                    Name = "crop-overlap",
+                    InputDir = gamePaksDir,
+                    Filter = CropOverlapPatcher.AssetFilter,
+                    AfterExtract = stagingDir =>
+                    {
+                        var patcher = new CropOverlapPatcher { Log = Log };
+                        cropOverlapPatchResult = patcher.Patch(
+                            stagingDir, usmapPath, cropOverlapMultiplier);
                     },
                 });
             }
@@ -1862,6 +1889,21 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            CropOverlapResult cropOverlapOut = null;
+            if (cropOverlapActive)
+            {
+                cropOverlapOut = new CropOverlapResult
+                {
+                    Enabled = true,
+                    Multiplier = cropOverlapMultiplier,
+                    CropsPatched = cropOverlapPatchResult != null ? cropOverlapPatchResult.CropsPatched : 0,
+                    ValuesScaled = cropOverlapPatchResult != null ? cropOverlapPatchResult.ValuesScaled : 0,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             BonfireRadiusResult bonfireOut = null;
             if (bonfireActive)
             {
@@ -2034,6 +2076,7 @@ namespace Windrose.Quartermaster.Core
                 Pickup = pickupOut,
                 ShipPickup = shipPickupOut,
                 DepositVisual = depositVisualOut,
+                CropOverlap = cropOverlapOut,
                 NoSmoke = noSmokeOut,
                 Bonfire = bonfireOut,
                 LandFastTravel = landFastTravelOut,
@@ -2057,6 +2100,7 @@ namespace Windrose.Quartermaster.Core
             public PickupTripletResult Pickup;
             public ShipPickupResult ShipPickup;
             public DepositVisualResult DepositVisual;
+            public CropOverlapResult CropOverlap;
             public NoSmokeResult NoSmoke;
             public BonfireRadiusResult Bonfire;
             public LandFastTravelResult LandFastTravel;
