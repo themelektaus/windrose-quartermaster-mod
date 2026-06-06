@@ -25,9 +25,18 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 [size=4][b]Cooldowns, crops & crafting[/b][/size]
-[color=#b6b6b6]Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).[/color]
+[color=#b6b6b6]Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The Ship Cannon card pairs its reload slider with a cannon-range slider (1.0x to 3.0x); both are player-only, so enemy and NPC ships keep their vanilla reload and range. The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Cooldowns%2C-crops-%26-crafting.png[/img]
+
+
+
+
+
+[size=4][b]Crop overlap[/b][/size]
+[color=#b6b6b6]Shrinks the planting-collision footprint of every crop so seeds can be placed much closer together (0.1x to 1.0x slider, default 0.4x = -60% footprint). Lower means more overlap; 1.0x leaves vanilla spacing untouched.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Crop-overlap.png[/img]
 
 
 
@@ -78,6 +87,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
+[size=4][b]Player stats[/b][/size]
+[color=#b6b6b6]Scale the player's base Health and Stamina above vanilla with two independent 1.0x to 10.0x sliders (vanilla 320 HP / 150 stamina). Health grows the health bar; Stamina grows the bar and speeds up how fast it refills. Leave either at 1.0x to keep that stat vanilla.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Player-stats.png[/img]
+
+
+
+
+
 [size=4][b]NPC Spawns[/b][/size]
 [color=#b6b6b6]Global multipliers for enemy spawn counts (1.0x to 4.0x on each spawner's Min/Max) and respawn time (0.1x to 2.0x), applied to NPC / enemy spawners only - resource, chest and mineral-node spawners are left alone. Optionally also speed up rare / boss timers. A dedicated NPC Spawns tab lets you override individual spawners (respawn minutes, count min/max) on top of the global values.[/color]
 
@@ -100,6 +118,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Structures hold longer cantilevers and taller towers without collapsing.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Building-stability.png[/img]
+
+
+
+
+
+[size=4][b]Building rotation[/b][/size]
+[color=#b6b6b6]Add finer 1°, 5° and 10° rotation steps to buildables via three independent checkboxes (vanilla only snaps to 15° and up), so you can line up walls, floors and props far more precisely. The default starting step stays vanilla 30° - enable only the increments you want.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Building-rotation.png[/img]
 
 
 

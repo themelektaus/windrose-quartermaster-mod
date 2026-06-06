@@ -19,16 +19,25 @@ A profile bundles tweaks across multiple domains:
 - **Sellers** - retune what NPC vendors offer you and at which price
 - **Cooldowns** - bidirectional 0.1-3.0x sliders across eight families
   (Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle,
-  Ship Summon, Ranged Weapon Reload, Ship Cannon Reload)
+  Ship Summon, Ranged Weapon Reload, Ship Cannon Reload); the Ship Cannon
+  card pairs its reload slider with a cannon-range slider (1.0-3.0x), and
+  both cannon multipliers touch only your own hulls - enemy / NPC ships
+  keep their vanilla reload + range
 - **Crop growth & crafting durations** - 0.1-3.0x sliders for crop grow
   times plus furnace / kiln / tannery / mill / trade-outpost recipe
   durations
+- **Crop overlap** - shrink each crop's planting-collision footprint so
+  seeds can be placed much closer together (0.1-1.0x slider, default
+  0.4x = -60% footprint); 1.0x keeps vanilla spacing
 - **Pickup radius** - auto-pickup magnet range, free 1.0-10.0x slider,
   plus an optional 1.0-4.0x **ship pickup** multiplier (same card) that
   widens the collection range for floating sea-loot and the Brig /
   Frigate / Ketch interaction zones
 - **Fast-travel bells & signal fires** - raise the placement caps
 - **Building stability** - structures hold longer cantilevers / taller towers
+- **Building rotation** - add finer 1 / 5 / 10 degree rotation steps to
+  buildables via three independent checkboxes (vanilla only snaps to 15
+  degrees and up); default starting step stays vanilla 30 degrees
 - **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
 - **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider
 - **Pickaxe range** - 1.0-3.0x slider that scales the trace radius on
@@ -41,6 +50,9 @@ A profile bundles tweaks across multiple domains:
   bag replaces the timed posthumous container, on land and at sea) and /
   or keep food / elixir / comfort buffs through death (transient debuffs
   still clear)
+- **Player stats** - scale the player's base Health and Stamina above
+  vanilla with two independent 1.0-10.0x sliders (vanilla 320 HP / 150
+  stamina); Stamina also refills faster, 1.0x keeps a stat vanilla
 - **NPC spawns** - global multipliers for enemy spawn counts (1.0-4.0x)
   and respawn time (0.1-2.0x) on NPC / enemy spawners only, with optional
   per-spawner overrides; resource / chest / mineral-node spawners untouched
@@ -212,11 +224,15 @@ icon to clone an existing one. For each profile you can:
   cooldown families (Elixir, Medicine, Spell of Return, Ship Repair
   Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon
   Reload), plus crop grow times and crafting / processing durations
-  (furnace, kiln, tannery, mill, trade outpost).
+  (furnace, kiln, tannery, mill, trade outpost). The Ship Cannon card
+  pairs the reload slider with a cannon-range slider (1.0-3.0x); both are
+  player-only, so enemy / NPC ships keep their vanilla reload and range.
 - **Basic tab** - cards for pickup radius (+ ship pickup), fast-travel
   bell caps, building stability, minimap range, bonfire radius, pickaxe
-  range, NPC spawns, on-death loot / status retention, deposit visuals,
-  overall light radius, overall ship speed, no-smoke FX, equipment slots
+  range, building rotation (finer 1 / 5 / 10 degree steps), NPC spawns,
+  on-death loot / status retention, player stats (Health / Stamina),
+  crop overlap, deposit visuals, overall light radius,
+  overall ship speed, no-smoke FX, equipment slots
   (ring / necklace) and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
   is enabled. A **UI Scale** card additionally writes the global
