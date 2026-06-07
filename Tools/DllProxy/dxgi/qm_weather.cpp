@@ -99,6 +99,15 @@ namespace
     int            g_triggerCount     = 0;
     bool           g_triggerArmed     = false;     // true iff g_triggerCount > 0
     ULONGLONG      g_lastTriggerTick  = 0;         // GetTickCount64 of last fire (debounce)
+    char           g_lastTriggerName[160] = {};    // ConsumableData name of last fire (name-keyed debounce)
+    // A single use of one consumable fires several hook points (spend EventReceived,
+    // then OnMontageEnd + FinishAbility at the montage end), all carrying the SAME
+    // ConsumableData name within a few seconds. We collapse those to ONE weather set.
+    // The window only ever blocks RE-USE OF THE SAME item (idempotent, harmless); a
+    // DIFFERENT item (different weather -> different clone name) is NEVER debounced,
+    // so back-to-back Storm->Sunny always both fire. (Bug before 2026-06-07: this was
+    // a single global timer, so the 2nd of any two whistles within 1.5s was dropped.)
+    constexpr DWORD kSameItemDebounceMs = 2500;
 
     // ---- EObjectFlags (UE5) used to reject non-live objects ----
     //   RF_ClassDefaultObject 0x10 - the CDO (named "Default__...")
@@ -392,6 +401,24 @@ static int MatchTrigger(const char* consumableDataName)
     return -1;
 }
 
+// Name-keyed debounce. Returns true if this name fired within kSameItemDebounceMs.
+// Only the SAME ConsumableData name is debounced - a different weather clone has a
+// different name and so always fires immediately.
+static bool TriggerDebounced(const char* consumableDataName)
+{
+    const ULONGLONG now = GetTickCount64();
+    const bool sameItem = g_lastTriggerName[0]
+        && strcmp(g_lastTriggerName, consumableDataName) == 0;
+    return sameItem && g_lastTriggerTick != 0 && (now - g_lastTriggerTick) < kSameItemDebounceMs;
+}
+
+static void MarkTriggered(const char* consumableDataName)
+{
+    g_lastTriggerTick = GetTickCount64();
+    strncpy(g_lastTriggerName, consumableDataName, sizeof(g_lastTriggerName) - 1);
+    g_lastTriggerName[sizeof(g_lastTriggerName) - 1] = '\0';
+}
+
 // Shared "set once" apply: write the target weather a SINGLE time. On success
 // we do NOT arm the permanent heartbeat - the game keeps weather control from
 // here. Only if the live component is not reachable yet do we arm a bounded
@@ -437,7 +464,8 @@ int QmWeather_TryConsumableTrigger(const char* consumableDataName, const char* e
     const int ti = MatchTrigger(consumableDataName);
     if (ti < 0) return -1;
 
-    g_lastTriggerTick = GetTickCount64();
+    if (TriggerDebounced(consumableDataName)) return -1;
+    MarkTriggered(consumableDataName);
     return ApplyWeatherSetOnce(consumableDataName, g_triggers[ti].substr, g_triggers[ti].weatherId, eventTag);
 }
 
@@ -454,13 +482,11 @@ int QmWeather_TryConsumableTriggerOnComplete(const char* consumableDataName, con
     const int ti = MatchTrigger(consumableDataName);
     if (ti < 0) return -1;
 
-    // Debounce: OnMontageEnd + FinishAbility both fire once near the end of a
-    // single use; without this we'd write (and log) twice per whistle. Idempotent
-    // either way, but one TRIGGER line per use reads cleaner.
-    const ULONGLONG now = GetTickCount64();
-    if (g_lastTriggerTick != 0 && (now - g_lastTriggerTick) < 1500)
-        return -1;
-    g_lastTriggerTick = now;
+    // Name-keyed debounce: the spend-tag path + OnMontageEnd + FinishAbility all fire
+    // for one use carrying the same name; collapse them to one weather set. A different
+    // weather clone (different name) is never blocked - see kSameItemDebounceMs.
+    if (TriggerDebounced(consumableDataName)) return -1;
+    MarkTriggered(consumableDataName);
 
     return ApplyWeatherSetOnce(consumableDataName, g_triggers[ti].substr, g_triggers[ti].weatherId, viaFn);
 }

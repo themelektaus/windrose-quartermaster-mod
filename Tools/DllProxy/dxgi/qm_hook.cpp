@@ -798,76 +798,13 @@ static void LogConsumeObjIdentity(const char* label, QmUE::UObject* obj, long n)
         n, label, obj, cls[0] ? cls : "<?>", name[0] ? name : "<?>");
 }
 
-// ============================================================================
-// Stage 2c-4 (DLL per-item cooldown) - decouple our weather whistle from the
-// shared spawner cooldown.
-// ----------------------------------------------------------------------------
-// Our custom weather whistle still triggers the SHARED GA_SpawnerConsumableAbility
-// (its item ActivationAbilityTag is the registered Activate.Spawner). That ability
-// commits GE_SpawnerCooldown on use, which grants GAS.Cooldown.Cons.Spawner onto
-// the player's ASC for a few seconds - and THAT tag is exactly what gates the
-// vanilla boar whistle (its ConsumableData checks Cons.Spawner). So using our
-// whistle briefly blocks the boar whistle.
-//
-// Fix (chosen by user 2026-06-06): right after our whistle fires, strip the
-// Cons.Spawner cooldown straight back off the ASC. The ability has already
-// committed the cooldown by the time its completion (K2_OnEndAbility / OnMontageEnd)
-// reaches our hook, so removal is well-defined. ASC is fetched from the ability
-// via GetAbilitySystemComponentFromActorInfo (reflected UFunction), then
-// RemoveActiveEffectsWithGrantedTags({Cons.Spawner}) clears it.
-//
-// Gating: called only when the weather trigger actually fired (applied >= 0),
-// which the weather module already debounces to once per use AND only for our
-// clone's ConsumableData name - so exactly one strip per whistle use. Idempotent
-// regardless. Accepted edge case: this also clears any boar-whistle cooldown that
-// happened to be running at that moment.
-static const wchar_t* const kWhistleCooldownTag = L"GAS.Cooldown.Cons.Spawner";
-
-static void StripSpawnerCooldownAfterWhistle(QmUE::UObject* ability)
-{
-    if (!ability) return;
-
-    // Intern the (already-registered) cooldown tag once. Latch failure so a
-    // broken lookup doesn't re-walk GObjects on every subsequent whistle use.
-    static QmUE::FName s_cdTag = { 0, 0 };
-    static bool        s_cdTagResolved = false;
-    static bool        s_cdTagFailed   = false;
-    if (!s_cdTagResolved)
-    {
-        if (s_cdTagFailed) return;
-        if (QmUE::FNameFromString(kWhistleCooldownTag, &s_cdTag) && !s_cdTag.IsNone())
-        {
-            s_cdTagResolved = true;
-        }
-        else
-        {
-            s_cdTagFailed = true;
-            QM_LOG_WARN("[Whistle-CD] could not intern tag '%ls' - cooldown strip disabled", kWhistleCooldownTag);
-            return;
-        }
-    }
-
-    QmUE::UObject* asc = QmUE::GetAbilitySystemComponentFromAbility(ability);
-    if (!asc)
-    {
-        QM_LOG_WARN("[Whistle-CD] no ASC from ability=0x%p - Cons.Spawner cooldown NOT stripped", ability);
-        return;
-    }
-
-    int removed = QmUE::RemoveActiveEffectsWithGrantedTag(asc, s_cdTag);
-    if (removed >= 0)
-        QM_LOG_INFO("[Whistle-CD] stripped Cons.Spawner cooldown after whistle use (ASC=0x%p removed=%d)", asc, removed);
-    else
-        QM_LOG_WARN("[Whistle-CD] RemoveActiveEffectsWithGrantedTag failed (ASC=0x%p)", asc);
-}
-
 // Shared detour core for all three UR5ConsumeAbility UFunctions. Reads the
 // Params_0 (ConsumableData) discriminator + (for the tag-carrying functions)
 // the EventTag, logs the identity (throttled), then routes to the right weather
-// trigger: the spend-tag-gated path for EventReceived (food/bandage), or the
-// completion path for OnMontageEnd/FinishAbility (the spawner whistle, whose
-// native entry never reaches the EventReceived thunk). SEH-guarded; POD locals
-// only (no C++ destructors) so __try is legal here.
+// trigger: the spend-tag-gated path for EventReceived (food/bandage, e.g. the
+// rum-bottle weather item), or the completion path for OnMontageEnd/FinishAbility
+// (a purely-native consume whose entry never reaches the EventReceived thunk).
+// SEH-guarded; POD locals only (no C++ destructors) so __try is legal here.
 static void ConsumeHitCore(ConsumeFnKind kind, const char* fnName, void* Context, void* Stack)
 {
     long n = InterlockedIncrement(&g_consumeHits);
@@ -946,11 +883,11 @@ static void ConsumeHitCore(ConsumeFnKind kind, const char* fnName, void* Context
     }
 
     // ---- weather trigger -----------------------------------------------------
-    // EventReceived: spend-tag-gated (food/bandage path, proven in stage 2b).
-    // OnMontageEnd / FinishAbility: completion path - substring match only,
-    // which is how the purely-native spawner whistle gets caught (its entry
-    // EventReceived never hits this thunk). The weather module owns the match +
-    // write + debounce; we just feed it the discriminators.
+    // EventReceived: spend-tag-gated (food/bandage path, proven in stage 2b - this
+    // is how the rum-bottle weather item fires). OnMontageEnd / FinishAbility:
+    // completion path, substring match only, which catches a purely-native consume
+    // whose entry EventReceived never hits this thunk. The weather module owns the
+    // match + write + debounce; we just feed it the discriminators.
     if (params0Name[0])
     {
         int applied = -1;
@@ -963,12 +900,7 @@ static void ConsumeHitCore(ConsumeFnKind kind, const char* fnName, void* Context
             applied = QmWeather_TryConsumableTriggerOnComplete(params0Name, fnName);
         }
         if (applied >= 0)
-        {
             QM_LOG_INFO("[Consume] hit#%ld   -> WEATHER TRIGGERED (id=%d) by '%s' via %s", n, applied, params0Name, fnName);
-            // Our whistle fired -> peel its shared Cons.Spawner cooldown back off
-            // so it doesn't gate the vanilla boar whistle (see StripSpawnerCooldownAfterWhistle).
-            StripSpawnerCooldownAfterWhistle(ability);
-        }
     }
 }
 
@@ -1185,139 +1117,6 @@ static void PeReconLog(QmUE::UObject* self, QmUE::UClass* cls, QmUE::UFunction* 
     QM_LOG_INFO("[PE-recon] %s::%s  self=0x%p", clsNm[0] ? clsNm : "?", fnNm[0] ? fnNm : "?", self);
 }
 
-// ============================================================================
-// Stage 2c-4 (DLL per-item cooldown) - per-item DISCRIMINATOR recon.
-// ----------------------------------------------------------------------------
-// At a consume-ability PE hit for the spawner whistle, Params_0 (ConsumableData)
-// is SHARED by boar/croc/all clones, so it can't tell items apart. The per-item
-// identity (ItemTag 'ConsData.Misc.SpawnerBoar.L2.T02', or the source DA_CID_*
-// object) must live behind the OPAQUE InventoryView (@0x3E0) or be cached in the
-// ability's padding. UR5BLInventoryView has no reflected members, so we can't
-// navigate it by offset - instead we cast a wide net (the Stage-2a methodology):
-// raw-scan the ability instance + InventoryView memory for
-//   (a) plausible UObject pointers  -> log Class+Name (DA_CID_* / Slot / Item = prize)
-//   (b) FName-shaped 8-byte values   -> resolve to a string (tag = prize)
-// All reads SEH-guarded; rate-limited (1 scan / 3s) so a normal use logs once.
-// One L1-vs-L2 in-game test then reveals whether ANYTHING here distinguishes the
-// item. If yes -> discriminator solved (per-item cooldown AND per-item weather).
-// ============================================================================
-static volatile ULONGLONG g_peDiscLastTick = 0;
-
-static bool DiscLooksLikePtr(const void* p)
-{
-    uintptr_t v = reinterpret_cast<uintptr_t>(p);
-    return v > 0x10000 && v < 0x00007FFFFFFFFFFFull && (v & 0x7) == 0;
-}
-
-static bool DiscSafeReadPtr(const void* at, void** out)
-{
-    __try { *out = *reinterpret_cast<void* const*>(at); return true; }
-    __except (EXCEPTION_EXECUTE_HANDLER) { *out = nullptr; return false; }
-}
-
-// SEH-guarded: resolve a candidate pointer as a live UObject (Class + Name).
-static bool DiscTryUObject(void* cand, char* cls, int clsCap, char* name, int nameCap)
-{
-    cls[0] = '\0'; name[0] = '\0';
-    if (!DiscLooksLikePtr(cand)) return false;
-    __try
-    {
-        QmUE::UObject* o = reinterpret_cast<QmUE::UObject*>(cand);
-        if (!DiscLooksLikePtr(*reinterpret_cast<void**>(o))) return false;            // vtable
-        QmUE::UClass* c = *reinterpret_cast<QmUE::UClass**>(reinterpret_cast<uint8_t*>(o) + 0x10);
-        if (!DiscLooksLikePtr(c)) return false;                                       // Class
-        if (!QmUE::ResolveFNameNarrow(o->Name, name, nameCap) || !name[0]) return false;
-        if (!QmUE::ResolveFNameNarrow(c->Name, cls,  clsCap)  || !cls[0])  return false;
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) { cls[0] = '\0'; name[0] = '\0'; return false; }
-}
-
-// SEH-guarded: interpret an 8-byte value as an FName and resolve it. Index
-// bounds keep garbage out of AppendString.
-static bool DiscTryFName(const void* slot, char* out, int cap)
-{
-    out[0] = '\0';
-    __try
-    {
-        QmUE::FName fn = *reinterpret_cast<const QmUE::FName*>(slot);
-        if (fn.ComparisonIndex <= 0 || fn.ComparisonIndex > 4000000) return false;
-        if (fn.Number > 0x10000) return false;
-        if (!QmUE::ResolveFNameNarrow(fn, out, cap) || !out[0]) return false;
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
-}
-
-// A resolved string is "interesting" if it looks like a tag/asset path.
-static bool DiscInterestingStr(const char* s)
-{
-    return strchr(s, '.') || strstr(s, "ConsData") || strstr(s, "Spawner")
-        || strstr(s, "DA_") || strstr(s, "Whistle") || strstr(s, "Boar");
-}
-
-static void PeConsumeDiscriminatorRecon(QmUE::UObject* self)
-{
-    ULONGLONG now = GetTickCount64();
-    if (g_peDiscLastTick != 0 && (now - g_peDiscLastTick) < 3000) return;
-    g_peDiscLastTick = now;
-
-    void* invView = nullptr;
-    DiscSafeReadPtr(reinterpret_cast<uint8_t*>(self) + 0x3E0, &invView);
-    char ivCls[128] = { 0 }, ivNm[192] = { 0 };
-    if (invView) DiscTryUObject(invView, ivCls, sizeof(ivCls), ivNm, sizeof(ivNm));
-    QM_LOG_INFO("[PE-disc] === ability=0x%p InventoryView=0x%p Cls='%s' ===",
-        self, invView, ivCls[0] ? ivCls : "?");
-
-    // Two scan regions: ability tail (Params_0..pad @0x3C0+0x80) and the
-    // InventoryView head (@0x00+0x300). 8-byte stride.
-    uint8_t* bases[2] = { reinterpret_cast<uint8_t*>(self) + 0x3C0,
-                          reinterpret_cast<uint8_t*>(invView) };
-    int      sizes[2] = { 0x80, invView ? 0x300 : 0 };
-    const char* tags[2] = { "abil", "view" };
-
-    for (int r = 0; r < 2; ++r)
-    {
-        for (int off = 0; off < sizes[r]; off += 8)
-        {
-            void* val = nullptr;
-            if (!DiscSafeReadPtr(bases[r] + off, &val)) continue;
-
-            char cls[128], nm[192];
-            if (DiscTryUObject(val, cls, sizeof(cls), nm, sizeof(nm)))
-            {
-                QM_LOG_INFO("[PE-disc]   %s+0x%03X -> 0x%p Cls='%s' Name='%s'",
-                    tags[r], off, val, cls, nm);
-                // One level deeper for itemish objects (view -> slot/item -> DA).
-                bool itemish = strstr(nm, "DA_") || strstr(cls, "Item")
-                            || strstr(cls, "Slot") || strstr(cls, "Inventory");
-                if (itemish)
-                {
-                    uint8_t* ib = reinterpret_cast<uint8_t*>(val);
-                    for (int io = 0; io < 0x140; io += 8)
-                    {
-                        char tnm[192];
-                        if (DiscTryFName(ib + io, tnm, sizeof(tnm)) && DiscInterestingStr(tnm))
-                            QM_LOG_INFO("[PE-disc]       %s+0x%03X .fname+0x%02X = '%s'", tags[r], off, io, tnm);
-                        void* v2 = nullptr;
-                        if (!DiscSafeReadPtr(ib + io, &v2)) continue;
-                        char c2[128], n2[192];
-                        if (DiscTryUObject(v2, c2, sizeof(c2), n2, sizeof(n2))
-                            && (strstr(n2, "DA_") || strstr(c2, "Item")))
-                            QM_LOG_INFO("[PE-disc]       %s+0x%03X .obj+0x%02X -> Cls='%s' Name='%s'", tags[r], off, io, c2, n2);
-                    }
-                }
-                continue;
-            }
-
-            char fnm[192];
-            if (DiscTryFName(bases[r] + off, fnm, sizeof(fnm)) && DiscInterestingStr(fnm))
-                QM_LOG_INFO("[PE-disc]   %s+0x%03X fname = '%s'", tags[r], off, fnm);
-        }
-    }
-    QM_LOG_INFO("[PE-disc] === scan end ===");
-}
-
 static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms)
 {
     __try
@@ -1344,21 +1143,10 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
                     snprintf(via, sizeof(via), "PE:%s", fnNm[0] ? fnNm : "?");
                     int applied = QmWeather_TryConsumableTriggerOnComplete(p0, via);
                     if (applied >= 0)
-                    {
                         QM_LOG_INFO("[PE] *** weather triggered (id=%d) *** via %s Params_0='%s'", applied, via, p0);
-                        // Our whistle fired -> strip its shared Cons.Spawner cooldown
-                        // off the ASC so the vanilla boar whistle stays usable.
-                        StripSpawnerCooldownAfterWhistle(self);
-                    }
                     else if (h <= 40)   // first hits: show what PE-on-ability looks like even when no match
                         QM_LOG_INFO("[PE] ability-call#%ld %s Params_0='%s' (no trigger)", h, via, p0);
                 }
-
-                // Stage 2c-4 (DLL per-item cooldown): on a spawner-whistle PE hit,
-                // cast a wide net for the per-item discriminator. Recon only,
-                // rate-limited + SEH-guarded; forwards the original untouched.
-                if (p0[0] && strstr(p0, "Spawner"))
-                    PeConsumeDiscriminatorRecon(self);
             }
 
             if (v & PE_RECON)

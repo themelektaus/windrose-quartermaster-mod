@@ -13,13 +13,23 @@ namespace Windrose.Quartermaster.Core
 {
     // Stage 3: per-weather "Weather Whistle" ConsumableData clones.
     //
-    // Background (proven in the WeatherControl PoC): a Weather Whistle item is a
-    // boar-whistle item whose `ConsumableData` field points at a CLONE of the
-    // vanilla DA_ConsumableAbilityData_SpawnerBoar. The clone is byte-identical
-    // except (a) it is renamed into our namespace so the dxgi DLL can match it by
-    // name, and (b) its CooldownConsumableAbilityTags bucket is emptied so our
-    // whistle has no cooldown. The DLL substring-matches the clone name against
-    // qm_weather_trigger.txt and sets the live weather on use.
+    // Background (proven in the WeatherControl PoC): a Weather item is a rum-bottle
+    // consumable whose `ConsumableData` field points at a CLONE of the vanilla
+    // DA_ConsumableAbilityData_Potion_RumBottle. The clone is byte-identical except
+    //   (a) it is renamed into our namespace so the dxgi DLL can match it by name,
+    //   (b) its CooldownConsumableAbilityTags bucket is emptied (no cooldown),
+    //   (c) SpendCount is forced to 0 so the bottle is NOT consumed on use, and
+    //   (d) EffectsOnSpend is emptied so the vanilla rum buff is removed - the only
+    //       effect left is the weather change, which the dxgi DLL applies by reading
+    //       the clone name (no data-side weather effect exists; new gameplay tags are
+    //       hard-rejected by the R5BLGameplayTag marshaller).
+    // The DLL substring-matches the clone name against qm_weather_trigger.txt and
+    // sets the live weather on use.
+    //
+    // Why rum, not the boar whistle: the rum's Food consume-ability spawns no boar
+    // and has no ability-side cooldown GE, so there is nothing to strip at runtime.
+    // The Params_0 (ConsumableData) offset the DLL reads lives in the shared
+    // R5ConsumeAbility base class, so the trigger fires identically for any base.
     //
     // The DISCRIMINATOR is the clone NAME, so each distinct weather gets its own
     // clone (e.g. ..._QmWeatherWhistle_Storm). Multiple items that pick the same
@@ -29,8 +39,8 @@ namespace Windrose.Quartermaster.Core
     {
         public Action<string> Log;
 
-        public const string SourceStem        = "DA_ConsumableAbilityData_SpawnerBoar";
-        public const string SourcePackagePath = "/Game/Gameplay/ItemsLogic/Consumables/Spawner/DA_ConsumableAbilityData_SpawnerBoar";
+        public const string SourceStem        = "DA_ConsumableAbilityData_Potion_RumBottle";
+        public const string SourcePackagePath = "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Potion_RumBottle";
 
         // Clone identity: stem prefix + weather name; package dir is our namespace.
         public const string CloneStemPrefix   = "DA_ConsumableAbilityData_QmWeatherWhistle_";
@@ -165,10 +175,13 @@ namespace Windrose.Quartermaster.Core
 
                 CopySidecars(sourceAsset, outAsset);
 
-                int cleared = ClearCooldownTags(outAsset, usmapPath);
+                var ov = ApplyCloneOverrides(outAsset, usmapPath);
 
                 LogLine("  clone[" + WeatherName(id) + "]: " + cloneStem
-                        + " (renames=" + (pr.NameMapEntriesRenamed) + ", cooldownBucketsCleared=" + cleared + ")");
+                        + " (renames=" + (pr.NameMapEntriesRenamed)
+                        + ", cooldownBucketsCleared=" + ov.CooldownBucketsCleared
+                        + ", spendCountZeroed=" + ov.SpendCountZeroed
+                        + ", effectsOnSpendCleared=" + ov.EffectsOnSpendCleared + ")");
 
                 result.Clones.Add(new WeatherWhistleClone
                 {
@@ -183,19 +196,34 @@ namespace Windrose.Quartermaster.Core
             return result;
         }
 
-        // Empty every CooldownConsumableAbilityTags container in the asset, so R5's
-        // data-side cooldown gate finds no tag to wait on (-> our whistle has no
-        // cooldown). Returns the number of containers emptied.
-        static int ClearCooldownTags(string assetPath, string usmapPath)
+        struct CloneOverrideResult
+        {
+            public int CooldownBucketsCleared;
+            public int SpendCountZeroed;      // 1 = set existing, 2 = added (was at default)
+            public int EffectsOnSpendCleared;
+        }
+
+        // Apply the three data-only clone overrides in a single load/save:
+        //   - empty every CooldownConsumableAbilityTags container (no cooldown gate),
+        //   - force SpendCount = 0 (bottle not consumed on use; add it if the vanilla
+        //     asset left it at the class default, which DOES consume),
+        //   - empty EffectsOnSpend (drop the vanilla rum buff; only weather remains).
+        static CloneOverrideResult ApplyCloneOverrides(string assetPath, string usmapPath)
         {
             var mappings = new Usmap(usmapPath);
             var asset = new UAsset(assetPath, EngineVersion.VER_UE5_6, mappings);
-            int cleared = 0;
+            var r = new CloneOverrideResult();
+
             foreach (var ex in asset.Exports)
-                if (ex is NormalExport ne)
-                    cleared += ClearTagContainers(ne.Data);
-            if (cleared > 0) asset.Write(assetPath);
-            return cleared;
+            {
+                if (ex is not NormalExport ne) continue;
+                r.CooldownBucketsCleared += ClearTagContainers(ne.Data);
+                r.EffectsOnSpendCleared  += ClearNamedArray(ne.Data, "EffectsOnSpend");
+                r.SpendCountZeroed       += ForceSpendCountZero(asset, ne.Data);
+            }
+
+            asset.Write(assetPath);
+            return r;
         }
 
         static int ClearTagContainers(IList<PropertyData> props)
@@ -224,6 +252,68 @@ namespace Windrose.Quartermaster.Core
                 }
             }
             return cleared;
+        }
+
+        // Recursively empty the first ArrayPropertyData with the given name. Returns
+        // the number of arrays emptied (typically 1).
+        static int ClearNamedArray(IList<PropertyData> props, string arrayName)
+        {
+            if (props == null) return 0;
+            int cleared = 0;
+            foreach (var p in props)
+            {
+                var name = p?.Name?.Value?.Value as string;
+                if (p is ArrayPropertyData ap && string.Equals(name, arrayName, StringComparison.Ordinal))
+                {
+                    if (ap.Value != null && ap.Value.Length > 0)
+                    {
+                        ap.Value = Array.Empty<PropertyData>();
+                        cleared++;
+                    }
+                }
+                else if (p is StructPropertyData sp)
+                {
+                    cleared += ClearNamedArray(sp.Value, arrayName);
+                }
+                else if (p is ArrayPropertyData inner)
+                {
+                    cleared += ClearNamedArray(inner.Value, arrayName);
+                }
+            }
+            return cleared;
+        }
+
+        // Force SpendCount = 0 inside the ConsumableActivationParams struct. The
+        // vanilla rum asset omits SpendCount (class default consumes the item), so we
+        // ADD it when absent. Returns 1 if an existing value was set, 2 if added, 0 if
+        // the host struct was not found.
+        static int ForceSpendCountZero(UAsset asset, IList<PropertyData> props)
+        {
+            if (props == null) return 0;
+            foreach (var p in props)
+            {
+                var name = p?.Name?.Value?.Value as string;
+                if (p is StructPropertyData sp)
+                {
+                    if (string.Equals(name, "ConsumableActivationParams", StringComparison.Ordinal))
+                    {
+                        var existing = sp.Value?
+                            .OfType<IntPropertyData>()
+                            .FirstOrDefault(ip => string.Equals(ip.Name?.Value?.Value as string, "SpendCount", StringComparison.Ordinal));
+                        if (existing != null)
+                        {
+                            existing.Value = 0;
+                            return 1;
+                        }
+                        var add = new IntPropertyData(FName.FromString(asset, "SpendCount")) { Value = 0 };
+                        sp.Value.Add(add);
+                        return 2;
+                    }
+                    var nested = ForceSpendCountZero(asset, sp.Value);
+                    if (nested != 0) return nested;
+                }
+            }
+            return 0;
         }
 
         // Copy .ubulk / .uptnl siblings the patcher doesn't rewrite (the source has

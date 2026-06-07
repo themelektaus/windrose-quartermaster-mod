@@ -615,3 +615,52 @@ Ergebnis steuert das Weitere:
 
 Test-Pak entfernen: `Quartermaster_WeatherWhistleTest_P.pak` aus `E:\Windrose\Mods`
 loeschen, Spiel neu starten. (Aendert die Fiber-Drops zurueck auf Vanilla.)
+
+## Stage 4 - Rum-Bottle-Basis statt Boar-Whistle (2026-06-07)
+
+Pivot (User): die Wetter-Items basieren jetzt auf der **Rum-Flasche**
+(`DA_CID_Food_Rum_Bottle_T03` -> `DA_ConsumableAbilityData_Potion_RumBottle`)
+statt auf dem Boar-Whistle. Hart verifiziert (Dump + Round-Trip), nicht geraten.
+
+**Warum Rum besser ist:** die Rum-Consume-Ability ist eine Food-Ability - sie
+spawnt **keinen Boar** und hat **kein ability-seitiges Cooldown-GE**. Damit
+entfaellt der ganze SpawnerBoar-Ballast (L2-Workaround) UND der DLL-Cooldown-Strip
+ist nur noch ein No-op (es gibt keinen `Cons.Spawner`-Cooldown mehr zu entfernen).
+
+**Der Klon (data-only, `WeatherWhistlePatcher`):** Klon der Rum-ConsumableData ->
+`DA_ConsumableAbilityData_QmWeatherWhistle_<Wetter>` (Name = DLL-Match-Token,
+unveraendert). Drei Edits am Klon, alle im Round-Trip-Dump bestaetigt:
+- `SpendCount = 0` (ADD - die Rum-Data laesst es auf Default => wuerde verbraucht;
+  SpawnerBoar setzte es explizit 0, deshalb war das alte Whistle wiederverwendbar).
+- `EffectsOnSpend` geleert (Rum-Buff `GE_Consumable_Potion_RumBottle` raus -> nur
+  noch Wetter; `ConsumeEffects`/`BlockAbilities` bleiben fuer das Trink-Feeling).
+- `CooldownConsumableAbilityTags` geleert (no-op bei Rum, defensiv beibehalten).
+
+Wichtig: Der "Wetter-Effekt" ist **kein** Daten-GE (neue Tags lehnt der
+`R5BLGameplayTag`-Marshaller hart ab). Wetter kommt IMMER von der DLL, die den
+ConsumableData-NAMEN liest (`kOffConsumeParams0=0x3C0` in der **Basisklasse**
+`R5ConsumeAbility` -> template-agnostisch, kein DLL-Edit fuer die Rum-Basis noetig).
+
+**GUI:** das Boar-"Weather Whistle"-Template entfernt; das vorhandene
+"Rum Bottle"-Template ist jetzt `supportsWeather=true`. "(vanilla)" = normale
+Rum-Flasche; ein Wetter gewaehlt = Wetter-Item (kein Verbrauch, kein Buff).
+
+**DLL-Bugfix (gleiche Session):** der globale 1500ms-Debounce in
+`QmWeather_TryConsumableTrigger*` hat eine ZWEITE Whistle innerhalb 1,5s
+verschluckt (Log-Beweis: Use #7 Sunny 0,9s nach #6 Storm = `(no trigger)`).
+Ersetzt durch **name-keyed Debounce** (`kSameItemDebounceMs=2500`): nur dieselbe
+ConsumableData wird entdoppelt; verschiedene Wetter (verschiedene Klon-Namen)
+blocken sich NIE. Behebt das "irgendwann geht es nicht mehr".
+
+**Offen / Cleanup (kein Blocker):** der DLL-Cooldown-Strip (`[Whistle-CD]`,
+qm_hook + qm_ue) ist bei Rum toter No-op-Code - kann in einem Cleanup-Pass raus.
+
+### Test (Stage 4)
+1. **Alte Test-Items loeschen** (die 2 Boar-basierten) und im Item Creator neue
+   mit Template **"Rum Bottle"** + Use-Effect-Wetter anlegen (z.B. Storm + Sunny).
+2. GUI-Build fahren -> deployed Klon-Paks + `qm_weather_trigger.txt` + DLL.
+3. Spiel neu starten, in Welt laden.
+4. Wetter-Rum benutzen -> Trink-Animation, **kein Verbrauch** (Stack bleibt),
+   **kein Rum-Buff**, Wetter wird **einmal** gesetzt.
+5. **Schnell** zwischen Storm- und Sunny-Rum wechseln (<1,5s) -> beide triggern
+   jetzt (Debounce-Fix). Log: je `[Weather] *** TRIGGER *** '...QmWeatherWhistle_<W>...'`.

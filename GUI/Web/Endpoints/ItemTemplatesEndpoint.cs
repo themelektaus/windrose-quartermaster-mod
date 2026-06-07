@@ -22,6 +22,12 @@ public static class ItemTemplatesEndpoint
             defaultKeepInInventoryOnDeath = true,
             defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_Loot_T02_CoinPiastre_01.T_ItemIcon_Loot_T02_CoinPiastre_01",
         },
+        // Rum Bottle doubles as the Weather item. Leaving the weather dropdown at
+        // "(vanilla)" ships a normal rum (drunk on use, vanilla buff). Picking a
+        // weather makes the build clone its ConsumableData per-weather (SpendCount=0
+        // so the bottle is NOT consumed, vanilla buff stripped) and the dxgi DLL sets
+        // that weather on use. The rum's Food consume-ability spawns nothing and has
+        // no cooldown GE - so no boar and no runtime cooldown-strip needed.
         new TemplateDto
         {
             id = "DA_CID_Food_Rum_Bottle_T03",
@@ -31,19 +37,6 @@ public static class ItemTemplatesEndpoint
             defaultRarity = "Rare",
             defaultKeepInInventoryOnDeath = false,
             defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_TradeCraft_Alcohol_Rum.T_ItemIcon_TradeCraft_Alcohol_Rum",
-        },
-        // Weather Whistle: cloned from the L2 boar whistle (no boar spawn). With a
-        // weather picked, the build clones its ConsumableData per-weather and the
-        // dxgi DLL sets that weather on use; "(vanilla)" ships an inert whistle.
-        new TemplateDto
-        {
-            id = "DA_CID_Misc_SpawnerBoar_L2_T02",
-            label = "Weather Whistle",
-            kind = "Consumable",
-            defaultMaxCountInSlot = 1,
-            defaultRarity = "Legendary",
-            defaultKeepInInventoryOnDeath = true,
-            defaultItemTexture = "/Game/UI/Icons/Items/New/T_ItemIcon_Consumables_T02_SpawnerBoar.T_ItemIcon_Consumables_T02_SpawnerBoar",
             supportsWeather = true,
         },
     };

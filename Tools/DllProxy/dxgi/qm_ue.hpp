@@ -295,22 +295,4 @@ namespace QmUE
     // not in any mounted pak). Caches the UFunction/CDO lookup for re-use.
     UObject* LoadAssetByPath(const wchar_t* packagePathW, const wchar_t* assetNameW);
 
-    // Resolve the AbilitySystemComponent that owns a UGameplayAbility instance,
-    // by calling the (reflected, ProcessEvent-callable) UFunction
-    //   GameplayAbility.GetAbilitySystemComponentFromActorInfo() -> UAbilitySystemComponent*
-    // on the ability itself. `ability` must derive from UGameplayAbility.
-    // Returns nullptr if the function/CDO lookup fails, the call faults, or the
-    // ability has no live ActorInfo (e.g. already fully ended).
-    UObject* GetAbilitySystemComponentFromAbility(UObject* ability);
-
-    // Call AbilitySystemComponent.RemoveActiveEffectsWithGrantedTags({grantedTag})
-    // on `asc`, removing every active GameplayEffect that grants `grantedTag`.
-    // This is exactly how UE clears a GAS cooldown bucket from script.
-    // Returns the number of effects removed (>= 0), or -1 on any failure
-    // (null args, ASC class/function not found, ProcessEvent fault).
-    // The tag container is built on the stack (single tag); like the existing
-    // Conv_StringToName wrapper this is safe because this game's ProcessEvent
-    // does not destroy the caller's param block.
-    int32 RemoveActiveEffectsWithGrantedTag(UObject* asc, const FName& grantedTag);
-
 } // namespace QmUE
