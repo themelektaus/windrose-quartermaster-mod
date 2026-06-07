@@ -741,7 +741,7 @@ static bool TryProbeLifecycleHook(int passNumber)
 // Stage-2 item-use detection RECON: hook R5ConsumeAbility::EventReceived.
 // ----------------------------------------------------------------------------
 // Goal of stage 2 (Docs/PLAN-WeatherControl-WIP.md): when the player USES a
-// consumable, identify WHICH item it was so a future "Weather Whistle" can
+// consumable, identify WHICH item it was so a future "Weather Control" can
 // trigger a weather change. EventReceived is the native handler the consume
 // ability runs when its montage / GAS event lands; signature is
 //   EventReceived(FGameplayTag EventTag, FGameplayEventData EventData)

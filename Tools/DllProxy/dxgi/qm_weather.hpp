@@ -17,7 +17,7 @@
 // existing lifecycle hook) finds the live weather component and pins
 // CheatWeatherID to that id. Delete the file -> the DLL stops touching weather.
 //
-// Once this proves the write works, stage 2 wires the "Weather Whistle"
+// Once this proves the write works, stage 2 wires the "Weather Control"
 // consumable's USE to a weather id instead of the sentinel.
 
 #pragma once
@@ -45,7 +45,7 @@ void QmWeather_Heartbeat();
 // AND the event is the actual spend phase (GAS.Consumable.SpendConsumable),
 // the target weather is set + pinned (reusing the proven heartbeat write path).
 // This de-risks the full detection->weather-write chain using a real,
-// obtainable vanilla consumable BEFORE any custom "Weather Whistle" item is
+// obtainable vanilla consumable BEFORE any custom "Weather Control" item is
 // authored - swapping the trigger substring for the custom item's
 // ConsumableData name is all that stage 2c/3 needs.
 

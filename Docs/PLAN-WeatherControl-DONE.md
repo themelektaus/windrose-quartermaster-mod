@@ -2,10 +2,18 @@
 
 Stand: 2026-06-06
 
+> **Benennung (final):** Das ausgelieferte Feature heisst **"Weather Control"** -
+> ein Item nach dem **Rum-Bottle**-Template mit einem Wetter-Wechsel-Use-Effekt
+> (DLL-Token `QmWeatherControl_`). Es ist KEINE "Whistle". Dieses Entwicklungs-Log
+> beschreibt auch verworfene Boar-/Spawner-Whistle-Ansaetze aus fruehen Stages -
+> diese **Vanilla**-Begriffe (Boar Whistle, Spawner-Whistle) bleiben bewusst als
+> historischer Record stehen; nur der fruehere Arbeitsname unseres eigenen
+> Features wurde projektweit auf "Weather Control" vereinheitlicht.
+
 ## Ziel
 
 Nachbau der Referenz-Mod "Windrose Weather Control" (UE4SS), aber OHNE UE4SS.
-Wunsch-UX: ein Consumable-Item ("Weather Whistle", Klon der Boar-Whistle) das
+Wunsch-UX: ein Consumable-Item ("Weather Control", Klon der Boar-Whistle) das
 beim Benutzen das Wetter aendert; spaeter im Item-Creator ein 3. Template mit
 einem Use-Effekt-Dropdown ((vanilla) / "Change weather").
 
@@ -110,7 +118,7 @@ isoliert zu de-risken - analog zur Stage-1-Methodik.
   Item-DA.
 - **Offene In-Game-Fragen (genau hierfuer der Recon):** (1) feuert der
   EventReceived-ExecFunction-Thunk bei Item-Use ueberhaupt? (2) welches Feld
-  traegt den eindeutigen Item-DA-Namen unseres kuenftigen Weather Whistle?
+  traegt den eindeutigen Item-DA-Namen unseres kuenftigen Weather Control?
 - Falls der Thunk NICHT feuert (native Direct-Call statt ProcessEvent): Fallback
   = globaler ProcessEvent-Hook (vtbl idx 0x4C) mit Funktionsnamen-Filter
   `EventReceived` + Context-Klassen-Check.
@@ -129,8 +137,8 @@ isoliert zu de-risken - analog zur Stage-1-Methodik.
   Konsum-Moment (daneben `CanFinishAbility`, `Cmd.Interrupt`).
 - **Wichtig fuers Design:** `R5ConsumeAbilityData` ist ein `UPrimaryDataAsset`
   (regulaerer DataAsset, KEIN BPGC) -> mit unserer Pipeline klonbar. Ein
-  Weather-Whistle-Klon kann auf eine eindeutig benannte ConsumableData
-  (`DA_ConsumableAbilityData_WeatherWhistle`) zeigen -> kollisionsfreies Matching
+  Weather-Control-Klon kann auf eine eindeutig benannte ConsumableData
+  (`DA_ConsumableAbilityData_WeatherControl`) zeigen -> kollisionsfreies Matching
   ueber `Params_0`, ganz ohne den BPGC/usmap-Blocker.
 
 #### Stage 2b - Trigger-De-risk auf Vanilla-Consumable (DONE - deployed, wartet auf In-Game-Test)
@@ -152,7 +160,7 @@ Vanilla-Consumable als temporaerer Trigger dient.
 - Deploy: `qm_weather.txt` (Dauer-Pin) ENTFERNT -> Welt startet natuerlich;
   `qm_weather_trigger.txt`=`Bandages 6` -> Bandage-Use schaltet auf Sturm.
 
-#### Stage 2c - Echtes Weather-Whistle-Item
+#### Stage 2c - Echtes Weather-Control-Item
 
 Ziel: ein eigenes Item nach Boar-Whistle-Vorlage, das (1) beim Use Wetter setzt
 und (2) den Boar-Spawn NICHT ausloest. User-Wahl fuer (2): DLL unterdrueckt den
@@ -166,7 +174,7 @@ Spawn (Item-Klon bleibt triviales loses JSON).
   -> sie ist KEIN per-Item-Diskriminator. Der `Params_0`-Substring-Match bleibt
   also auf `SpawnerBoar` (trifft alle Spawner-Whistles + unsere Klone). Eine
   Unterscheidung Klon-vs-Vanilla-Boar ist data-only nicht moeglich; akzeptiert
-  (der User fuegt nur das Weather-Whistle hinzu).
+  (der User fuegt nur das Weather-Control hinzu).
 - **L1 vs L2 (aus PLAN-CustomItem_MobSwap-WIP.md):** L1-Klon ist BEWIESEN
   in-game (benutzbar, Cooldown laeuft, **spawnt einen Boar**). L2 galt dort als
   "WIP-Stub, spawnt nichts" - aber ob ein L2-Klon dabei *benutzbar* bleibt (und
@@ -259,13 +267,13 @@ nach dem bewiesenen L1-PoC-Muster (loses JSON, Vanilla-ItemTag/ConsumableData/
 ActivationAbilityTag, Inline-FText-Name); obtainbar via 4 Fiber-Foliage-LootTables
 (Weight 1). Pak via repak (`--mount-point ../../../ --version V8B`).
 
-- `DA_CID_Misc_WeatherWhistleL1_T01` (ItemTag `...SpawnerBoar.L1.T01`) - Erwartung:
+- `DA_CID_Misc_WeatherControlL1_T01` (ItemTag `...SpawnerBoar.L1.T01`) - Erwartung:
   benutzbar, **spawnt Boar**, Wetter -> Sturm. Baseline + bestaetigt die Pipeline.
-- `DA_CID_Misc_WeatherWhistleL2_T02` (ItemTag `...SpawnerBoar.L2.T02`) - HYPOTHESE:
+- `DA_CID_Misc_WeatherControlL2_T02` (ItemTag `...SpawnerBoar.L2.T02`) - HYPOTHESE:
   benutzbar, Cooldown laeuft, **spawnt nichts**, Wetter -> Sturm. Wenn wahr ->
   Requirement #1 ("kein Boar-Spawn") GRATIS, der DLL-Spawn-Suppress-Hook entfaellt.
 - Trigger: `qm_weather_trigger.txt` = `SpawnerBoar 6` (Boar/Croc/Klon-Use -> Sturm).
-- Deploy: `Quartermaster_WeatherWhistleTest_P.pak` -> `E:\Windrose\Mods` (= `~mods`-Symlink).
+- Deploy: `Quartermaster_WeatherControlTest_P.pak` -> `E:\Windrose\Mods` (= `~mods`-Symlink).
 
 Beide Klone droppen aus Fiber-Pflanzen (Default/Small/Medium/Big Fiber). Ein
 Test beantwortet: (a) Klon benutzbar? (b) L1 spawnt Boar? (c) L2 spawnt nichts =
@@ -342,7 +350,7 @@ die Architektur und kippt den Data-Weg:**
 - **(A-derisk) DEPLOYED 2026-06-06 ~20:50, wartet auf In-Game-Test:** Kill nur die
   Tag-Frage, KEIN Cooldown-Klon noch. Build `.build-tmp/whistle-cd-test` (-> Pak
   `QmWhistleCdTest_P` in `~mods`):
-  1. `GA_SpawnerConsumableAbility` geklont -> `GA_QM_WeatherWhistle` (`/Game/
+  1. `GA_SpawnerConsumableAbility` geklont -> `GA_QM_WeatherControl` (`/Game/
      Quartermaster/Abilities/`), `AbilityTriggers[0].TriggerTag` umbenannt
      `GAS.Consumable.Activate.Spawner` -> **`GAS.Consumable.Activate.QMWhistle`** (NEUER
      Tag). Cooldown-GE bleibt vanilla (Cooldown in diesem Test noch geteilt - egal).
@@ -351,7 +359,7 @@ die Architektur und kippt den Data-Weg:**
   3. Loser-JSON-Whistle-Pak neu gepackt: **L2** `ActivationAbilityTag` -> neuer Tag;
      **L1** unveraendert (Kontrolle, Spawner-Tag -> vanilla Ability).
   - **Erwartung:** L1 = Boar+Sturm (vanilla-Pfad ok); L2 = Montage, KEIN Boar, Sturm,
-    und PE-Log zeigt **`GA_QM_WeatherWhistle_C::K2_OnEndAbility`** (statt
+    und PE-Log zeigt **`GA_QM_WeatherControl_C::K2_OnEndAbility`** (statt
     `GA_SpawnerConsumableAbility_C`) = neuer Tag + Granting funktionieren. Falls L2
     **inert** (keine Montage/kein Sturm/kein Boar) = neuer Tag wird verworfen -> (A)
     fuer Cooldown tot, zurueck auf (C)/DLL.
@@ -391,7 +399,7 @@ Diskriminator am Ability-Layer unmoeglich. -> **Pivot auf Daten-Weg (A)** (Grant
 inzwischen bewiesen, s.o.).
 
 **ERGEBNIS Daten-Weg v1 (NEUE Tags) - GESCHEITERT, ABER BEWEISKRAEFTIG (2026-06-06 ~21:01):**
-Klon `GA_QM_WeatherWhistle` mit **neuem** Trigger-Tag `GAS.Consumable.Activate.QMWhistle`,
+Klon `GA_QM_WeatherControl` mit **neuem** Trigger-Tag `GAS.Consumable.Activate.QMWhistle`,
 Grant via DebugTeleport-Slot. In-game: L2 **komplett inert** (kein Cooldown/Effekt/Boar).
 `R5.log` zeigt die Ursache hart:
 ```
@@ -411,7 +419,7 @@ Nur **bereits registrierte** Tags benutzen. Registrierte Consumable-Cooldown-Buc
 `Cons.Elixir`, `GE_Cooldown_Medicine`->`Cons.Medicine`, `GE_Cooldown_Potion_Recall`->
 `Cons.Recall`. Nur die Spawner-Ability hat ein ability-seitiges Cooldown-GE; die anderen
 Consumable-Abilities haben keins (Cooldown via ConsumableData.CooldownEffects).
-- Klon `GA_QM_WeatherWhistle` (Kopie der Spawner-Ability): TriggerTag `Spawner`->`Elixir`
+- Klon `GA_QM_WeatherControl` (Kopie der Spawner-Ability): TriggerTag `Spawner`->`Elixir`
   (registriert), `CooldownGameplayEffectClass`-Import `GE_SpawnerCooldown`->`GE_Cooldown_
   Elixir` (registriert, Bucket `Cons.Elixir` != `Cons.Spawner`). 7 NameMap-Renames.
 - DA_Hero: **Elixir-Slot** (statt DebugTeleport) -> Klon. Aktiviert `Activate.Elixir` NUR
@@ -450,18 +458,18 @@ Whistle-Items haben `LootTableData=None`) -> der Boar-Spawn haengt am **ItemTag*
 
 **Loesung:** ConsumableData unter eigenem Namen klonen (`DA_ConsumableAbilityData_QmWeather
 Whistle` @ `/Game/Quartermaster/Consumables/`, nur Name+Pfad+FolderName umbenannt, Tags 1:1).
-L2-Item `ConsumableData` -> Klon. DLL-Sentinel-Substring `SpawnerBoar`->`QmWeatherWhistle`.
+L2-Item `ConsumableData` -> Klon. DLL-Sentinel-Substring `SpawnerBoar`->`QmWeatherControl`.
 Das ist genau der Diskriminator, den der DLL-Scan nicht fand (alle teilten EINE
 ConsumableData) - per Konstruktion erzeugt. Keine neuen Tags, kein DA_Hero-Override,
 nichts geopfert. Build: `.build-tmp/whistle-cd-test` (Program.cs umgebaut) -> `to-zen` ->
 `QmWhistleConsData_P` Triplet; L2-Item-Pak via repak neu.
 - **Erwartung:** Vanilla-Boar + L1 (Spawner-DA) -> Boar, **KEIN Sturm**; L2 (Klon-DA) ->
-  **Sturm, kein Boar**. Log: `Params_0='DA_ConsumableAbilityData_QmWeatherWhistle'` nur bei L2.
+  **Sturm, kein Boar**. Log: `Params_0='DA_ConsumableAbilityData_QmWeatherControl'` nur bei L2.
 - **Fail-Recovery:** L2-`ConsumableData` zurueck auf SpawnerBoar (falls Klon nicht laedt ->
   L2 inert), Sentinel zurueck auf `SpawnerBoar`.
 
 **ERGEBNIS Stage 2c-5 - BESTAETIGT (In-Game-Test 2026-06-06 ~21:46):** Log eindeutig:
-L2 -> `Params_0='DA_ConsumableAbilityData_QmWeatherWhistle'` -> `*** weather triggered ***`;
+L2 -> `Params_0='DA_ConsumableAbilityData_QmWeatherControl'` -> `*** weather triggered ***`;
 L1 -> `Params_0='DA_ConsumableAbilityData_SpawnerBoar' (no trigger)`. Per-Item-Wetter
 data-only geloest, kein Opfer. Cooldown blieb geteilt (L2 nutzt weiter Activate.Spawner
 -> dieselbe Ability).
@@ -517,7 +525,7 @@ Trigger-Pfad. Neue Semantik in `qm_weather.cpp`:
 - **Permanenter Pin** bleibt nur fuer das explizite Test-File `qm_weather.txt` (`g_permanentPin`).
 - **Multi-Mapping:** `qm_weather_trigger.txt` liest jetzt MEHRERE Zeilen `<substring> <id>`
   (Kommentare/Leerzeilen ignoriert, `#`). Jede Zeile mappt einen ConsumableData-Namens-
-  Substring auf ein Wetter -> mehrere Weather-Whistles mit unterschiedlichem Wetter parallel
+  Substring auf ein Wetter -> mehrere Weather-Controls mit unterschiedlichem Wetter parallel
   moeglich. Rueckwaerts-kompatibel zur Single-Line-PoC. Match via `MatchTrigger()` (erstes
   enthaltenes Substring gewinnt).
 
@@ -527,35 +535,35 @@ Der bewaehrte Daten+DLL-Weg ist in die Haupt-Pipeline + das Frontend gegossen. K
 (PoC-Stand). Bausteine:
 
 - **DLL (deployed 22:47):** set-once + Multi-Mapping (Stage 2c-7).
-- **Core `WeatherWhistlePatcher.cs`** (NEU): faltet den PoC-Klon in Core. `StageClones(...)`
+- **Core `WeatherControlPatcher.cs`** (NEU): faltet den PoC-Klon in Core. `StageClones(...)`
   extrahiert `DA_ConsumableAbilityData_SpawnerBoar` EINMAL mit AES-Key (der Composite-Builder
   ruft `to-legacy` keyless -> daher pre-staged source), klont pro DISTINCT Wetter via
   `DataAssetPatcher` (rename Stem+Pfad+FolderName) nach `/Game/Quartermaster/Consumables/
-  DA_ConsumableAbilityData_QmWeatherWhistle_<Weather>` und leert den Cooldown-Bucket. Liefert
-  je Klon `{WeatherId, CloneStem, TriggerToken="QmWeatherWhistle_<W>", ConsumableDataRef}`.
+  DA_ConsumableAbilityData_QmWeatherControl_<Weather>` und leert den Cooldown-Bucket. Liefert
+  je Klon `{WeatherId, CloneStem, TriggerToken="QmWeatherControl_<W>", ConsumableDataRef}`.
   **Funktional verifiziert** gegen echte Vanilla-Paks (Wetter 6/4, Dedup von 6 -> 2 Klone,
   Cooldown je 1 geleert, `to-zen`-Triplet baut).
 - **`Profile.CustomItem.WeatherId` (int?)**: null = "(vanilla)" (inerter L2-Whistle), 0..13 =
   Wetter. Round-trippt (IncludeFields), in `CloneCustomItems` ergaenzt.
 - **`ItemCreatorPatcher`**: bei gesetztem `WeatherId` wird `InventoryItemGppData.ConsumableData`
   auf den per-Wetter-Klon-Ref umgebogen (reiner JSON-Edit, alle registrierten Tags bleiben).
-- **`BuildPipeline`**: `ResolveWeatherWhistleIds` -> `weatherWhistlesActive` (in `ioStoreActive`
-  + `compositeActive`). Neue pre-staged Composite-Source "weather-whistle" ruft
-  `WeatherWhistlePatcher.StageClones` in den shared staging dir. Ergebnis fliesst via
-  `BuildIoStoreCompositeOutput.WeatherWhistles` zurueck.
+- **`BuildPipeline`**: `ResolveWeatherControlIds` -> `weatherControlsActive` (in `ioStoreActive`
+  + `compositeActive`). Neue pre-staged Composite-Source "weather-control" ruft
+  `WeatherControlPatcher.StageClones` in den shared staging dir. Ergebnis fliesst via
+  `BuildIoStoreCompositeOutput.WeatherControls` zurueck.
 - **`GameDeployer`**: `WriteWeatherTriggerConfig(clones)` schreibt `qm_weather_trigger.txt`
   (eine Zeile je distinct Wetter, dedup per Token) bzw. loescht es. DLL wird jetzt auch bei
-  Weather-Whistles (ohne Buildings) deployed; `RemoveDllIfNoProfilesLeft` behaelt die DLL,
+  Weather-Controls (ohne Buildings) deployed; `RemoveDllIfNoProfilesLeft` behaelt die DLL,
   solange das Trigger-File existiert; `CleanupGame` raeumt es mit auf.
-- **Frontend:** Template "Weather Whistle" (`DA_CID_Misc_SpawnerBoar_L2_T02`, `supportsWeather`)
+- **Frontend:** Template "Weather Control" (`DA_CID_Misc_SpawnerBoar_L2_T02`, `supportsWeather`)
   im Item-Creator-Katalog; Card bekommt ein "Use effect"-Dropdown ((vanilla) / "Change weather:
   <14 Wetter>") -> `custom.weatherId`. Nur fuer weather-faehige Templates sichtbar.
 
 **Trigger-Kette end-to-end:** GUI `weatherId` -> Profil-JSON -> ItemCreator repointet
 ConsumableData -> Composite staged Klon -> Deployer schreibt `qm_weather_trigger.txt` ->
-in-game Whistle-Use -> DLL matcht `QmWeatherWhistle_<W>` -> Wetter einmal gesetzt.
+in-game Whistle-Use -> DLL matcht `QmWeatherControl_<W>` -> Wetter einmal gesetzt.
 
-- **(Spaeter / TODO):** echter GUI-Build-Test eines Profils mit Weather-Whistle (Server +
+- **(Spaeter / TODO):** echter GUI-Build-Test eines Profils mit Weather-Control (Server +
   Profil + Game-Paks); optional Cooldown-Slider pro Whistle; ggf. Icon fuer das Template.
 
 ## Dateien
@@ -588,15 +596,15 @@ Deploy-Stand: `qm_weather.txt` ENTFERNT, `qm_weather_trigger.txt`=`Bandages 6`.
 
 ## Test (Stage 2c-1 - Whistle-Klon-Pak + Weather-on-Use)
 
-Deploy-Stand: `Quartermaster_WeatherWhistleTest_P.pak` in `E:\Windrose\Mods` (=`~mods`),
+Deploy-Stand: `Quartermaster_WeatherControlTest_P.pak` in `E:\Windrose\Mods` (=`~mods`),
 `qm_weather_trigger.txt`=`SpawnerBoar 6`. Staging:
-`.build-tmp/weather-whistle-test/staging/` (2 Item-DAs + 4 Fiber-LootTables).
+`.build-tmp/weather-control-test/staging/` (2 Item-DAs + 4 Fiber-LootTables).
 
 1. Spiel komplett schliessen und neu starten.
 2. In eine Gameplay-Welt laden.
 3. **Fiber-Pflanzen abbauen** (Default/Small/Medium/Big Fiber) bis die zwei
-   Test-Items droppen: **"QM Weather Whistle L1 (Boar test)"** und
-   **"QM Weather Whistle L2 (no-spawn test)"** (Legendary, Misc-Kategorie).
+   Test-Items droppen: **"QM Weather Control L1 (Boar test)"** und
+   **"QM Weather Control L2 (no-spawn test)"** (Legendary, Misc-Kategorie).
 4. **L1 benutzen** -> Erwartung: ein Boar spawnt UND Sturm zieht auf.
 5. **L2 benutzen** -> Erwartung (Hypothese): KEIN Boar, Cooldown laeuft, Sturm zieht auf.
 6. Beobachten/berichten je Item:
@@ -613,7 +621,7 @@ Ergebnis steuert das Weitere:
 - **L2 unbenutzbar / spawnt doch** -> Stage 2c-2: DLL-Spawn-Suppress-Hook bauen
   (L1 als Traeger), Recon der Spawn-Funktion.
 
-Test-Pak entfernen: `Quartermaster_WeatherWhistleTest_P.pak` aus `E:\Windrose\Mods`
+Test-Pak entfernen: `Quartermaster_WeatherControlTest_P.pak` aus `E:\Windrose\Mods`
 loeschen, Spiel neu starten. (Aendert die Fiber-Drops zurueck auf Vanilla.)
 
 ## Stage 4 - Rum-Bottle-Basis statt Boar-Whistle (2026-06-07)
@@ -627,8 +635,8 @@ spawnt **keinen Boar** und hat **kein ability-seitiges Cooldown-GE**. Damit
 entfaellt der ganze SpawnerBoar-Ballast (L2-Workaround) UND der DLL-Cooldown-Strip
 ist nur noch ein No-op (es gibt keinen `Cons.Spawner`-Cooldown mehr zu entfernen).
 
-**Der Klon (data-only, `WeatherWhistlePatcher`):** Klon der Rum-ConsumableData ->
-`DA_ConsumableAbilityData_QmWeatherWhistle_<Wetter>` (Name = DLL-Match-Token,
+**Der Klon (data-only, `WeatherControlPatcher`):** Klon der Rum-ConsumableData ->
+`DA_ConsumableAbilityData_QmWeatherControl_<Wetter>` (Name = DLL-Match-Token,
 unveraendert). Drei Edits am Klon, alle im Round-Trip-Dump bestaetigt:
 - `SpendCount = 0` (ADD - die Rum-Data laesst es auf Default => wuerde verbraucht;
   SpawnerBoar setzte es explizit 0, deshalb war das alte Whistle wiederverwendbar).
@@ -641,7 +649,7 @@ Wichtig: Der "Wetter-Effekt" ist **kein** Daten-GE (neue Tags lehnt der
 ConsumableData-NAMEN liest (`kOffConsumeParams0=0x3C0` in der **Basisklasse**
 `R5ConsumeAbility` -> template-agnostisch, kein DLL-Edit fuer die Rum-Basis noetig).
 
-**GUI:** das Boar-"Weather Whistle"-Template entfernt; das vorhandene
+**GUI:** das Boar-"Weather Control"-Template entfernt; das vorhandene
 "Rum Bottle"-Template ist jetzt `supportsWeather=true`. "(vanilla)" = normale
 Rum-Flasche; ein Wetter gewaehlt = Wetter-Item (kein Verbrauch, kein Buff).
 
@@ -663,4 +671,4 @@ qm_hook + qm_ue) ist bei Rum toter No-op-Code - kann in einem Cleanup-Pass raus.
 4. Wetter-Rum benutzen -> Trink-Animation, **kein Verbrauch** (Stack bleibt),
    **kein Rum-Buff**, Wetter wird **einmal** gesetzt.
 5. **Schnell** zwischen Storm- und Sunny-Rum wechseln (<1,5s) -> beide triggern
-   jetzt (Debounce-Fix). Log: je `[Weather] *** TRIGGER *** '...QmWeatherWhistle_<W>...'`.
+   jetzt (Debounce-Fix). Log: je `[Weather] *** TRIGGER *** '...QmWeatherControl_<W>...'`.

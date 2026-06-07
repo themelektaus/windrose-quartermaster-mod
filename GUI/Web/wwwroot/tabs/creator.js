@@ -1,6 +1,6 @@
-// Weather ids 0..13 - index IS the weather id; MUST match the C# WeatherWhistle
+// Weather ids 0..13 - index IS the weather id; MUST match the C# WeatherControl
 // patcher and the dxgi DLL (qm_weather.cpp WeatherName).
-const WEATHER_WHISTLE_NAMES = [
+const WEATHER_NAMES = [
     'Sunny', 'Cloudy', 'Fog', 'Mist', 'Rain', 'Rain (heavy)', 'Storm',
     'Windy', 'High pressure', 'Rainbow', 'Overcast', 'Ashlands fog',
     'Tortuga mist', 'Default',
@@ -136,15 +136,15 @@ function buildCustomItemCardNode(custom, index) {
 
     card.querySelector('input[data-creator-field="keepInInventoryOnDeath"]').checked = keepOnDeath;
 
-    // Weather Whistle use-effect dropdown: only shown for weather-capable
+    // Weather Control use-effect dropdown: only shown for weather-capable
     // templates. "(vanilla)" = no weather effect (value ""); else weather id 0..13.
     const weatherField = card.querySelector('.creator-field-weather');
     const weatherSelect = card.querySelector('select[data-creator-field="weatherId"]');
     if (weatherField && weatherSelect) {
         if (tpl && tpl.supportsWeather) {
             weatherSelect.appendChild(new Option('(vanilla) - no weather effect', ''));
-            for (let i = 0; i < WEATHER_WHISTLE_NAMES.length; i++) {
-                weatherSelect.appendChild(new Option('Change weather: ' + WEATHER_WHISTLE_NAMES[i], String(i)));
+            for (let i = 0; i < WEATHER_NAMES.length; i++) {
+                weatherSelect.appendChild(new Option('Change weather: ' + WEATHER_NAMES[i], String(i)));
             }
             weatherSelect.value = (custom.weatherId != null) ? String(custom.weatherId) : '';
             weatherField.style.display = '';

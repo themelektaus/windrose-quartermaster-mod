@@ -59,7 +59,7 @@ public static class ItemTemplatesEndpoint
         public bool defaultKeepInInventoryOnDeath;
         public string defaultItemTexture;
         // When true the Item Creator shows a weather-effect dropdown for this
-        // template (Weather Whistle). Maps to CustomItem.WeatherId on build.
+        // template (Weather Control). Maps to CustomItem.WeatherId on build.
         public bool supportsWeather;
     }
 }

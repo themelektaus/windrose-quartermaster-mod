@@ -89,9 +89,9 @@ namespace
     // ---- Consumable-use trigger config (qm_weather_trigger.txt) -------------
     // One or more lines of "<substring> <weatherId>". Each maps a ConsumableData
     // name substring to a weather id. The GUI emits one line per DISTINCT weather
-    // picked across all Weather Whistle items (the clone name carries the weather
-    // suffix, e.g. DA_ConsumableAbilityData_QmWeatherWhistle_Storm -> matched by
-    // the substring "QmWeatherWhistle_Storm"). Blank lines and lines starting
+    // picked across all Weather Control items (the clone name carries the weather
+    // suffix, e.g. DA_ConsumableAbilityData_QmWeatherControl_Storm -> matched by
+    // the substring "QmWeatherControl_Storm"). Blank lines and lines starting
     // with '#' are ignored. Backward compatible with the single-line PoC file.
     struct WeatherTrigger { char substr[128]; int weatherId; };
     constexpr int  kMaxTriggers       = 32;
@@ -106,7 +106,7 @@ namespace
     // The window only ever blocks RE-USE OF THE SAME item (idempotent, harmless); a
     // DIFFERENT item (different weather -> different clone name) is NEVER debounced,
     // so back-to-back Storm->Sunny always both fire. (Bug before 2026-06-07: this was
-    // a single global timer, so the 2nd of any two whistles within 1.5s was dropped.)
+    // a single global timer, so the 2nd of any two weather items within 1.5s was dropped.)
     constexpr DWORD kSameItemDebounceMs = 2500;
 
     // ---- EObjectFlags (UE5) used to reject non-live objects ----
@@ -309,7 +309,7 @@ bool QmWeather_Init()
     // Glob every per-profile trigger file (qm_weather_<profile>.txt) plus any
     // legacy single qm_weather_trigger.txt - it matches the same pattern - and
     // merge all mappings. Mirrors the qm_items_*.json multi-profile model so two
-    // deployed Weather-Whistle profiles coexist instead of the last GUI build
+    // deployed Weather-Control profiles coexist instead of the last GUI build
     // clobbering the others. The permanent-pin qm_weather.txt has no underscore
     // after "weather" so it is NOT matched here (handled in section 1 above).
     {
@@ -422,7 +422,7 @@ void QmWeather_Heartbeat()
 
 // Return the index of the first configured trigger whose substring is contained
 // in the ConsumableData name, or -1 if none. Substring match: a clone named
-// "...QmWeatherWhistle_Storm" matches the "QmWeatherWhistle_Storm" mapping.
+// "...QmWeatherControl_Storm" matches the "QmWeatherControl_Storm" mapping.
 static int MatchTrigger(const char* consumableDataName)
 {
     for (int i = 0; i < g_triggerCount; ++i)
@@ -507,8 +507,8 @@ int QmWeather_TryConsumableTriggerOnComplete(const char* consumableDataName, con
     // Substring match against the configured ConsumableData token(s). This is the
     // sole discriminator on the completion path (no spend-tag gate) - vanilla
     // food/bandage completions never carry our token, so they can't false-trigger.
-    // A custom whistle's Params_0 = DA_ConsumableAbilityData_QmWeatherWhistle_<W>
-    // matches the configured "QmWeatherWhistle_<W>" mapping for its weather.
+    // A custom weather item's Params_0 = DA_ConsumableAbilityData_QmWeatherControl_<W>
+    // matches the configured "QmWeatherControl_<W>" mapping for its weather.
     const int ti = MatchTrigger(consumableDataName);
     if (ti < 0) return -1;
 

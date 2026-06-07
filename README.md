@@ -10,7 +10,7 @@ A profile bundles tweaks across multiple domains:
 - **Stack sizes** - per-item or global multiplier / absolute caps
 - **Item Creator** - clone a vanilla item, give it a new name / icon /
   category and ship it as a brand-new entry
-- **Weather Whistle** - in the Item Creator, give a cloned consumable
+- **Weather Control** - in the Item Creator, give a cloned consumable
   (Rum Bottle template) a "change weather" use-effect: using the item
   forces one of the 14 in-game weather states once (Sunny / Rain / Storm
   / Fog / Rainbow / ...) and then hands control back to the game - no
@@ -110,7 +110,7 @@ Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-Windows.pak` for a client install, or
 `pakchunk0-WindowsServer.pak` for a dedicated server). The resulting
 pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
-dedicated server / co-op alike. The one exception is the Weather Whistle
+dedicated server / co-op alike. The one exception is the Weather Control
 use-effect, which Quartermaster backs with a small companion DLL it
 deploys next to the pak automatically - still nothing for you to install
 and no separate mod loader.
@@ -233,7 +233,7 @@ icon to clone an existing one. For each profile you can:
   rewrite name / icon / category, ship it alongside the original in
   the same pak. The Rum Bottle template also exposes a **Use effect**
   dropdown: "(vanilla)" keeps a normal rum, or pick "Change weather" to
-  turn the clone into a Weather Whistle that forces one of the 14 weather
+  turn the clone into a Weather Control item that forces one of the 14 weather
   states on use (nothing consumed, no buff).
 - **Building Creator tab** - clone a vanilla building, rewrite display
   name + description, edit the recipe cost, swap mesh materials,

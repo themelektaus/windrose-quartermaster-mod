@@ -402,10 +402,10 @@ namespace Windrose.Quartermaster.Core
         public string IconPath;
         public string VanityText;
 
-        // Weather Whistle use-effect: when set to a valid weather id (0..13), the
+        // Weather Control use-effect: when set to a valid weather id (0..13), the
         // item's ConsumableData is repointed at a per-weather clone and the dxgi
         // DLL sets that weather on use. null/absent = "(vanilla)" - no weather
-        // effect (behaves like the plain L2 boar whistle: no boar, no weather).
+        // effect (the item stays a normal rum bottle: vanilla drink, no weather).
         public int? WeatherId;
     }
 

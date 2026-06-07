@@ -457,9 +457,9 @@ namespace Windrose.Quartermaster.Core
                 var shipSpeedJobs = ResolveShipSpeedJobs(profile);
                 bool shipSpeedActive = shipSpeedJobs.Count > 0;
                 bool iconsActive = iconBakeJobs.Count > 0;
-                var weatherWhistleIds = ResolveWeatherWhistleIds(profile);
-                bool weatherWhistlesActive = weatherWhistleIds.Count > 0;
-                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherWhistlesActive;
+                var weatherControlIds = ResolveWeatherControlIds(profile);
+                bool weatherControlsActive = weatherControlIds.Count > 0;
+                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -496,8 +496,8 @@ namespace Windrose.Quartermaster.Core
                 LightingResult lightingResult = null;
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
-                WeatherWhistleStageResult weatherWhistleResult = null;
-                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherWhistlesActive;
+                WeatherControlStageResult weatherControlResult = null;
+                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -522,7 +522,7 @@ namespace Windrose.Quartermaster.Core
                         shipSpeedJobs,
                         iconBakeJobs,
                         buildingsActive,
-                        weatherWhistleIds, weatherWhistlesActive,
+                        weatherControlIds, weatherControlsActive,
                         sharedBaseName, mainPakWillBeBuilt: totalWritten > 0);
                     pickupResult = compositeResult.Pickup;
                     shipPickupResult = compositeResult.ShipPickup;
@@ -544,7 +544,7 @@ namespace Windrose.Quartermaster.Core
                     shipSpeedResult = compositeResult.ShipSpeed;
                     iconBakeResults = compositeResult.Icons;
                     buildingResults = compositeResult.Buildings;
-                    weatherWhistleResult = compositeResult.WeatherWhistles;
+                    weatherControlResult = compositeResult.WeatherControls;
                 }
 
                 BuildingStabilityResult stabilityResult = null;
@@ -591,10 +591,10 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 // Touch the game folder when the DLL is needed - buildings (item
-                // JSON inject) OR Weather Whistles (weather trigger config). Never
+                // JSON inject) OR Weather Controls (weather trigger config). Never
                 // inject the DLL for a stack/loot-only profile.
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
-                var weatherClones = weatherWhistleResult != null ? weatherWhistleResult.Clones : null;
+                var weatherClones = weatherControlResult != null ? weatherControlResult.Clones : null;
                 bool weatherDeployActive = weatherClones != null && weatherClones.Count > 0;
                 if (buildingsCount > 0 || weatherDeployActive)
                 {
@@ -727,7 +727,7 @@ namespace Windrose.Quartermaster.Core
             List<ShipSpeedJob> shipSpeedJobs,
             List<IconBakerPatcher.BakeJob> iconBakeJobs,
             bool buildingsActive,
-            IReadOnlyCollection<int> weatherWhistleIds, bool weatherWhistlesActive,
+            IReadOnlyCollection<int> weatherControlIds, bool weatherControlsActive,
             string sharedBaseName, bool mainPakWillBeBuilt)
         {
             if (GamePaksDirProvider == null)
@@ -1960,27 +1960,27 @@ namespace Windrose.Quartermaster.Core
                 });
             }
 
-            // Weather Whistle ConsumableData clones (one per distinct weather).
+            // Weather Control ConsumableData clones (one per distinct weather).
             // Pre-staged source: we extract DA_ConsumableAbilityData_SpawnerBoar
             // ourselves WITH the AES key (the composite builder's to-legacy runs
             // keyless), then clone + clear-cooldown into the shared staging dir.
-            WeatherWhistleStageResult weatherWhistleResult = null;
-            if (weatherWhistlesActive && weatherWhistleIds != null && weatherWhistleIds.Count > 0)
+            WeatherControlStageResult weatherControlResult = null;
+            if (weatherControlsActive && weatherControlIds != null && weatherControlIds.Count > 0)
             {
                 var usmapPath = UsmapLocator.Find(_paths.ModRoot);
-                var weatherTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__weatherwhistle");
-                LogLine("Weather Whistle source: " + weatherWhistleIds.Count
+                var weatherTmp = Path.Combine(_paths.BuildTmp, profile.Id + "__weathercontrol");
+                LogLine("Weather Control source: " + weatherControlIds.Count
                         + " distinct weather(s)");
                 sources.Add(new IoStoreCompositeSource
                 {
-                    Name = "weather-whistle",
+                    Name = "weather-control",
                     InputDir = null,  // pre-staged: extraction happens in AfterExtract
                     AfterExtract = stagingDir =>
                     {
-                        var patcher = new WeatherWhistlePatcher { Log = Log };
-                        weatherWhistleResult = patcher.StageClones(
+                        var patcher = new WeatherControlPatcher { Log = Log };
+                        weatherControlResult = patcher.StageClones(
                             stagingDir, retocExe, usmapPath, gamePaksDir,
-                            WindroseGameSecrets.AesKey, weatherTmp, weatherWhistleIds);
+                            WindroseGameSecrets.AesKey, weatherTmp, weatherControlIds);
                     },
                 });
             }
@@ -2283,7 +2283,7 @@ namespace Windrose.Quartermaster.Core
                 ShipSpeed = shipSpeedOut,
                 Icons = iconResults,
                 Buildings = buildingResults,
-                WeatherWhistles = weatherWhistleResult,
+                WeatherControls = weatherControlResult,
             };
         }
 
@@ -2309,13 +2309,13 @@ namespace Windrose.Quartermaster.Core
             public ShipSpeedResult ShipSpeed;
             public List<IconBakerPatcher.BakeResult> Icons;
             public List<BuildingPatchResult> Buildings;
-            public WeatherWhistleStageResult WeatherWhistles;
+            public WeatherControlStageResult WeatherControls;
         }
 
-        // Distinct, valid weather ids requested by Weather Whistle custom items.
+        // Distinct, valid weather ids requested by Weather Control custom items.
         // One ConsumableData clone is staged per distinct id; items sharing a
         // weather share the clone.
-        static List<int> ResolveWeatherWhistleIds(Profile profile)
+        static List<int> ResolveWeatherControlIds(Profile profile)
         {
             var ids = new List<int>();
             if (profile == null || profile.CustomItems == null) return ids;
@@ -2324,7 +2324,7 @@ namespace Windrose.Quartermaster.Core
             {
                 if (ci == null || !ci.WeatherId.HasValue) continue;
                 int id = ci.WeatherId.Value;
-                if (!WeatherWhistlePatcher.IsValidWeatherId(id)) continue;
+                if (!WeatherControlPatcher.IsValidWeatherId(id)) continue;
                 if (seen.Add(id)) ids.Add(id);
             }
             return ids;

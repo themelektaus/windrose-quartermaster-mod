@@ -149,18 +149,18 @@ namespace Windrose.Quartermaster.Core
                     gpp["bKeepInInventoryOnDeath"] = custom.KeepInInventoryOnDeath.Value;
                 }
 
-                // Weather Whistle: repoint ConsumableData at the per-weather clone
-                // (DA_ConsumableAbilityData_QmWeatherWhistle_<Weather>) that the
+                // Weather Control: repoint ConsumableData at the per-weather clone
+                // (DA_ConsumableAbilityData_QmWeatherControl_<Weather>) that the
                 // build stages into the IoStore composite. The clone name is what
                 // the dxgi DLL substring-matches to set the weather on use. Leaving
                 // WeatherId null keeps the template's (vanilla) ConsumableData, so
-                // the item is an inert L2 whistle (no boar, no weather). The clone
-                // keeps every registered gameplay tag, so no new-tag marshalling risk.
+                // the item stays a normal rum bottle (vanilla drink, no weather). The
+                // clone keeps every registered gameplay tag, so no new-tag marshalling risk.
                 if (custom.WeatherId.HasValue
-                    && WeatherWhistlePatcher.IsValidWeatherId(custom.WeatherId.Value))
+                    && WeatherControlPatcher.IsValidWeatherId(custom.WeatherId.Value))
                 {
                     gpp["ConsumableData"] =
-                        WeatherWhistlePatcher.ConsumableDataRefForWeather(custom.WeatherId.Value);
+                        WeatherControlPatcher.ConsumableDataRefForWeather(custom.WeatherId.Value);
                 }
 
                 // Deliberately leave the template's GameplayTag untouched: a mod pak cannot register new tags, and an unregistered tag is rejected at marshalling time, silently breaking consume/buff/recipe lookups.

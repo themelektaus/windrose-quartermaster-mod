@@ -11,7 +11,7 @@ using UAssetAPI.Unversioned;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Stage 3: per-weather "Weather Whistle" ConsumableData clones.
+    // Stage 3: per-weather "Weather Control" ConsumableData clones.
     //
     // Background (proven in the WeatherControl PoC): a Weather item is a rum-bottle
     // consumable whose `ConsumableData` field points at a CLONE of the vanilla
@@ -32,10 +32,10 @@ namespace Windrose.Quartermaster.Core
     // R5ConsumeAbility base class, so the trigger fires identically for any base.
     //
     // The DISCRIMINATOR is the clone NAME, so each distinct weather gets its own
-    // clone (e.g. ..._QmWeatherWhistle_Storm). Multiple items that pick the same
+    // clone (e.g. ..._QmWeatherControl_Storm). Multiple items that pick the same
     // weather share one clone. This patcher extracts the vanilla source once and
     // stages one clone per requested weather into the IoStore composite.
-    public sealed class WeatherWhistlePatcher
+    public sealed class WeatherControlPatcher
     {
         public Action<string> Log;
 
@@ -43,10 +43,10 @@ namespace Windrose.Quartermaster.Core
         public const string SourcePackagePath = "/Game/Gameplay/ItemsLogic/Consumables/Food/ConsumeAbilityData/DA_ConsumableAbilityData_Potion_RumBottle";
 
         // Clone identity: stem prefix + weather name; package dir is our namespace.
-        public const string CloneStemPrefix   = "DA_ConsumableAbilityData_QmWeatherWhistle_";
+        public const string CloneStemPrefix   = "DA_ConsumableAbilityData_QmWeatherControl_";
         public const string ClonePackageDir   = "/Game/Quartermaster/Consumables/";
         // The token the DLL substring-matches (the clone stem contains it).
-        public const string TriggerTokenPrefix = "QmWeatherWhistle_";
+        public const string TriggerTokenPrefix = "QmWeatherControl_";
 
         public const int WeatherMin = 0;
         public const int WeatherMax = 13;
@@ -64,14 +64,14 @@ namespace Windrose.Quartermaster.Core
 
         public static IReadOnlyList<string> AllWeatherNames => WeatherNames;
 
-        // "DA_ConsumableAbilityData_QmWeatherWhistle_Storm"
+        // "DA_ConsumableAbilityData_QmWeatherControl_Storm"
         public static string CloneStemForWeather(int id)
         {
             var n = WeatherName(id);
             return n == null ? null : CloneStemPrefix + n;
         }
 
-        // "QmWeatherWhistle_Storm" - the substring the DLL matches on the clone name.
+        // "QmWeatherControl_Storm" - the substring the DLL matches on the clone name.
         public static string TriggerTokenForWeather(int id)
         {
             var n = WeatherName(id);
@@ -91,7 +91,7 @@ namespace Windrose.Quartermaster.Core
         // ONCE (with the AES key, since the composite builder's to-legacy runs
         // keyless) into its own temp dir, then clones + clears cooldown per weather.
         // Returns one entry per staged clone. Idempotent per build (re-stages).
-        public WeatherWhistleStageResult StageClones(
+        public WeatherControlStageResult StageClones(
             string stagingDir,
             string retocExe,
             string usmapPath,
@@ -106,7 +106,7 @@ namespace Windrose.Quartermaster.Core
             if (string.IsNullOrEmpty(vanillaPaksDir)) throw new ArgumentNullException(nameof(vanillaPaksDir));
             if (string.IsNullOrEmpty(tempDir))        throw new ArgumentNullException(nameof(tempDir));
 
-            var result = new WeatherWhistleStageResult();
+            var result = new WeatherControlStageResult();
 
             // Distinct, valid weather ids (sorted for stable logs).
             var ids = (weatherIds ?? Enumerable.Empty<int>())
@@ -130,7 +130,7 @@ namespace Windrose.Quartermaster.Core
             extractArgs.Add("--version"); extractArgs.Add("UE5_6");
             extractArgs.Add("--filter");  extractArgs.Add(SourceStem);
 
-            LogLine("WeatherWhistle: extracting " + SourceStem + " (" + ids.Count + " weather clone(s))");
+            LogLine("WeatherControl: extracting " + SourceStem + " (" + ids.Count + " weather clone(s))");
             var r = ToolProcess.RunCapture(retocExe, extractArgs);
             if (r.ExitCode != 0)
                 throw new InvalidOperationException(
@@ -169,7 +169,7 @@ namespace Windrose.Quartermaster.Core
 
                 if (pr.NameMapEntriesRenamed == 0 && pr.ExportsRetargeted == 0)
                     throw new InvalidOperationException(
-                        "WeatherWhistle clone for weather " + id + " (" + WeatherName(id)
+                        "WeatherControl clone for weather " + id + " (" + WeatherName(id)
                         + ") produced 0 renames - clone identity did not move; aborting to avoid"
                         + " shipping a duplicate of the vanilla asset.");
 
@@ -183,7 +183,7 @@ namespace Windrose.Quartermaster.Core
                         + ", spendCountZeroed=" + ov.SpendCountZeroed
                         + ", effectsOnSpendCleared=" + ov.EffectsOnSpendCleared + ")");
 
-                result.Clones.Add(new WeatherWhistleClone
+                result.Clones.Add(new WeatherControlClone
                 {
                     WeatherId        = id,
                     WeatherName      = WeatherName(id),
@@ -331,17 +331,17 @@ namespace Windrose.Quartermaster.Core
         void LogLine(string msg) { if (Log != null) Log(msg); }
     }
 
-    public sealed class WeatherWhistleStageResult
+    public sealed class WeatherControlStageResult
     {
-        public List<WeatherWhistleClone> Clones = new List<WeatherWhistleClone>();
+        public List<WeatherControlClone> Clones = new List<WeatherControlClone>();
     }
 
-    public sealed class WeatherWhistleClone
+    public sealed class WeatherControlClone
     {
         public int    WeatherId;
         public string WeatherName;
         public string CloneStem;
-        public string TriggerToken;       // DLL substring token, e.g. "QmWeatherWhistle_Storm"
+        public string TriggerToken;       // DLL substring token, e.g. "QmWeatherControl_Storm"
         public string ConsumableDataRef;  // item JSON ConsumableData value
     }
 }
