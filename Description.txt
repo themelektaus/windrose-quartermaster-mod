@@ -78,15 +78,6 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
-[size=4][b]XP rewards[/b][/size]
-[color=#b6b6b6]Two independent base multipliers (0.1x to 10x) on the XP you earn - one for every quest reward (faction / main / side / local-event), one for every POI treasure-chest reward. A dedicated XP rewards tab additionally lets you pin an individual quest's or chest's experience with a per-entry override; a row left at 1x just follows its overall multiplier. Only the reward amounts scale - the level curve itself, and entries that grant no vanilla XP, are left untouched.[/color]
-
-[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/XP-reward.png[/img]
-
-
-
-
-
 [size=4][b]On death[/b][/size]
 [color=#b6b6b6]Two independent toggles. Keep death loot from despawning - a persistent storage bag spawns at the death spot instead of the timed posthumous container, so your dropped items stay in the world (land and at sea). Keep status effects - food, elixir and comfort buffs survive death instead of being wiped, while transient debuffs (damage-over-time, stagger, wet, ...) still clear.[/color]
 
@@ -100,6 +91,24 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Scale the player's base Health and Stamina above vanilla with two independent 1.0x to 10.0x sliders (vanilla 320 HP / 150 stamina). Health grows the health bar; Stamina grows the bar and speeds up how fast it refills. Leave either at 1.0x to keep that stat vanilla.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Player-stats.png[/img]
+
+
+
+
+
+[size=4][b]XP rewards[/b][/size]
+[color=#b6b6b6]Two independent base multipliers (0.1x to 10x) on the XP you earn - one for every quest reward (faction / main / side / local-event), one for every POI treasure-chest reward. A dedicated XP rewards tab additionally lets you pin an individual quest's or chest's experience with a per-entry override; a row left at 1x just follows its overall multiplier. Only the reward amounts scale - the level curve itself, and entries that grant no vanilla XP, are left untouched.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/XP-reward.png[/img]
+
+
+
+
+
+[size=4][b]Level rewards[/b][/size]
+[color=#b6b6b6]Scale the talent and stat points granted on every level-up. Two multipliers (1x to 10x) raise each level's reward; since some vanilla level-ups give only 0-1 talent points, a boost ADDS the multiplier on those lean levels instead of scaling (at 3x: 0->3, 1->4), while richer levels scale normally (2->6, 3->9). A dedicated Level rewards tab also lets you pin an exact talent / stat reward per individual level. The XP curve and the level-1 starting row are never touched. New characters get the bigger rewards as they level; the Characters tab retro-fits the matching point totals onto a character already in your save (with an automatic backup first).[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Level-rewards.png[/img]
 
 
 
@@ -190,15 +199,6 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 [color=#b6b6b6]Bigger ship cargo holds (scales each hull's vanilla capacity) and more Combat Orders slots, for the Brig / Frigate / Ketch and their variants. New ships get the bigger slots automatically; the Characters tab retro-fits the counts onto ships already in your save.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Ship-Slots.png[/img]
-
-
-
-
-
-[size=4][b]Level rewards[/b][/size]
-[color=#b6b6b6]Scale the talent and stat points granted on every level-up. Two multipliers (1x to 10x) raise each level's reward; since some vanilla level-ups give only 0-1 talent points, a boost ADDS the multiplier on those lean levels instead of scaling (at 3x: 0->3, 1->4), while richer levels scale normally (2->6, 3->9). A dedicated Level rewards tab also lets you pin an exact talent / stat reward per individual level. The XP curve and the level-1 starting row are never touched. New characters get the bigger rewards as they level; the Characters tab retro-fits the matching point totals onto a character already in your save (with an automatic backup first).[/color]
-
-[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Level-rewards.png[/img]
 
 
 
