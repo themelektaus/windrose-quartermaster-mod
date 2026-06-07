@@ -58,19 +58,6 @@
   gap: .5em;
 }
 
-/* Section heading separating the equipment-slot character cards from the
-   ship-slot cards within the same scrolling list pane. */
-.char-section-title {
-  margin: .9em 0 .4em;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  font-size: var(--font-size-small, .82em);
-  color: var(--text-dim, #9aa);
-}
-.char-section-title:first-child {
-  margin-top: .2em;
-}
-
 .char-card {
   height: unset;
 }
@@ -96,4 +83,21 @@
 
 .char-card .char-current {
   font-variant-numeric: tabular-nums;
+}
+
+/* Per-area lines inside a character card (equipment / ships / level rewards).
+   Unchanged areas read plainly; an area that will be written gets an accent so
+   the single Backup + patch button's effect is obvious at a glance. */
+.char-areas {
+  display: flex;
+  flex-direction: column;
+  gap: .15em;
+}
+
+.char-area {
+  margin: 0;
+}
+
+.char-area-changed {
+  color: var(--accent);
 }

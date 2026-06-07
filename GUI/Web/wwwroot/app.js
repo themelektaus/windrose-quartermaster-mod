@@ -26,17 +26,14 @@ const state = {
         error: null,
     },
 
-    // Characters tab: discovered Windrose save characters (existing-character
-    // equipment-slot patcher). Loaded on first tab open; re-scanned on demand.
+    // Characters tab: discovered Windrose save characters for the unified
+    // existing-character save patcher. Each list entry carries its equipment,
+    // progression and owned ships. Loaded on first tab open; re-scanned on demand.
     characters: {
         loaded: false,
         supported: true,
         list: [],
         error: null,
-        // Ships (Expanded Naval Tactics save patcher), loaded alongside chars.
-        ships: [],
-        shipsSupported: true,
-        shipsError: null,
     },
 
     buyers: {
@@ -299,7 +296,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'leveling', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -730,8 +727,9 @@ async function loadProfile(id) {
         renderBuildingCreator();
         renderBuildingCreatorStatus();
     }
-    // The Characters tab's per-row "needs patch?" comparison is against the
-    // profile's equipment-slot target, so re-render it when the profile changes.
+    // The Characters tab's per-card "needs patch?" comparison is against the
+    // profile's equipment / ship / Level Rewards targets, so re-render it when
+    // the profile changes.
     if (state.activeTab === 'characters' && state.characters.loaded) {
         renderCharacters();
     }
@@ -844,6 +842,7 @@ function applyProfileToUI() {
     applyLightingToUI();
     applyShipSpeedToUI();
     applyXpRewardToUI();
+    applyLevelingToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -1152,7 +1151,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
-        'shipSpeed', 'xpReward',
+        'shipSpeed', 'xpReward', 'levelingRework',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
@@ -1303,6 +1302,17 @@ function xpRewardTabHasMods() {
     if (xp.overrides && Object.keys(xp.overrides).length > 0) return true;
     return false;
 }
+// Level Rewards: a talent/stat multiplier != 1, or any per-level override. The
+// override map is pruned to drop empty entries, so any surviving key is real.
+function levelingTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    const lr = g && g.levelingRework;
+    if (!lr) return false;
+    if (typeof lr.talentMultiplier === 'number' && Math.abs(lr.talentMultiplier - 1.0) > 1e-9) return true;
+    if (typeof lr.statMultiplier === 'number' && Math.abs(lr.statMultiplier - 1.0) > 1e-9) return true;
+    if (lr.overrides && Object.keys(lr.overrides).length > 0) return true;
+    return false;
+}
 
 // Registry of tab -> predicate. Tabs absent here (mods, characters) never
 // modify the profile, so they never receive the indicator.
@@ -1320,6 +1330,7 @@ const TAB_MOD_CHECKS = {
     lighting: lightingTabHasMods,
     shipspeed: shipSpeedTabHasMods,
     xpreward: xpRewardTabHasMods,
+    leveling: levelingTabHasMods,
 };
 
 // Refresh the has-mods indicator on every tab. Called on profile load
@@ -2185,6 +2196,7 @@ function bindHandlers() {
     bindLightingHandlers();
     bindShipSpeedHandlers();
     bindXpRewardHandlers();
+    bindLevelingHandlers();
     bindCharactersHandlers();
 }
 

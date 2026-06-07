@@ -1,0 +1,55 @@
+<div class="tab-page leveling-page" data-tab="leveling">
+  <aside class="pane leveling-sidebar">
+    <section class="card leveling-overall-card">
+      <h2>Talent Points</h2>
+      <p class="hint">
+        Multiplier on every level's talent reward. Some vanilla level-ups grant
+        0-1 talent points; boosting ADDS the multiplier there instead of scaling
+        (at 3x: 0&rarr;3, 1&rarr;4), while richer levels scale (2&rarr;6, 3&rarr;9).
+        Per-level overrides win.
+      </p>
+      <div class="pickup-slider">
+        <input type="range" id="leveling-talent-overall" min="1" max="10" step="1" value="1">
+        <span class="mult-pill" id="leveling-talent-overall-value">1x</span>
+      </div>
+    </section>
+
+    <section class="card leveling-overall-card">
+      <h2>Stat Points</h2>
+      <p class="hint">
+        Hybrid multiplier on every level's stat reward. Per-level overrides win.
+      </p>
+      <div class="pickup-slider">
+        <input type="range" id="leveling-stat-overall" min="1" max="10" step="1" value="1">
+        <span class="mult-pill" id="leveling-stat-overall-value">1x</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="hint">
+        1x = vanilla. A number box pins an exact reward for that level; leave it
+        blank to follow the multiplier above. The level-1 starting row is fixed
+        at vanilla.
+      </p>
+      <div class="leveling-overall-actions">
+        <button type="button" id="leveling-reset-all" class="warn">
+          Reset all overrides
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <main class="leveling-main">
+    <header class="leveling-header">
+      <h2>Per-level rewards</h2>
+      <p class="hint">
+        Each row is one level-up of the reward table (DA_HeroLevels). The number
+        boxes set an exact talent / stat reward for that level (winning over the
+        multiplier); leave a box blank to follow the multiplier. The XP curve
+        itself is unchanged, and points already earned stay baked into existing
+        saves - this only affects level-ups after install.
+      </p>
+    </header>
+    <div id="leveling-list" class="leveling-list"></div>
+  </main>
+</div>

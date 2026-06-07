@@ -24,6 +24,7 @@ namespace Windrose.Quartermaster.Core
         readonly CookingDurationPatcher _cookingDurationPatcher;
         readonly NpcSpawnPatcher _npcSpawnPatcher;
         readonly XpRewardPatcher _xpRewardPatcher;
+        readonly LevelingPatcher _levelingPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
@@ -62,6 +63,7 @@ namespace Windrose.Quartermaster.Core
             _cookingDurationPatcher = new CookingDurationPatcher();
             _npcSpawnPatcher = new NpcSpawnPatcher();
             _xpRewardPatcher = new XpRewardPatcher();
+            _levelingPatcher = new LevelingPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
@@ -155,6 +157,22 @@ namespace Windrose.Quartermaster.Core
                     _xpRewardPatcher.Log = Log;
                     xpRewardResult = _xpRewardPatcher.PatchToDirectory(
                         _paths.VanillaQuestRewards, tmpXpDir, profile);
+                }
+
+                LevelingPatchResult levelingResult = null;
+                bool levelingActive = HasLevelingReworkConfiguration(profile);
+                if (levelingActive)
+                {
+                    // DA_HeroLevels.json lives in the legacy pakchunk0 .pak; make sure
+                    // the single vanilla asset is on disk (extract on cache miss) so a
+                    // fresh checkout works without a full re-dump.
+                    var cfgExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
+                    cfgExtractor.EnsureHeroLevels();
+
+                    LogLine("Patching level rewards (talent / stat points per level)");
+                    _levelingPatcher.Log = Log;
+                    levelingResult = _levelingPatcher.PatchToDirectory(
+                        _paths.VanillaHeroLevels, tmpDir, profile);
                 }
 
                 BellLimitsPatchResult bellResult = null;
@@ -379,6 +397,7 @@ namespace Windrose.Quartermaster.Core
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
                     + (xpRewardResult != null ? xpRewardResult.Written : 0)
+                    + (levelingResult != null && levelingResult.Written ? 1 : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (invSlotsResult != null && invSlotsResult.Written ? 1 : 0)
                     + (shipSlotsResult != null && shipSlotsResult.Written ? shipSlotsResult.FilesWritten : 0)

@@ -436,6 +436,33 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(skill-tree.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Level Rewards</h2>
+        <p class="hint">
+          Boosts the talent &amp; stat points granted per level-up. 1x = vanilla.
+          Open the Level Rewards tab to fine-tune individual levels.
+        </p>
+        <div class="pickup-row xpreward-misc-row">
+          <span class="xpreward-misc-label">Talent points</span>
+          <div class="pickup-slider">
+            <input type="range" id="leveling-talent-multiplier" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="leveling-talent-multiplier-value">1x</span>
+          </div>
+        </div>
+        <div class="pickup-row xpreward-misc-row">
+          <span class="xpreward-misc-label">Stat points</span>
+          <div class="pickup-slider">
+            <input type="range" id="leveling-stat-multiplier" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="leveling-stat-multiplier-value">1x</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(no-smoke.png); "></div>
       </div>
       <div class="card-content">

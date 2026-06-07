@@ -56,6 +56,13 @@ namespace Windrose.Quartermaster.Core
         public const string QuestRewardsPath =
             "R5/Content/Gameplay/Scenario/Player";
 
+        // R5BLEntityProgressionLevelParams: the player level-up reward table read at
+        // runtime as raw .json (shipped in the legacy pakchunk0 .pak, so repak
+        // extracts it). The Level Rewards feature scales its per-level
+        // TalentPointsReward / StatPointsReward. Single file (not a directory).
+        public const string HeroLevelsRelPath =
+            "R5/Plugins/R5BusinessRules/Content/EntityProgression/DA_HeroLevels.json";
+
         public const string PlayerInventoryPath =
             "R5/Plugins/R5BusinessRules/Content/Inventory";
 

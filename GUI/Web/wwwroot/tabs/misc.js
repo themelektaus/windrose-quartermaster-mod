@@ -604,6 +604,10 @@ function setPickaxeRangeFromUI() {
     markDirty();
 }
 
+// Level Rewards (talent/stat points per level) lives entirely in tabs/leveling.js
+// - including the two compact mirror sliders on this Basic card. See
+// bindLevelingHandlers / applyLevelingToUI / syncLevelingMiscCard there.
+
 function setNoSmokeFromUI() {
     if (!state.current) return;
     const c = document.getElementById('nosmoke-campfire').checked;
@@ -957,6 +961,7 @@ function bindMiscHandlers() {
     document.getElementById('bonfire-multiplier').addEventListener('input', setBonfireRadiusFromUI);
     document.getElementById('pickaxe-enabled').addEventListener('change', setPickaxeRangeFromUI);
     document.getElementById('pickaxe-multiplier').addEventListener('input', setPickaxeRangeFromUI);
+    // Level Rewards mirror sliders are bound in bindLevelingHandlers (leveling.js).
     const bmInput = document.getElementById('bonfire-music-upload');
     if (bmInput) bmInput.addEventListener('change', onBonfireMusicFileChange);
     const bmVol = document.getElementById('bonfire-music-volume');

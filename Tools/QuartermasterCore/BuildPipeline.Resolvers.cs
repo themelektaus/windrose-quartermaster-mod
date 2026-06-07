@@ -721,6 +721,25 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // Level rewards: any talent/stat multiplier that differs from vanilla (1.0)
+        // OR any per-level override that pins a value. A 1.0 multiplier leaves that
+        // dimension untouched; both 1.0 and no overrides = no-op.
+        static bool HasLevelingReworkConfiguration(Profile profile)
+        {
+            var lr = profile.Globals != null ? profile.Globals.LevelingRework : null;
+            if (lr == null) return false;
+            if (lr.TalentMultiplier.HasValue && lr.TalentMultiplier.Value > 0.0
+                && Math.Abs(lr.TalentMultiplier.Value - 1.0) > 1e-9) return true;
+            if (lr.StatMultiplier.HasValue && lr.StatMultiplier.Value > 0.0
+                && Math.Abs(lr.StatMultiplier.Value - 1.0) > 1e-9) return true;
+            if (lr.Overrides != null)
+            {
+                foreach (var o in lr.Overrides.Values)
+                    if (o != null && (o.Talent.HasValue || o.Stat.HasValue)) return true;
+            }
+            return false;
+        }
+
         static bool HasNpcSpawnConfiguration(Profile profile)
         {
             if (profile.NpcSpawnOverrides != null)

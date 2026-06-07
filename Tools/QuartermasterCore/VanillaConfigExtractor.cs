@@ -32,6 +32,15 @@ namespace Windrose.Quartermaster.Core
                 includePrefix:  "R5/Config/DefaultR5BuildingSettings.ini");
         }
 
+        // The single DA_HeroLevels.json (player level-up reward table). Returns the
+        // cached path (== _paths.VanillaHeroLevels) extracting on a cache miss.
+        public string EnsureHeroLevels()
+        {
+            return EnsureFile(
+                vanillaRelPath: WindroseGameSecrets.HeroLevelsRelPath,
+                includePrefix:  WindroseGameSecrets.HeroLevelsRelPath);
+        }
+
         // Directory variant of EnsureFile: guarantees a vanilla subtree is present
         // on disk, extracting `includePrefix` from the vanilla pak on a cache miss.
         // `vanillaDir` is the cached absolute dir (e.g. paths.VanillaQuestRewards).

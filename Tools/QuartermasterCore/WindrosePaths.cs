@@ -23,6 +23,7 @@ namespace Windrose.Quartermaster.Core
         public string VanillaAiSpawners;
         public string VanillaCannonParams;
         public string VanillaQuestRewards;
+        public string VanillaHeroLevels;
         public string Builds;
         public string Profiles;
         public string BuildTmp;
@@ -163,6 +164,8 @@ namespace Windrose.Quartermaster.Core
                 "Gameplay", "Water", "Character", "Guns", "Cannons");
             var vanillaQuestRewards = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "Scenario", "Player");
+            var vanillaHeroLevels = Path.Combine(vanilla, "R5", "Plugins",
+                "R5BusinessRules", "Content", "EntityProgression", "DA_HeroLevels.json");
             return new WindrosePaths
             {
                 ModRoot = modRoot,
@@ -181,6 +184,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaAiSpawners = vanillaAiSpawners,
                 VanillaCannonParams = vanillaCannonParams,
                 VanillaQuestRewards = vanillaQuestRewards,
+                VanillaHeroLevels = vanillaHeroLevels,
                 Builds = Path.Combine(modRoot, "Builds"),
                 Profiles = Path.Combine(modRoot, "Profiles"),
                 BuildTmp = Path.Combine(modRoot, ".build-tmp"),

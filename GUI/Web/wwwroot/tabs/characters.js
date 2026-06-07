@@ -1,22 +1,129 @@
 'use strict';
 
-// Characters tab - existing-character equipment-slot save patcher.
+// Characters tab - unified existing-character save patcher.
 //
-// The Equipment Slots sliders (Basic tab) write the new ring/necklace counts
-// into the pak, which only affects NEWLY created characters. This tab patches
-// the slot count straight into an EXISTING character's RocksDB save so it picks
-// up the same counts. The patch target is the active profile's slider values;
-// each character is compared against that target and only patched when it
-// differs (the backend additionally backs up + no-ops when it already matches).
+// The paks (Equipment Slots, Ship Slots, Level Rewards) only affect NEWLY
+// created characters / ships. This tab retro-fits the same values onto an
+// EXISTING character's RocksDB save: ring / necklace slots, every owned ship's
+// cargo / combat-order slots, and the Level Rewards talent / stat points.
+//
+// Each character is ONE card. Every patchable area is compared against the
+// active profile's target (the Basic / Level Rewards tab sliders). When ANY area
+// differs the single "Backup + patch" button activates; pressing it sends only
+// the differing areas to the one /api/savegame/patch endpoint, which writes just
+// those. Areas already at target are left untouched.
 
-// Ring / necklace target taken from the active profile's Equipment Slots
-// sliders (default vanilla 1/1 when the profile carries no override).
-function charTarget() {
+// ---------------------------------------------------------------------------
+// Targets - all derived from the ACTIVE PROFILE, never from the save, so they
+// track even unsaved slider edits (and downgrade a previously-patched save back
+// toward vanilla when a slider is lowered).
+// ---------------------------------------------------------------------------
+
+function charEquipTarget() {
     const eqs = state.current && state.current.globals && state.current.globals.equipmentSlots;
-    const ring = eqs && eqs.ringSlots != null ? eqs.ringSlots : 1;
-    const neck = eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1;
-    return { ring, neck };
+    return {
+        ring: eqs && eqs.ringSlots != null ? eqs.ringSlots : 1,
+        neck: eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1,
+    };
 }
+
+function charShipTarget() {
+    const ss = state.current && state.current.globals && state.current.globals.shipSlots;
+    return {
+        mult: ss && ss.cargoMultiplier != null ? ss.cargoMultiplier : 1,
+        combat: ss && ss.combatOrderSlots != null ? ss.combatOrderSlots : 1,
+    };
+}
+
+// Mirrors ShipSlotsPatcher.CargoTarget (round away from zero, never below
+// vanilla, capped). Math.round rounds .5 up, matching AwayFromZero for the
+// non-negative values here.
+function shipCargoTarget(base, mult) {
+    if (!base || base <= 0) return base || 0;
+    let t = Math.round(base * mult);
+    if (t < base) t = base;
+    if (t > 200) t = 200;
+    return t;
+}
+
+function shipTypeLabel(sourceDa) {
+    if (!sourceDa) return 'unknown';
+    return sourceDa.replace(/^DA_ShipInventory_/, '');
+}
+
+function shipLabel(s) {
+    return 'Ship ' + (s.shipName ? '"' + s.shipName + '"' : shipTypeLabel(s.sourceDa));
+}
+
+// Cumulative mod reward across the level-ups a character has already had: levels
+// 2..charLevel (the level-1 / starting row grants nothing). Mirrors leveling.js
+// / LevelingPatcher. Returns null until the vanilla catalog loads.
+function cumulativeModReward(charLevel, dim) {
+    if (!levelingCatalog) return null;
+    const isStat = dim === 'stat';
+    const mul = getLevOverall(isStat);
+    let sum = 0;
+    for (const e of levelingCatalog) {
+        if (e.isStarting) continue;       // level 1 starting row - never granted
+        if (e.level > charLevel) break;   // catalog is level-ascending
+        const vanilla = isStat ? e.vanillaStat : e.vanillaTalent;
+        const ov = getLevelOverrideField(e.level, dim);
+        sum += (ov != null) ? ov : applyHybridJs(vanilla, mul);
+    }
+    return sum;
+}
+
+// Absolute target FREE pools: free = max(0, modCumulative - spent). The patch is
+// bidirectional - lowering the multiplier (e.g. back to vanilla 1x) reduces the
+// free pool again; invested nodes are never touched, so spent points cannot be
+// clawed back below 0. null until the catalog loads.
+function progressionTargetFor(prog) {
+    if (!levelingCatalog || !prog) return null;
+    const modTalent = cumulativeModReward(prog.characterLevel, 'talent');
+    const modStat = cumulativeModReward(prog.characterLevel, 'stat');
+    if (modTalent == null || modStat == null) return null;
+    return {
+        talent: Math.max(0, modTalent - prog.spentTalent),
+        stat: Math.max(0, modStat - prog.spentStat),
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Per-area "needs patch" (each mirrors its backend patcher's match rule: BOTH
+// the live count AND the blueprint must equal the target).
+// ---------------------------------------------------------------------------
+
+function equipNeedsPatch(eq, t) {
+    if (!eq) return false;
+    return eq.ringSlots !== t.ring || eq.necklaceSlots !== t.neck
+        || eq.blueprintRing !== t.ring || eq.blueprintNeck !== t.neck;
+}
+
+function shipNeedsPatch(s, t) {
+    if (!s || !s.supported) return false;
+    const tc = shipCargoTarget(s.vanillaCargoBase, t.mult);
+    return s.cargoSlots !== tc || s.blueprintCargo !== tc
+        || s.combatSlots !== t.combat || s.blueprintCombat !== t.combat;
+}
+
+function progressionNeedsPatch(prog, target) {
+    if (!prog || !target) return false;
+    return target.talent !== prog.freeTalent || target.stat !== prog.freeStat;
+}
+
+// Does anything at all on this character differ from the profile target?
+function characterNeedsPatch(c) {
+    const eqT = charEquipTarget();
+    const shipT = charShipTarget();
+    const progT = progressionTargetFor(c.progression);
+    if (equipNeedsPatch(c.equipment, eqT)) return true;
+    if (progressionNeedsPatch(c.progression, progT)) return true;
+    return (c.ships || []).some(s => shipNeedsPatch(s, shipT));
+}
+
+// ---------------------------------------------------------------------------
+// Load + render
+// ---------------------------------------------------------------------------
 
 function charGlobalStatus(msg) {
     const el = document.getElementById('char-global-status');
@@ -27,35 +134,17 @@ async function loadCharacters() {
     state.characters.loaded = true;
     charGlobalStatus('Scanning save profiles...');
     const cs = state.characters;
-    const [chars, ships] = await Promise.allSettled([
-        api('GET', '/api/savegame/characters'),
-        api('GET', '/api/savegame/ships'),
-    ]);
-    if (chars.status === 'fulfilled') {
-        cs.supported = !!chars.value.supported;
-        cs.list = chars.value.characters || [];
+    try {
+        const res = await api('GET', '/api/savegame/characters');
+        cs.supported = !!res.supported;
+        cs.list = res.characters || [];
         cs.error = null;
-    } else {
-        cs.supported = true; cs.list = []; cs.error = chars.reason.message;
+    } catch (e) {
+        cs.supported = true; cs.list = []; cs.error = e.message;
     }
-    if (ships.status === 'fulfilled') {
-        cs.shipsSupported = !!ships.value.supported;
-        cs.ships = ships.value.ships || [];
-        cs.shipsError = null;
-    } else {
-        cs.shipsSupported = true; cs.ships = []; cs.shipsError = ships.reason.message;
-    }
-    renderCharacters();
-}
-
-// Mirrors the backend's "already matches" rule: a character only counts as up
-// to date when BOTH the live slot count AND the blueprint count equal the
-// target, for ring and necklace alike.
-function charNeedsPatch(c, target) {
-    return c.ringSlots !== target.ring
-        || c.necklaceSlots !== target.neck
-        || c.blueprintRing !== target.ring
-        || c.blueprintNeck !== target.neck;
+    // The Level Rewards target needs the vanilla per-level table; load it before
+    // rendering so the rows show targets without a "loading" flash.
+    ensureLevelingCatalog().finally(() => renderCharacters());
 }
 
 function renderCharacters() {
@@ -65,8 +154,7 @@ function renderCharacters() {
     host.replaceChildren();
 
     if (cs.error) {
-        charGlobalStatus('Scan failed: ' + cs.error
-            + ' (make sure Windrose is fully closed).');
+        charGlobalStatus('Scan failed: ' + cs.error + ' (make sure Windrose is fully closed).');
         return;
     }
     if (!cs.supported) {
@@ -77,20 +165,26 @@ function renderCharacters() {
         charGlobalStatus('No characters found.');
         return;
     }
-
-    const target = charTarget();
-    charGlobalStatus('Found ' + cs.list.length + ' character(s). Profile target: ring '
-        + target.ring + ' / necklace ' + target.neck + '.');
-
-    for (const c of cs.list) {
-        host.appendChild(buildCharacterRow(c, target));
+    // The Level Rewards target needs the level table; wait for it before drawing
+    // rows so progression lines don't flash stale.
+    if (!levelingCatalog) {
+        charGlobalStatus('Loading level table...');
+        ensureLevelingCatalog().then(() => renderCharacters());
+        return;
     }
 
-    renderShips();
+    const pending = cs.list.filter(characterNeedsPatch).length;
+    charGlobalStatus('Found ' + cs.list.length + ' character(s). '
+        + (pending ? pending + ' need patching to match the profile.' : 'All up to date.'));
+
+    for (const c of cs.list) host.appendChild(buildCharacterCard(c));
 }
 
-function buildCharacterRow(c, target) {
-    const needs = charNeedsPatch(c, target);
+function buildCharacterCard(c) {
+    const eqT = charEquipTarget();
+    const shipT = charShipTarget();
+    const progT = progressionTargetFor(c.progression);
+    const needs = characterNeedsPatch(c);
 
     const card = document.createElement('section');
     card.className = 'card char-card' + (needs ? ' char-needs-patch' : '');
@@ -99,14 +193,39 @@ function buildCharacterRow(c, target) {
     content.className = 'card-content';
 
     const h = document.createElement('h2');
-    h.textContent = c.playerName || c.characterId;
+    h.textContent = (c.playerName || c.characterId)
+        + (c.progression ? '  (Lv ' + c.progression.characterLevel + ')' : '');
     content.appendChild(h);
 
-    const cur = document.createElement('p');
-    cur.className = 'hint char-current';
-    cur.textContent = 'Current: ring ' + c.ringSlots + ' / necklace ' + c.necklaceSlots
-        + '  →  target: ring ' + target.ring + ' / necklace ' + target.neck;
-    content.appendChild(cur);
+    // One line per patchable area; changed lines get an accent + arrow.
+    const areas = document.createElement('div');
+    areas.className = 'char-areas';
+
+    if (c.equipment) {
+        areas.appendChild(areaLine(equipNeedsPatch(c.equipment, eqT), 'Equipment',
+            'rings ' + c.equipment.ringSlots + ' / necklaces ' + c.equipment.necklaceSlots,
+            'rings ' + eqT.ring + ' / necklaces ' + eqT.neck));
+    }
+    if (c.progression) {
+        const tt = progT ? progT.talent : c.progression.freeTalent;
+        const ts = progT ? progT.stat : c.progression.freeStat;
+        areas.appendChild(areaLine(progressionNeedsPatch(c.progression, progT), 'Level rewards',
+            c.progression.freeTalent + ' talent / ' + c.progression.freeStat + ' stat free',
+            tt + ' talent / ' + ts + ' stat free'));
+    }
+    for (const s of (c.ships || [])) {
+        if (!s.supported) {
+            areas.appendChild(areaInfoLine(shipLabel(s),
+                'cargo ' + s.cargoSlots + ' / combat ' + s.combatSlots
+                + ' - not a supported ship type (left at vanilla)'));
+            continue;
+        }
+        const tc = shipCargoTarget(s.vanillaCargoBase, shipT.mult);
+        areas.appendChild(areaLine(shipNeedsPatch(s, shipT), shipLabel(s),
+            'cargo ' + s.cargoSlots + ' / combat ' + s.combatSlots,
+            'cargo ' + tc + ' / combat ' + shipT.combat));
+    }
+    content.appendChild(areas);
 
     const row = document.createElement('div');
     row.className = 'bell-row';
@@ -119,14 +238,13 @@ function buildCharacterRow(c, target) {
     st.style.margin = '.4em 0';
 
     if (needs) {
-        btn.textContent = 'Backup + patch to ' + target.ring + ' / ' + target.neck;
-        btn.addEventListener('click', () => charPatch(c, target, btn, st, false));
+        btn.textContent = 'Backup + patch';
+        btn.addEventListener('click', () => patchCharacter(c, btn, st));
         if (c.lastStatus) st.textContent = c.lastStatus;
     } else {
         btn.textContent = 'Up to date';
         btn.disabled = true;
-        st.textContent = c.lastStatus
-            || ('Already ring ' + c.ringSlots + ' / necklace ' + c.necklaceSlots + ' - nothing to do.');
+        st.textContent = c.lastStatus || 'Everything already matches the profile - nothing to do.';
     }
 
     row.appendChild(btn);
@@ -136,45 +254,73 @@ function buildCharacterRow(c, target) {
     return card;
 }
 
-async function charPatch(c, target, btn, st, force) {
+// A "current -> target" line; flagged with an accent + arrow when it will change.
+function areaLine(changed, label, current, target) {
+    const p = document.createElement('p');
+    p.className = 'hint char-current char-area' + (changed ? ' char-area-changed' : '');
+    p.textContent = changed
+        ? label + ': ' + current + '  →  ' + target
+        : label + ': ' + current;
+    return p;
+}
+
+// A non-actionable info line (e.g. an unsupported ship type).
+function areaInfoLine(label, text) {
+    const p = document.createElement('p');
+    p.className = 'hint char-current char-area';
+    p.textContent = label + ': ' + text;
+    return p;
+}
+
+// ---------------------------------------------------------------------------
+// Patch - send only the differing areas to the one endpoint.
+// ---------------------------------------------------------------------------
+
+function buildPatchRequest(c, force) {
+    const eqT = charEquipTarget();
+    const shipT = charShipTarget();
+    const progT = progressionTargetFor(c.progression);
+
+    const req = { dbFolder: c.dbFolder, force: !!force };
+    if (equipNeedsPatch(c.equipment, eqT))
+        req.equipment = { ringSlots: eqT.ring, necklaceSlots: eqT.neck };
+    if (progressionNeedsPatch(c.progression, progT))
+        req.progression = { talentPoints: progT.talent, statPoints: progT.stat };
+    const ships = (c.ships || []).filter(s => shipNeedsPatch(s, shipT))
+        .map(s => ({ shipKey: s.shipKey, cargoMultiplier: shipT.mult, combatOrderSlots: shipT.combat }));
+    if (ships.length) req.ships = ships;
+    return req;
+}
+
+async function patchCharacter(c, btn, st) {
     btn.disabled = true;
-    st.textContent = 'Backing up + patching to ring ' + target.ring
-        + ' / necklace ' + target.neck + '...';
+    st.textContent = 'Backing up + patching...';
+    // Snapshot the request once so a forced retry re-sends exactly the same areas
+    // (after a partial apply the recomputed "needs" would otherwise shrink).
+    const req = buildPatchRequest(c, false);
+    await runCharacterPatch(c, req, btn, st);
+}
+
+async function runCharacterPatch(c, req, btn, st) {
     try {
-        const res = await api('POST', '/api/savegame/patch', {
-            dbFolder: c.dbFolder,
-            ringSlots: target.ring,
-            necklaceSlots: target.neck,
-            force: !!force,
-        });
+        const res = await api('POST', '/api/savegame/patch', req);
 
         if (res.blocked) {
             const ok = await confirm(
-                'Reducing slots would delete equipped items:\n\n'
+                'Some slots would shrink and delete equipped / loaded items:\n\n'
                 + (res.blockingItems || []).join('\n')
                 + '\n\nDelete them and patch anyway?');
-            if (ok) return charPatch(c, target, btn, st, true);
-            st.textContent = 'Cancelled - unequip those items in-game first.';
+            if (ok) {
+                req.force = true;
+                return runCharacterPatch(c, req, btn, st);
+            }
+            st.textContent = 'Cancelled - unequip / empty those slots in-game first.';
             btn.disabled = false;
             return;
         }
 
-        if (res.alreadyMatches) {
-            c.lastStatus = (res.playerName || c.playerName)
-                + ' already has ring ' + target.ring + ' / necklace ' + target.neck + '.';
-        } else {
-            c.lastStatus =
-                'Patched ' + (res.playerName || c.playerName) + ': '
-                + res.oldRing + '/' + res.oldNeck + ' → ' + res.newRing + '/' + res.newNeck
-                + (res.backupCreated ? ' (backup saved)' : '')
-                + (res.checkpointZipRebuilt ? '' : ' [no checkpoint zip - may revert]')
-                + '. Turn OFF Steam Cloud Sync for Windrose, then launch to verify.';
-        }
-        // Reflect the new on-disk counts so the row flips to "Up to date".
-        c.ringSlots = res.newRing != null ? res.newRing : target.ring;
-        c.necklaceSlots = res.newNeck != null ? res.newNeck : target.neck;
-        c.blueprintRing = target.ring;
-        c.blueprintNeck = target.neck;
+        applyPatchResultToChar(c, res);
+        c.lastStatus = describePatchResult(c, res);
         renderCharacters();
     } catch (e) {
         st.textContent = 'Patch failed: ' + e.message;
@@ -182,182 +328,51 @@ async function charPatch(c, target, btn, st, force) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Ships (Expanded Naval Tactics: cargo + Combat Orders save patcher).
-// ---------------------------------------------------------------------------
-
-// Cargo multiplier + combat-order count from the active profile's Ship Slots
-// sliders (default vanilla x1 / 1 when the profile carries no override).
-function shipTarget() {
-    const ss = state.current && state.current.globals && state.current.globals.shipSlots;
-    const mult = ss && ss.cargoMultiplier != null ? ss.cargoMultiplier : 1;
-    const combat = ss && ss.combatOrderSlots != null ? ss.combatOrderSlots : 1;
-    return { mult, combat };
-}
-
-// Mirrors ShipSlotsPatcher.CargoTarget (round away from zero, never below
-// vanilla, capped). Math.round in JS rounds .5 up, matching AwayFromZero for
-// the non-negative values we deal with here.
-function shipCargoTarget(base, mult) {
-    if (!base || base <= 0) return base || 0;
-    let t = Math.round(base * mult);
-    if (t < base) t = base;
-    if (t > 200) t = 200;
-    return t;
-}
-
-function shipNeedsPatch(s, t) {
-    if (!s.supported) return false;
-    // Mirrors ShipSaveSlotsPatcher: the target derives from the vanilla base *
-    // multiplier (cargo) and the absolute combat count - never from the current
-    // value - so a vanilla target (x1 / 1) still flags a previously-patched ship
-    // for a downgrade back to vanilla instead of reading as "up to date".
-    const tc = shipCargoTarget(s.vanillaCargoBase, t.mult);
-    const cargoDiff = s.cargoSlots !== tc || s.blueprintCargo !== tc;
-    const combatDiff = s.combatSlots !== t.combat || s.blueprintCombat !== t.combat;
-    return cargoDiff || combatDiff;
-}
-
-function shipGlobalStatus(msg) {
-    const el = document.getElementById('ship-global-status');
-    if (el) el.textContent = msg || '';
-}
-
-function shipTypeLabel(sourceDa) {
-    if (!sourceDa) return 'unknown';
-    return sourceDa.replace(/^DA_ShipInventory_/, '');
-}
-
-function shipDisplayName(s) {
-    const owner = s.ownerName || s.characterId || 'Unknown';
-    const name = s.shipName ? '"' + s.shipName + '"' : shipTypeLabel(s.sourceDa);
-    return owner + ' - ' + name;
-}
-
-function renderShips() {
-    const host = document.getElementById('ship-list');
-    if (!host) return;
-    const cs = state.characters;
-    host.replaceChildren();
-
-    if (cs.shipsError) {
-        shipGlobalStatus('Ship scan failed: ' + cs.shipsError
-            + ' (make sure Windrose is fully closed).');
-        return;
+// Reflect the new on-disk values into the in-memory character so the card flips
+// to "Up to date" without a full re-scan.
+function applyPatchResultToChar(c, res) {
+    const eq = res.equipment;
+    if (eq && eq.applied && c.equipment) {
+        if (eq.newRing != null) { c.equipment.ringSlots = eq.newRing; c.equipment.blueprintRing = eq.newRing; }
+        if (eq.newNeck != null) { c.equipment.necklaceSlots = eq.newNeck; c.equipment.blueprintNeck = eq.newNeck; }
     }
-    if (!cs.shipsSupported) { shipGlobalStatus('No Windrose save profiles found.'); return; }
-    if (!cs.ships.length) { shipGlobalStatus('No ships found in any save.'); return; }
-
-    const t = shipTarget();
-    // A vanilla target (x1 / 1) is valid too - it downgrades previously-patched
-    // ships back to vanilla - so always surface the target rather than nagging to
-    // pick a non-vanilla value first.
-    shipGlobalStatus('Found ' + cs.ships.length + ' ship(s). Profile target: cargo x' + t.mult
-        + ' / combat orders ' + t.combat + '.');
-
-    for (const s of cs.ships) host.appendChild(buildShipRow(s, t));
+    const pr = res.progression;
+    if (pr && pr.applied && c.progression) {
+        if (pr.newTalent != null) c.progression.freeTalent = pr.newTalent;
+        if (pr.newStat != null) c.progression.freeStat = pr.newStat;
+    }
+    for (const sr of (res.ships || [])) {
+        if (!sr.applied) continue;
+        const s = (c.ships || []).find(x => x.shipKey === sr.shipKey);
+        if (!s) continue;
+        if (sr.newCargo != null) { s.cargoSlots = sr.newCargo; s.blueprintCargo = sr.newCargo; }
+        if (sr.newCombat != null) { s.combatSlots = sr.newCombat; s.blueprintCombat = sr.newCombat; }
+    }
 }
 
-function buildShipRow(s, t) {
-    const needs = shipNeedsPatch(s, t);
-
-    const card = document.createElement('section');
-    card.className = 'card char-card' + (needs ? ' char-needs-patch' : '');
-
-    const content = document.createElement('div');
-    content.className = 'card-content';
-
-    const h = document.createElement('h2');
-    h.textContent = shipDisplayName(s);
-    content.appendChild(h);
-
-    const tc = shipCargoTarget(s.vanillaCargoBase, t.mult);
-    const cur = document.createElement('p');
-    cur.className = 'hint char-current';
-    cur.textContent = 'Cargo ' + s.cargoSlots + ' (vanilla ' + s.vanillaCargoBase + ')  →  ' + tc
-        + '   |   Combat orders ' + s.combatSlots + '  →  ' + t.combat
-        + '   [' + shipTypeLabel(s.sourceDa) + ']';
-    content.appendChild(cur);
-
-    const row = document.createElement('div');
-    row.className = 'bell-row';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-secondary';
-
-    const st = document.createElement('p');
-    st.className = 'hint';
-    st.style.margin = '.4em 0';
-
-    if (!s.supported) {
-        btn.textContent = 'Not supported';
-        btn.disabled = true;
-        st.textContent = 'Expanded Naval Tactics covers Brig / Frigate / Ketch only - this ship is left at vanilla.';
-    } else if (needs) {
-        btn.textContent = 'Backup + patch to cargo ' + tc + ' / combat ' + t.combat;
-        btn.addEventListener('click', () => shipPatch(s, t, btn, st, false));
-        if (s.lastStatus) st.textContent = s.lastStatus;
-    } else {
-        btn.textContent = 'Up to date';
-        btn.disabled = true;
-        st.textContent = s.lastStatus
-            || ('Already cargo ' + s.cargoSlots + ' / combat ' + s.combatSlots + ' - nothing to do.');
+function describePatchResult(c, res) {
+    const parts = [];
+    const eq = res.equipment;
+    if (eq && eq.applied)
+        parts.push('equipment ' + eq.oldRing + '/' + eq.oldNeck + ' → ' + eq.newRing + '/' + eq.newNeck);
+    const pr = res.progression;
+    if (pr && pr.applied)
+        parts.push('talent ' + pr.oldTalent + ' → ' + pr.newTalent
+            + ', stat ' + pr.oldStat + ' → ' + pr.newStat);
+    for (const sr of (res.ships || [])) {
+        if (!sr.applied) continue;
+        const name = sr.shipName ? '"' + sr.shipName + '"' : 'ship';
+        parts.push(name + ' cargo ' + sr.oldCargo + ' → ' + sr.newCargo
+            + ', combat ' + sr.oldCombat + ' → ' + sr.newCombat);
     }
 
-    row.appendChild(btn);
-    content.appendChild(row);
-    content.appendChild(st);
-    card.appendChild(content);
-    return card;
-}
+    if (!parts.length)
+        return (res.playerName || c.playerName) + ' already matched - nothing changed.';
 
-async function shipPatch(s, t, btn, st, force) {
-    btn.disabled = true;
-    const tc = shipCargoTarget(s.vanillaCargoBase, t.mult);
-    st.textContent = 'Backing up + patching to cargo ' + tc + ' / combat ' + t.combat + '...';
-    try {
-        const res = await api('POST', '/api/savegame/ship-patch', {
-            dbFolder: s.dbFolder,
-            shipKey: s.shipKey,
-            cargoMultiplier: t.mult,
-            combatOrderSlots: t.combat,
-            force: !!force,
-        });
-
-        if (res.blocked) {
-            const ok = await confirm(
-                'Shrinking would delete loaded items:\n\n'
-                + (res.blockingItems || []).join('\n')
-                + '\n\nDelete them and patch anyway?');
-            if (ok) return shipPatch(s, t, btn, st, true);
-            st.textContent = 'Cancelled - empty those slots in-game first.';
-            btn.disabled = false;
-            return;
-        }
-        if (res.unsupported) {
-            st.textContent = 'Not a supported ship type (' + (res.sourceDa || '') + ').';
-            return;
-        }
-
-        if (res.alreadyMatches) {
-            s.lastStatus = shipDisplayName(s) + ' already matches the target.';
-        } else {
-            s.lastStatus = 'Patched ' + shipDisplayName(s) + ': cargo '
-                + res.oldCargo + ' → ' + res.newCargo + ', combat ' + res.oldCombat + ' → ' + res.newCombat
-                + (res.backupCreated ? ' (backup saved)' : '')
-                + (res.checkpointZipRebuilt ? '' : ' [no checkpoint zip - may revert]')
-                + '. Turn OFF Steam Cloud Sync for Windrose, then launch to verify.';
-        }
-        // Reflect the new on-disk counts so the row flips to "Up to date".
-        s.cargoSlots = res.newCargo != null ? res.newCargo : s.cargoSlots;
-        s.blueprintCargo = s.cargoSlots;
-        s.combatSlots = res.newCombat != null ? res.newCombat : s.combatSlots;
-        s.blueprintCombat = s.combatSlots;
-        renderShips();
-    } catch (e) {
-        st.textContent = 'Patch failed: ' + e.message;
-        btn.disabled = false;
-    }
+    return 'Patched ' + (res.playerName || c.playerName) + ': ' + parts.join('; ')
+        + (res.backupCreated ? ' (backup saved)' : '')
+        + (res.checkpointZipRebuilt ? '' : ' [no checkpoint zip - may revert]')
+        + '. Turn OFF Steam Cloud Sync for Windrose, then launch to verify.';
 }
 
 function bindCharactersHandlers() {

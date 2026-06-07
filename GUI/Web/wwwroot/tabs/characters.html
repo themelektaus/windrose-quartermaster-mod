@@ -4,15 +4,20 @@
       <div class="card-content">
         <h2>Save Patcher</h2>
         <p class="hint">
-          Retro-fits slot counts onto your EXISTING characters and ships. The
-          Equipment Slots and Ship Slots sliders on the Basic tab only affect
-          newly created characters / ships - this writes the matching counts
-          straight into the save.
+          Retro-fits onto your EXISTING characters what the paks only grant to
+          newly created ones: ring / necklace slots, each ship's cargo / combat
+          orders, and the Level Rewards talent / stat points. The sliders on the
+          Basic / Level Rewards tabs drive the target.
         </p>
         <p class="hint">
-          Each row is compared against the profile's slider target. A "Patch"
-          button only appears when they differ; before writing, a per-target
-          backup is created automatically.
+          One card per character. When anything differs from the profile the
+          "Backup + patch" button activates and writes only what's needed; a
+          backup is made automatically first.
+        </p>
+        <p class="hint">
+          Level Rewards points follow the multiplier both ways: lowering it
+          (e.g. back to 1x) reduces the free pool toward vanilla. Only unspent
+          points change - already-invested points are kept.
         </p>
         <p class="hint warn-hint">
           Close Windrose completely and turn OFF Steam Cloud Sync for Windrose
@@ -21,17 +26,12 @@
         <div class="bell-row">
           <button type="button" id="char-reload" class="btn-secondary">Reload</button>
         </div>
-        <p class="hint" id="char-global-status" style="margin:.4em 0"></p>
       </div>
     </section>
   </aside>
 
   <section class="characters-list-pane">
-    <h3 class="char-section-title">Equipment slots (ring / necklace)</h3>
+    <p class="hint" id="char-global-status" style="margin:.2em 0 .8em"></p>
     <div id="char-list" class="char-list"></div>
-
-    <h3 class="char-section-title">Ship slots (cargo / combat orders)</h3>
-    <p class="hint" id="ship-global-status" style="margin:.2em 0 .8em"></p>
-    <div id="ship-list" class="char-list"></div>
   </section>
 </div>

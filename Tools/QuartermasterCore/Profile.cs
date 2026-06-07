@@ -48,6 +48,7 @@ namespace Windrose.Quartermaster.Core
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
         public XpRewardGlobal XpReward;
+        public LevelingReworkGlobal LevelingRework;
         public NpcSpawnGlobal NpcSpawn;
         public DepositVisualGlobal DepositVisual;
         public CropOverlapGlobal CropOverlap;
@@ -327,6 +328,34 @@ namespace Windrose.Quartermaster.Core
         public double? QuestMultiplier;
         public double? PoiMultiplier;
         public Dictionary<string, double> Overrides;
+    }
+
+    // "Level Rewards": HYBRID multipliers on the per-level reward table
+    // (DA_HeroLevels, R5BLEntityProgressionLevelParams). TalentMultiplier scales
+    // TalentPointsReward, StatMultiplier scales StatPointsReward, each level
+    // independently. Because vanilla talent rewards dip to 0 on some level-ups, a
+    // boost (>1x) floors every leveled-up entry to "at least 1 point" before
+    // scaling (so the dead levels still grant points); a reduction (<1x) does not.
+    // The Exp curve and the level-1 starting entry are never touched. 1.0 = vanilla
+    // (that dimension is left untouched). Overrides pin an exact reward for an
+    // individual level (winning over the multiplier); a node with both multipliers
+    // 1.0 and no overrides = no-op. See LevelingPatcher.
+    public sealed class LevelingReworkGlobal
+    {
+        public double? TalentMultiplier;
+        public double? StatMultiplier;
+
+        // Per-level ABSOLUTE overrides keyed by 1-based level number. A set value
+        // pins that level/dimension to an exact reward, winning over the hybrid
+        // multiplier; a null field on the override follows the multiplier. The
+        // level-1 / Exp==0 starting entry is never modified, even if present here.
+        public Dictionary<int, LevelRewardOverride> Overrides;
+    }
+
+    public sealed class LevelRewardOverride
+    {
+        public int? Talent;
+        public int? Stat;
     }
 
     public sealed class ItemOverride
