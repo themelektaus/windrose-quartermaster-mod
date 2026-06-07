@@ -299,7 +299,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -843,6 +843,7 @@ function applyProfileToUI() {
     applyShipMusicToUI();
     applyLightingToUI();
     applyShipSpeedToUI();
+    applyXpRewardToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
     syncBellInputState();
@@ -1151,7 +1152,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
-        'shipSpeed',
+        'shipSpeed', 'xpReward',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
@@ -1291,6 +1292,17 @@ function shipSpeedTabHasMods() {
     const g = (state.current && state.current.globals) || null;
     return multiplierGlobalHasMods(g && g.shipSpeed);
 }
+// XP Reward: two overall multipliers (quest / POI) or any per-entry override.
+// Not multiplierGlobalHasMods (that keys off a single overallMultiplier).
+function xpRewardTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    const xp = g && g.xpReward;
+    if (!xp) return false;
+    if (typeof xp.questMultiplier === 'number' && Math.abs(xp.questMultiplier - 1.0) > 1e-9) return true;
+    if (typeof xp.poiMultiplier === 'number' && Math.abs(xp.poiMultiplier - 1.0) > 1e-9) return true;
+    if (xp.overrides && Object.keys(xp.overrides).length > 0) return true;
+    return false;
+}
 
 // Registry of tab -> predicate. Tabs absent here (mods, characters) never
 // modify the profile, so they never receive the indicator.
@@ -1307,6 +1319,7 @@ const TAB_MOD_CHECKS = {
     shipmusic: shipMusicTabHasMods,
     lighting: lightingTabHasMods,
     shipspeed: shipSpeedTabHasMods,
+    xpreward: xpRewardTabHasMods,
 };
 
 // Refresh the has-mods indicator on every tab. Called on profile load
@@ -2171,6 +2184,7 @@ function bindHandlers() {
     bindShipMusicHandlers();
     bindLightingHandlers();
     bindShipSpeedHandlers();
+    bindXpRewardHandlers();
     bindCharactersHandlers();
 }
 

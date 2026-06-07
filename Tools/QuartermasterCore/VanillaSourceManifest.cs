@@ -131,6 +131,13 @@ namespace Windrose.Quartermaster.Core
                 DiskPath = p => p.VanillaCannonParams,
                 ProbeKind = VanillaSourceProbeKind.DirectoryWithJsonFiles,
             },
+            // NOTE: the XP Reward feature's vanilla source (the Scenario/Player quest
+            // tree, WindrosePaths.VanillaQuestRewards) is intentionally NOT a manifest
+            // entry. Probe() gates setup-readiness on ALL entries, so adding it would
+            // force every existing install to re-run the dump. Instead it is extracted
+            // on demand (VanillaConfigExtractor.EnsureDirectory) from both the build
+            // pipeline and the /api/xp-rewards/catalog endpoint, so a fresh checkout
+            // works without a full re-dump.
         };
 
         public static bool Probe(VanillaSourceManifestEntry entry, WindrosePaths paths)

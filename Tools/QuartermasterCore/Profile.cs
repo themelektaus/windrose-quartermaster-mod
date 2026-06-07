@@ -47,6 +47,7 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicAddGlobal ShipMusicAdd;
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
+        public XpRewardGlobal XpReward;
         public NpcSpawnGlobal NpcSpawn;
         public DepositVisualGlobal DepositVisual;
         public CropOverlapGlobal CropOverlap;
@@ -310,6 +311,21 @@ namespace Windrose.Quartermaster.Core
     public sealed class ShipSpeedGlobal
     {
         public double? OverallMultiplier;
+        public Dictionary<string, double> Overrides;
+    }
+
+    // "XP Reward Multiplier" (the POI / Quest "x2" reference mods): MULTIPLIER on
+    // the ExperienceCount of every R5BLQuestParams reward DataAsset. QuestMultiplier
+    // scales the quest rewards (FactionQuests / LocalEventQuests / MainQuest /
+    // SideQuest); PoiMultiplier scales the POI-chest rewards (POIChest/*). Overrides
+    // (keyed by the asset stem, e.g. "DA_QP_MainQuest_ForgottenRelic_Core") win over
+    // the matching overall for an individual entry. A 1.0 value (overall or override)
+    // is vanilla = no-op. Applied on top of freshly-extracted vanilla values, so no
+    // drift across game updates.
+    public sealed class XpRewardGlobal
+    {
+        public double? QuestMultiplier;
+        public double? PoiMultiplier;
         public Dictionary<string, double> Overrides;
     }
 

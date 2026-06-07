@@ -213,6 +213,47 @@ namespace
         }
         __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
+
+    // Parse one "<substring> <weatherId>" trigger file and APPEND its mappings to
+    // g_triggers (respecting kMaxTriggers / the running g_triggerCount). Blank and
+    // '#' comment lines are ignored. Returns the number of mappings added. Shared
+    // by the per-profile glob in QmWeather_Init so every deployed profile's
+    // qm_weather_<profile>.txt contributes instead of one file winning.
+    int LoadTriggerFile(const char* path)
+    {
+        FILE* f = fopen(path, "rb");
+        if (!f) return 0;
+
+        int added = 0;
+        char line[256];
+        while (g_triggerCount < kMaxTriggers && fgets(line, sizeof(line), f))
+        {
+            const char* p = line;
+            while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+            if (*p == '\0' || *p == '#') continue;
+
+            char substr[128] = { 0 };
+            int  id = -1;
+            if (sscanf(p, "%127s %d", substr, &id) == 2 && substr[0]
+                && id >= kWeatherMin && id <= kWeatherMax)
+            {
+                WeatherTrigger& t = g_triggers[g_triggerCount];
+                strncpy(t.substr, substr, sizeof(t.substr) - 1);
+                t.substr[sizeof(t.substr) - 1] = '\0';
+                t.weatherId = id;
+                ++g_triggerCount;
+                ++added;
+                QM_LOG_INFO("[Weather] trigger[%d]: ConsumableData substring='%s' -> weather id=%d (%s)  [%s]",
+                    g_triggerCount - 1, t.substr, id, WeatherName(id), path);
+            }
+            else
+            {
+                QM_LOG_WARN("[Weather] %s line ignored (expected '<substring> <0..13>'): %.80s", path, p);
+            }
+        }
+        fclose(f);
+        return added;
+    }
 }
 
 bool QmWeather_Init()
@@ -264,53 +305,42 @@ bool QmWeather_Init()
         }
     }
 
-    // ---- (2) consumable-use trigger: qm_weather_trigger.txt (Stage 2b) -----
+    // ---- (2) consumable-use trigger: qm_weather_*.txt (per profile) ---------
+    // Glob every per-profile trigger file (qm_weather_<profile>.txt) plus any
+    // legacy single qm_weather_trigger.txt - it matches the same pattern - and
+    // merge all mappings. Mirrors the qm_items_*.json multi-profile model so two
+    // deployed Weather-Whistle profiles coexist instead of the last GUI build
+    // clobbering the others. The permanent-pin qm_weather.txt has no underscore
+    // after "weather" so it is NOT matched here (handled in section 1 above).
     {
-        char path[MAX_PATH];
-        if (snprintf(path, sizeof(path), "%s\\qm_weather_trigger.txt", dir) > 0)
+        char pattern[MAX_PATH];
+        if (snprintf(pattern, sizeof(pattern), "%s\\qm_weather_*.txt", dir) > 0)
         {
-            FILE* f = fopen(path, "rb");
-            if (f)
+            WIN32_FIND_DATAA fd = {};
+            HANDLE h = FindFirstFileA(pattern, &fd);
+            int files = 0;
+            if (h != INVALID_HANDLE_VALUE)
             {
-                char line[256];
-                while (g_triggerCount < kMaxTriggers && fgets(line, sizeof(line), f))
+                do
                 {
-                    // Skip leading whitespace; ignore blank and '#' comment lines.
-                    const char* p = line;
-                    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
-                    if (*p == '\0' || *p == '#') continue;
-
-                    char substr[128] = { 0 };
-                    int  id = -1;
-                    if (sscanf(p, "%127s %d", substr, &id) == 2 && substr[0]
-                        && id >= kWeatherMin && id <= kWeatherMax)
-                    {
-                        WeatherTrigger& t = g_triggers[g_triggerCount];
-                        strncpy(t.substr, substr, sizeof(t.substr) - 1);
-                        t.substr[sizeof(t.substr) - 1] = '\0';
-                        t.weatherId = id;
-                        ++g_triggerCount;
-                        QM_LOG_INFO("[Weather] trigger[%d]: ConsumableData substring='%s' -> weather id=%d (%s)",
-                            g_triggerCount - 1, t.substr, id, WeatherName(id));
-                    }
-                    else
-                    {
-                        QM_LOG_WARN("[Weather] qm_weather_trigger.txt line ignored (expected '<substring> <0..13>'): %.80s", p);
-                    }
-                }
-                fclose(f);
-
-                g_triggerArmed = (g_triggerCount > 0);
-                if (g_triggerArmed)
-                    QM_LOG_INFO("[Weather] *** TRIGGER ARMED *** %d mapping(s) loaded from %s",
-                        g_triggerCount, path);
-                else
-                    QM_LOG_WARN("[Weather] qm_weather_trigger.txt present but no valid mapping parsed - trigger disabled");
+                    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                    char full[MAX_PATH];
+                    int w = snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+                    if (w <= 0 || (size_t)w >= sizeof(full)) continue;
+                    LoadTriggerFile(full);
+                    ++files;
+                } while (g_triggerCount < kMaxTriggers && FindNextFileA(h, &fd));
+                FindClose(h);
             }
+
+            g_triggerArmed = (g_triggerCount > 0);
+            if (g_triggerArmed)
+                QM_LOG_INFO("[Weather] *** TRIGGER ARMED *** %d mapping(s) from %d file(s) matching %s",
+                    g_triggerCount, files, pattern);
+            else if (files > 0)
+                QM_LOG_WARN("[Weather] %d trigger file(s) present but no valid mapping parsed - trigger disabled", files);
             else
-            {
-                QM_LOG_INFO("[Weather] no qm_weather_trigger.txt - consumable trigger disabled");
-            }
+                QM_LOG_INFO("[Weather] no qm_weather_*.txt - consumable trigger disabled");
         }
     }
 

@@ -23,6 +23,7 @@ namespace Windrose.Quartermaster.Core
         readonly CannonReloadPatcher _cannonReloadPatcher;
         readonly CookingDurationPatcher _cookingDurationPatcher;
         readonly NpcSpawnPatcher _npcSpawnPatcher;
+        readonly XpRewardPatcher _xpRewardPatcher;
         readonly RepakResolver _repakResolver;
         readonly RetocResolver _retocResolver;
         readonly BuildingPatcher _buildingPatcher;
@@ -60,6 +61,7 @@ namespace Windrose.Quartermaster.Core
             _cannonReloadPatcher = new CannonReloadPatcher();
             _cookingDurationPatcher = new CookingDurationPatcher();
             _npcSpawnPatcher = new NpcSpawnPatcher();
+            _xpRewardPatcher = new XpRewardPatcher();
             _repakResolver = new RepakResolver(paths.ModRoot);
             _retocResolver = new RetocResolver(paths.ModRoot);
             _buildingPatcher = new BuildingPatcher();
@@ -135,6 +137,24 @@ namespace Windrose.Quartermaster.Core
                             + lootResult.Removed + " removed-from, "
                             + lootResult.Added + " appended-to)");
                     foreach (var w in lootResult.Warnings) LogLine("  warn: " + w);
+                }
+
+                XpRewardPatchResult xpRewardResult = null;
+                bool xpRewardActive = HasXpRewardConfiguration(profile);
+                if (xpRewardActive)
+                {
+                    // Quest/POI reward JSONs live in the legacy pakchunk0 .pak; make
+                    // sure the vanilla tree is on disk (extract on cache miss) so a
+                    // fresh checkout works without a full re-dump.
+                    var cfgExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
+                    cfgExtractor.EnsureDirectory(_paths.VanillaQuestRewards, WindroseGameSecrets.QuestRewardsPath);
+
+                    var tmpXpDir = Path.Combine(tmpDir, "R5", "Content",
+                        "Gameplay", "Scenario", "Player");
+                    LogLine("Patching XP rewards -> " + tmpXpDir);
+                    _xpRewardPatcher.Log = Log;
+                    xpRewardResult = _xpRewardPatcher.PatchToDirectory(
+                        _paths.VanillaQuestRewards, tmpXpDir, profile);
                 }
 
                 BellLimitsPatchResult bellResult = null;
@@ -358,6 +378,7 @@ namespace Windrose.Quartermaster.Core
 
                 int totalWritten = patchResult.Written
                     + (lootResult != null ? lootResult.Written : 0)
+                    + (xpRewardResult != null ? xpRewardResult.Written : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (invSlotsResult != null && invSlotsResult.Written ? 1 : 0)
                     + (shipSlotsResult != null && shipSlotsResult.Written ? shipSlotsResult.FilesWritten : 0)
@@ -569,7 +590,7 @@ namespace Windrose.Quartermaster.Core
                     {
                         // Empty list deletes this profile's building JSON.
                         deployer.WriteItemsJson(safeName, buildingResults ?? new List<BuildingPatchResult>());
-                        deployer.WriteWeatherTriggerConfig(weatherClones);
+                        deployer.WriteWeatherTriggerConfig(safeName, weatherClones);
                     }
                 }
                 else
@@ -583,9 +604,11 @@ namespace Windrose.Quartermaster.Core
                         deployer.Log = Log;
                         if (File.Exists(deployer.TargetDllPath()))
                         {
-                            // Empty list / null removes the per-profile JSON + trigger.
+                            // Null removes only THIS profile's JSON + weather file;
+                            // other deployed profiles' sidecars stay, so the DLL is
+                            // kept whenever any of them still need it.
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
-                            deployer.WriteWeatherTriggerConfig(null);
+                            deployer.WriteWeatherTriggerConfig(safeName, null);
                             deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }

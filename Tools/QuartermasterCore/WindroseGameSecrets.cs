@@ -46,6 +46,16 @@ namespace Windrose.Quartermaster.Core
         public const string CannonParamsPath =
             "R5/Content/Gameplay/Water/Character/Guns/Cannons";
 
+        // R5BLQuestParams reward DataAssets read at runtime as raw .json (shipped
+        // in the legacy pakchunk0 .pak, so repak extracts them). The XP Reward
+        // feature scales their ExperienceCount: quest rewards live under
+        // FactionQuests / LocalEventQuests / MainQuest / SideQuest, POI-chest
+        // rewards under POIChest/*. The prefix also drags in sibling Scenario/Player
+        // subtrees (Notes / Research / Recipe*Unlock / ...) that the patcher ignores
+        // (not R5BLQuestParams / no ExperienceCount).
+        public const string QuestRewardsPath =
+            "R5/Content/Gameplay/Scenario/Player";
+
         public const string PlayerInventoryPath =
             "R5/Plugins/R5BusinessRules/Content/Inventory";
 

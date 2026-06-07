@@ -141,18 +141,43 @@ namespace Windrose.Quartermaster.Core.Deploy
             return true;
         }
 
-        // The dxgi weather module reads this sentinel next to dxgi.dll. It is a
-        // single global file (not per-profile): the currently-built profile's
-        // Weather Whistle items define the active mappings, last writer wins.
+        // LEGACY single global trigger file (pre per-profile). Older builds wrote
+        // one shared qm_weather_trigger.txt, last-writer-wins, so building a
+        // non-weather profile clobbered another deployed profile's weather. We no
+        // longer write it; this accessor only exists so cleanup can purge a stale
+        // copy. (It still matches the qm_weather_*.txt glob below, so the DLL keeps
+        // reading it for back-compat.)
         public string TargetWeatherTriggerPath() => Path.Combine(_gameWin64Dir, "qm_weather_trigger.txt");
 
-        // Writes one "<token> <weatherId>" line per Weather Whistle clone. The DLL
-        // substring-matches the token against the used ConsumableData name and sets
-        // that weather. Empty/null removes the file (weather feature off). Distinct
-        // by token (multiple items sharing a weather collapse to one line).
-        public void WriteWeatherTriggerConfig(IList<WeatherWhistleClone> clones)
+        // Per-profile weather trigger sidecar. Mirrors qm_items_<profile>.json: the
+        // DLL globs qm_weather_*.txt and merges every profile's mappings, so two
+        // deployed profiles that both use Weather Whistles coexist.
+        public string TargetProfileWeatherTriggerPath(string profileSafeName)
         {
-            var path = TargetWeatherTriggerPath();
+            if (string.IsNullOrEmpty(profileSafeName))
+                throw new ArgumentNullException(nameof(profileSafeName));
+            return Path.Combine(_gameWin64Dir, "qm_weather_" + profileSafeName + ".txt");
+        }
+
+        // All deployed weather trigger files (per-profile qm_weather_<profile>.txt
+        // plus any legacy qm_weather_trigger.txt - it matches the same glob). Used
+        // for DLL-idle detection. Note: the permanent-pin qm_weather.txt has no
+        // underscore after "weather" so it is NOT matched here.
+        public IList<string> EnumerateProfileWeatherTriggerPaths()
+        {
+            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
+            return Directory.GetFiles(_gameWin64Dir, "qm_weather_*.txt", SearchOption.TopDirectoryOnly);
+        }
+
+        // Writes one "<token> <weatherId>" line per Weather Whistle clone into this
+        // profile's qm_weather_<profile>.txt. The DLL substring-matches the token
+        // against the used ConsumableData name and sets that weather. Empty/null
+        // removes only THIS profile's file (weather off for this profile) - other
+        // profiles' files are untouched. Distinct by token (multiple items sharing
+        // a weather collapse to one line).
+        public void WriteWeatherTriggerConfig(string profileSafeName, IList<WeatherWhistleClone> clones)
+        {
+            var path = TargetProfileWeatherTriggerPath(profileSafeName);
 
             var lines = new List<WeatherWhistleClone>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -169,7 +194,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             {
                 if (File.Exists(path))
                 {
-                    LogLine("Removing qm_weather_trigger.txt (no Weather Whistles) -> " + path);
+                    LogLine("Removing qm_weather_" + profileSafeName + ".txt (no Weather Whistles) -> " + path);
                     File.Delete(path);
                 }
                 return;
@@ -184,7 +209,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             sb.Append("#              7 Windy 8 HighPressure 9 Rainbow 10 Overcast 11 AshlandsFog\n");
             sb.Append("#              12 TortugaMist 13 Default. Lines starting with '#' are ignored.\n");
 
-            LogLine("Writing qm_weather_trigger.txt (" + lines.Count + " mapping(s)) -> " + path);
+            LogLine("Writing qm_weather_" + profileSafeName + ".txt (" + lines.Count + " mapping(s)) -> " + path);
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
@@ -195,7 +220,9 @@ namespace Windrose.Quartermaster.Core.Deploy
             if (EnumerateProfileItemsJsonPaths().Count > 0) return false;
 
             // Weather Whistles need the DLL even with no building JSONs present.
-            if (File.Exists(TargetWeatherTriggerPath())) return false;
+            // Any deployed profile's qm_weather_*.txt (or a legacy
+            // qm_weather_trigger.txt) keeps the DLL alive.
+            if (EnumerateProfileWeatherTriggerPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
             var targetMarker = TargetDllMarkerPath();
@@ -275,7 +302,12 @@ namespace Windrose.Quartermaster.Core.Deploy
             {
                 TryDelete(jsonPath, result);
             }
-            TryDelete(TargetWeatherTriggerPath(), result);
+            // Per-profile qm_weather_<profile>.txt + any legacy qm_weather_trigger.txt
+            // (both match the glob).
+            foreach (var weatherPath in EnumerateProfileWeatherTriggerPaths())
+            {
+                TryDelete(weatherPath, result);
+            }
             TryDelete(TargetDllPath(),       result);
             TryDelete(TargetDllMarkerPath(), result);
             if (!string.IsNullOrEmpty(pakBasename))

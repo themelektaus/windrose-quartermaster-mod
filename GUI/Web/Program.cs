@@ -133,6 +133,7 @@ public static class Program
         VanillaResourcesEndpoint.Map(app, resolvedRoot);
         LootTablesEndpoint.Map(app, resolvedRoot);
         NpcSpawnersEndpoint.Map(app, resolvedRoot);
+        XpRewardsEndpoint.Map(app, resolvedRoot);
         BuyersEndpoint.Map(app, resolvedRoot);
         SellersEndpoint.Map(app, resolvedRoot);
         ProfilesEndpoint.Map(app, resolvedRoot);

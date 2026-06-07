@@ -1,0 +1,53 @@
+<div class="tab-page xpreward-page" data-tab="xpreward">
+  <aside class="pane xpreward-sidebar">
+    <section class="card xpreward-overall-card">
+      <h2>Quest XP</h2>
+      <p class="hint">
+        Base multiplier on every quest reward (faction / main / side /
+        local-event) whose own row is at 1x. Per-quest overrides win.
+      </p>
+      <div class="pickup-slider">
+        <input type="range" id="xpreward-quest-overall" min="0.1" max="10.0" step="0.1" value="1.0">
+        <span class="mult-pill" id="xpreward-quest-overall-value">1.0x</span>
+      </div>
+    </section>
+
+    <section class="card xpreward-overall-card">
+      <h2>POI Chest XP</h2>
+      <p class="hint">
+        Base multiplier on every POI treasure-chest reward whose own row is
+        at 1x. Per-chest overrides win.
+      </p>
+      <div class="pickup-slider">
+        <input type="range" id="xpreward-poi-overall" min="0.1" max="10.0" step="0.1" value="1.0">
+        <span class="mult-pill" id="xpreward-poi-overall-value">1.0x</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="hint">
+        Vanilla = 1.0x. Range 0.1x - 10x. A row at 1x follows its overall;
+        any other value pins that entry.
+      </p>
+      <div class="xpreward-overall-actions">
+        <button type="button" id="xpreward-reset-all" class="warn">
+          Reset all overrides
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <main class="xpreward-main">
+    <header class="xpreward-header">
+      <h2>Per-entry XP overrides</h2>
+      <p class="hint">
+        Each row scales one quest's or chest's ExperienceCount. A slider at
+        1x follows the matching overall above; any other value pins that
+        entry to its own scale. Entries with no vanilla XP are not listed.
+      </p>
+      <input type="search" id="xpreward-search" class="xpreward-search"
+             placeholder="Filter by name, group or category...">
+    </header>
+    <div id="xpreward-list" class="xpreward-list"></div>
+  </main>
+</div>

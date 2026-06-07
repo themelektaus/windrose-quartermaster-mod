@@ -174,6 +174,7 @@ public static class ModsEndpoint
                             RecycleTriplet(rawPakPath, recycled);
 
                         TryRemoveDeployedProfileJson(repoRoot, displayName, recycled);
+                        TryRemoveDeployedProfileWeatherTrigger(repoRoot, displayName, recycled);
 
                         TryRemoveDeployedDllIfIdle(repoRoot, recycled);
                     }
@@ -204,6 +205,21 @@ public static class ModsEndpoint
         {
             var deployer = new GameDeployer(repoRoot);
             var path = deployer.TargetItemsJsonPath(displayName);
+            if (!File.Exists(path)) return;
+            CrossPlatformTrash.DeleteToTrash(path);
+            recycled.Add(Path.GetFileName(path));
+        }
+        catch
+        {
+        }
+    }
+
+    static void TryRemoveDeployedProfileWeatherTrigger(string repoRoot, string displayName, List<string> recycled)
+    {
+        try
+        {
+            var deployer = new GameDeployer(repoRoot);
+            var path = deployer.TargetProfileWeatherTriggerPath(displayName);
             if (!File.Exists(path)) return;
             CrossPlatformTrash.DeleteToTrash(path);
             recycled.Add(Path.GetFileName(path));

@@ -702,6 +702,25 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        // XP rewards: a non-vanilla quest/POI overall multiplier, or any per-entry
+        // override that differs from vanilla (overrides at 1.0 are pruned in the UI,
+        // but guard defensively so a lingering vanilla node never lights the build).
+        static bool HasXpRewardConfiguration(Profile profile)
+        {
+            var xp = profile.Globals != null ? profile.Globals.XpReward : null;
+            if (xp == null) return false;
+            if (xp.QuestMultiplier.HasValue && Math.Abs(xp.QuestMultiplier.Value - 1.0) > 1e-9) return true;
+            if (xp.PoiMultiplier.HasValue && Math.Abs(xp.PoiMultiplier.Value - 1.0) > 1e-9) return true;
+            if (xp.Overrides != null)
+            {
+                foreach (var kv in xp.Overrides)
+                {
+                    if (Math.Abs(kv.Value - 1.0) > 1e-9) return true;
+                }
+            }
+            return false;
+        }
+
         static bool HasNpcSpawnConfiguration(Profile profile)
         {
             if (profile.NpcSpawnOverrides != null)
