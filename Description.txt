@@ -25,7 +25,7 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 [size=4][b]Cooldowns, crops & crafting[/b][/size]
-[color=#b6b6b6]Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The Ship Cannon card pairs its reload slider with a cannon-range slider (1.0x to 3.0x); both are player-only, so enemy and NPC ships keep their vanilla reload and range. The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).[/color]
+[color=#b6b6b6]Bidirectional sliders (0.1x to 3.0x) on eight cooldown families: Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon Reload. The Ship Cannons card pairs its reload slider with a cannon-range slider (1.0x to 5.0x) and a cannon-damage slider (1.0x to 10.0x); all three are player-only, so enemy and NPC ships keep their vanilla reload, range and damage. A Soul Eater - Soul Harvest card scales the Souldrinker greatsword's [F] special (Base + Advanced tiers): cooldown plus life-drain damage and radius (0.1x to 10.0x each). A Ship Boarding card loosens grappling on your own ships (Brig, Cutter, Frigate, Ketch): max boarding range (1.0x to 5.0x), aim forgiveness (1.0x to 5.0x), hull-angle tolerance (1.0x to 2.0x) and max closing speed (1.0x to 3.0x). The same tab also retunes crop grow times and crafting/processing durations (furnace, kiln, tannery, mill, trade outpost).[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Cooldowns%2C-crops-%26-crafting.png[/img]
 

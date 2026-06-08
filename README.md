@@ -25,10 +25,13 @@ A profile bundles tweaks across multiple domains:
 - **Sellers** - retune what NPC vendors offer you and at which price
 - **Cooldowns** - bidirectional 0.1-3.0x sliders across eight families
   (Elixir, Medicine, Spell of Return, Ship Repair Kit, Boar Whistle,
-  Ship Summon, Ranged Weapon Reload, Ship Cannon Reload); the Ship Cannon
-  card pairs its reload slider with a cannon-range slider (1.0-3.0x), and
-  both cannon multipliers touch only your own hulls - enemy / NPC ships
-  keep their vanilla reload + range
+  Ship Summon, Ranged Weapon Reload, Ship Cannon Reload); the Ship Cannons
+  card adds a cannon-range slider (1.0-5.0x) and a cannon-damage slider
+  (1.0-10.0x), all player-only so enemy / NPC ships keep their vanilla
+  reload + range + damage; a Soul Eater card scales the Souldrinker [F]
+  special (cooldown + life-drain damage + radius, 0.1-10.0x); a Ship
+  Boarding card loosens grappling on your own hulls (range / aim / angle /
+  speed multipliers)
 - **Crop growth & crafting durations** - 0.1-3.0x sliders for crop grow
   times plus furnace / kiln / tannery / mill / trade-outpost recipe
   durations
@@ -249,9 +252,16 @@ icon to clone an existing one. For each profile you can:
   cooldown families (Elixir, Medicine, Spell of Return, Ship Repair
   Kit, Boar Whistle, Ship Summon, Ranged Weapon Reload, Ship Cannon
   Reload), plus crop grow times and crafting / processing durations
-  (furnace, kiln, tannery, mill, trade outpost). The Ship Cannon card
-  pairs the reload slider with a cannon-range slider (1.0-3.0x); both are
-  player-only, so enemy / NPC ships keep their vanilla reload and range.
+  (furnace, kiln, tannery, mill, trade outpost). The Ship Cannons card
+  pairs the reload slider with a cannon-range slider (1.0-5.0x) and a
+  cannon-damage slider (1.0-10.0x); all three are player-only, so enemy /
+  NPC ships keep their vanilla reload, range and damage. A Soul Eater -
+  Soul Harvest card scales the Souldrinker greatsword's [F] special
+  (Base + Advanced tiers): cooldown, life-drain damage and radius
+  (0.1-10.0x). A Ship Boarding card loosens grappling on your own ships
+  (Brig, Cutter, Frigate, Ketch): boarding range (1.0-5.0x), aim
+  forgiveness (1.0-5.0x), hull-angle tolerance (1.0-2.0x) and max closing
+  speed (1.0-3.0x).
 - **Basic tab** - cards for pickup radius (+ ship pickup), fast-travel
   bell caps, building stability, minimap range, bonfire radius, pickaxe
   range, building rotation (finer 1 / 5 / 10 degree steps), NPC spawns,
