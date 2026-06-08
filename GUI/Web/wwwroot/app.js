@@ -1737,6 +1737,17 @@ async function onBuild() {
                     + ', ' + cr.enemyCannonsLeftVanilla + ' enemy left vanilla'
                     + (parts.length ? '; ' + parts.join(', ') : '') + ')' });
             }
+            if (data.cannonDamage) {
+                const cdm = data.cannonDamage;
+                const pct = (((cdm.multiplier || 1.0) - 1.0) * 100).toFixed(0);
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship cannon damage patched (player only; '
+                    + cdm.caliberCount + ' caliber'
+                    + (cdm.caliberCount === 1 ? '' : 's')
+                    + '; ' + (cdm.multiplier || 1.0).toFixed(2) + 'x = +' + pct + '%'
+                    + ', sample ' + Math.round(cdm.sampleVanillaDamage || 0)
+                    + ' -> ' + Math.round(cdm.sampleEffectiveDamage || 0) + ')' });
+            }
             if (data.cookingDuration) {
                 const cdr = data.cookingDuration;
                 const families = cdr.families || [];
@@ -1790,7 +1801,7 @@ async function onBuild() {
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed
-                && !data.cropGrowth && !data.cannonReload && !data.buildingRotation && !data.cookingDuration && !data.npcSpawn
+                && !data.cropGrowth && !data.cannonReload && !data.cannonDamage && !data.buildingRotation && !data.cookingDuration && !data.npcSpawn
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }

@@ -219,6 +219,14 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveShipCannonDamageMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipCannonDamageMultiplier.HasValue) return cd.ShipCannonDamageMultiplier.Value;
+            return 1.0;
+        }
+
         // The enabled fine rotation steps (subset of {1,5,10}), ascending. Empty =
         // feature off. Purely additive: vanilla steps are merged in by the patcher.
         static List<int> ResolveBuildingRotationFineSteps(Profile profile)

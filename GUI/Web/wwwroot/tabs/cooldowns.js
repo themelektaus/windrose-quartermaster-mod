@@ -61,6 +61,17 @@ const COOLDOWN_FAMILIES = [
         renderReadout: (mul) => '~' + Math.round(180 * mul) + ' m',
     },
     {
+        key: 'cannondamage',
+        profileKey: 'shipCannonDamageMultiplier',
+        // Player cannonball damage (DamageGEData[].DamageInterval). Internal
+        // damage numbers are abstract, so show the boost as a percentage.
+        renderReadout: (mul) => {
+            const pct = (mul - 1.0) * 100.0;
+            const sign = pct >= 0 ? '+' : '';
+            return sign + pct.toFixed(0) + '%';
+        },
+    },
+    {
         key: 'souleater',
         profileKey: 'soulEaterAbilityMultiplier',
         vanillaSeconds: 180,

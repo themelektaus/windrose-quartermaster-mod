@@ -89,7 +89,7 @@
         
         <div>
           <h2>Ship Cannons</h2>
-          <p class="hint" style="margin: 0; ">Reload time and firing range of your own ship's cannons (all calibers). Enemy ships stay vanilla.</p>
+          <p class="hint" style="margin: 0; ">Reload time, firing range and projectile damage of your own ship's cannons (all calibers). Enemy ships stay vanilla.</p>
           <div class="pickup-row">
             <div class="pickup-slider">
               <span class="mult-readout" style="text-align: left;">Reload</span>
@@ -99,9 +99,15 @@
             </div>
             <div class="pickup-slider">
               <span class="mult-readout" style="text-align: left;">Range</span>
-              <input type="range" id="cd-cannonrange-multiplier" min="1.0" max="3.0" step="0.1" value="1.0">
+              <input type="range" id="cd-cannonrange-multiplier" min="1.0" max="5.0" step="0.1" value="1.0">
               <span class="mult-pill" id="cd-cannonrange-multiplier-value">1x</span>
               <span class="mult-readout" id="cd-cannonrange-readout">~180 m</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Damage</span>
+              <input type="range" id="cd-cannondamage-multiplier" min="1.0" max="10.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-cannondamage-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-cannondamage-readout">+0%</span>
             </div>
           </div>
         </div>

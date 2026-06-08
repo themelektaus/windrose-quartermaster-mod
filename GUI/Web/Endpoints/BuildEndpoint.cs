@@ -500,6 +500,22 @@ public static class BuildEndpoint
                         sampleEffectiveRangeMax = first != null ? first.EffectiveRangeMax : 0L,
                     };
                 }
+                object cannonDamageInfo = null;
+                if (result.CannonDamageResult != null && result.CannonDamageResult.Enabled)
+                {
+                    var cdm = result.CannonDamageResult;
+                    var first = cdm.AssetResults != null && cdm.AssetResults.Count > 0
+                        ? cdm.AssetResults[0]
+                        : null;
+                    cannonDamageInfo = new
+                    {
+                        multiplier = cdm.Multiplier,
+                        caliberCount = cdm.AssetResults != null ? cdm.AssetResults.Count : 0,
+                        sampleStem = first != null ? first.AssetStem : null,
+                        sampleVanillaDamage = first != null ? first.SampleVanillaDamage : 0f,
+                        sampleEffectiveDamage = first != null ? first.SampleEffectiveDamage : 0f,
+                    };
+                }
                 object buildingRotationInfo = null;
                 if (result.BuildingRotationResult != null)
                 {
@@ -636,6 +652,7 @@ public static class BuildEndpoint
                     shipSpeed = shipSpeedInfo,
                     cropGrowth = cropGrowthInfo,
                     cannonReload = cannonReloadInfo,
+                    cannonDamage = cannonDamageInfo,
                     buildingRotation = buildingRotationInfo,
                     cookingDuration = cookingDurationInfo,
                     npcSpawn = npcSpawnInfo,

@@ -441,6 +441,8 @@ namespace Windrose.Quartermaster.Core
                 bool bonfireActive = bonfireMultiplier > 0.0 && Math.Abs(bonfireMultiplier - 1.0) > 1e-9;
                 double pickaxeMultiplier = ResolvePickaxeRangeMultiplier(profile);
                 bool pickaxeActive = pickaxeMultiplier > 0.0 && Math.Abs(pickaxeMultiplier - 1.0) > 1e-9;
+                double cannonDamageMultiplier = ResolveShipCannonDamageMultiplier(profile);
+                bool cannonDamageActive = cannonDamageMultiplier > 0.0 && Math.Abs(cannonDamageMultiplier - 1.0) > 1e-9;
                 var cooldownJobs = ResolveCooldownJobs(profile);
                 bool cooldownsActive = cooldownJobs.Count > 0;
                 var shipMusicJobs = ResolveShipMusicJobs(profile);
@@ -459,7 +461,7 @@ namespace Windrose.Quartermaster.Core
                 bool iconsActive = iconBakeJobs.Count > 0;
                 var weatherControlIds = ResolveWeatherControlIds(profile);
                 bool weatherControlsActive = weatherControlIds.Count > 0;
-                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
+                bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cannonDamageActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
                 if (totalWritten == 0 && !ioStoreActive)
                 {
                     // Surface which fields are missing when all buildings were
@@ -489,6 +491,7 @@ namespace Windrose.Quartermaster.Core
                 PersistentLootResult persistentLootResult = null;
                 KeepStatusResult keepStatusResult = null;
                 PickaxeRangeResult pickaxeResult = null;
+                CannonDamageResult cannonDamageResult = null;
                 CooldownsResult cooldownsResult = null;
                 ShipMusicResult shipMusicResult = null;
                 ShipMusicAddResult shipMusicAddResult = null;
@@ -497,7 +500,7 @@ namespace Windrose.Quartermaster.Core
                 ShipSpeedResult shipSpeedResult = null;
                 List<IconBakerPatcher.BakeResult> iconBakeResults = null;
                 WeatherControlStageResult weatherControlResult = null;
-                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
+                bool compositeActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || noSmokeActive || bonfireActive || landFastTravelActive || noFogActive || persistentLootActive || keepStatusActive || pickaxeActive || cannonDamageActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
                 if (compositeActive)
                 {
                     var compositeResult = BuildIoStoreComposite(
@@ -513,6 +516,7 @@ namespace Windrose.Quartermaster.Core
                         persistentLootActive,
                         keepStatusActive,
                         pickaxeMultiplier, pickaxeActive,
+                        cannonDamageMultiplier, cannonDamageActive,
                         cooldownJobs,
                         shipMusicJobs,
                         shipMusicAddJobs,
@@ -536,6 +540,7 @@ namespace Windrose.Quartermaster.Core
                     persistentLootResult = compositeResult.PersistentLoot;
                     keepStatusResult = compositeResult.KeepStatus;
                     pickaxeResult = compositeResult.PickaxeRange;
+                    cannonDamageResult = compositeResult.CannonDamage;
                     cooldownsResult = compositeResult.Cooldowns;
                     shipMusicResult = compositeResult.ShipMusic;
                     shipMusicAddResult = compositeResult.ShipMusicAdd;
@@ -673,6 +678,7 @@ namespace Windrose.Quartermaster.Core
                     ShipSpeedResult = shipSpeedResult,
                     CropGrowthResult = cropGrowthResult,
                     CannonReloadResult = cannonReloadResult,
+                    CannonDamageResult = cannonDamageResult,
                     BuildingRotationResult = buildingRotationResult,
                     CookingDurationResult = cookingDurationResult,
                     NpcSpawnResult = npcSpawnResult,
@@ -718,6 +724,7 @@ namespace Windrose.Quartermaster.Core
             bool persistentLootActive,
             bool keepStatusActive,
             double pickaxeMultiplier, bool pickaxeActive,
+            double cannonDamageMultiplier, bool cannonDamageActive,
             List<CooldownJob> cooldownJobs,
             List<ShipMusicJob> shipMusicJobs,
             List<ShipMusicAddJob> shipMusicAddJobs,
@@ -1049,6 +1056,46 @@ namespace Windrose.Quartermaster.Core
                             var r = patcher.Patch(
                                 legacyAssetPath, legacyAssetPath, usmapPath, pickaxeMultiplier);
                             pickaxePatchResults.Add(r);
+                        },
+                    });
+                }
+            }
+
+            var cannonDamagePatchResults = new List<CannonDamagePatchResult>();
+            if (cannonDamageActive)
+            {
+                var usmapPath = UsmapLocator.Find(_paths.ModRoot);
+                LogLine("Cannon damage source: vanilla player cannonball damage params"
+                        + " (multiplier=" + cannonDamageMultiplier.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", " + CannonDamagePatcher.PlayerAssets.Count + " caliber"
+                        + (CannonDamagePatcher.PlayerAssets.Count == 1 ? "" : "s")
+                        + "; enemy DA_*_AI_* left vanilla)");
+
+                foreach (var kv in CannonDamagePatcher.PlayerAssets)
+                {
+                    var stem = kv.Key;
+                    var virtualPath = kv.Value;
+                    sources.Add(new IoStoreCompositeSource
+                    {
+                        Name = "cannon-damage:" + stem,
+                        InputDir = gamePaksDir,
+                        Filter = stem,
+                        AfterExtract = stagingDir =>
+                        {
+                            var legacyAssetPath = Path.Combine(stagingDir,
+                                virtualPath.Replace('/', Path.DirectorySeparatorChar));
+                            if (!File.Exists(legacyAssetPath))
+                            {
+                                throw new InvalidOperationException(
+                                    "retoc to-legacy did not produce the expected cannon damage asset at "
+                                    + legacyAssetPath
+                                    + " - the game container may have moved the asset, or "
+                                    + "the filter '" + stem + "' is wrong.");
+                            }
+                            var patcher = new CannonDamagePatcher { Log = Log };
+                            var r = patcher.Patch(
+                                legacyAssetPath, legacyAssetPath, usmapPath, cannonDamageMultiplier);
+                            cannonDamagePatchResults.Add(r);
                         },
                     });
                 }
@@ -2174,6 +2221,20 @@ namespace Windrose.Quartermaster.Core
                 };
             }
 
+            CannonDamageResult cannonDamageOut = null;
+            if (cannonDamagePatchResults.Count > 0)
+            {
+                cannonDamageOut = new CannonDamageResult
+                {
+                    Enabled = true,
+                    Multiplier = cannonDamageMultiplier,
+                    AssetResults = cannonDamagePatchResults,
+                    UcasPath = finalUcas,
+                    UtocPath = finalUtoc,
+                    PakPath = mainPakWillBeBuilt ? null : finalPak,
+                };
+            }
+
             CooldownsResult cooldownsOut = null;
             if (cooldownPatchResults.Count > 0)
             {
@@ -2275,6 +2336,7 @@ namespace Windrose.Quartermaster.Core
                 PersistentLoot = persistentLootOut,
                 KeepStatus = keepStatusOut,
                 PickaxeRange = pickaxeOut,
+                CannonDamage = cannonDamageOut,
                 Cooldowns = cooldownsOut,
                 ShipMusic = shipMusicOut,
                 ShipMusicAdd = shipMusicAddOut,
@@ -2301,6 +2363,7 @@ namespace Windrose.Quartermaster.Core
             public PersistentLootResult PersistentLoot;
             public KeepStatusResult KeepStatus;
             public PickaxeRangeResult PickaxeRange;
+            public CannonDamageResult CannonDamage;
             public CooldownsResult Cooldowns;
             public ShipMusicResult ShipMusic;
             public ShipMusicAddResult ShipMusicAdd;

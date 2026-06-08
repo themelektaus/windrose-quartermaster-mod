@@ -36,6 +36,7 @@ namespace Windrose.Quartermaster.Core
         public LandFastTravelResult LandFastTravelResult;
         public BonfireRadiusResult BonfireResult;
         public PickaxeRangeResult PickaxeRangeResult;
+        public CannonDamageResult CannonDamageResult;
         public CooldownsResult CooldownsResult;
         public ShipMusicResult ShipMusicResult;
         public ShipMusicAddResult ShipMusicAddResult;
@@ -189,6 +190,16 @@ namespace Windrose.Quartermaster.Core
         public bool Enabled;
         public double Multiplier;
         public List<PickaxeRangePatchResult> AssetResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
+    public sealed class CannonDamageResult
+    {
+        public bool Enabled;
+        public double Multiplier;
+        public List<CannonDamagePatchResult> AssetResults;
         public string PakPath;
         public string UcasPath;
         public string UtocPath;
