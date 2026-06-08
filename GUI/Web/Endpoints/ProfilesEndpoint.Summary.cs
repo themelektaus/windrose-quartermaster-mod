@@ -101,6 +101,12 @@ public static partial class ProfilesEndpoint
             || IsActive(cd.ShipCannonRangeMultiplier)
             || IsActive(cd.ShipCannonDamageMultiplier)
             || IsActive(cd.SoulEaterAbilityMultiplier)
+            || IsActive(cd.SoulHarvestDamageMultiplier)
+            || IsActive(cd.SoulHarvestRadiusMultiplier)
+            || IsActive(cd.ShipBoardingRangeMultiplier)
+            || IsActive(cd.ShipBoardingAimMultiplier)
+            || IsActive(cd.ShipBoardingAngleMultiplier)
+            || IsActive(cd.ShipBoardingSpeedMultiplier)
             || IsActive(cd.FoodBuffDurationMultiplier);
     }
 

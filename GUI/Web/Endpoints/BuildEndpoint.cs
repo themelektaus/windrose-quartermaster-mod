@@ -516,6 +516,28 @@ public static class BuildEndpoint
                         sampleEffectiveDamage = first != null ? first.SampleEffectiveDamage : 0f,
                     };
                 }
+                object shipBoardingInfo = null;
+                if (result.ShipBoardingResult != null && result.ShipBoardingResult.Enabled)
+                {
+                    var sb = result.ShipBoardingResult;
+                    var rangeSample = sb.AssetResults?.FirstOrDefault(a => a.RangePatched);
+                    var angleSample = sb.AssetResults?.FirstOrDefault(a => a.AnglePatched);
+                    var speedSample = sb.AssetResults?.FirstOrDefault(a => a.SpeedPatched);
+                    shipBoardingInfo = new
+                    {
+                        rangeMultiplier = sb.RangeMultiplier,
+                        aimMultiplier = sb.AimMultiplier,
+                        angleMultiplier = sb.AngleMultiplier,
+                        speedMultiplier = sb.SpeedMultiplier,
+                        shipCount = sb.AssetResults != null ? sb.AssetResults.Count : 0,
+                        sampleVanillaRange = rangeSample != null ? rangeSample.VanillaRange : 0f,
+                        sampleEffectiveRange = rangeSample != null ? rangeSample.EffectiveRange : 0f,
+                        sampleVanillaAngle = angleSample != null ? angleSample.VanillaAngle : 0f,
+                        sampleEffectiveAngle = angleSample != null ? angleSample.EffectiveAngle : 0f,
+                        sampleVanillaSpeed = speedSample != null ? speedSample.VanillaSpeed : 0f,
+                        sampleEffectiveSpeed = speedSample != null ? speedSample.EffectiveSpeed : 0f,
+                    };
+                }
                 object buildingRotationInfo = null;
                 if (result.BuildingRotationResult != null)
                 {
@@ -653,6 +675,7 @@ public static class BuildEndpoint
                     cropGrowth = cropGrowthInfo,
                     cannonReload = cannonReloadInfo,
                     cannonDamage = cannonDamageInfo,
+                    shipBoarding = shipBoardingInfo,
                     buildingRotation = buildingRotationInfo,
                     cookingDuration = cookingDurationInfo,
                     npcSpawn = npcSpawnInfo,

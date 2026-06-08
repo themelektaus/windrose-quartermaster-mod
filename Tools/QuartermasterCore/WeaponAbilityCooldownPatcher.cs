@@ -46,6 +46,12 @@ namespace Windrose.Quartermaster.Core
         // Soul Eater = Souldrinker greatsword; [F] "Soul Harvest" cooldown (vanilla 180s).
         public const string SoulEaterRow = "Greatsword_Souldrinker_AbilityCooldown";
 
+        // Soul Harvest [F] life-drain damage magnitude (vanilla 900), shared by Base+Advanced.
+        // Lives in the SAME CT_Weapon_GE_Values table as the cooldown row above, so the build
+        // must patch both rows in ONE extraction (BuildPipeline groups cooldown jobs by asset);
+        // two separate sources with this filter would re-extract vanilla over the first patch.
+        public const string SoulHarvestDamageRow = "Greatsword_Souldrinker_SoulHarvestDamage";
+
         // Food/drink buff durations: every "Food_<X>_Duration" row in this shared table is
         // the buff lifetime in seconds (vanilla 420/900/1800s). Scaling them all = the
         // "Extended Food Duration" feature. Non-Duration rows (MaxHealth, regen, attribute

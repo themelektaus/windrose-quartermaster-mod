@@ -1748,6 +1748,18 @@ async function onBuild() {
                     + ', sample ' + Math.round(cdm.sampleVanillaDamage || 0)
                     + ' -> ' + Math.round(cdm.sampleEffectiveDamage || 0) + ')' });
             }
+            if (data.shipBoarding) {
+                const sb = data.shipBoarding;
+                const parts = [];
+                if (Math.abs((sb.rangeMultiplier || 1.0) - 1.0) > 1e-9) parts.push('range ' + sb.rangeMultiplier.toFixed(2) + 'x');
+                if (Math.abs((sb.aimMultiplier || 1.0) - 1.0) > 1e-9) parts.push('aim ' + sb.aimMultiplier.toFixed(2) + 'x');
+                if (Math.abs((sb.angleMultiplier || 1.0) - 1.0) > 1e-9) parts.push('angle ' + sb.angleMultiplier.toFixed(2) + 'x');
+                if (Math.abs((sb.speedMultiplier || 1.0) - 1.0) > 1e-9) parts.push('speed ' + sb.speedMultiplier.toFixed(2) + 'x');
+                lines.push({ kind: 'ok', msg:
+                    'DONE - ship boarding eased (player only; '
+                    + sb.shipCount + ' ship' + (sb.shipCount === 1 ? '' : 's')
+                    + (parts.length ? '; ' + parts.join(', ') : '') + ')' });
+            }
             if (data.cookingDuration) {
                 const cdr = data.cookingDuration;
                 const families = cdr.families || [];
@@ -1801,7 +1813,7 @@ async function onBuild() {
                 && !data.pickaxeRange && !data.cooldowns
                 && !data.shipMusic && !data.shipMusicAdd && !data.bonfireMusic && !data.lighting
                 && !data.shipSpeed
-                && !data.cropGrowth && !data.cannonReload && !data.cannonDamage && !data.buildingRotation && !data.cookingDuration && !data.npcSpawn
+                && !data.cropGrowth && !data.cannonReload && !data.cannonDamage && !data.shipBoarding && !data.buildingRotation && !data.cookingDuration && !data.npcSpawn
                 && !(data.customBuildings && data.customBuildings.count > 0)) {
                 lines.push({ kind: 'err', msg: 'WARNING: build reported success but produced no output paks.' });
             }

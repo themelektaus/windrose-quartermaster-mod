@@ -227,6 +227,38 @@ namespace Windrose.Quartermaster.Core
             return 1.0;
         }
 
+        static double ResolveShipBoardingRangeMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipBoardingRangeMultiplier.HasValue) return cd.ShipBoardingRangeMultiplier.Value;
+            return 1.0;
+        }
+
+        static double ResolveShipBoardingAimMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipBoardingAimMultiplier.HasValue) return cd.ShipBoardingAimMultiplier.Value;
+            return 1.0;
+        }
+
+        static double ResolveShipBoardingAngleMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipBoardingAngleMultiplier.HasValue) return cd.ShipBoardingAngleMultiplier.Value;
+            return 1.0;
+        }
+
+        static double ResolveShipBoardingSpeedMultiplier(Profile profile)
+        {
+            var cd = profile.Globals != null ? profile.Globals.Cooldowns : null;
+            if (cd == null) return 1.0;
+            if (cd.ShipBoardingSpeedMultiplier.HasValue) return cd.ShipBoardingSpeedMultiplier.Value;
+            return 1.0;
+        }
+
         // The enabled fine rotation steps (subset of {1,5,10}), ascending. Empty =
         // feature off. Purely additive: vanilla steps are merged in by the patcher.
         static List<int> ResolveBuildingRotationFineSteps(Profile profile)
@@ -323,6 +355,34 @@ namespace Windrose.Quartermaster.Core
                     RowName = WeaponAbilityCooldownPatcher.SoulEaterRow,
                     Multiplier = cd.SoulEaterAbilityMultiplier.Value,
                     Shape = CooldownJobShape.WeaponAbilityCurve,
+                });
+            }
+            // Soul Harvest damage shares CT_Weapon_GE_Values with the cooldown above. The
+            // build groups cooldown jobs by AssetStem, so both rows are patched in one
+            // extraction (a second source with the same filter would clobber the first patch).
+            if (HasCooldownMultiplier(cd.SoulHarvestDamageMultiplier))
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = "soul-harvest-damage",
+                    AssetStem = WeaponAbilityCooldownPatcher.CurveTableStem,
+                    VirtualPath = WeaponAbilityCooldownPatcher.CurveTableVirtualPath,
+                    RowName = WeaponAbilityCooldownPatcher.SoulHarvestDamageRow,
+                    Multiplier = cd.SoulHarvestDamageMultiplier.Value,
+                    Shape = CooldownJobShape.WeaponAbilityCurve,
+                });
+            }
+            // Soul Harvest radius is an inline float on a separate TargetParams DataAsset
+            // (distinct AssetStem), so it forms its own composite source - no clobbering.
+            if (HasCooldownMultiplier(cd.SoulHarvestRadiusMultiplier))
+            {
+                jobs.Add(new CooldownJob
+                {
+                    Family = "soul-harvest-radius",
+                    AssetStem = SoulHarvestRadiusPatcher.AssetStem,
+                    VirtualPath = SoulHarvestRadiusPatcher.VirtualPath,
+                    Multiplier = cd.SoulHarvestRadiusMultiplier.Value,
+                    Shape = CooldownJobShape.SoulHarvestRadius,
                 });
             }
             if (HasCooldownMultiplier(cd.FoodBuffDurationMultiplier))
@@ -610,6 +670,22 @@ namespace Windrose.Quartermaster.Core
                     var patcher = new WeaponAbilityCooldownPatcher { Log = Log };
                     var r = patcher.Patch(
                         legacyAssetPath, legacyAssetPath, usmapPath, job.RowName, job.Multiplier);
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = 0,
+                        PatchedBatteryCount = 0,
+                    };
+                }
+                case CooldownJobShape.SoulHarvestRadius:
+                {
+                    var patcher = new SoulHarvestRadiusPatcher { Log = Log };
+                    var r = patcher.Patch(
+                        legacyAssetPath, legacyAssetPath, usmapPath, job.Multiplier);
                     return new CooldownJobResult
                     {
                         Family = job.Family,

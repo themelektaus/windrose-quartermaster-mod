@@ -255,6 +255,7 @@ namespace Windrose.Quartermaster.Core
         TopLevelMagnitude,
         WeaponAbilityCurve,
         FoodDurationCurve,
+        SoulHarvestRadius,
     }
 
     public sealed class CooldownPatchResult

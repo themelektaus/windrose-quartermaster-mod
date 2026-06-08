@@ -78,6 +78,49 @@ const COOLDOWN_FAMILIES = [
         renderReadout: (mul) => (180 * mul).toFixed(1) + ' s',
     },
     {
+        key: 'soulharvestdamage',
+        profileKey: 'soulHarvestDamageMultiplier',
+        // Soul Harvest life-drain magnitude (CT row, vanilla 900). Internal damage
+        // number is abstract, so show the change as a percentage like cannon damage.
+        renderReadout: (mul) => {
+            const pct = (mul - 1.0) * 100.0;
+            const sign = pct >= 0 ? '+' : '';
+            return sign + pct.toFixed(0) + '%';
+        },
+    },
+    {
+        key: 'soulharvestradius',
+        profileKey: 'soulHarvestRadiusMultiplier',
+        // TargetParams MaxDistance, vanilla 500 units = 5 m (100 units = 1 m).
+        renderReadout: (mul) => (5 * mul).toFixed(1) + ' m',
+    },
+    {
+        key: 'boardingrange',
+        profileKey: 'shipBoardingRangeMultiplier',
+        // MaxBoardingDistance is per-ship (3000-5500 units = 30-55 m); Brig's
+        // 4000 units = 40 m is the representative readout (100 units = 1 m).
+        renderReadout: (mul) => '~' + Math.round(40 * mul) + ' m',
+    },
+    {
+        key: 'boardingaim',
+        profileKey: 'shipBoardingAimMultiplier',
+        // BoardingSweepRadius, vanilla 100 units = 1 m of aim forgiveness.
+        renderReadout: (mul) => '~' + (1 * mul).toFixed(1) + ' m',
+    },
+    {
+        key: 'boardingangle',
+        profileKey: 'shipBoardingAngleMultiplier',
+        // MainAxisDifferenceAngle, vanilla ~34 deg (Brig/Frigate); the runtime
+        // cosine is recomputed from the scaled angle. Capped below 90 deg.
+        renderReadout: (mul) => '~' + Math.min(89, Math.round(34 * mul)) + String.fromCharCode(176),
+    },
+    {
+        key: 'boardingspeed',
+        profileKey: 'shipBoardingSpeedMultiplier',
+        // MaxClosingSpeedKnots, vanilla 15 kn (absent on Cutter -> left vanilla).
+        renderReadout: (mul) => '~' + Math.round(15 * mul) + ' kn',
+    },
+    {
         key: 'foodduration',
         profileKey: 'foodBuffDurationMultiplier',
         vanillaSeconds: 900,

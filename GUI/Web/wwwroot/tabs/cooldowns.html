@@ -1,5 +1,5 @@
-<div class="tab-page misc-page" data-tab="cooldowns">
-  <aside class="pane misc" style="align-items: flex-start; ">
+<div class="tab-page" data-tab="cooldowns">
+  <aside class="pane">
     <section class="card" style="height: unset; ">
       <div class="card-content">
         
@@ -88,43 +88,6 @@
         </div>
         
         <div>
-          <h2>Ship Cannons</h2>
-          <p class="hint" style="margin: 0; ">Reload time, firing range and projectile damage of your own ship's cannons (all calibers). Enemy ships stay vanilla.</p>
-          <div class="pickup-row">
-            <div class="pickup-slider">
-              <span class="mult-readout" style="text-align: left;">Reload</span>
-              <input type="range" id="cd-cannon-multiplier" min="0.01" max="2.0" step="0.01" value="1.0">
-              <span class="mult-pill" id="cd-cannon-multiplier-value">1x</span>
-              <span class="mult-readout" id="cd-cannon-readout">~12 s</span>
-            </div>
-            <div class="pickup-slider">
-              <span class="mult-readout" style="text-align: left;">Range</span>
-              <input type="range" id="cd-cannonrange-multiplier" min="1.0" max="5.0" step="0.1" value="1.0">
-              <span class="mult-pill" id="cd-cannonrange-multiplier-value">1x</span>
-              <span class="mult-readout" id="cd-cannonrange-readout">~180 m</span>
-            </div>
-            <div class="pickup-slider">
-              <span class="mult-readout" style="text-align: left;">Damage</span>
-              <input type="range" id="cd-cannondamage-multiplier" min="1.0" max="10.0" step="0.1" value="1.0">
-              <span class="mult-pill" id="cd-cannondamage-multiplier-value">1x</span>
-              <span class="mult-readout" id="cd-cannondamage-readout">+0%</span>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h2>Soul Eater - Soul Harvest</h2>
-          <p class="hint" style="margin: 0; ">Cooldown of the Souldrinker greatsword's [F] life-drain special ability.</p>
-          <div class="pickup-row">
-            <div class="pickup-slider">
-              <input type="range" id="cd-souleater-multiplier" min="0.01" max="2.0" step="0.01" value="1.0">
-              <span class="mult-pill" id="cd-souleater-multiplier-value">1x</span>
-              <span class="mult-readout" id="cd-souleater-readout">180 s</span>
-            </div>
-          </div>
-        </div>
-
-        <div>
           <h2>Food Buff Duration</h2>
           <p class="hint" style="margin: 0; ">How long food &amp; drink buffs last after eating. Higher = longer. Scales every consumable; readout shows a typical cooked dish.</p>
           <div class="pickup-row">
@@ -136,6 +99,35 @@
           </div>
         </div>
 
+      </div>
+    </section>
+    
+    <section class="card" style="height: unset; ">
+      <div class="card-content">  
+        <div>
+          <h2>Soul Eater - Soul Harvest</h2>
+          <p class="hint" style="margin: 0; ">Cooldown, life-drain damage and radius of the Souldrinker greatsword's [F] special ability (Base + Advanced tiers).</p>
+          <div class="pickup-row">
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Cooldown</span>
+              <input type="range" id="cd-souleater-multiplier" min="0.01" max="2.0" step="0.01" value="1.0">
+              <span class="mult-pill" id="cd-souleater-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-souleater-readout">180 s</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Damage</span>
+              <input type="range" id="cd-soulharvestdamage-multiplier" min="0.1" max="10.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-soulharvestdamage-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-soulharvestdamage-readout">+0%</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Radius</span>
+              <input type="range" id="cd-soulharvestradius-multiplier" min="0.1" max="10.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-soulharvestradius-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-soulharvestradius-readout">5.0 m</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
     
@@ -264,5 +256,70 @@
         
       </div>
     </section>
+    
+    <section class="card" style="height: unset; ">
+      <div class="card-content">  
+        <div>
+          <h2>Ship Cannons</h2>
+          <p class="hint" style="margin: 0; ">Reload time, firing range and projectile damage of your own ship's cannons (all calibers). Enemy ships stay vanilla.</p>
+          <div class="pickup-row">
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Reload</span>
+              <input type="range" id="cd-cannon-multiplier" min="0.01" max="2.0" step="0.01" value="1.0">
+              <span class="mult-pill" id="cd-cannon-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-cannon-readout">~12 s</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Range</span>
+              <input type="range" id="cd-cannonrange-multiplier" min="1.0" max="5.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-cannonrange-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-cannonrange-readout">~180 m</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Damage</span>
+              <input type="range" id="cd-cannondamage-multiplier" min="1.0" max="10.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-cannondamage-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-cannondamage-readout">+0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <section class="card" style="height: unset; ">
+      <div class="card-content">  
+        <div>
+          <h2>Ship Boarding</h2>
+          <p class="hint" style="margin: 0; ">Easy Boarding: how easily your ship can grapple another. Range = max boarding distance; Aim = how far off the target you can point and still get the prompt; Angle = how unaligned the two hulls may be; Speed = max closing speed that still allows boarding. Player ships only (Brig, Cutter, Frigate, Ketch); each value is left vanilla on ships that don't define it.</p>
+          <div class="pickup-row">
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Range</span>
+              <input type="range" id="cd-boardingrange-multiplier" min="1.0" max="5.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-boardingrange-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-boardingrange-readout">~40 m</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Aim</span>
+              <input type="range" id="cd-boardingaim-multiplier" min="1.0" max="5.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-boardingaim-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-boardingaim-readout">~1.0 m</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Angle</span>
+              <input type="range" id="cd-boardingangle-multiplier" min="1.0" max="2.0" step="0.05" value="1.0">
+              <span class="mult-pill" id="cd-boardingangle-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-boardingangle-readout">~34&deg;</span>
+            </div>
+            <div class="pickup-slider">
+              <span class="mult-readout" style="text-align: left;">Speed</span>
+              <input type="range" id="cd-boardingspeed-multiplier" min="1.0" max="3.0" step="0.1" value="1.0">
+              <span class="mult-pill" id="cd-boardingspeed-multiplier-value">1x</span>
+              <span class="mult-readout" id="cd-boardingspeed-readout">~15 kn</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    
   </aside>
 </div>

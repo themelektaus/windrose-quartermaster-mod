@@ -143,6 +143,12 @@ public static partial class ProfilesEndpoint
                     ShipCannonRangeMultiplier = g.Cooldowns.ShipCannonRangeMultiplier,
                     ShipCannonDamageMultiplier = g.Cooldowns.ShipCannonDamageMultiplier,
                     SoulEaterAbilityMultiplier  = g.Cooldowns.SoulEaterAbilityMultiplier,
+                    SoulHarvestDamageMultiplier = g.Cooldowns.SoulHarvestDamageMultiplier,
+                    SoulHarvestRadiusMultiplier = g.Cooldowns.SoulHarvestRadiusMultiplier,
+                    ShipBoardingRangeMultiplier = g.Cooldowns.ShipBoardingRangeMultiplier,
+                    ShipBoardingAimMultiplier   = g.Cooldowns.ShipBoardingAimMultiplier,
+                    ShipBoardingAngleMultiplier = g.Cooldowns.ShipBoardingAngleMultiplier,
+                    ShipBoardingSpeedMultiplier = g.Cooldowns.ShipBoardingSpeedMultiplier,
                     FoodBuffDurationMultiplier  = g.Cooldowns.FoodBuffDurationMultiplier,
                 },
             ProductionTimes = g.ProductionTimes == null

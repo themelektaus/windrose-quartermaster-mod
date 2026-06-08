@@ -37,6 +37,7 @@ namespace Windrose.Quartermaster.Core
         public BonfireRadiusResult BonfireResult;
         public PickaxeRangeResult PickaxeRangeResult;
         public CannonDamageResult CannonDamageResult;
+        public ShipBoardingResult ShipBoardingResult;
         public CooldownsResult CooldownsResult;
         public ShipMusicResult ShipMusicResult;
         public ShipMusicAddResult ShipMusicAddResult;
@@ -205,6 +206,19 @@ namespace Windrose.Quartermaster.Core
         public string UtocPath;
     }
 
+    public sealed class ShipBoardingResult
+    {
+        public bool Enabled;
+        public double RangeMultiplier;
+        public double AimMultiplier;
+        public double AngleMultiplier;
+        public double SpeedMultiplier;
+        public List<ShipBoardingPatchResult> AssetResults;
+        public string PakPath;
+        public string UcasPath;
+        public string UtocPath;
+    }
+
     public sealed class LightingJob
     {
         public LightingPatcher.LightInfo Info;
@@ -244,6 +258,7 @@ namespace Windrose.Quartermaster.Core
         RangedReload,
         WeaponAbilityCurve,
         FoodDurationCurve,
+        SoulHarvestRadius,
     }
 
     public sealed class CooldownJob
