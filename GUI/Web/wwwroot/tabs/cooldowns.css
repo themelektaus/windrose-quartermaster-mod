@@ -1,3 +1,17 @@
-/* Cooldowns + station-time tab: reuses the misc control-panel layout
-   (.tab-page.misc-page selector group in misc.css) and the shared
-   .mult-pill / .mult-readout value badges from app.css. */
+.tab-page[data-tab="cooldowns"] .pane {
+  flex: 1;
+  min-width: 0;
+  align-self: start;
+  max-width: 100em;
+  margin-inline: auto;
+  padding: 1em;
+
+  display: block;
+  columns: 2;
+  column-gap: 1em;
+
+  > .card {
+    break-inside: avoid;
+    margin: 0 0 1em;
+  }
+}
