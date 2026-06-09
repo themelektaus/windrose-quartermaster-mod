@@ -110,6 +110,11 @@ A profile bundles tweaks across multiple domains:
   own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio), add extra
   tracks alongside the vanilla 10, tune per-track volume, exclude single
   slots
+- **Keep Shanties Playing** - a Basic-tab toggle that stops the crew
+  shanty from cutting out when you step off the ship's wheel (vanilla
+  silences it the moment you leave the helm); at the helm B still
+  starts / stops it as usual. Backed by the same companion DLL, deployed
+  next to the pak automatically (no mod loader). Singleplayer only
 - **Profile import/export** - profiles serialize to a single JSON (audio
   files travel as a ZIP); drag and drop on the GUI to import, with
   overwrite confirmation on id conflicts
@@ -121,10 +126,11 @@ Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-Windows.pak` for a client install, or
 `pakchunk0-WindowsServer.pak` for a dedicated server). The resulting
 pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
-dedicated server / co-op alike. The two exceptions are the Weather
-Control use-effect and XP for Kills, which Quartermaster backs with a
-small companion DLL it deploys next to the pak automatically - still
-nothing for you to install and no separate mod loader.
+dedicated server / co-op alike. The three exceptions are the Weather
+Control use-effect, XP for Kills and Keep Shanties Playing, which
+Quartermaster backs with a small companion DLL it deploys next to the
+pak automatically - still nothing for you to install and no separate mod
+loader. (Keep Shanties Playing is singleplayer only.)
 
 ---
 
@@ -275,7 +281,7 @@ icon to clone an existing one. For each profile you can:
   range, building rotation (finer 1 / 5 / 10 degree steps), NPC spawns,
   on-death loot / status retention, player stats (Health / Stamina),
   crop overlap, deposit visuals, overall light radius,
-  overall ship speed, no-smoke FX, equipment slots
+  overall ship speed, no-smoke FX, keep shanties playing, equipment slots
   (ring / necklace) and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
   is enabled. A **UI Scale** card additionally writes the global
