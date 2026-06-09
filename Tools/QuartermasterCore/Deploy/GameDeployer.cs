@@ -213,6 +213,80 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
+        // Per-profile XP-for-kills sidecar. Mirrors qm_weather_<profile>.txt: the DLL
+        // globs qm_killxp_onkill*.txt and merges every profile's mappings (max wins on
+        // a key collision), so two deployed profiles coexist. The trailing underscore
+        // matches the qm_killxp_onkill_*.txt glob below (a manual qm_killxp_onkill.txt
+        // has no underscore there, so it is not deployer-managed).
+        public string TargetProfileKillXpPath(string profileSafeName)
+        {
+            if (string.IsNullOrEmpty(profileSafeName))
+                throw new ArgumentNullException(nameof(profileSafeName));
+            return Path.Combine(_gameWin64Dir, "qm_killxp_onkill_" + profileSafeName + ".txt");
+        }
+
+        // All deployed per-profile XP-for-kills sidecars. Used for DLL-idle detection
+        // (this is a DLL-only feature, no pak, so a deployed file keeps the DLL alive).
+        public IList<string> EnumerateProfileKillXpPaths()
+        {
+            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
+            return Directory.GetFiles(_gameWin64Dir, "qm_killxp_onkill_*.txt", SearchOption.TopDirectoryOnly);
+        }
+
+        // Writes "default=N" + one "<keyword>=N" line per entry into this profile's
+        // qm_killxp_onkill_<profile>.txt. The DLL parses it once at startup and grants
+        // the flat XP on each enemy kill (longest matching keyword wins; default for
+        // unmatched). Inactive (defaultXp <= 0 AND no keywords) removes only THIS
+        // profile's file - other profiles' files are untouched. Values clamped to the
+        // DLL-accepted 0..1000000; keys carrying '=' are dropped (would break parsing).
+        public void WriteKillXpConfig(string profileSafeName, int defaultXp, IDictionary<string, int> keywords)
+        {
+            var path = TargetProfileKillXpPath(profileSafeName);
+
+            int def = defaultXp < 0 ? 0 : (defaultXp > 1000000 ? 1000000 : defaultXp);
+            var clean = new List<KeyValuePair<string, int>>();
+            if (keywords != null)
+            {
+                foreach (var kv in keywords)
+                {
+                    var key = kv.Key?.Trim();
+                    if (string.IsNullOrEmpty(key) || key.IndexOf('=') >= 0) continue;
+                    int v = kv.Value < 0 ? 0 : (kv.Value > 1000000 ? 1000000 : kv.Value);
+                    clean.Add(new KeyValuePair<string, int>(key, v));
+                }
+                clean.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
+            }
+
+            // A keyword pinned to 0 only matters as an explicit suppress when there
+            // is a positive default to suppress; with default 0 it grants nothing and
+            // is noise. So "active" mirrors ResolveKillXpConfig: default > 0 OR any
+            // keyword > 0. (Zero-value keywords are still written when active, so an
+            // explicit "this enemy gives 0 despite the default" survives.)
+            bool active = def > 0 || clean.Exists(kv => kv.Value > 0);
+            if (!active)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_killxp_onkill_" + profileSafeName + ".txt (XP for Kills off) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("# Quartermaster XP-for-kills config (auto-generated).\n");
+            sb.Append("# default=N    : flat XP for any enemy not matched below (0 = vanilla).\n");
+            sb.Append("# <keyword>=N  : flat XP for any pawn whose class name contains <keyword>\n");
+            sb.Append("#               (case-insensitive substring; longest matching keyword wins).\n");
+            sb.Append("default=").Append(def).Append('\n');
+            foreach (var kv in clean)
+                sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
+
+            LogLine("Writing qm_killxp_onkill_" + profileSafeName + ".txt (default=" + def
+                    + ", " + clean.Count + " keyword(s)) -> " + path);
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        }
+
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)
         {
             if (!Directory.Exists(_gameWin64Dir)) return false;
@@ -223,6 +297,10 @@ namespace Windrose.Quartermaster.Core.Deploy
             // Any deployed profile's qm_weather_*.txt (or a legacy
             // qm_weather_trigger.txt) keeps the DLL alive.
             if (EnumerateProfileWeatherTriggerPaths().Count > 0) return false;
+
+            // XP for Kills is DLL-only (no pak): any deployed qm_killxp_onkill_*.txt
+            // keeps the DLL alive too.
+            if (EnumerateProfileKillXpPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
             var targetMarker = TargetDllMarkerPath();
@@ -307,6 +385,11 @@ namespace Windrose.Quartermaster.Core.Deploy
             foreach (var weatherPath in EnumerateProfileWeatherTriggerPaths())
             {
                 TryDelete(weatherPath, result);
+            }
+            // Per-profile qm_killxp_onkill_<profile>.txt (XP for Kills sidecars).
+            foreach (var killXpPath in EnumerateProfileKillXpPaths())
+            {
+                TryDelete(killXpPath, result);
             }
             TryDelete(TargetDllPath(),       result);
             TryDelete(TargetDllMarkerPath(), result);

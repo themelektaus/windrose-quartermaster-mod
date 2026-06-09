@@ -296,7 +296,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'leveling', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'killxp', 'leveling', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -842,6 +842,7 @@ function applyProfileToUI() {
     applyLightingToUI();
     applyShipSpeedToUI();
     applyXpRewardToUI();
+    applyKillXpToUI();
     applyLevelingToUI();
     syncStackSizeInputsState();
     syncPickupInputState();
@@ -1151,7 +1152,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
-        'shipSpeed', 'xpReward', 'levelingRework',
+        'shipSpeed', 'xpReward', 'killXp', 'levelingRework',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
@@ -1313,6 +1314,17 @@ function levelingTabHasMods() {
     if (lr.overrides && Object.keys(lr.overrides).length > 0) return true;
     return false;
 }
+// XP for Kills: a positive default XP, or any pinned per-enemy keyword (a pin can
+// be 0 = "explicitly no XP", still a real change). The global is pruned to drop
+// empty content, so any surviving killXp node is real.
+function killXpTabHasMods() {
+    const g = (state.current && state.current.globals) || null;
+    const kx = g && g.killXp;
+    if (!kx) return false;
+    if (typeof kx.defaultXp === 'number' && kx.defaultXp > 0) return true;
+    if (kx.keywords && Object.keys(kx.keywords).length > 0) return true;
+    return false;
+}
 
 // Registry of tab -> predicate. Tabs absent here (mods, characters) never
 // modify the profile, so they never receive the indicator.
@@ -1330,6 +1342,7 @@ const TAB_MOD_CHECKS = {
     lighting: lightingTabHasMods,
     shipspeed: shipSpeedTabHasMods,
     xpreward: xpRewardTabHasMods,
+    killxp: killXpTabHasMods,
     leveling: levelingTabHasMods,
 };
 
@@ -2219,6 +2232,7 @@ function bindHandlers() {
     bindLightingHandlers();
     bindShipSpeedHandlers();
     bindXpRewardHandlers();
+    bindKillXpHandlers();
     bindLevelingHandlers();
     bindCharactersHandlers();
 }

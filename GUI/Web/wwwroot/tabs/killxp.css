@@ -1,0 +1,138 @@
+.tab-page[data-tab="killxp"] {
+  &:not([hidden]) {
+    display: flex;
+  }
+  flex-direction: row;
+  gap: 0;
+  align-items: stretch;
+  overflow: hidden;
+
+  .killxp-sidebar {
+    flex: 0 0 28em;
+    border-right: 1px solid var(--border);
+    padding: 2em 1.5em;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5em;
+    background: var(--bg-elev);
+
+    .killxp-overall-card {
+      display: flex;
+      flex-direction: column;
+      gap: 1em;
+      padding: 1.5em;
+
+      h2 {
+        margin: 0;
+        text-transform: unset;
+        color: var(--text);
+      }
+
+      .pickup-slider {
+        display: flex;
+        align-items: center;
+        gap: .75em;
+
+        input[type="range"] {
+          flex: 1;
+        }
+      }
+    }
+
+    .killxp-overall-actions {
+      margin-top: .5em;
+    }
+  }
+
+  .killxp-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2em 2em 4em;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5em;
+
+    .killxp-header {
+      h2 {
+        margin: 0 0 .25em;
+        text-transform: unset;
+      }
+      .hint {
+        margin: 0 0 .75em;
+      }
+      .killxp-search {
+        width: 100%;
+        max-width: 28em;
+        padding: .5em .75em;
+      }
+    }
+
+    .killxp-list {
+      display: flex;
+      flex-direction: column;
+      gap: .75em;
+    }
+
+    .killxp-empty {
+      color: var(--text-dim);
+      padding: 1em 0;
+    }
+
+    .killxp-cat-title {
+      margin: 1em 0 .25em;
+      font-weight: bold;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: var(--font-size-small);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: .35em;
+    }
+    .killxp-cat-title:first-child {
+      margin-top: 0;
+    }
+
+    .killxp-row {
+      display: grid;
+      grid-template-columns: 15em 13em 6em 1fr 4.5em;
+      align-items: center;
+      gap: 1em;
+      padding: .75em 1.25em;
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--border-radius);
+
+      .killxp-row-name {
+        font-weight: bold;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .killxp-row-kw {
+        color: var(--text-dim);
+        font-size: var(--font-size-small);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .killxp-row-input input[type="number"] {
+        width: 100%;
+        padding: .3em .4em;
+      }
+      .killxp-row-readout {
+        color: var(--text-dim);
+        text-align: right;
+        font-size: var(--font-size-small);
+      }
+      .killxp-row-readout.is-following {
+        opacity: .6;
+      }
+      .killxp-row-reset {
+        font-size: var(--font-size-small);
+        padding: .25em .5em;
+      }
+    }
+  }
+}

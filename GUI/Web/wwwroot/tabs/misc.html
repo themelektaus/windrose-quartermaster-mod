@@ -436,6 +436,24 @@
 
     <section class="card">
       <div class="card-icon">
+        <div data-icon style="background-image: url(boar-fight.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>XP for Kills</h2>
+        <p class="hint">
+          Grants flat XP on every enemy kill.
+          This sets the default for any enemy; open the XP for Kills tab for
+          per-enemy amounts. 0 = off (vanilla).
+        </p>
+        <div class="pickup-slider">
+          <input type="range" id="killxp-default" min="0" max="100" step="1" value="0">
+          <span class="mult-pill" id="killxp-default-value">off</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
         <div data-icon style="background-image: url(skill-tree.png); "></div>
       </div>
       <div class="card-content">

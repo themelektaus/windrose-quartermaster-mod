@@ -114,6 +114,15 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
+[size=4][b]XP for Kills[/b][/size]
+[color=#b6b6b6]Grant flat XP on every enemy kill - awarded through the game's own level-up logic, so it sticks in your save exactly like a quest reward (points, level-ups and the on-screen notification, not just a number). A slider on the Basic tab sets the default XP for any enemy (0 to 100, where 0 = off / vanilla, no XP on kill); a dedicated XP for Kills tab lists every vanilla enemy type (generated from the game pak) so you can pin a per-enemy amount. A broad keyword like "Mob_Boar" covers all its variants through substring matching, and a more specific row wins. No mod loader needed - Quartermaster deploys the small companion DLL next to the pak automatically.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/XP-for-Kills.png[/img]
+
+
+
+
+
 [size=4][b]NPC Spawns[/b][/size]
 [color=#b6b6b6]Global multipliers for enemy spawn counts (1.0x to 4.0x on each spawner's Min/Max) and respawn time (0.1x to 2.0x), applied to NPC / enemy spawners only - resource, chest and mineral-node spawners are left alone. Optionally also speed up rare / boss timers. A dedicated NPC Spawns tab lets you override individual spawners (respawn minutes, count min/max) on top of the global values.[/color]
 

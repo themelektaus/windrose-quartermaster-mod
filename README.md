@@ -73,6 +73,14 @@ A profile bundles tweaks across multiple domains:
   overrides on a dedicated tab. New characters get the bigger rewards as
   they level; the Characters tab retro-fits the totals onto existing
   saves (bidirectional - lowering the multiplier patches back down too)
+- **XP for Kills** - grant flat, persistent XP on every enemy kill,
+  awarded through the game's own level-up logic (points + level-ups +
+  on-screen notification, like a quest reward). A Basic-tab slider sets
+  the default XP per kill (0-100, 0 = off / vanilla); a dedicated tab
+  lists every vanilla enemy type (generated from the game pak) for
+  per-enemy amounts, with broad keyword matching (e.g. `Mob_Boar` covers
+  all Boar variants, a more specific row wins). Backed by the same
+  companion DLL, deployed next to the pak automatically (no mod loader)
 - **NPC spawns** - global multipliers for enemy spawn counts (1.0-4.0x)
   and respawn time (0.1-2.0x) on NPC / enemy spawners only, with optional
   per-spawner overrides; resource / chest / mineral-node spawners untouched
@@ -113,10 +121,10 @@ Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-Windows.pak` for a client install, or
 `pakchunk0-WindowsServer.pak` for a dedicated server). The resulting
 pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
-dedicated server / co-op alike. The one exception is the Weather Control
-use-effect, which Quartermaster backs with a small companion DLL it
-deploys next to the pak automatically - still nothing for you to install
-and no separate mod loader.
+dedicated server / co-op alike. The two exceptions are the Weather
+Control use-effect and XP for Kills, which Quartermaster backs with a
+small companion DLL it deploys next to the pak automatically - still
+nothing for you to install and no separate mod loader.
 
 ---
 
@@ -295,6 +303,14 @@ icon to clone an existing one. For each profile you can:
   reward for any individual level. Lean vanilla levels (0-1 points) get
   the multiplier added rather than scaled; the level-1 starting row is
   never touched.
+- **XP for Kills tab** - one row per vanilla enemy type, generated from
+  the game pak, where you pin a flat XP amount per kill; an empty row
+  follows the Basic-tab default. Keys are substring keywords, so a broad
+  `Mob_Boar` covers every Boar variant while a more specific row wins.
+  The default itself sits on the Basic-tab card (and mirrored here in the
+  sidebar), 0-100 with 0 = off / vanilla. Granted XP is real and
+  persistent (the companion DLL routes it through the game's own level-up
+  logic), so it survives save + reload like any quest reward.
 - **Characters tab** - a save patcher that retro-fits the profile's
   equipment-slot counts, ship cargo / combat-order slots and level-
   rewards point totals onto characters / ships already in your save (the

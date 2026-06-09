@@ -48,6 +48,7 @@ namespace Windrose.Quartermaster.Core
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
         public XpRewardGlobal XpReward;
+        public KillXpGlobal KillXp;
         public LevelingReworkGlobal LevelingRework;
         public NpcSpawnGlobal NpcSpawn;
         public DepositVisualGlobal DepositVisual;
@@ -335,6 +336,21 @@ namespace Windrose.Quartermaster.Core
         public double? QuestMultiplier;
         public double? PoiMultiplier;
         public Dictionary<string, double> Overrides;
+    }
+
+    // "XP for Kills": grants flat XP on every enemy kill via the dxgi DLL
+    // (qm_killxp) - NOT a pak feature, so this only drives a per-profile sidecar
+    // (qm_killxp_onkill_<profile>.txt) next to dxgi.dll, mirroring Weather Control.
+    // DefaultXp is the flat XP for any enemy not matched by a keyword (0/absent =
+    // vanilla, no grant). Keywords maps a case-insensitive substring of the killed
+    // pawn's runtime UClass name to a flat XP amount; the DLL applies the LONGEST
+    // matching keyword (so "Mob_Boar" covers every Boar variant, a longer
+    // "Mob_Boar_Mega" overrides it). A keyword absent from the map follows DefaultXp.
+    // No-op (vanilla) iff DefaultXp is 0/absent AND Keywords is empty.
+    public sealed class KillXpGlobal
+    {
+        public int? DefaultXp;
+        public Dictionary<string, int> Keywords;
     }
 
     // "Level Rewards": HYBRID multipliers on the per-level reward table

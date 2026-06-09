@@ -134,6 +134,7 @@ public static class Program
         LootTablesEndpoint.Map(app, resolvedRoot);
         NpcSpawnersEndpoint.Map(app, resolvedRoot);
         XpRewardsEndpoint.Map(app, resolvedRoot);
+        KillXpEndpoint.Map(app, resolvedRoot);
         LevelingEndpoint.Map(app, resolvedRoot);
         BuyersEndpoint.Map(app, resolvedRoot);
         SellersEndpoint.Map(app, resolvedRoot);

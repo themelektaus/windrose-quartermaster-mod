@@ -470,8 +470,12 @@ namespace Windrose.Quartermaster.Core
                 bool iconsActive = iconBakeJobs.Count > 0;
                 var weatherControlIds = ResolveWeatherControlIds(profile);
                 bool weatherControlsActive = weatherControlIds.Count > 0;
+                // XP for Kills is DLL-only (no pak content): it never contributes to
+                // the IoStore composite, only to the DLL + per-profile sidecar deploy.
+                var killXpCfg = ResolveKillXpConfig(profile);
+                bool killXpActive = killXpCfg.Active;
                 bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cannonDamageActive || shipBoardingActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
-                if (totalWritten == 0 && !ioStoreActive)
+                if (totalWritten == 0 && !ioStoreActive && !killXpActive)
                 {
                     // Surface which fields are missing when all buildings were
                     // skeleton-filtered, instead of a generic "no changes".
@@ -614,11 +618,12 @@ namespace Windrose.Quartermaster.Core
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
                 var weatherClones = weatherControlResult != null ? weatherControlResult.Clones : null;
                 bool weatherDeployActive = weatherClones != null && weatherClones.Count > 0;
-                if (buildingsCount > 0 || weatherDeployActive)
+                if (buildingsCount > 0 || weatherDeployActive || killXpActive)
                 {
                     LogLine("Deploying DLL to game Binaries/Win64"
                             + (buildingsCount > 0 ? " + qm_items_" + safeName + ".json" : "")
-                            + (weatherDeployActive ? " + qm_weather_trigger.txt (" + weatherClones.Count + " weather)" : ""));
+                            + (weatherDeployActive ? " + qm_weather_trigger.txt (" + weatherClones.Count + " weather)" : "")
+                            + (killXpActive ? " + qm_killxp_onkill_" + safeName + ".txt" : ""));
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
                     // EnsureDllInstalled returns false on non-Windows; skip the
@@ -628,12 +633,13 @@ namespace Windrose.Quartermaster.Core
                         // Empty list deletes this profile's building JSON.
                         deployer.WriteItemsJson(safeName, buildingResults ?? new List<BuildingPatchResult>());
                         deployer.WriteWeatherTriggerConfig(safeName, weatherClones);
+                        deployer.WriteKillXpConfig(safeName, killXpCfg.DefaultXp, killXpCfg.Keywords);
                     }
                 }
                 else
                 {
-                    // No buildings and no weather now: if the DLL was previously
-                    // deployed, delete this profile's JSON + the weather trigger so
+                    // No buildings, no weather, no kill-XP now: if the DLL was
+                    // previously deployed, delete this profile's JSON + sidecars so
                     // they stop affecting the game. Never touch the folder if no DLL.
                     try
                     {
@@ -641,11 +647,12 @@ namespace Windrose.Quartermaster.Core
                         deployer.Log = Log;
                         if (File.Exists(deployer.TargetDllPath()))
                         {
-                            // Null removes only THIS profile's JSON + weather file;
+                            // Null/0 removes only THIS profile's JSON + sidecars;
                             // other deployed profiles' sidecars stay, so the DLL is
                             // kept whenever any of them still need it.
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
                             deployer.WriteWeatherTriggerConfig(safeName, null);
+                            deployer.WriteKillXpConfig(safeName, 0, null);
                             deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }
@@ -2481,6 +2488,42 @@ namespace Windrose.Quartermaster.Core
                 if (seen.Add(id)) ids.Add(id);
             }
             return ids;
+        }
+
+        // Resolves the per-profile XP-for-kills sidecar config from globals.killXp.
+        // DefaultXp/Keywords are passed straight to GameDeployer.WriteKillXpConfig
+        // (which clamps + drops bad keys). Active iff DefaultXp > 0 OR >=1 keyword
+        // with a positive amount - so a default-0 profile with no keywords is vanilla.
+        sealed class KillXpDeployConfig
+        {
+            public int DefaultXp;
+            public Dictionary<string, int> Keywords;
+            public bool Active;
+        }
+
+        static KillXpDeployConfig ResolveKillXpConfig(Profile profile)
+        {
+            var cfg = new KillXpDeployConfig { DefaultXp = 0, Keywords = new Dictionary<string, int>() };
+            var kx = profile?.Globals?.KillXp;
+            if (kx == null) return cfg;
+
+            if (kx.DefaultXp.HasValue && kx.DefaultXp.Value > 0)
+                cfg.DefaultXp = kx.DefaultXp.Value;
+
+            if (kx.Keywords != null)
+            {
+                foreach (var pair in kx.Keywords)
+                {
+                    var key = pair.Key?.Trim();
+                    if (string.IsNullOrEmpty(key)) continue;
+                    cfg.Keywords[key] = pair.Value;
+                }
+            }
+
+            bool anyPositiveKeyword = false;
+            foreach (var v in cfg.Keywords.Values) if (v > 0) { anyPositiveKeyword = true; break; }
+            cfg.Active = cfg.DefaultXp > 0 || anyPositiveKeyword;
+            return cfg;
         }
 
         static int CountBuildableBuildings(Profile profile)

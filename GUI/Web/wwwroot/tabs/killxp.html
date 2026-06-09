@@ -1,0 +1,44 @@
+<div class="tab-page killxp-page" data-tab="killxp">
+  <aside class="pane killxp-sidebar">
+    <section class="card killxp-overall-card">
+      <h2>Default XP per kill</h2>
+      <p class="hint">
+        Flat XP granted for any enemy that has no per-enemy value below.
+        0 = off (vanilla, no XP on kill). Mirrors the Basic tab card.
+      </p>
+      <div class="pickup-slider">
+        <input type="range" id="killxp-overall" min="0" max="100" step="1" value="0">
+        <span class="mult-pill" id="killxp-overall-value">off</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="hint">
+        Grants real, persistent XP on every enemy kill through the game's own
+        level-up logic (needs the Quartermaster DLL - deployed automatically on
+        Build). Per-enemy values below override the default; an empty row follows
+        the default.
+      </p>
+      <div class="killxp-overall-actions">
+        <button type="button" id="killxp-reset-all" class="warn">
+          Clear all per-enemy values
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <main class="killxp-main">
+    <header class="killxp-header">
+      <h2>Per-enemy XP</h2>
+      <p class="hint">
+        One row per vanilla enemy type, generated from the game pak. Set a flat XP
+        amount for a type, or leave it empty to follow the default. A broader
+        keyword (e.g. "Mob_Boar") also covers its variants through substring
+        matching; a more specific row wins.
+      </p>
+      <input type="search" id="killxp-search" class="killxp-search"
+             placeholder="Filter by name, keyword or category...">
+    </header>
+    <div id="killxp-list" class="killxp-list"></div>
+  </main>
+</div>
