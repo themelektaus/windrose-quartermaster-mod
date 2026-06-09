@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "note": "XP-for-kills keyword catalog. The DLL matches a keyword case-insensitively as a substring of the killed pawn's runtime UClass FName; longest match wins. Put keyword=XP lines in qm_killxp_onkill_<profile>.txt; default=0 is vanilla. overMatches are non-pawn actors the substring also hits - harmless, they are never kill victims, listed only for transparency.",
+  "keywords": [
+    {
+      "keyword": "Mob_Boar",
+      "label": "Boar (all variants)",
+      "category": "Wildlife",
+      "suggestedXp": 5,
+      "matchesPawns": [
+        "BP_Mob_BoarF_C",
+        "BP_Mob_Boar_C",
+        "BP_Mob_Boar_Charger_C",
+        "BP_Mob_Boar_Mega_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Boar_FriendLvl2_C",
+        "BP_Mob_Boar_Friend_C"
+      ]
+    },
+    {
+      "keyword": "Mob_Boar_Mega",
+      "label": "Boar - Mega",
+      "category": "Wildlife",
+      "suggestedXp": 25,
+      "matchesPawns": [
+        "BP_Mob_Boar_Mega_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Boar_Charger",
+      "label": "Boar - Charger",
+      "category": "Wildlife",
+      "suggestedXp": 10,
+      "matchesPawns": [
+        "BP_Mob_Boar_Charger_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Dodo",
+      "label": "Dodo (all variants)",
+      "category": "Wildlife",
+      "suggestedXp": 3,
+      "matchesPawns": [
+        "BP_Mob_DodoF_C",
+        "BP_Mob_Dodo_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Wolf",
+      "label": "Wolf",
+      "category": "Wildlife",
+      "suggestedXp": 8,
+      "matchesPawns": [
+        "BP_Mob_Wolf_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_AlphaWolf",
+      "label": "Wolf - Alpha",
+      "category": "Wildlife",
+      "suggestedXp": 30,
+      "matchesPawns": [
+        "BP_Mob_AlphaWolf_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Goat",
+      "label": "Goat (all variants)",
+      "category": "Wildlife",
+      "suggestedXp": 6,
+      "matchesPawns": [
+        "BP_Mob_GoatF_C",
+        "BP_Mob_GoatM_C",
+        "BP_Mob_GoatMega_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_GoatMega",
+      "label": "Goat - Mega",
+      "category": "Wildlife",
+      "suggestedXp": 25,
+      "matchesPawns": [
+        "BP_Mob_GoatMega_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Crocodile",
+      "label": "Crocodile (all variants)",
+      "category": "Wildlife",
+      "suggestedXp": 15,
+      "matchesPawns": [
+        "BP_Mob_CrocodileCorrupted_C",
+        "BP_Mob_Crocodile_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_CrocodileCorrupted_ForQuest_JokesOfGod_C"
+      ],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_CrocodileCorrupted",
+      "label": "Crocodile - Corrupted",
+      "category": "Wildlife",
+      "suggestedXp": 35,
+      "matchesPawns": [
+        "BP_Mob_CrocodileCorrupted_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_CrocodileCorrupted_ForQuest_JokesOfGod_C"
+      ],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Crab",
+      "label": "Drowned Crab",
+      "category": "Wildlife",
+      "suggestedXp": 12,
+      "matchesPawns": [
+        "BP_Mob_Crab_Drowned_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Zombie",
+      "label": "Zombie",
+      "category": "Undead",
+      "suggestedXp": 10,
+      "matchesPawns": [
+        "BP_Mob_Zombie_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Mob_Drowned",
+      "label": "Drowned (all humanoids)",
+      "category": "Undead",
+      "suggestedXp": 12,
+      "matchesPawns": [
+        "BP_Mob_Drowned_Armored_C",
+        "BP_Mob_Drowned_Naked_C",
+        "BP_Mob_Drowned_Spitter_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Drowned_Armored_AITesMap_C",
+        "BP_Mob_Drowned_Armored_Gamescom_C",
+        "BP_Mob_Drowned_Naked_AITestMap_C",
+        "BP_Mob_Drowned_Naked_Gamescom_C",
+        "BP_Mob_Drowned_Spitter_ChannelingBeam_Puddle_C",
+        "BP_Mob_Drowned_Throw_Projectile_C"
+      ]
+    },
+    {
+      "keyword": "Drowned_Naked",
+      "label": "Drowned - Naked",
+      "category": "Undead",
+      "suggestedXp": 10,
+      "matchesPawns": [
+        "BP_Mob_Drowned_Naked_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Drowned_Naked_AITestMap_C",
+        "BP_Mob_Drowned_Naked_Gamescom_C"
+      ]
+    },
+    {
+      "keyword": "Drowned_Armored",
+      "label": "Drowned - Armored",
+      "category": "Undead",
+      "suggestedXp": 18,
+      "matchesPawns": [
+        "BP_Mob_Drowned_Armored_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Drowned_Armored_AITesMap_C",
+        "BP_Mob_Drowned_Armored_Gamescom_C"
+      ]
+    },
+    {
+      "keyword": "Drowned_Spitter",
+      "label": "Drowned - Spitter",
+      "category": "Undead",
+      "suggestedXp": 20,
+      "matchesPawns": [
+        "BP_Mob_Drowned_Spitter_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_AIController_Drowned_Spitter_C",
+        "BP_Mob_Drowned_Spitter_ChannelingBeam_Puddle_C"
+      ]
+    },
+    {
+      "keyword": "Mob_BlackBeard",
+      "label": "Blackbeard (all regulars)",
+      "category": "Blackbeard",
+      "suggestedXp": 10,
+      "matchesPawns": [
+        "BP_Mob_BlackBeard_Regular_Musketeer_C",
+        "BP_Mob_BlackBeard_Regular_Sailor_C",
+        "BP_Mob_BlackBeard_Regular_Sergeant_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_BlackBeard_Regular_Musketeer_ForQuest_JimGodart_C",
+        "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_01_C",
+        "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_02_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_ForQuest_EddieLowe_C"
+      ],
+      "overMatches": [
+        "BP_Mob_BlackBeard_Regular_BaseActor_C",
+        "BP_Mob_BlackBeard_Regular_Sailor_Onboarding_C",
+        "BP_Mob_BlackBeard_Regular_Sergeant_BlackMarks_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_BombThrow_AoEZone_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_BombThrow_SimpleProjectile_C"
+      ]
+    },
+    {
+      "keyword": "Regular_Sailor",
+      "label": "Blackbeard - Sailor",
+      "category": "Blackbeard",
+      "suggestedXp": 8,
+      "matchesPawns": [
+        "BP_Mob_BlackBeard_Regular_Sailor_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_AIController_Blackbeard_Regular_Sailor_C",
+        "BP_Mob_BlackBeard_Regular_Sailor_Onboarding_C"
+      ]
+    },
+    {
+      "keyword": "Regular_Musketeer",
+      "label": "Blackbeard - Musketeer",
+      "category": "Blackbeard",
+      "suggestedXp": 12,
+      "matchesPawns": [
+        "BP_Mob_BlackBeard_Regular_Musketeer_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_BlackBeard_Regular_Musketeer_ForQuest_JimGodart_C"
+      ],
+      "overMatches": [
+        "BP_Mob_AIController_Blackbeard_Regular_Musketeer_C"
+      ]
+    },
+    {
+      "keyword": "Regular_Sergeant",
+      "label": "Blackbeard - Sergeant",
+      "category": "Blackbeard",
+      "suggestedXp": 15,
+      "matchesPawns": [
+        "BP_Mob_BlackBeard_Regular_Sergeant_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_01_C",
+        "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_02_C"
+      ],
+      "overMatches": [
+        "BP_Mob_BlackBeard_Regular_Sergeant_BlackMarks_C"
+      ]
+    },
+    {
+      "keyword": "Regular_Grenadier",
+      "label": "Blackbeard - Grenadier",
+      "category": "Blackbeard",
+      "suggestedXp": 15,
+      "matchesPawns": [
+        "BP_Mob_Blackbeard_Regular_Grenadier_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_Blackbeard_Regular_Grenadier_ForQuest_EddieLowe_C"
+      ],
+      "overMatches": [
+        "BP_Mob_AIController_Blackbeard_Regular_Grenadier_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_BombThrow_AoEZone_C",
+        "BP_Mob_Blackbeard_Regular_Grenadier_BombThrow_SimpleProjectile_C"
+      ]
+    },
+    {
+      "keyword": "Officer_Blackbeard",
+      "label": "Officer - Blackbeard",
+      "category": "Officer",
+      "suggestedXp": 50,
+      "matchesPawns": [
+        "BP_Mob_Crew_Officer_Blackbeard_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Officer_Marlowe",
+      "label": "Officer - Marlowe",
+      "category": "Officer",
+      "suggestedXp": 50,
+      "matchesPawns": [
+        "BP_Mob_Crew_Officer_Marlowe_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Officer_SteedBonet",
+      "label": "Officer - Steed Bonet",
+      "category": "Officer",
+      "suggestedXp": 50,
+      "matchesPawns": [
+        "BP_Mob_Crew_Officer_SteedBonet_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Crew_Regular_Blackbeard",
+      "label": "Crew - Blackbeard Regular",
+      "category": "Officer",
+      "suggestedXp": 20,
+      "matchesPawns": [
+        "BP_Mob_Crew_Regular_Blackbeard_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "SenkamatiCorrupted",
+      "label": "Senkamati Corrupted (all)",
+      "category": "Senkamati",
+      "suggestedXp": 15,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Hunter_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Healer_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Warrior_C",
+        "BP_Mob_SenkamatiCorrupted_Thrall_C"
+      ],
+      "matchesQuestVariants": [
+        "BP_Mob_SenkamatiCorrupted_Giant_ForQuest_ChickChan_C"
+      ],
+      "overMatches": [
+        "BP_Mob_SenkamatiCorrupted_Giant_Base_C",
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_ZoneVisualizer_C",
+        "BP_Mob_SenkamatiCorrupted_MeleeWpn_Dart_C",
+        "BP_Mob_SenkamatiCorrupted_MeleeWpn_Macuahuitl_C",
+        "BP_Mob_SenkamatiCorrupted_RangeWpn_Dart_Projectile_C",
+        "BP_Mob_SenkamatiCorrupted_Reglar_Shaman_Caster_Totem_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Hunter_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_DeployTotem_Task_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_ReleaseProjectile_Projectile_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_Totem_ReleaseProjectile_LaunchSpline_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Healer_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Thrall_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Warrior_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_RockThrow_AoEZone_C"
+      ]
+    },
+    {
+      "keyword": "SenkamatiCorrupted_Thrall",
+      "label": "Senkamati - Thrall",
+      "category": "Senkamati",
+      "suggestedXp": 10,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Thrall_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    },
+    {
+      "keyword": "Regular_Warrior",
+      "label": "Senkamati - Warrior",
+      "category": "Senkamati",
+      "suggestedXp": 18,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Warrior_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Warrior_AIController_C"
+      ]
+    },
+    {
+      "keyword": "Regular_Hunter",
+      "label": "Senkamati - Hunter",
+      "category": "Senkamati",
+      "suggestedXp": 18,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Hunter_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Hunter_AIController_C"
+      ]
+    },
+    {
+      "keyword": "Shaman_Caster",
+      "label": "Senkamati - Shaman Caster",
+      "category": "Senkamati",
+      "suggestedXp": 22,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Regular_Shaman_Caster_GroundDamageZone_C",
+        "BP_Mob_SenkamatiCorrupted_Reglar_Shaman_Caster_Totem_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_DeployTotem_Task_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_ReleaseProjectile_Projectile_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_Totem_ReleaseProjectile_LaunchSpline_C"
+      ]
+    },
+    {
+      "keyword": "Shaman_Healer",
+      "label": "Senkamati - Shaman Healer",
+      "category": "Senkamati",
+      "suggestedXp": 22,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Healer_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_Regular_Shaman_Healer_HealWave_Ribbon_C",
+        "BP_Mob_Regular_Shaman_Healer_HealZone_C",
+        "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Healer_AIController_C"
+      ]
+    },
+    {
+      "keyword": "Giant_Shaker",
+      "label": "Senkamati - Giant Shaker",
+      "category": "Senkamati",
+      "suggestedXp": 60,
+      "matchesPawns": [
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": [
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_AIController_C",
+        "BP_Mob_SenkamatiCorrupted_Giant_Shaker_ZoneVisualizer_C"
+      ]
+    },
+    {
+      "keyword": "Giant_Abscess",
+      "label": "Giant - Abscess",
+      "category": "Giant",
+      "suggestedXp": 60,
+      "matchesPawns": [
+        "BP_Mob_Giant_Abscess_C"
+      ],
+      "matchesQuestVariants": [],
+      "overMatches": []
+    }
+  ],
+  "killablePawns": [
+    "BP_Mob_AlphaWolf_C",
+    "BP_Mob_BlackBeard_Regular_Musketeer_C",
+    "BP_Mob_BlackBeard_Regular_Sailor_C",
+    "BP_Mob_BlackBeard_Regular_Sergeant_C",
+    "BP_Mob_Blackbeard_Regular_Grenadier_C",
+    "BP_Mob_BoarF_C",
+    "BP_Mob_Boar_C",
+    "BP_Mob_Boar_Charger_C",
+    "BP_Mob_Boar_Mega_C",
+    "BP_Mob_Crab_Drowned_C",
+    "BP_Mob_Crew_Officer_Blackbeard_C",
+    "BP_Mob_Crew_Officer_Marlowe_C",
+    "BP_Mob_Crew_Officer_SteedBonet_C",
+    "BP_Mob_Crew_Regular_Blackbeard_C",
+    "BP_Mob_CrocodileCorrupted_C",
+    "BP_Mob_Crocodile_C",
+    "BP_Mob_DodoF_C",
+    "BP_Mob_Dodo_C",
+    "BP_Mob_Drowned_Armored_C",
+    "BP_Mob_Drowned_Naked_C",
+    "BP_Mob_Drowned_Spitter_C",
+    "BP_Mob_Giant_Abscess_C",
+    "BP_Mob_GoatF_C",
+    "BP_Mob_GoatM_C",
+    "BP_Mob_GoatMega_C",
+    "BP_Mob_SenkamatiCorrupted_Giant_Shaker_C",
+    "BP_Mob_SenkamatiCorrupted_Regular_Hunter_C",
+    "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Caster_C",
+    "BP_Mob_SenkamatiCorrupted_Regular_Shaman_Healer_C",
+    "BP_Mob_SenkamatiCorrupted_Regular_Warrior_C",
+    "BP_Mob_SenkamatiCorrupted_Thrall_C",
+    "BP_Mob_Wolf_C",
+    "BP_Mob_Zombie_C"
+  ],
+  "questVariants": [
+    "BP_Mob_BlackBeard_Regular_Musketeer_ForQuest_JimGodart_C",
+    "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_01_C",
+    "BP_Mob_BlackBeard_Regular_Sergeant_ForQuest_LostCargo_02_C",
+    "BP_Mob_Blackbeard_Regular_Grenadier_ForQuest_EddieLowe_C",
+    "BP_Mob_CrocodileCorrupted_ForQuest_JokesOfGod_C",
+    "BP_Mob_SenkamatiCorrupted_Giant_ForQuest_ChickChan_C"
+  ],
+  "uncoveredPawns": []
+}

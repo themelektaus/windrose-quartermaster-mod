@@ -21,11 +21,21 @@
 //
 // Triggers - each opt-in via a sentinel file next to dxgi.dll; no sentinel = zero
 // cost (the PE net-hook is not even installed):
-//   qm_killxp.txt                : arms the module (rides the global ProcessEvent
-//                                  net-hook; kill detection + the triggers below)
-//   qm_killxp_onkill.txt          : grant on every player kill. File content
-//                                  (optional) = XP per kill; default 500.
-//   qm_killxp_construct_grant.txt : one-shot manual test grant (rising-edge).
+//   qm_killxp.txt                  : arms the module (rides the global ProcessEvent
+//                                    net-hook; kill detection + the triggers below)
+//   qm_killxp_onkill_<profile>.txt : grant on every player kill, with per-enemy XP.
+//                                    Profile-bound like qm_weather_<profile>.txt, so
+//                                    multiple deployed profiles coexist (read ONCE at
+//                                    startup; max wins on a key collision). key=value:
+//                                      default=N    XP for unmatched enemies (0=vanilla)
+//                                      <keyword>=N  XP for any pawn whose class name
+//                                                   CONTAINS <keyword> (case-insensitive,
+//                                                   e.g. Mob_Boar matches BP_Mob_BoarF_C).
+//                                                   Longest matching keyword wins, so a
+//                                                   specific Mob_Boar_Mega overrides Mob_Boar.
+//                                    A bare number is read as default=N (legacy). Any
+//                                    such file present also arms the module on its own.
+//   qm_killxp_construct_grant.txt  : one-shot manual test grant (rising-edge).
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -160,12 +170,32 @@ namespace
     ULONGLONG     g_lastConstructGrantTry = 0;
     constexpr DWORD kGrantRetryMs = 3000;
 
-    // per-kill grant config (qm_killxp_onkill.txt; file content = XP per kill)
-    bool      g_onKillArmed       = false;
-    int32_t   g_onKillAmount      = kDefaultGrantAmount;
-    ULONGLONG g_lastOnKillRefresh = 0;
+    // per-kill grant config (parsed ONCE at startup from qm_killxp_onkill*.txt).
+    // Profile-bound like qm_weather_<profile>.txt: every deployed profile file
+    // contributes and the larger value wins on a key collision. key=value lines:
+    //   default=N        XP for any enemy not matched (0 = vanilla, no grant)
+    //   <keyword>=N      XP for any pawn whose class name CONTAINS <keyword>
+    //                    (case-insensitive substring, e.g. Mob_Boar -> BP_Mob_BoarF_C).
+    //                    The longest matching keyword wins, so a specific override
+    //                    (Mob_Boar_Mega) beats a family keyword (Mob_Boar).
+    // A file that is just a bare number is read as default=N (legacy compatible).
+    // 'kw' stores a pre-lowercased copy so the (rare, cache-miss) lookup is a plain
+    // case-sensitive strstr; the original-case spelling is not retained (only used for logs).
+    struct KxRewardEntry { char cls[96]; char kw[96]; int32_t xp; };
+    constexpr int kMaxRewards = 256;
+    KxRewardEntry g_rewards[kMaxRewards] = {};
+    int           g_rewardCount   = 0;
+    int32_t       g_defaultReward  = 0;       // 0 = vanilla (a kill grants nothing unless its class is listed)
+    bool          g_onKillArmed    = false;   // true iff >=1 qm_killxp_onkill*.txt contributed a value
+
+    // Class* -> resolved XP memo so the per-kill hot path is a pointer compare
+    // instead of an FName resolve + table walk. Direct-mapped; a collision just
+    // recomputes (benign). Config is read once at startup, so no invalidation.
+    struct KxClassXpMemo { void* cls; volatile int32_t xp; };
+    constexpr uint32_t kClsMemoMask = (1u << 10) - 1;   // 1024 slots
+    KxClassXpMemo g_clsXp[kClsMemoMask + 1] = {};
+
     ULONGLONG g_lastKillGrantTick = 0;
-    constexpr DWORD kOnKillRefreshMs     = 1500;   // re-read the sentinel/amount this often
     constexpr DWORD kKillGrantCooldownMs = 60;     // null-victim fallback: coalesce same-frame double-fires
 
     // Per-victim dedup for the OnPawnEnemyDead grant trigger. A single enemy death can
@@ -484,46 +514,167 @@ namespace
             g_constructGrantFired = 1;   // consume the rising edge only once it actually fired
     }
 
-    // Throttled re-read of qm_killxp_onkill.txt: presence = per-kill grant armed; file
-    // content (optional) = XP per kill (default kDefaultGrantAmount). Logs only on a
-    // state/amount change so editing the file live is visible without spamming.
-    void RefreshOnKillConfig()
+    // Lowercase-copy src into dst (truncating, always NUL-terminated).
+    void LowerCopy(char* dst, size_t dstSz, const char* src)
     {
-        if (!g_dllDir[0]) return;
-        ULONGLONG now = GetTickCount64();
-        if (g_lastOnKillRefresh != 0 && (now - g_lastOnKillRefresh) < kOnKillRefreshMs) return;
-        g_lastOnKillRefresh = now;
-
-        char path[MAX_PATH];
-        snprintf(path, sizeof(path), "%s\\qm_killxp_onkill.txt", g_dllDir);
-        DWORD attr = GetFileAttributesA(path);
-        bool armed = (attr != INVALID_FILE_ATTRIBUTES) && !(attr & FILE_ATTRIBUTE_DIRECTORY);
-
-        int32_t amount = kDefaultGrantAmount;
-        if (armed)
+        size_t i = 0;
+        for (; src[i] && i < dstSz - 1; ++i)
         {
-            HANDLE h = CreateFileA(path, GENERIC_READ,
-                                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-            if (h != INVALID_HANDLE_VALUE)
+            char c = src[i];
+            dst[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        }
+        dst[i] = '\0';
+    }
+
+    // Look up the XP reward for a killed pawn by its class name, memoized per Class*.
+    // A reward keyword matches if it is a (case-insensitive) substring of the class name;
+    // when several match, the LONGEST keyword wins (most specific override). Returns
+    // g_defaultReward for an unmatched (or unreadable) class. SEH-guarded.
+    int32_t LookupKillXp(QmUE::UObject* victim)
+    {
+        if (!victim) return g_defaultReward;
+        QmUE::UClass* cls = victim->Class;
+        if (!cls) return g_defaultReward;
+
+        KxClassXpMemo& s = g_clsXp[(((uintptr_t)cls) >> 4) & kClsMemoMask];
+        if (s.cls == cls) return s.xp;
+
+        int32_t xp = g_defaultReward;
+        char nm[96] = { 0 };
+        __try { QmUE::ResolveFNameNarrow(cls->Name, nm, sizeof(nm)); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { nm[0] = '\0'; }
+        if (nm[0])
+        {
+            char lc[96];
+            LowerCopy(lc, sizeof(lc), nm);
+            size_t bestLen = 0;
+            for (int i = 0; i < g_rewardCount; ++i)
             {
-                char buf[32] = { 0 }; DWORD rd = 0;
-                if (ReadFile(h, buf, sizeof(buf) - 1, &rd, nullptr) && rd > 0)
-                {
-                    buf[rd] = '\0';
-                    long v = strtol(buf, nullptr, 10);
-                    if (v > 0 && v <= 1000000) amount = (int32_t)v;   // empty/garbage -> default
-                }
-                CloseHandle(h);
+                size_t klen = strlen(g_rewards[i].kw);
+                if (klen > bestLen && strstr(lc, g_rewards[i].kw))
+                    { xp = g_rewards[i].xp; bestLen = klen; }   // longest match wins
             }
         }
 
-        if (armed != g_onKillArmed || amount != g_onKillAmount)
-            QM_LOG_INFO("[KillXP] on-kill grant %s (%d XP/kill)%s",
-                        armed ? "ARMED" : "disabled", amount,
-                        armed ? "" : " - create qm_killxp_onkill.txt to enable");
-        g_onKillArmed  = armed;
-        g_onKillAmount = amount;
+        s.xp  = xp;     // publish value before the key so a racing reader never sees a stale xp
+        s.cls = cls;
+        return xp;
+    }
+
+    // Parse one qm_killxp_onkill*.txt and merge its mappings into the reward table.
+    // Lines: "default=N", "<ClassName>=N", or a bare number (= default, legacy). '#'
+    // lines and blanks are ignored. On a key already present, the larger value wins
+    // (max), so two deployed profiles coexist order-independently. Returns the number
+    // of values applied.
+    int LoadOnKillFile(const char* path)
+    {
+        FILE* f = fopen(path, "rb");
+        if (!f) return 0;
+
+        int applied = 0;
+        char line[256];
+        while (fgets(line, sizeof(line), f))
+        {
+            char* p = line;
+            while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+            if (*p == '\0' || *p == '#') continue;
+
+            char  key[96] = { 0 };
+            long  val     = 0;
+            char* eq      = strchr(p, '=');
+            char* end     = nullptr;
+
+            if (eq)
+            {
+                size_t klen = (size_t)(eq - p);
+                while (klen > 0 && (p[klen - 1] == ' ' || p[klen - 1] == '\t')) --klen;   // trim trailing ws
+                if (klen == 0 || klen >= sizeof(key))
+                    { QM_LOG_WARN("[KillXP] %s: bad key, line ignored: %.80s", path, p); continue; }
+                memcpy(key, p, klen); key[klen] = '\0';
+                val = strtol(eq + 1, &end, 10);
+                if (end == eq + 1)
+                    { QM_LOG_WARN("[KillXP] %s: non-numeric value, line ignored: %.80s", path, p); continue; }
+            }
+            else
+            {
+                val = strtol(p, &end, 10);
+                if (end == p)
+                    { QM_LOG_WARN("[KillXP] %s: expected 'key=value' or a number, line ignored: %.80s", path, p); continue; }
+                strncpy(key, "default", sizeof(key) - 1);   // bare number = default (legacy)
+            }
+
+            if (val < 0 || val > 1000000)
+                { QM_LOG_WARN("[KillXP] %s: value out of range (%ld), line ignored", path, val); continue; }
+
+            if (_stricmp(key, "default") == 0)
+            {
+                if ((int32_t)val > g_defaultReward) g_defaultReward = (int32_t)val;   // max wins
+                ++applied;
+                continue;
+            }
+
+            char keyLc[96];
+            LowerCopy(keyLc, sizeof(keyLc), key);
+
+            int slot = -1;
+            for (int i = 0; i < g_rewardCount; ++i)
+                if (strcmp(g_rewards[i].kw, keyLc) == 0) { slot = i; break; }   // case-insensitive dedup
+            if (slot < 0)
+            {
+                if (g_rewardCount >= kMaxRewards)
+                    { QM_LOG_WARN("[KillXP] reward table full (%d) - '%s' dropped", kMaxRewards, key); continue; }
+                slot = g_rewardCount++;
+                strncpy(g_rewards[slot].cls, key,   sizeof(g_rewards[slot].cls) - 1);
+                strncpy(g_rewards[slot].kw,  keyLc, sizeof(g_rewards[slot].kw)  - 1);
+                g_rewards[slot].xp = (int32_t)val;
+            }
+            else if ((int32_t)val > g_rewards[slot].xp)   // max wins on collision
+            {
+                g_rewards[slot].xp = (int32_t)val;
+            }
+            ++applied;
+        }
+        fclose(f);
+        return applied;
+    }
+
+    // Glob every qm_killxp_onkill*.txt next to the DLL (profile-bound, like
+    // qm_weather_<profile>.txt) and load all into the reward table. Read ONCE at
+    // startup. Sets g_onKillArmed if any file contributed a value.
+    void LoadOnKillConfig(const char* dir)
+    {
+        g_rewardCount   = 0;
+        g_defaultReward = 0;
+        g_onKillArmed   = false;
+
+        char pattern[MAX_PATH];
+        if (snprintf(pattern, sizeof(pattern), "%s\\qm_killxp_onkill*.txt", dir) <= 0) return;
+
+        WIN32_FIND_DATAA fd = {};
+        HANDLE h = FindFirstFileA(pattern, &fd);
+        int files = 0, applied = 0;
+        if (h != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                char full[MAX_PATH];
+                int w = snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+                if (w <= 0 || (size_t)w >= sizeof(full)) continue;
+                applied += LoadOnKillFile(full);
+                ++files;
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+
+        g_onKillArmed = (applied > 0);
+        if (g_onKillArmed)
+            QM_LOG_INFO("[KillXP] on-kill grant ARMED: %d keyword(s) + default=%d XP from %d file(s) matching %s",
+                        g_rewardCount, g_defaultReward, files, pattern);
+        else if (files > 0)
+            QM_LOG_WARN("[KillXP] %d qm_killxp_onkill*.txt present but no valid value parsed - on-kill grant disabled", files);
+        else
+            QM_LOG_INFO("[KillXP] no qm_killxp_onkill*.txt - on-kill grant disabled (vanilla)");
     }
 }
 
@@ -545,14 +696,23 @@ bool QmKillXp_Init()
     char path[MAX_PATH];
     snprintf(path, sizeof(path), "%s\\qm_killxp.txt", dir);
     DWORD attr = GetFileAttributesA(path);
-    g_armed = (attr != INVALID_FILE_ATTRIBUTES) && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+    bool sentinel = (attr != INVALID_FILE_ATTRIBUTES) && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+
+    // Per-kill reward config is read ONCE here (profile-bound qm_killxp_onkill*.txt).
+    LoadOnKillConfig(dir);
+
+    // Arm the module if the master sentinel OR any on-kill profile file is present,
+    // so a profile deploy needs only its qm_killxp_onkill_<profile>.txt.
+    g_armed = sentinel || g_onKillArmed;
 
     if (g_armed)
-        QM_LOG_INFO("[KillXP] *** ARMED *** sentinel found (%s) - kill detection + seed-free XP "
-                    "grant active (rides the global ProcessEvent net-hook). Add qm_killxp_onkill.txt "
-                    "to grant XP on every kill.", path);
+        QM_LOG_INFO("[KillXP] *** ARMED *** (%s%s%s) - kill detection + seed-free XP grant active "
+                    "(rides the global ProcessEvent net-hook)",
+                    sentinel ? "qm_killxp.txt" : "",
+                    (sentinel && g_onKillArmed) ? " + " : "",
+                    g_onKillArmed ? "on-kill config" : "");
     else
-        QM_LOG_INFO("[KillXP] no sentinel (%s) - idle (zero cost)", path);
+        QM_LOG_INFO("[KillXP] no qm_killxp.txt and no qm_killxp_onkill*.txt - idle (zero cost)");
     return g_armed;
 }
 
@@ -568,9 +728,8 @@ void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
 
     __try
     {
-        // Throttled config refresh (re-read qm_killxp_onkill.txt) + the one-shot manual
-        // test grant (qm_killxp_construct_grant.txt). Both cheap when idle.
-        RefreshOnKillConfig();
+        // The one-shot manual test grant (qm_killxp_construct_grant.txt); cheap when idle.
+        // (On-kill reward config is read once at startup, not per dispatch.)
         TryConstructGrant();
 
         KxFuncMemo* slot = nullptr;
@@ -619,19 +778,24 @@ void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
             uint8_t* p = reinterpret_cast<uint8_t*>(parms);
             QmUE::UObject* victimObj = *reinterpret_cast<QmUE::UObject**>(p + kOffEnemyDeadPawn);
 
-            bool granted = false;
+            int32_t amount  = 0;
+            bool    granted = false;
             if (g_onKillArmed)
             {
-                // Per-victim dedup (multi-listener fan-out). A null/unreadable victim falls
-                // back to the short time cooldown so we still cannot over-grant.
-                bool dup = victimObj
-                    ? VictimGrantedRecently(victimObj, now)
-                    : !(g_lastKillGrantTick == 0 || (now - g_lastKillGrantTick) >= kKillGrantCooldownMs);
-                if (!dup)
+                amount = LookupKillXp(victimObj);   // per-enemy XP; g_defaultReward if its class is unlisted
+                if (amount > 0)                     // 0 = vanilla -> no grant, and no dedup slot/cooldown consumed
                 {
-                    if (!victimObj) g_lastKillGrantTick = now;
-                    granted = FireConstructGrant(g_onKillAmount, "kill", false);
-                    if (granted) InterlockedIncrement(&g_killGrants);
+                    // Per-victim dedup (multi-listener fan-out). A null/unreadable victim falls
+                    // back to the short time cooldown so we still cannot over-grant.
+                    bool dup = victimObj
+                        ? VictimGrantedRecently(victimObj, now)
+                        : !(g_lastKillGrantTick == 0 || (now - g_lastKillGrantTick) >= kKillGrantCooldownMs);
+                    if (!dup)
+                    {
+                        if (!victimObj) g_lastKillGrantTick = now;
+                        granted = FireConstructGrant(amount, "kill", false);
+                        if (granted) InterlockedIncrement(&g_killGrants);
+                    }
                 }
             }
 
@@ -659,7 +823,7 @@ void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
                 if (g_onKillArmed)
                     QM_LOG_INFO("[KillXP] KILL #%ld  victim=%s  dealt=%.1f incoming=%.1f -> +%d XP "
                                 "(granted=%d, grants=%ld)  causer?=%s",
-                        n, victim, dealt, incoming, g_onKillAmount, (int)granted, g_killGrants, causer);
+                        n, victim, dealt, incoming, amount, (int)granted, g_killGrants, causer);
                 else
                     QM_LOG_INFO("[KillXP] ENEMY-DEAD #%ld  victim=%s  dealt=%.1f incoming=%.1f  "
                                 "causer?=%s  instigator?=%s  on %s  (arm qm_killxp_onkill.txt to grant)",

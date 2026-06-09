@@ -9,27 +9,31 @@
 // real quest/POI reward. Implementation + full RE notes live in qm_killxp.cpp.
 //
 // Triggers (each opt-in via a sentinel next to dxgi.dll; no sentinel = zero cost):
-//   qm_killxp.txt                 : arms the module (kill detection + the triggers)
-//   qm_killxp_onkill.txt           : grant on every player kill; content = XP/kill
+//   qm_killxp.txt                  : arms the module (kill detection + the triggers)
+//   qm_killxp_onkill_<profile>.txt : grant on every player kill, with per-enemy XP.
+//                                    Profile-bound (key=value: default=N, <ClassName>=N),
+//                                    read once at startup; also arms the module on its own.
 //   qm_killxp_construct_grant.txt  : one-shot manual test grant (rising-edge)
 
 #pragma once
 
 #include "qm_ue.hpp"
 
-// Read the sentinel `qm_killxp.txt` next to this DLL. Returns true iff present
-// (armed). Result is cached. Call once at startup (off DllMain) so the armed
-// state is logged and ReconArmed() is warm before the probe loop reads it.
+// Arm the module + read the per-kill reward config ONCE. Armed iff qm_killxp.txt
+// OR any qm_killxp_onkill*.txt is present next to this DLL; the reward table is
+// parsed here (not re-read later). Result is cached. Call once at startup (off
+// DllMain) so the armed state is logged and ReconArmed() is warm before the probe
+// loop reads it.
 bool QmKillXp_Init();
 
-// True after QmKillXp_Init() found the sentinel. Cheap cached read; also used by
-// the probe loop to decide whether to install the global ProcessEvent net-hook.
+// True after QmKillXp_Init() armed the module. Cheap cached read; also used by the
+// probe loop to decide whether to install the global ProcessEvent net-hook.
 bool QmKillXp_ReconArmed();
 
 // Cheap per-ProcessEvent-call probe, called from the global net-hook for every
-// dispatch. No-op until armed. Detects the player's OnDamageDealt_Event kill flag
-// (per-UFunction memoized name verdict, so name resolution runs ONCE per distinct
-// function) and - when qm_killxp_onkill.txt is armed - fires the seed-free XP grant.
-// Also drives the throttled config refresh + the one-shot manual test grant. Game-
-// thread only (ProcessEvent dispatches in-thread). SEH-guarded internally.
+// dispatch. No-op until armed. Detects the OnPawnEnemyDead kill signal (per-UFunction
+// memoized name verdict, so name resolution runs ONCE per distinct function) and -
+// when the on-kill config is armed - fires the seed-free XP grant for the killed
+// pawn's per-enemy amount. Also drives the one-shot manual test grant. Game-thread
+// only (ProcessEvent dispatches in-thread). SEH-guarded internally.
 void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
