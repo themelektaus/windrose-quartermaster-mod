@@ -1,4 +1,4 @@
-# Work In Progress: XP for Kills (DLL-Hook)
+# Done: XP for Kills (DLL-Hook)
 
 Stand: 2026-06-09
 
@@ -6,15 +6,21 @@ Stand: 2026-06-09
 
 **Kernfeature funktioniert + ist in-game verifiziert (persistent):** jeder
 Gegner-Kill grantet XP ueber die genuine Engine-Logik (echtes Level-Up + Punkte +
-Notification + Save), seed-frei (kein POI noetig). Trigger: Sentinel
-`qm_killxp_onkill.txt` (Inhalt = XP pro Kill). Implementiert in
+Notification + Save), seed-frei (kein POI noetig). Implementiert in
 `qm_killxp.cpp::FireConstructGrant`, verdrahtet an `OnPawnEnemyDead`.
 
-**Noch offen (deshalb WIP):**
-- Per-Gegner-XP-Werte konfigurierbar machen (statt einem globalen Betrag fuer
-  alle), Default 0 = "vanilla" (kein Grant). Frontend-Anbindung spaeter (vermutl.
-  NPC-Spawn-Tab). Siehe Abschnitt **"Offen / geplant"** am Ende.
-- Sentinel-Re-Read-Intervall (aktuell 1,5 s) ueberdenken.
+**Per-Gegner-XP + Configurator-Integration erledigt** (Commits `eec6555`,
+`d9d4d5e`): XP-Werte sind pro Gegner-Klasse konfigurierbar (Keyword/Substring,
+laengster Match gewinnt), Default 0 = "vanilla" (kein Grant). Trigger: profil-
+bezogene Sentinel `qm_killxp_onkill_<profil>.txt` (Format `key=value` + `default=N`),
+**einmalig beim Start** gelesen. Im Configurator: Misc-Card-Slider (Default-XP
+0-100) + eigener "XP for Kills"-Tab (Keyword-Tabelle aus dem Vanilla-Pak).
+
+**End-to-end verifiziert (2026-06-09):** der GUI-generierte Config wurde in-game
+bestaetigt - eigenes Profil, eigene Per-Gegner-Werte im "XP for Kills"-Tab, Build,
+Play; Keyword-Matching ueber die profil-bezogene `qm_killxp_onkill_<profil>.txt`
+greift wie erwartet. Damit ist das Feature vollstaendig (DLL + Configurator-
+Integration + Docs) - dieses Doc ist abgeschlossen.
 
 Der Rest dieses Dokuments ist die RE-Chronik (wichtig fuer Game-Update-Recovery,
 da alle RVAs/Offsets pro Update driften). Die historischen Phasen 2/2b/2c sind
@@ -524,34 +530,42 @@ erkannt (`KILL #N` im Log), aber `GRANT(kill) FAULTED` oder `granted=0` dauerhaf
 | `Tools/DllProxy/dxgi/qm_killxp.cpp/.hpp` | Kill-Detektion + seed-freier Grant (`FireConstructGrant`) |
 | `Tools/DllProxy/dxgi/qm_hook.cpp` | globaler PE-Net-Hook (ruft `QmKillXp_OnProcessEvent`) |
 | `Tools/DllProxy/dxgi/main.cpp` | `QmKillXp_Init()` + Idle-Gate |
-| Sentinel `qm_killxp.txt` (neben dxgi.dll) | armt das Modul |
-| Sentinel `qm_killxp_onkill.txt` | Praesenz = XP-pro-Kill an; Inhalt = Betrag (Default 500) |
+| Sentinel `qm_killxp.txt` (neben dxgi.dll) | armt das Modul (optional - eine `qm_killxp_onkill*.txt` armt allein) |
+| Sentinel `qm_killxp_onkill_<profil>.txt` | profil-bezogen, geglobt + gemergt (bei Key-Kollision gewinnt der groessere Wert); Format `key=value` (Keyword/Substring -> XP) + `default=N` (Default 0 = vanilla); einmalig beim Start gelesen |
 | Sentinel `qm_killxp_construct_grant.txt` | manueller One-Shot-Testgrant (rising-edge) |
 
 ## Offen / geplant
 
-1. **Sentinel-Re-Read-Intervall.** `qm_killxp_onkill.txt` wird aktuell alle 1,5 s
-   neu gelesen (`kOnKillRefreshMs`). Das ist fuer reine Live-Edits unnoetig oft;
-   ein traegeres Intervall (oder Lesen nur beim ersten Bedarf + seltenerem Refresh)
-   reicht. Klein, isoliert.
+1. **Sentinel-Re-Read-Intervall (ERLEDIGT 2026-06-09).** Das periodische Neu-Lesen
+   (`RefreshOnKillConfig`, alle 1,5 s) ist komplett entfernt - die Config wird jetzt
+   **einmalig beim Start** in `QmKillXp_Init()` geparst. Kein per-Frame-File-I/O
+   mehr. Live-Edit braucht damit einen Spiel-Neustart (so gewuenscht).
 
-2. **Per-Gegner-XP statt globalem Betrag.** Heute grantet *jeder* Kill denselben
-   Betrag. Ziel: pro Gegner(-Klasse) ein eigener XP-Wert, mit **Default 0 =
-   "vanilla"** (kein Grant fuer nicht definierte Gegner). Im Kill-Hook liegt der
-   Victim bereits vor (`OnPawnEnemyDead` Pawn @0x000 -> `victimObj`), also ist die
-   Klasse/Name pro Kill bekannt. Offene Designpunkte:
-   - **Mapping-Quelle:** ein Sentinel/Config-File (Gegner-Klassenname -> XP) das
-     die DLL liest, vs. spaeter im Frontend gepflegt (vermutl. NPC-Spawn-Tab) und
-     in dieses File geschrieben.
-   - **Key:** Class-FName des Pawn (z.B. `BP_Mob_BoarF_C`) - stabil + im Hook
-     billig lesbar. Ggf. Wildcard/Praefix-Matching fuer Mob-Familien.
-   - **Default 0:** unbekannter Gegner -> kein Grant (Vanilla-Verhalten), statt des
-     bisherigen globalen Defaults.
-   - **Frontend-Anbindung:** Werte im NPC-Spawn-Tab definieren; Persistenz +
-     Deploy des Config-Files. Spaeterer Schritt.
+2. **Per-Gegner-XP statt globalem Betrag (ERLEDIGT 2026-06-09, Commits `eec6555` +
+   `d9d4d5e`).** Im Kill-Hook liegt der Victim bereits vor (`OnPawnEnemyDead`
+   Pawn @0x000 -> `victimObj`), also ist die Klasse pro Kill bekannt. Umgesetzt als:
+   - **Config:** profil-bezogene `qm_killxp_onkill_<profil>.txt` (geglobt + gemergt,
+     bei Key-Kollision gewinnt der groessere Wert), Format `key=value` + `default=N`.
+   - **Matching:** case-insensitives **Keyword/Substring**-Matching, **laengster
+     Key gewinnt** - `Mob_Boar=5` erschlaegt alle Boar-Varianten, ein laengerer
+     `Mob_Boar_Mega=25` ueberschreibt gezielt. Pro `Class*` memoized (Hot-Path =
+     Pointer-Compare). Rueckwaertskompatibel: exakte FName-Keys matchen weiter, eine
+     nackte Zahl wird als `default=N` gelesen.
+   - **Default 0 = vanilla:** nicht gematchte Gegner -> kein Grant (faellt gratis
+     raus, da `FireConstructGrant(amount<=0)` schon `false` liefert).
+   - **Frontend-Anbindung (erledigt):** Misc-Card-Slider (Default-XP 0-100) + eigener
+     "XP for Kills"-Tab mit Keyword-Tabelle, generiert zur Laufzeit aus dem Vanilla-
+     Pak (`KillXpMobCatalog`, CUE4Parse - wie `/api/npc-spawners`). Deploy schreibt
+     `qm_killxp_onkill_<profil>.txt` neben `dxgi.dll` (DLL-only, kein Pak).
 
 3. **`GAME_UPDATE_RECOVERY.md` KillXP-Abschnitt (ERLEDIGT 2026-06-09).** Eigener
    Abschnitt "XP-for-Kills module (qm_killxp) recovery" ergaenzt: Drift-Symptome,
    die komplette Konstanten-Tabelle (RVAs + Task-Offsets) und die Re-RE-Prozedur
    (Execute-Slot 101 als Source-of-Truth). Bei kuenftigen Aenderungen an den
    Offsets dort mit nachziehen.
+
+4. **In-game-Verifikation des GUI-generierten Configs (ERLEDIGT 2026-06-09).**
+   Keyword-Matching ueber die profil-bezogene Datei (vom Configurator geschrieben)
+   in-game bestaetigt: eigenes Profil mit eigenen Per-Gegner-Werten im "XP for
+   Kills"-Tab, Build, Play - greift wie erwartet. Damit ist das Feature komplett
+   und das Doc abgeschlossen (umbenannt von `-WIP` auf `-DONE`).
