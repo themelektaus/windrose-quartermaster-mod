@@ -152,6 +152,64 @@ After patching the relevant pattern:
 4. Stress-test: 10-20 tab switches, then build several custom items in the
    world. If no crash after a few minutes of mixed play, ship it.
 
+## XP-for-Kills module (qm_killxp) recovery
+
+The `qm_killxp` module (grant XP on enemy kills) is an INDEPENDENT, opt-in
+feature gated by the `qm_killxp.txt` sentinel. It does not affect the build-mode
+inject above - if its scans drift, only kill-XP stops; the rest of the DLL keeps
+working. It rides the same global ProcessEvent net-hook.
+
+Unlike the allocator path, this module is NOT pattern-scanned: it calls three
+engine functions by hardcoded RVA and clones a task by hardcoded field offsets.
+These ALL drift on a game update. The classes it touches are found by reflection
+(FName), so those survive an update; only the RVAs/offsets need re-RE.
+
+### Symptom of a drift
+
+Kill detection still works (the function-name path is reflection-based): the log
+shows `[KillXP] KILL #N victim=... -> +X XP` lines. But the grant fails:
+
+- `(granted=0, grants=0)` stays at zero across many kills, or
+- `*** GRANT(kill) FAULTED ***` appears (a bad field/RVA faulted the Execute call;
+  SEH-caught, so the save is untouched and the game does not crash).
+
+### Hardcoded constants to re-verify (all in `qm_killxp.cpp`)
+
+Preferred base `0x140000000`. After an update, re-dump the SDK (Dumper-7) and
+re-open `Windrose-Win64-Shipping.exe` in Ghidra/IDA at that image base.
+
+| Constant | This build | What it is / how to re-find |
+| --- | --- | --- |
+| `RVA_ScenarioExecute` | `0x9803390` | `R5ScenarioTask_AddExp::Execute`. Find via the AddExp CDO vtable - the one logic slot (101) that differs from `R5ScenarioTask_Delay`'s vtable. |
+| `RVA_GateResolveX` | `0x9818CD0` | `FUN_149818cd0(task)` - the G5a resolver. Called inside Execute; resolves owner@+0xC8 -> BL-entity via the registry. |
+| `RVA_GateCheckX` | `0x57D9570` | `FUN_1457d9570(entity)` - the G5a check (entity active: `entity+0x48 != 0 && [0x48]->vtable[1]()`). |
+| `OFF_TaskExp` | `0x118` | int32 `exp` field on the task. |
+| `OFF_TaskHideNotif` | `0x11C` | uint8 `bHideNotification`. |
+| `OFF_TaskStateByte` | `0xC0` | scenario-state byte; the state virtual (vt+0x2D0 -> `FUN_147e6a580`) returns `*(uint8*)(task+0xC0)`. Must read 0 for gate G3. |
+| `OFF_TaskOwnerCached` | `0xC8` | cached owner pointer; `FUN_148295840(task)` returns it. |
+| `OFF_TaskOuter` | `0x20` | UObject::Outer; GetContext (vt+0x180 -> `FUN_141694fd0`) walks it to reach the World. |
+
+Reflection-resolved (no RVA, survive updates): class `R5ScenarioTask_AddExp`
+(the CDO to clone) and class `BP_R5PlayerState_C` (owner candidates). The dispatch
+`target` is `GameplayMessageSubsystem`, resolved from the live World at runtime -
+not hardcoded. The `OnPawnEnemyDead` param offsets (Pawn @0x000, IncomingDamage
+@0x2A0, DealtDamage @0x2A4) come from the SDK dump - re-verify against it.
+
+### Re-RE procedure (if the grant faults)
+
+1. Dump the SDK with Dumper-7; confirm the classes above still exist by name.
+2. In Ghidra, find `R5ScenarioTask_AddExp::Execute` (CDO vtable slot 101). Its
+   decompile is the source of truth for ALL task field offsets and the two G5a
+   functions - it reads `task+0x118` (exp), gates on owner/state, and ends in the
+   command-bus publish.
+3. Update the `RVA_*` and `OFF_Task*` constants in `qm_killxp.cpp`, build + deploy.
+4. Verify: arm `qm_killxp.txt` + `qm_killxp_onkill.txt`, load into the world, kill
+   an enemy. Expect `(granted=1, grants>=1)` and an in-game XP notification that
+   persists after save+reload.
+
+The full RE chronicle (how each field/function was found) lives in
+`Docs/PLAN-XpForKills-WIP.md`.
+
 ## What we know about this build (snapshot for diff after update)
 
 Recorded `2026-05-20`, dxgi.dll size `256512` bytes (post-cleanup commit):

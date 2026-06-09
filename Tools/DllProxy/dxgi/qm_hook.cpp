@@ -15,6 +15,7 @@
 #include "qm_diag.hpp"
 #include "qm_alloc.hpp"
 #include "qm_weather.hpp"
+#include "qm_killxp.hpp"
 
 // ============================================================================
 // Detour.
@@ -1152,6 +1153,11 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
             if (v & PE_RECON)
                 PeReconLog(self, cls, func);
         }
+
+        // XP-for-kills: kill detection + seed-free XP grant. No-op unless its
+        // sentinel armed; SEH-guarded internally. Independent of the weather
+        // verdict above (its own per-UFunction memo), so it sees every dispatch.
+        QmKillXp_OnProcessEvent(self, func, parms);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -1423,9 +1429,9 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     bool lifecycleFound = false;
     bool consumeFound   = false;
     // Global ProcessEvent net-hook is only needed (and only paid for) when the
-    // weather trigger is armed. If not armed, treat it as already done so the
-    // probe loop's exit condition isn't held open by it.
-    bool peNetDone      = !QmWeather_TriggerArmed();
+    // weather trigger OR the kill-XP recon is armed. If neither is armed, treat
+    // it as already done so the probe loop's exit condition isn't held open by it.
+    bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed());
     int  buildMenuFoundOnPass = 0;
     int  lifecycleFoundOnPass = 0;
     int  consumeFoundOnPass   = 0;
@@ -1454,15 +1460,15 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
             QM_LOG_INFO("[Consume] hook installed on probe pass#%d - using any consumable will now log its item identity",
                 p + 1);
         }
-        // Stage-2c global ProcessEvent net-hook (only when weather trigger armed).
-        // Same prerequisites as the consume hook (GObjects ready + ProcessEvent
-        // resolved), so install it right after the consume hook lands.
-        if (!peNetDone && consumeFound && InstallProcessEventHook())
+        // Stage-2c global ProcessEvent net-hook (when weather trigger OR kill-XP
+        // recon is armed). Same prerequisites as the consume hook (GObjects ready
+        // + ProcessEvent resolved). Kill-XP doesn't need the consume class, so it
+        // can install the net-hook even if the consume probe hasn't landed yet.
+        if (!peNetDone && (consumeFound || QmKillXp_ReconArmed()) && InstallProcessEventHook())
         {
             peNetDone = true;
             peNetDoneOnPass = p + 1;
         }
-
         if (buildMenuFound && lifecycleFound && consumeFound && peNetDone)
         {
             QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d consume=pass#%d pe-net=%s - probe loop exiting",

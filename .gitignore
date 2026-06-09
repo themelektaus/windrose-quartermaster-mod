@@ -48,6 +48,8 @@ GUI/*/Properties/launchSettings.json
 /Tools/DllProxy/dxgi/build_out.txt
 /Tools/DllProxy/dxgi/_bld.log
 
+/Tools/ghidra_*/
+
 # Python caches
 __pycache__/
 *.pyc
