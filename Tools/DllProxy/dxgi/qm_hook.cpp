@@ -16,6 +16,7 @@
 #include "qm_alloc.hpp"
 #include "qm_weather.hpp"
 #include "qm_killxp.hpp"
+#include "qm_shanty.hpp"
 
 // ============================================================================
 // Detour.
@@ -1120,6 +1121,7 @@ static void PeReconLog(QmUE::UObject* self, QmUE::UClass* cls, QmUE::UFunction* 
 
 static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms)
 {
+    bool suppress = false;   // Always-Shanties may veto forwarding a helm-leave ServerDisableShanty
     __try
     {
         QmUE::UClass* cls = (self && func) ? self->Class : nullptr;
@@ -1158,10 +1160,17 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
         // sentinel armed; SEH-guarded internally. Independent of the weather
         // verdict above (its own per-UFunction memo), so it sees every dispatch.
         QmKillXp_OnProcessEvent(self, func, parms);
+
+        // Always-Shanties: keep the crew shanty playing after you leave the helm. No-op
+        // unless its sentinel armed; SEH-guarded internally. Its own per-UFunction memo,
+        // independent of the verdicts above, so it sees every dispatch. Returns true ONLY
+        // for a helm-leave ServerDisableShanty, asking us to drop the original dispatch so
+        // the disable never runs (the shanty keeps playing).
+        suppress = QmShanty_OnProcessEvent(self, func, parms);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 
-    if (g_origProcessEvent)
+    if (!suppress && g_origProcessEvent)
         g_origProcessEvent(self, func, parms);
 }
 
@@ -1431,7 +1440,7 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     // Global ProcessEvent net-hook is only needed (and only paid for) when the
     // weather trigger OR the kill-XP recon is armed. If neither is armed, treat
     // it as already done so the probe loop's exit condition isn't held open by it.
-    bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed());
+    bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed() || QmShanty_ReconArmed());
     int  buildMenuFoundOnPass = 0;
     int  lifecycleFoundOnPass = 0;
     int  consumeFoundOnPass   = 0;
@@ -1464,7 +1473,7 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
         // recon is armed). Same prerequisites as the consume hook (GObjects ready
         // + ProcessEvent resolved). Kill-XP doesn't need the consume class, so it
         // can install the net-hook even if the consume probe hasn't landed yet.
-        if (!peNetDone && (consumeFound || QmKillXp_ReconArmed()) && InstallProcessEventHook())
+        if (!peNetDone && (consumeFound || QmKillXp_ReconArmed() || QmShanty_ReconArmed()) && InstallProcessEventHook())
         {
             peNetDone = true;
             peNetDoneOnPass = p + 1;
