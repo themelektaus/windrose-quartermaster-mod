@@ -474,8 +474,11 @@ namespace Windrose.Quartermaster.Core
                 // the IoStore composite, only to the DLL + per-profile sidecar deploy.
                 var killXpCfg = ResolveKillXpConfig(profile);
                 bool killXpActive = killXpCfg.Active;
+                // Keep Shanties Playing is DLL-only (no pak content): like XP for Kills it
+                // never contributes to the IoStore composite, only to the DLL + sentinel deploy.
+                bool shantyActive = ResolveShantyEnabled(profile);
                 bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cannonDamageActive || shipBoardingActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
-                if (totalWritten == 0 && !ioStoreActive && !killXpActive)
+                if (totalWritten == 0 && !ioStoreActive && !killXpActive && !shantyActive)
                 {
                     // Surface which fields are missing when all buildings were
                     // skeleton-filtered, instead of a generic "no changes".
@@ -618,12 +621,13 @@ namespace Windrose.Quartermaster.Core
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
                 var weatherClones = weatherControlResult != null ? weatherControlResult.Clones : null;
                 bool weatherDeployActive = weatherClones != null && weatherClones.Count > 0;
-                if (buildingsCount > 0 || weatherDeployActive || killXpActive)
+                if (buildingsCount > 0 || weatherDeployActive || killXpActive || shantyActive)
                 {
                     LogLine("Deploying DLL to game Binaries/Win64"
                             + (buildingsCount > 0 ? " + qm_items_" + safeName + ".json" : "")
                             + (weatherDeployActive ? " + qm_weather_trigger.txt (" + weatherClones.Count + " weather)" : "")
-                            + (killXpActive ? " + qm_killxp_onkill_" + safeName + ".txt" : ""));
+                            + (killXpActive ? " + qm_killxp_onkill_" + safeName + ".txt" : "")
+                            + (shantyActive ? " + qm_shanty_" + safeName + ".txt" : ""));
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
                     // EnsureDllInstalled returns false on non-Windows; skip the
@@ -634,6 +638,7 @@ namespace Windrose.Quartermaster.Core
                         deployer.WriteItemsJson(safeName, buildingResults ?? new List<BuildingPatchResult>());
                         deployer.WriteWeatherTriggerConfig(safeName, weatherClones);
                         deployer.WriteKillXpConfig(safeName, killXpCfg.DefaultXp, killXpCfg.Keywords);
+                        deployer.WriteShantyConfig(safeName, shantyActive);
                     }
                 }
                 else
@@ -653,6 +658,7 @@ namespace Windrose.Quartermaster.Core
                             deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
                             deployer.WriteWeatherTriggerConfig(safeName, null);
                             deployer.WriteKillXpConfig(safeName, 0, null);
+                            deployer.WriteShantyConfig(safeName, false);
                             deployer.RemoveDllIfNoProfilesLeft();
                         }
                     }
@@ -2524,6 +2530,14 @@ namespace Windrose.Quartermaster.Core
             foreach (var v in cfg.Keywords.Values) if (v > 0) { anyPositiveKeyword = true; break; }
             cfg.Active = cfg.DefaultXp > 0 || anyPositiveKeyword;
             return cfg;
+        }
+
+        // Keep Shanties Playing is a pure on/off DLL toggle (no pak content): active iff
+        // globals.shanty.enabled is true. When active it deploys the qm_shanty_<profile>.txt
+        // sentinel next to the DLL, which arms the DLL's helm-leave shanty keep-alive.
+        static bool ResolveShantyEnabled(Profile profile)
+        {
+            return profile?.Globals?.Shanty?.Enabled == true;
         }
 
         static int CountBuildableBuildings(Profile profile)

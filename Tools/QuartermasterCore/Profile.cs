@@ -45,6 +45,7 @@ namespace Windrose.Quartermaster.Core
         public ProductionTimesGlobal ProductionTimes;
         public ShipMusicGlobal ShipMusic;
         public ShipMusicAddGlobal ShipMusicAdd;
+        public ShantyGlobal Shanty;
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
         public XpRewardGlobal XpReward;
@@ -218,6 +219,16 @@ namespace Windrose.Quartermaster.Core
     // strips every GAS.Effect.Status effect on death; this swaps that broad removal
     // for a curated set of transient sub-prefixes so the buffs survive.
     public sealed class KeepStatusGlobal
+    {
+        public bool? Enabled;
+    }
+
+    // "Keep Shanties Playing": keeps the crew sea shanty playing after you leave the
+    // ship's helm. Vanilla stops the shanty when you step away from the wheel; at the
+    // helm, B still starts/stops it as usual. DLL-only (the dxgi proxy suppresses the
+    // helm-leave stop) - ships no pak content. enabled=true deploys the
+    // qm_shanty_<profile>.txt sentinel next to the DLL; absent/false = vanilla.
+    public sealed class ShantyGlobal
     {
         public bool? Enabled;
     }

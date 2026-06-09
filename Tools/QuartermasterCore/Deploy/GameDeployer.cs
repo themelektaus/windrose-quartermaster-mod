@@ -287,6 +287,49 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
+        // Per-profile "Keep Shanties Playing" sentinel. The DLL only checks whether ANY
+        // qm_shanty*.txt exists next to it (the content is ignored), so this is a pure
+        // presence marker - mirroring the qm_killxp_onkill_<profile>.txt deploy. The
+        // trailing underscore matches the qm_shanty_*.txt glob below (a manual
+        // qm_shanty.txt has no underscore there, so it is not deployer-managed).
+        public string TargetProfileShantyPath(string profileSafeName)
+        {
+            if (string.IsNullOrEmpty(profileSafeName))
+                throw new ArgumentNullException(nameof(profileSafeName));
+            return Path.Combine(_gameWin64Dir, "qm_shanty_" + profileSafeName + ".txt");
+        }
+
+        // All deployed per-profile shanty sentinels. Used for DLL-idle detection (this is
+        // a DLL-only feature, no pak, so a deployed file keeps the DLL alive).
+        public IList<string> EnumerateProfileShantyPaths()
+        {
+            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
+            return Directory.GetFiles(_gameWin64Dir, "qm_shanty_*.txt", SearchOption.TopDirectoryOnly);
+        }
+
+        // Creates/removes this profile's qm_shanty_<profile>.txt. The DLL arms its
+        // helm-leave keep-alive whenever any qm_shanty*.txt is present; the content is
+        // ignored, so we write a short marker comment for humans. enabled=false removes
+        // only THIS profile's file - other profiles' sentinels are untouched.
+        public void WriteShantyConfig(string profileSafeName, bool enabled)
+        {
+            var path = TargetProfileShantyPath(profileSafeName);
+            if (!enabled)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_shanty_" + profileSafeName + ".txt (Keep Shanties Playing off) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+            LogLine("Writing qm_shanty_" + profileSafeName + ".txt (Keep Shanties Playing on) -> " + path);
+            File.WriteAllText(path,
+                "# Quartermaster: Keep Shanties Playing (auto-generated marker).\n"
+                + "# The DLL arms its helm-leave shanty keep-alive when this file is present.\n",
+                new UTF8Encoding(false));
+        }
+
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)
         {
             if (!Directory.Exists(_gameWin64Dir)) return false;
@@ -301,6 +344,10 @@ namespace Windrose.Quartermaster.Core.Deploy
             // XP for Kills is DLL-only (no pak): any deployed qm_killxp_onkill_*.txt
             // keeps the DLL alive too.
             if (EnumerateProfileKillXpPaths().Count > 0) return false;
+
+            // Keep Shanties Playing is DLL-only (no pak): any deployed qm_shanty_*.txt
+            // keeps the DLL alive too.
+            if (EnumerateProfileShantyPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
             var targetMarker = TargetDllMarkerPath();
@@ -390,6 +437,11 @@ namespace Windrose.Quartermaster.Core.Deploy
             foreach (var killXpPath in EnumerateProfileKillXpPaths())
             {
                 TryDelete(killXpPath, result);
+            }
+            // Per-profile qm_shanty_<profile>.txt (Keep Shanties Playing sentinels).
+            foreach (var shantyPath in EnumerateProfileShantyPaths())
+            {
+                TryDelete(shantyPath, result);
             }
             TryDelete(TargetDllPath(),       result);
             TryDelete(TargetDllMarkerPath(), result);
