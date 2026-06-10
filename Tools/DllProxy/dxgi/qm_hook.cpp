@@ -17,6 +17,7 @@
 #include "qm_weather.hpp"
 #include "qm_killxp.hpp"
 #include "qm_shanty.hpp"
+#include "qm_modtab.hpp"
 
 // ============================================================================
 // Detour.
@@ -521,8 +522,56 @@ static bool ResolveContextMapPackage(QmUE::UObject* ctx, char* outBuf, int outCa
     return false;
 }
 
+// FFrame layout (UE5): the FOutputDevice header occupies 0x10, then the script frame:
+//   +0x10 UFunction* Node    (the executing function)
+//   +0x18 UObject*   Object  (the target object - equals the Context arg)
+//   +0x28 uint8*     Locals  (the packed param block, == a ProcessEvent Parms buffer)
+static constexpr size_t kFFrameNodeOff   = 0x10;
+static constexpr size_t kFFrameObjectOff = 0x18;
+static constexpr size_t kFFrameLocalsOff = 0x28;
+static volatile LONG    g_piLayoutLogged = 0;
+
+// Shared ProcessInternal-rider dispatch. Every pure Blueprint UFunction's ExecFunction IS
+// UObject::ProcessInternal, so the lifecycle hook below (which sits on ReceiveBeginPlay's
+// ExecFunction) is in fact the single MinHook allowed at ProcessInternal - MinHook rejects a
+// second hook on the same address. Modules that need to observe BP-internal calls (the
+// mod-settings-tab recon: CookTabs / TabsGroup.SetData / OnTabsStateChanged, which bypass
+// ProcessEvent) therefore ride this one detour. Called BEFORE the lifecycle throttle so riders
+// see EVERY dispatch, not just the heartbeat fires. Caller wraps this in SEH; Stack is the
+// FFrame. Never alters dispatch.
+static void DispatchProcessInternalRiders(void* Context, void* Stack)
+{
+    // Zero cost for non-modtab deploys: the lifecycle detour also fires for item/weather
+    // users, so bail on a cached bool before touching the FFrame. (Currently modtab is the
+    // only rider; add others above this gate or widen the condition when they appear.)
+    if (!Stack || !QmModTab_ReconArmed()) return;
+    QmUE::UFunction* func = *reinterpret_cast<QmUE::UFunction**>(
+        reinterpret_cast<uint8_t*>(Stack) + kFFrameNodeOff);
+    void* locals = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(Stack) + kFFrameLocalsOff);
+
+    // One-time layout confirmation: Stack.Object must equal the Context arg, which validates
+    // our FFrame offsets empirically before we trust Node/Locals.
+    if (InterlockedCompareExchange(&g_piLayoutLogged, 1, 0) == 0)
+    {
+        QmUE::UObject* sObj = *reinterpret_cast<QmUE::UObject**>(
+            reinterpret_cast<uint8_t*>(Stack) + kFFrameObjectOff);
+        QM_LOG_INFO("[PI] first dispatch: context=0x%p Stack.Object=0x%p Stack.Node=0x%p Stack.Locals=0x%p (Object==context: %s)",
+            Context, (void*)sObj, (void*)func, locals,
+            (sObj == reinterpret_cast<QmUE::UObject*>(Context)) ? "yes" : "NO(layout mismatch)");
+    }
+
+    QmModTab_OnProcessInternal(reinterpret_cast<QmUE::UObject*>(Context), func, locals);
+}
+
 static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* Result)
 {
+    // ProcessInternal riders (mod-settings-tab recon): this detour sits on the shared
+    // ProcessInternal dispatcher, so observe BP-internal calls here, BEFORE the throttle gate
+    // below drops the vast majority of hits. SEH-guarded; never alters dispatch.
+    __try { DispatchProcessInternalRiders(Context, Stack); }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+
     // ---- FIRST GATE: time throttle ----------------------------------------
     // The ExecFunction we hook is a shared bytecode dispatcher (every Blueprint
     // implementable event routes through it), so this detour fires ~525 Hz in
@@ -1167,6 +1216,11 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
         // for a helm-leave ServerDisableShanty, asking us to drop the original dispatch so
         // the disable never runs (the shanty keeps playing).
         suppress = QmShanty_OnProcessEvent(self, func, parms);
+
+        // NOTE: the mod-settings-tab recon does NOT ride this ProcessEvent hook. Its targets
+        // (CookTabs/SetData/OnTabsStateChanged) are Blueprint-internal calls that bypass
+        // ProcessEvent (recon-confirmed). It rides the shared ProcessInternal detour instead
+        // (DispatchProcessInternalRiders, called from Hook_LifecyclePreWarm).
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -1438,9 +1492,12 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     bool lifecycleFound = false;
     bool consumeFound   = false;
     // Global ProcessEvent net-hook is only needed (and only paid for) when the
-    // weather trigger OR the kill-XP recon is armed. If neither is armed, treat
+    // weather trigger OR the kill-XP/shanty recon is armed. If none is armed, treat
     // it as already done so the probe loop's exit condition isn't held open by it.
     bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed() || QmShanty_ReconArmed());
+    // Mod-settings-tab recon (CookTabs/SetData/OnTabsStateChanged) bypasses ProcessEvent; it
+    // rides the lifecycle ProcessInternal detour instead (see DispatchProcessInternalRiders),
+    // so there's no separate install gate - lifecycleFound below guarantees its coverage.
     int  buildMenuFoundOnPass = 0;
     int  lifecycleFoundOnPass = 0;
     int  consumeFoundOnPass   = 0;

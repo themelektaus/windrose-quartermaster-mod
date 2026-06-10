@@ -18,6 +18,7 @@ namespace QmUE
     static TUObjectArray*  g_gobjects  = nullptr;
     static AppendStringFn  g_appendString = nullptr;
     static ProcessEventFn  g_processEvent = nullptr;
+    static ProcessInternalFn g_processInternal = nullptr;
 
     // Symbol resolution state. We separate "address chosen" from "address
     // proven live" so the GObjects retry loop can re-validate without
@@ -796,6 +797,107 @@ namespace QmUE
             }
         }
         return nullptr;
+    }
+
+    UObject* FindFirstInstanceOfClass(const char* className)
+    {
+        if (!IsReady() || !className) return nullptr;
+
+        // EObjectFlags bit for the archetype-per-class default object. The CDO carries
+        // template state, not the live widget's runtime data, so we must skip it.
+        constexpr uint32 RF_ClassDefaultObject = 0x00000010;
+
+        const int32 total = g_gobjects->Num();
+        char clsBuf[256];
+
+        for (int32 i = 0; i < total; ++i)
+        {
+            UObject* obj = g_gobjects->GetByIndex(i);
+            if (!obj || !obj->Class) continue;
+            if (obj->Flags & RF_ClassDefaultObject) continue;
+
+            if (!ResolveFNameNarrow(obj->Class->Name, clsBuf, sizeof(clsBuf))) continue;
+            if (strcmp(clsBuf, className) == 0)
+            {
+                return obj;
+            }
+        }
+        return nullptr;
+    }
+
+    ProcessInternalFn GetProcessInternalFn()
+    {
+        if (g_processInternal) return g_processInternal;
+        if (!IsReady()) return nullptr;
+
+        // Reflection-only resolve: across all non-native UFunctions the single most common
+        // ExecFunction value is &UObject::ProcessInternal (UFunction::Bind sets it for every
+        // script function; native functions each carry their own exec). Tally the mode and
+        // early-out once one candidate is conclusively dominant.
+        constexpr uint32 LOCAL_FUNC_Native = 0x00000400;
+        constexpr int    kSlots            = 16;
+        constexpr int    kEarlyOutVotes    = 512;   // a single exec shared this widely == ProcessInternal
+        void* cand[kSlots] = {};
+        int   votes[kSlots] = {};
+        int   distinct = 0;
+        int   sampled  = 0;
+
+        const int32 total = g_gobjects->Num();
+        for (int32 i = 0; i < total; ++i)
+        {
+            UObject* obj = g_gobjects->GetByIndex(i);
+            if (!obj || !obj->Class) continue;
+
+            void* ex = nullptr;
+            __try
+            {
+                if ((obj->Class->CastFlags & CASTFLAG_Function) == 0) continue;
+                UFunction* fn = reinterpret_cast<UFunction*>(obj);
+                if (fn->FunctionFlags & LOCAL_FUNC_Native) continue;   // native -> own exec
+                ex = reinterpret_cast<void*>(fn->ExecFunction);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { continue; }
+            if (!ex) continue;
+
+            ++sampled;
+            int hit = -1;
+            for (int s = 0; s < distinct; ++s) { if (cand[s] == ex) { hit = s; break; } }
+            if (hit < 0)
+            {
+                if (distinct < kSlots) { hit = distinct++; cand[hit] = ex; votes[hit] = 0; }
+                else continue;   // table full of non-PI noise; the real mode is already tracked
+            }
+            if (++votes[hit] >= kEarlyOutVotes) break;   // conclusively dominant -> stop scanning
+        }
+
+        int best = -1;
+        for (int s = 0; s < distinct; ++s) { if (best < 0 || votes[s] > votes[best]) best = s; }
+        if (best < 0)
+        {
+            QM_LOG_WARN("[PI] no non-native UFunction found in GObjects - ProcessInternal unresolved (sampled=%d)", sampled);
+            return nullptr;
+        }
+
+        void* pi = cand[best];
+        bool  exec = false;
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery(pi, &mbi, sizeof(mbi)) == sizeof(mbi))
+        {
+            const DWORD p = mbi.Protect;
+            exec = (mbi.State == MEM_COMMIT) &&
+                   (p & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+        }
+        if (!exec)
+        {
+            QM_LOG_WARN("[PI] ProcessInternal candidate 0x%p not in executable memory (votes=%d/%d sampled=%d distinct=%d) - rejecting",
+                        pi, votes[best], sampled, sampled, distinct);
+            return nullptr;
+        }
+
+        g_processInternal = reinterpret_cast<ProcessInternalFn>(pi);
+        QM_LOG_INFO("[PI] ProcessInternal resolved = 0x%p (+0x%llX) via BP-exec mode: %d/%d votes, %d distinct exec ptr(s)",
+                    pi, (unsigned long long)((uintptr_t)pi - g_imageBase), votes[best], sampled, distinct);
+        return g_processInternal;
     }
 
 } // namespace QmUE

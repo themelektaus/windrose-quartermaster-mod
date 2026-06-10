@@ -212,6 +212,14 @@ namespace QmUE
     // and asset FNames for SoftPath redirect.
     UObject* FindObjectByClassAndName(const char* className, const char* objName);
 
+    // Walk GObjects, return the first LIVE instance whose class' short name equals
+    // className, skipping the Class-Default-Object (RF_ClassDefaultObject) so the
+    // result is a real spawned instance with populated state, not the archetype.
+    // Used to grab the live settings-screen widget so we can call a getter
+    // (e.g. WBP_Settings_Screen_C::GetTabs) on it via CallProcessEvent. Returns
+    // nullptr if no non-CDO instance of that class exists yet.
+    UObject* FindFirstInstanceOfClass(const char* className);
+
     // Image base of Windrose-Win64-Shipping.exe (the main module). Cached
     // after Init().
     uintptr_t GetImageBase();
@@ -225,6 +233,27 @@ namespace QmUE
     // Returns nullptr if Init() not run. Used to call BlueprintCallable
     // UFunctions on a target UObject (typically a CDO).
     ProcessEventFn GetProcessEventFn();
+
+    // ProcessInternal: the Blueprint VM's universal script-function-execution funnel.
+    // Unlike ProcessEvent (the public entry, used for engine->script dispatch:
+    // events, Tick, input, RPCs, reflection-invoked BlueprintCallables), this also
+    // runs for script->script Blueprint calls (EX_LocalFinalFunction / EX_FinalFunction)
+    // that bypass ProcessEvent entirely. Hooking it is how we observe BP-internal calls
+    // like BP_Settings_SC::CookTabs -> WBP_MetaUI_TabsGroup::SetData, which never reach
+    // ProcessEvent.
+    //
+    // Signature matches FNativeFuncPtr: (UObject* Context, FFrame& Stack, void* Result).
+    // The executing UFunction is Stack.Node; the target object is Stack.Object (==Context);
+    // the packed param block is Stack.Locals.
+    //
+    // Resolved (and cached) reflection-only: UFunction::Bind() sets every non-native
+    // UFunction's exec pointer (ExecFunction @ +0xD8) to &UObject::ProcessInternal, while
+    // each native function gets its own exec. So the single most common ExecFunction value
+    // across all non-native UFunctions IS ProcessInternal - no AOB pattern scan needed.
+    // Returns nullptr if UE isn't ready, no non-native UFunction exists yet, or the
+    // resolved candidate isn't in executable memory.
+    using ProcessInternalFn = void(__fastcall*)(UObject* context, void* stack, void* result);
+    ProcessInternalFn GetProcessInternalFn();
 
     // Call ProcessEvent(self, func, parms) safely. Returns false if the call
     // raised an exception or ProcessEvent wasn't resolved. ALL UFunction calls

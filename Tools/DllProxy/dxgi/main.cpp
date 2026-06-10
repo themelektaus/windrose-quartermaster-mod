@@ -45,6 +45,7 @@
 #include "qm_weather.hpp"
 #include "qm_killxp.hpp"
 #include "qm_shanty.hpp"
+#include "qm_modtab.hpp"
 
 // Implemented in passthrough.cpp - resolves real dxgi.dll into the g_real_*
 // table that the MASM trampolines in passthrough_asm.asm jmp through.
@@ -125,15 +126,21 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
     // DLL active - it rides the global ProcessEvent net-hook installed by the UE probe below.
     const bool shantyArmed = QmShanty_Init();
 
+    // Mod-settings-tab (recon): sentinel-driven observer of the native settings-screen
+    // UFunctions. Init here so a modtab-only deploy (no items/weather/kill-XP/shanty) still
+    // keeps the DLL active - it rides the ProcessInternal hook installed by the UE probe
+    // (its targets are BP-internal calls that bypass ProcessEvent - recon-confirmed).
+    const bool modTabArmed = QmModTab_Init();
+
     // Self-disable mode: when no JSON files matched or zero items merged, this DLL
     // is along for the ride (e.g. profile has only custom items / recipes -
     // those don't need injection). Skip MinHook + UE probe entirely so we have
     // zero per-frame overhead and zero crash surface. Re-loading requires a
     // game restart anyway (Build button replaces the pak too). The weather /
     // kill-XP sentinels override idle: they need the UE probe + hooks live.
-    if (g_injectableItemCount == 0 && !weatherEnabled && !killXpArmed && !shantyArmed)
+    if (g_injectableItemCount == 0 && !weatherEnabled && !killXpArmed && !shantyArmed && !modTabArmed)
     {
-        QM_LOG_INFO("[Config] no injectable items and no weather/kill-XP/shanty sentinel - DLL goes idle (no MinHook, no UE probe)");
+        QM_LOG_INFO("[Config] no injectable items and no weather/kill-XP/shanty/modtab sentinel - DLL goes idle (no MinHook, no UE probe)");
         return 0;
     }
 
