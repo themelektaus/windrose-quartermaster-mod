@@ -297,6 +297,19 @@ namespace QmUE
     // of the process.
     bool FNameFromString(const wchar_t* str, FName* outName);
 
+    // Build an FText from a wide string via KismetTextLibrary::Conv_StringToText.
+    // Equivalent to `FText::FromString(TEXT("foo"))` - the resulting FText carries
+    // the source string INLINE (TextData->TextSource), so it reads back without a
+    // localization lookup (unlike the game's namespace/key-based tab labels).
+    //
+    // outText16 must point at 16 bytes (FText = { FTextData* TextData; uint8[8] }).
+    // On success the 16-byte FText is copied into outText16; it holds one AddRef'd
+    // shared ref. When poked into an object field whose prior FText is overwritten,
+    // that prior ref leaks - acceptable for a one-shot construction.
+    //
+    // Returns true on success, false on any failure (UFunction missing, fault).
+    bool TextFromString(const wchar_t* str, void* outText16);
+
     // Synchronously load an asset via UKismetSystemLibrary::LoadAsset_Blocking
     // UFunction. This is the equivalent of `FSoftObjectPath(...).TryLoad()` in
     // native UE code - on success the package containing the asset is hydrated

@@ -383,7 +383,15 @@ namespace
     volatile LONG      g_getTabsDone     = 0;
     volatile LONG      g_getTabsAttempts = 0;
     volatile ULONGLONG g_getTabsLastTick = 0;
-    constexpr LONG     kGetTabsMaxAttempts = 25;
+    // Re-scan cadence for the live-screen lookup. The first dispatch after OnEnter runs immediately
+    // (last==0); the WBP_Settings_Screen_C widget is usually not constructed yet, so we retry on later
+    // dispatches. This throttle exists ONLY to keep the O(GObjects) instance walk off the full Tick
+    // dispatch rate (~525 Hz) - one scan per frame catches the screen within ~1 frame of going live,
+    // turning the old ~1 s open-to-tab latency into a few ms. Lower further only if the GObjects walk
+    // stays cheap; 0 would scan on every dispatch and hammer the walk.
+    constexpr ULONGLONG kGetTabsScanIntervalMs = 16;   // ~1 frame @ 60 fps
+    // Safety backstop if the screen never appears: maxAttempts * interval ~= give-up window (~4.8 s).
+    constexpr LONG     kGetTabsMaxAttempts = 300;
 
     // ---- Liveness test (MUTATING) -------------------------------------------------------------
     // Separate opt-in from the recon dump: only runs when qm_modtab_inject.txt is present. It
@@ -542,6 +550,14 @@ namespace
     constexpr uintptr_t kOff_Reg_Registered  = 0x98;
     constexpr uintptr_t kOff_Reg_OwningLP    = 0xA8;
 
+    // Native UGameSetting framework-link fields (GameSettings_classes.hpp, SDK-known). A constructed
+    // collection needs these copied from a sibling so the framework treats it as a real tab. The
+    // DevName (FName) + DisplayName (FText) backing fields are UNNAMED natives in [0x28,0x70) - no
+    // UFunction setters exist, so we raw-poke them at offsets located empirically (LocateLabelOffsets).
+    constexpr uintptr_t kOff_GS_LocalPlayer    = 0x70;
+    constexpr uintptr_t kOff_GS_SettingParent  = 0x78;
+    constexpr uintptr_t kOff_GS_OwningRegistry = 0x80;
+
     struct ArrHdr { void* data; int32_t num; int32_t max; bool ok; };
 
     void* ReadPtr(const void* p)
@@ -694,6 +710,143 @@ namespace
         return ok;
     }
 
+    // Locate the unnamed DevName (FName) + DisplayName (FText) native fields inside a known source
+    // collection by matching what its getters return: GetDevName -> FName, GetDisplayName -> the
+    // FText's TextData pointer. Scans the native member region [0x28,0x70). Returns true with both
+    // offsets set. Empirical (not guessed) so the later raw-poke writes to verified addresses.
+    bool LocateLabelOffsets(QmUE::UObject* srcColl, uintptr_t* devOff, uintptr_t* dispOff)
+    {
+        *devOff = 0; *dispOff = 0;
+        if (!srcColl || !srcColl->Class) return false;
+
+        QmUE::FName srcDev = { 0, 0 };
+        if (QmUE::UFunction* devFn = QmUE::FindFunctionOnClass(srcColl->Class, "GetDevName"))
+        {
+            uint8_t pb[16]; memset(pb, 0, sizeof(pb));
+            if (QmUE::CallProcessEvent(srcColl, devFn, pb))
+                __try { srcDev = *reinterpret_cast<const QmUE::FName*>(pb); }
+                __except (EXCEPTION_EXECUTE_HANDLER) { srcDev = { 0, 0 }; }
+        }
+        void* srcTextData = nullptr;
+        if (QmUE::UFunction* dnFn = QmUE::FindFunctionOnClass(srcColl->Class, "GetDisplayName"))
+        {
+            uint8_t pb[16]; memset(pb, 0, sizeof(pb));
+            if (QmUE::CallProcessEvent(srcColl, dnFn, pb))
+                __try { srcTextData = *reinterpret_cast<void* const*>(pb); }
+                __except (EXCEPTION_EXECUTE_HANDLER) { srcTextData = nullptr; }
+        }
+        QM_LOG_INFO("[ModTab]   build: src getters -> DevName{ci=%d num=%d} DisplayName.TextData=0x%p",
+                    srcDev.ComparisonIndex, srcDev.Number, srcTextData);
+        if (srcDev.ComparisonIndex == 0 && !srcTextData)
+        {
+            QM_LOG_WARN("[ModTab]   build: getters returned nothing usable (devIdx=%d textData=0x%p)",
+                        srcDev.ComparisonIndex, srcTextData);
+            return false;
+        }
+
+        // Scan the WHOLE native member region [0x28,0x128). The SDK splits it into two Dumper-7 pad
+        // windows (Pad_28 @0x28..0x70 and Pad_88 @0x88..0x128) around the named link pointers; the
+        // unnamed DevName/DisplayName live in one of them - recon #15 showed NOT in the first, so we
+        // must also cover the second. Hexdump first so the exact offsets are readable if a match misses.
+        const uint8_t* base = reinterpret_cast<const uint8_t*>(srcColl);
+        __try
+        {
+            HexDump("collHead", base + 0x28, 0x100);
+            for (uintptr_t o = 0x28; o + 8 <= 0x128; o += 4)
+            {
+                if (*devOff == 0 && srcDev.ComparisonIndex != 0)
+                {
+                    int32_t ci = *reinterpret_cast<const int32_t*>(base + o);
+                    int32_t nm = *reinterpret_cast<const int32_t*>(base + o + 4);
+                    if (ci == srcDev.ComparisonIndex && nm == srcDev.Number)
+                    {
+                        *devOff = o;
+                        QM_LOG_INFO("[ModTab]   build: DevName FName located @ +0x%llx (idx=%d num=%d)",
+                                    (unsigned long long)o, ci, nm);
+                    }
+                }
+                if (*dispOff == 0 && srcTextData && (o % 8) == 0)
+                {
+                    void* p = *reinterpret_cast<void* const*>(base + o);
+                    if (p == srcTextData)
+                    {
+                        *dispOff = o;
+                        QM_LOG_INFO("[ModTab]   build: DisplayName FText located @ +0x%llx (TextData=0x%p)",
+                                    (unsigned long long)o, p);
+                    }
+                }
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_WARN("[ModTab]   build: offset scan FAULTED");
+            return false;
+        }
+        if (*devOff == 0 || *dispOff == 0)
+            QM_LOG_WARN("[ModTab]   build: offsets incomplete (devOff=0x%llx dispOff=0x%llx)",
+                        (unsigned long long)*devOff, (unsigned long long)*dispOff);
+        return (*devOff != 0) && (*dispOff != 0);
+    }
+
+    // Construct a REAL "Quartermaster" UGameSettingCollection (own DevName + DisplayName) instead of
+    // cloning a sibling pointer. Returns the initialized collection, or nullptr on any failure (caller
+    // then falls back to the proven dup-append). srcColl is a live sibling we read offsets + links from.
+    QmUE::UObject* BuildQuartermasterCollection(QmUE::UObject* registry, QmUE::UObject* srcColl)
+    {
+        if (!srcColl) return nullptr;
+
+        uintptr_t devOff = 0, dispOff = 0;
+        if (!LocateLabelOffsets(srcColl, &devOff, &dispOff))
+        {
+            QM_LOG_WARN("[ModTab]   build: could not locate label offsets - using dup instead");
+            return nullptr;
+        }
+
+        QmUE::UClass* collClass = QmUE::FindClassByName("GameSettingCollection");
+        if (!collClass) { QM_LOG_WARN("[ModTab]   build: class 'GameSettingCollection' not found"); return nullptr; }
+
+        QmUE::UObject* obj = QmUE::SpawnObjectViaUFunction(collClass, registry ? registry : srcColl);
+        if (!obj) { QM_LOG_WARN("[ModTab]   build: SpawnObject(GameSettingCollection) returned null"); return nullptr; }
+        char nid[352]; DescribeObject(obj, nid, sizeof(nid));
+        QM_LOG_INFO("[ModTab]   build: constructed %s", nid);
+
+        QmUE::FName devName = { 0, 0 };
+        if (!QmUE::FNameFromString(L"QuartermasterCollection", &devName))
+        { QM_LOG_WARN("[ModTab]   build: FNameFromString failed"); return nullptr; }
+        uint8_t dispText[16]; memset(dispText, 0, sizeof(dispText));
+        if (!QmUE::TextFromString(L"Quartermaster", dispText))
+        { QM_LOG_WARN("[ModTab]   build: TextFromString failed"); return nullptr; }
+
+        __try
+        {
+            uint8_t*       nb  = reinterpret_cast<uint8_t*>(obj);
+            const uint8_t* sb2 = reinterpret_cast<const uint8_t*>(srcColl);
+            *reinterpret_cast<QmUE::FName*>(nb + devOff) = devName;
+            memcpy(nb + dispOff, dispText, 16);
+            // Framework links copied from the sibling (SDK offsets) so the panel treats it as a real tab.
+            *reinterpret_cast<void**>(nb + kOff_GS_LocalPlayer)    = *reinterpret_cast<void* const*>(sb2 + kOff_GS_LocalPlayer);
+            *reinterpret_cast<void**>(nb + kOff_GS_SettingParent)  = *reinterpret_cast<void* const*>(sb2 + kOff_GS_SettingParent);
+            *reinterpret_cast<void**>(nb + kOff_GS_OwningRegistry) = *reinterpret_cast<void* const*>(sb2 + kOff_GS_OwningRegistry);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_WARN("[ModTab]   build: field poke FAULTED");
+            return nullptr;
+        }
+
+        // Verify: read the label back through the getter (inline FText reads cleanly, unlike the
+        // localized stock labels which returned '???').
+        char chk[160] = { 0 };
+        if (QmUE::UFunction* dnFn = QmUE::FindFunctionOnClass(obj->Class, "GetDisplayName"))
+        {
+            uint8_t pb[16]; memset(pb, 0, sizeof(pb));
+            if (QmUE::CallProcessEvent(obj, dnFn, pb)) ReadFTextNarrow(pb, chk, sizeof(chk));
+        }
+        QM_LOG_INFO("[ModTab]   build: poked DevName@+0x%llx + DisplayName@+0x%llx -> readback label='%s'",
+                    (unsigned long long)devOff, (unsigned long long)dispOff, chk[0] ? chk : "<empty>");
+        return obj;
+    }
+
     // The MUTATING liveness test (gated on qm_modtab_inject.txt). Strictly one-shot via CAS - it drives
     // a tab navigation which re-enters the rider, so the latch must be claimed first.
     void TryLivenessInjectDupTab(QmUE::UObject* screen)
@@ -725,13 +878,23 @@ namespace
             return;
         }
         char did[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(dupPtr), did, sizeof(did));
-        QM_LOG_INFO("[ModTab]   inject: duplicate source = 0x%p %s", dupPtr, did);
+        QM_LOG_INFO("[ModTab]   inject: sibling/source collection = 0x%p %s", dupPtr, did);
+
+        // Prefer a REAL constructed "Quartermaster" collection over cloning the sibling pointer. If
+        // construction/offset-location fails for any reason, fall back to the proven dup append so the
+        // test still yields a visible tab + a clear log of what to fix.
+        void*       injectPtr  = nullptr;
+        const char* injectKind = "dup (fallback)";
+        QmUE::UObject* realColl = BuildQuartermasterCollection(registry, reinterpret_cast<QmUE::UObject*>(dupPtr));
+        if (realColl) { injectPtr = realColl; injectKind = "real Quartermaster collection"; }
+        else            injectPtr = dupPtr;
+        QM_LOG_WARN("[ModTab]   inject: appending %s (0x%p)", injectKind, injectPtr);
 
         // Append to BOTH lists (verdict: separate backing stores).
-        AppendDupToArray(const_cast<uint8_t*>(sb) + kOff_Screen_Tabs, dupPtr, "Screen::Tabs");
+        AppendDupToArray(const_cast<uint8_t*>(sb) + kOff_Screen_Tabs, injectPtr, "Screen::Tabs");
         if (registry)
             AppendDupToArray(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(registry)) + kOff_Reg_TopLevel,
-                             dupPtr, "Registry::TopLevelSettings");
+                             injectPtr, "Registry::TopLevelSettings");
 
         // RECON FINDING (#12-13, 2026-06-10) -> Weg B: the BP nav paths all failed to reconcile the
         // tab BAR. GoToNextTab/GoToPreviousTab only switch the active CONTENT collection. CookTabs is
@@ -768,7 +931,7 @@ namespace
 
         ULONGLONG now  = GetTickCount64();
         ULONGLONG last = g_getTabsLastTick;
-        if (last != 0 && (now - last) < 1000) return;   // <=1 GObjects scan/sec (instance lookup walks GObjects)
+        if (last != 0 && (now - last) < kGetTabsScanIntervalMs) return;   // cap the GObjects instance walk to ~1/frame
         g_getTabsLastTick = now;
 
         LONG attempt = InterlockedIncrement(&g_getTabsAttempts);

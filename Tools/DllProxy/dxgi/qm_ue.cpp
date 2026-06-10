@@ -533,6 +533,67 @@ namespace QmUE
         return !outName->IsNone();
     }
 
+    // ---- UKismetTextLibrary::Conv_StringToText UFunction wrapper ----
+    //
+    // Function:    Engine.KismetTextLibrary.Conv_StringToText
+    // Signature:   FText Conv_StringToText(FString InString)
+    // Param block: { FString InString (0x10); FText ReturnValue (0x10); } size 0x20
+    //              (verified via Engine_parameters.hpp KismetTextLibrary_Conv_StringToText).
+    //
+    // Runtime equivalent of `FText::FromString(...)`: the returned FText carries the
+    // source string inline, so it reads back without a localization lookup. We use it
+    // to give a constructed GameSettingCollection a visible "Quartermaster" label.
+    static UClass*    s_kismetTextLibClass    = nullptr;
+    static UFunction* s_convStringToTextFunc  = nullptr;
+    static UObject*   s_kismetTextLibCDO      = nullptr;
+
+    bool TextFromString(const wchar_t* str, void* outText16)
+    {
+        if (!outText16) return false;
+        memset(outText16, 0, 16);
+        if (!str) return false;
+        if (!IsReady() || !g_processEvent) return false;
+
+        if (!s_kismetTextLibClass)
+            s_kismetTextLibClass = FindClassByName("KismetTextLibrary");
+        if (!s_kismetTextLibClass) return false;
+
+        if (!s_convStringToTextFunc)
+            s_convStringToTextFunc = FindFunctionOnClass(s_kismetTextLibClass, "Conv_StringToText");
+        if (!s_convStringToTextFunc) return false;
+
+        if (!s_kismetTextLibCDO)
+            s_kismetTextLibCDO = GetClassDefaultObject(s_kismetTextLibClass);
+        if (!s_kismetTextLibCDO) return false;
+
+        // Param block: 0x00 FString InString; 0x10 FText ReturnValue (16 bytes).
+        struct Params {
+            FString InString;
+            uint8   ReturnValue[16];   // FText, copied out raw
+        };
+
+        wchar_t buf[512];
+        size_t len = 0;
+        while (str[len] && len < 510) { buf[len] = str[len]; ++len; }
+        buf[len] = L'\0';
+
+        Params parms = {};
+        parms.InString.Data = buf;
+        parms.InString.Num  = static_cast<int32>(len + 1);  // includes null
+        parms.InString.Max  = static_cast<int32>(len + 1);
+
+        uint32 oldFlags = s_convStringToTextFunc->FunctionFlags;
+        s_convStringToTextFunc->FunctionFlags = oldFlags | 0x400;
+
+        bool ok = CallProcessEvent(s_kismetTextLibCDO, s_convStringToTextFunc, &parms);
+
+        s_convStringToTextFunc->FunctionFlags = oldFlags;
+
+        if (!ok) return false;
+        memcpy(outText16, parms.ReturnValue, 16);
+        return true;
+    }
+
     // ---- UKismetSystemLibrary::LoadAsset_Blocking UFunction wrapper ----
     //
     // Function:    Engine.KismetSystemLibrary.LoadAsset_Blocking
