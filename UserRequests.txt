@@ -8,3 +8,7 @@ If this is at all possible I'd greatly appreciate it."
 bignoob77: "add better dig so we can dig deep and raise the ground level
 much higher maybe ever a radius for the scroll wheel on the mouse
 for how big or small the terraform is"
+
+bignoob77: "can you add reduce respawn times for resources like copper ore, iron ore,
+stone, sulfur, clay, salt, soil, trees and
+if this is already in the tool I just dont see it."
