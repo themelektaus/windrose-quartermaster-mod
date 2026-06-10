@@ -35,8 +35,10 @@ namespace
     volatile LONG g_traceCount = 0;   // bounded lifecycle-trace lines
 
     // Stop emitting the broad lifecycle trace after this many lines (keeps the log readable;
-    // the three decisive functions are never capped).
-    constexpr LONG kMaxTraceLines = 80;
+    // the three decisive functions are never capped). With the Tick flood tagged MT_NOISE and
+    // skipped, the non-Tick click sequence is sparse, so this budget comfortably spans the
+    // open -> click-through-tabs -> close window the refresh-trigger recon needs.
+    constexpr LONG kMaxTraceLines = 400;
     // How many bytes of a parms buffer we hexdump (parms are small; this is a safety cap).
     constexpr int32_t kMaxParmsDump = 256;
     // How many bytes of a TArray element buffer we hexdump (enough to see struct + repetition).
@@ -107,12 +109,31 @@ namespace
     constexpr uint8_t MT_SETDATA  = 0x02;   // SetData             (WBP_MetaUI_TabsGroup_C)
     constexpr uint8_t MT_TABSTATE = 0x04;   // OnTabsStateChanged  (WBP_Settings_Screen_C)
     constexpr uint8_t MT_TRACE    = 0x08;   // other settings-screen lifecycle fn (bounded log)
+    constexpr uint8_t MT_NOISE    = 0x10;   // per-frame flood (Tick): drives probes but never logged/capped
     constexpr uint8_t MT_DECISIVE = MT_COOKTABS | MT_SETDATA | MT_TABSTATE;
     constexpr uint8_t MT_ANY      = MT_DECISIVE | MT_TRACE;
 
     struct MtFuncMemo { void* fn; volatile uint8_t verdict; };
     constexpr uint32_t kMemoMask = (1u << 13) - 1;   // 8192 slots
     MtFuncMemo g_memo[kMemoMask + 1] = {};
+
+    // ---- click-armed verbose window (Weg C: native/Tick rebuild recon) ------------------------
+    // RECON FINDING (#10): navigating to another tab makes the injected 6th tab appear, but NO BP
+    // refresh function (SetData/UpdateTabs/OnTabsStateChanged) fires - the rebuild is native or
+    // Tick-driven, i.e. invisible to the rider. To SEE it we open a short verbose window when a tab
+    // button is CLICKED; during that window the otherwise-skipped Tick flood plus the GameSettings
+    // Panel/ListView dispatches are logged. To stay readable we emit only the FIRST Tick per distinct
+    // widget instance per window (a newly created 6th tab widget => a fresh line; the steady per-frame
+    // repeats are suppressed). The tick-seen table is invalidated per window by bumping a generation
+    // counter instead of clearing it.
+    volatile ULONGLONG g_verboseUntilTick = 0;
+    volatile LONG      g_verboseGen       = 0;   // bumped each arm; stale gens count as "not seen"
+    volatile LONG      g_verboseLines     = 0;   // session-wide hard cap on verbose lines
+    constexpr ULONGLONG kVerboseWindowMs  = 2500;
+    constexpr LONG      kMaxVerboseLines  = 600;
+    struct TickSeen { void* obj; volatile LONG gen; };
+    constexpr uint32_t kTickSeenMask = 255;      // 256 slots, direct-mapped (collisions re-log, benign)
+    TickSeen g_tickSeen[kTickSeenMask + 1] = {};
 
     // A UFunction's Outer is its owning UClass - resolve the class name from there so the
     // verdict is fully determined by `func` alone (no need for `self` at memo time).
@@ -133,7 +154,18 @@ namespace
         else if (strcmp(fnNm, "OnTabsStateChanged") == 0)                     v |= MT_TABSTATE;
         else if (ContainsLc(clsNm, "metaui_tab") ||
                  ContainsLc(clsNm, "settings_screen") ||
-                 ContainsLc(clsNm, "settings_sc"))                            v |= MT_TRACE;
+                 ContainsLc(clsNm, "settings_sc") ||
+                 ContainsLc(clsNm, "gamesettingpanel") ||
+                 ContainsLc(clsNm, "gamesettinglistview") ||
+                 ContainsLc(clsNm, "gamesettinglistentry"))
+        {
+            v |= MT_TRACE;
+            // Tick fires ~77x/frame per tab widget - it floods the trace cap before the user can
+            // click. Keep it MT_TRACE (so it still drives the one-shot probes) but tag it NOISE so
+            // the rider skips emission + cap. The refresh-trigger recon needs the NON-Tick click
+            // sequence (UpdateTabs / SetData / OnTabsStateChanged) to survive until the click.
+            if (strcmp(fnNm, "Tick") == 0) v |= MT_NOISE;
+        }
         return v;
     }
 
@@ -149,11 +181,14 @@ namespace
         return v;
     }
 
-    // UFunction parms-buffer size = UStruct::StructSize (PropertiesSize) for the function.
+    // ProcessEvent param-buffer size = UFunction::ParmsSize (params + return value), NOT
+    // UStruct::StructSize/PropertiesSize - the latter also covers BP local variables (e.g. the
+    // parameterless BP event GoToNextTab still has StructSize 249 from its locals). ProcessEvent only
+    // copies ParmsSize bytes in/out, so that is the correct buffer size for a synthesized call.
     int32_t ParmsSize(QmUE::UFunction* func)
     {
         int32_t sz = 0;
-        __try { sz = func->StructSize; }
+        __try { sz = (int32_t)func->ParmsSize; }
         __except (EXCEPTION_EXECUTE_HANDLER) { sz = 0; }
         if (sz < 0) sz = 0;
         return sz;
@@ -349,6 +384,25 @@ namespace
     volatile LONG      g_getTabsAttempts = 0;
     volatile ULONGLONG g_getTabsLastTick = 0;
     constexpr LONG     kGetTabsMaxAttempts = 25;
+
+    // ---- Liveness test (MUTATING) -------------------------------------------------------------
+    // Separate opt-in from the recon dump: only runs when qm_modtab_inject.txt is present. It
+    // duplicates an existing tab collection pointer into BOTH live arrays (Screen::Tabs +
+    // Registry::TopLevelSettings - the recon verdict says they are separate backing stores) and
+    // then forces a re-cook to see whether a sixth (duplicate) tab renders. This pins down the
+    // re-cook trigger before we build a real "Quartermaster" collection. We run on the game thread
+    // inside a BP dispatch (the rider), so there is no cross-thread race with Slate; and we append
+    // in-place ONLY when there is spare capacity (Num < Max) so no FMalloc realloc happens from our
+    // thread (the cold-path AV from qm_inject).
+    constexpr const char* kSettingsControllerClass = "BP_Settings_SC_C";
+    // Weg B (refresh trigger): the only proven bar-reconcile path is a real tab-button click (recon
+    // #11). Its BP entry point is the tab widget's OnButtonClicked delegate; invoking it on a live tab
+    // widget instance (so `this` = that tab) replicates the click that natively rebuilds the bar.
+    constexpr const char* kTabWidgetClass  = "WBP_MetaUI_Tab_Main_C";
+    constexpr const char* kTabClickDelegate =
+        "BndEvt__WBP_MetaUI_Tab_btn_Root_K2Node_ComponentBoundEvent_0_OnButtonClickedEvent__DelegateSignature";
+    bool          g_injectArmed = false;
+    volatile LONG g_injectDone  = 0;
 
     // Dereference the GetTabs array's elements (recon dump confirmed it is TArray<UObject*>: a run
     // of Num 8-byte pointers, then the reserved Max slot). RECON FINDING (2026-06-10): the elements
@@ -568,6 +622,146 @@ namespace
                 : "Screen::Tabs is a SEPARATE list -> append to BOTH Screen::Tabs and Registry::TopLevelSettings, then re-cook");
     }
 
+    // In-place append `dupPtr` to the TArray<T*> whose header is at `arrHdrAddr`, ONLY if there is
+    // spare capacity (Num < Max) so no realloc is needed. Writes the element into the reserved slot
+    // first, then publishes the bumped Num. Returns the new Num, or -1 if skipped/faulted.
+    int32_t AppendDupToArray(void* arrHdrAddr, void* dupPtr, const char* tag)
+    {
+        int32_t result = -1;
+        __try
+        {
+            void**   dataPP = reinterpret_cast<void**>(arrHdrAddr);
+            int32_t* numP   = reinterpret_cast<int32_t*>(reinterpret_cast<uint8_t*>(arrHdrAddr) + 8);
+            int32_t* maxP   = reinterpret_cast<int32_t*>(reinterpret_cast<uint8_t*>(arrHdrAddr) + 12);
+            void*    data   = *dataPP;
+            int32_t  num    = *numP;
+            int32_t  max    = *maxP;
+            if (!data || num < 0 || num >= max || max > 4096)
+            {
+                QM_LOG_WARN("[ModTab]   inject: %s has no spare slot (Num=%d Max=%d) - skipping (would realloc)",
+                            tag, num, max);
+                return -1;
+            }
+            void** slots = reinterpret_cast<void**>(data);
+            slots[num] = dupPtr;        // fill the reserved slot first
+            _ReadWriteBarrier();
+            *numP = num + 1;            // then publish the new count
+            result = num + 1;
+            QM_LOG_INFO("[ModTab]   inject: %s appended dup 0x%p at index %d -> Num now %d (Max=%d, no realloc)",
+                        tag, dupPtr, num, result, max);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_WARN("[ModTab]   inject: %s append FAULTED", tag);
+            result = -1;
+        }
+        return result;
+    }
+
+    // Call a BlueprintCallable function on an object to drive a UI refresh. The call re-enters the rider
+    // (BP funcs route through ProcessInternal), but the inject latch is already claimed so that is
+    // harmless. SEH-guarded inside CallProcessEvent. Returns true if dispatched.
+    //
+    // onlyIfParameterless: when true, dispatch ONLY if the real UFunction::ParmsSize is 0. A function
+    // with parameters (e.g. CookTabs may take a tab array) would receive our zeroed buffer = an EMPTY
+    // array, which could rebuild the bar with 0 tabs (clobber) or fault. In that case we log the real
+    // size and skip - learning the param layout without risk.
+    bool CallNavRefresh(QmUE::UObject* obj, const char* fnName, bool onlyIfParameterless = false)
+    {
+        if (!obj || !obj->Class) return false;
+        QmUE::UFunction* fn = QmUE::FindFunctionOnClass(obj->Class, fnName);
+        if (!fn)
+        {
+            QM_LOG_WARN("[ModTab]   inject: fn '%s' not found - skipping", fnName);
+            return false;
+        }
+        int32_t sz = ParmsSize(fn);
+        uint8_t buf[64];
+        if (sz < 0 || sz > (int32_t)sizeof(buf))
+        {
+            QM_LOG_WARN("[ModTab]   inject: fn '%s' parms size %d out of range - skipping", fnName, sz);
+            return false;
+        }
+        if (onlyIfParameterless && sz != 0)
+        {
+            QM_LOG_WARN("[ModTab]   inject: fn '%s' has parmsSize=%d (expects args) - NOT calling blindly "
+                        "with a zeroed buffer", fnName, sz);
+            return false;
+        }
+        memset(buf, 0, sizeof(buf));
+        bool ok = QmUE::CallProcessEvent(obj, fn, buf);
+        QM_LOG_INFO("[ModTab]   inject: called '%s' (parmsSize=%d) ok=%d", fnName, sz, ok ? 1 : 0);
+        return ok;
+    }
+
+    // The MUTATING liveness test (gated on qm_modtab_inject.txt). Strictly one-shot via CAS - it drives
+    // a tab navigation which re-enters the rider, so the latch must be claimed first.
+    void TryLivenessInjectDupTab(QmUE::UObject* screen)
+    {
+        if (InterlockedCompareExchange(&g_injectDone, 1, 0) != 0) return;
+        if (!screen) return;
+
+        QM_LOG_WARN("[ModTab] *** LIVENESS INJECT *** duplicating an existing tab pointer into both live "
+                    "arrays, then forcing a re-cook (this MUTATES game state)");
+
+        const uint8_t* sb = reinterpret_cast<const uint8_t*>(screen);
+        QmUE::UObject* registry = reinterpret_cast<QmUE::UObject*>(ReadPtr(sb + kOff_Screen_Registry));
+
+        // Duplicate source: TopLevel[0] (GameplayCollection); fall back to Screen::Tabs[0].
+        void* dupPtr = nullptr;
+        if (registry)
+        {
+            ArrHdr top = ReadArrHdr(reinterpret_cast<const uint8_t*>(registry) + kOff_Reg_TopLevel);
+            if (top.ok && top.data && top.num > 0) dupPtr = ReadPtr(top.data);
+        }
+        if (!dupPtr)
+        {
+            ArrHdr tabs = ReadArrHdr(sb + kOff_Screen_Tabs);
+            if (tabs.ok && tabs.data && tabs.num > 0) dupPtr = ReadPtr(tabs.data);
+        }
+        if (!dupPtr)
+        {
+            QM_LOG_WARN("[ModTab]   inject: no existing tab pointer to duplicate - aborting");
+            return;
+        }
+        char did[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(dupPtr), did, sizeof(did));
+        QM_LOG_INFO("[ModTab]   inject: duplicate source = 0x%p %s", dupPtr, did);
+
+        // Append to BOTH lists (verdict: separate backing stores).
+        AppendDupToArray(const_cast<uint8_t*>(sb) + kOff_Screen_Tabs, dupPtr, "Screen::Tabs");
+        if (registry)
+            AppendDupToArray(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(registry)) + kOff_Reg_TopLevel,
+                             dupPtr, "Registry::TopLevelSettings");
+
+        // RECON FINDING (#12-13, 2026-06-10) -> Weg B: the BP nav paths all failed to reconcile the
+        // tab BAR. GoToNextTab/GoToPreviousTab only switch the active CONTENT collection. CookTabs is
+        // the literal bar rebuild but takes an 8-byte arg (parmsSize=8, NOT parameterless), so calling
+        // it blindly with a zeroed buffer would clobber/fault - its param layout is still unknown. The
+        // ONLY proven bar-reconcile (recon #11) is a real tab-button click, which drives a native Slate
+        // rebuild that constructs the 6th tab widget. Its BP entry point is the tab widget's
+        // OnButtonClicked delegate. So we invoke that delegate on a live WBP_MetaUI_Tab_Main_C widget:
+        // calling it on the widget instance means `this` = that tab, so the handler "clicks" that tab.
+        // This may visibly jump to the clicked tab - acceptable for the test; we refine the jump away
+        // (e.g. SelectFirstCollection back to tab 0) once the reconcile itself is proven to fire.
+        QmUE::UObject* tabw = QmUE::FindFirstInstanceOfClass(kTabWidgetClass);
+        if (!tabw)
+        {
+            QM_LOG_WARN("[ModTab]   inject: no live '%s' - cannot simulate a tab click (tab will appear "
+                        "on the next manual tab switch)", kTabWidgetClass);
+            return;
+        }
+        char tid[352]; DescribeObject(tabw, tid, sizeof(tid));
+        QM_LOG_INFO("[ModTab]   inject: simulating tab-button click on %s", tid);
+        CallNavRefresh(tabw, kTabClickDelegate, /*onlyIfParameterless=*/false);
+
+        // Post-click state: append must have survived (Num still 6, Data unchanged = no realloc/rebuild).
+        ArrHdr after = ReadArrHdr(sb + kOff_Screen_Tabs);
+        QM_LOG_INFO("[ModTab]   inject: POST-click Screen::Tabs Num=%d Max=%d Data=0x%p",
+                    after.num, after.max, after.data);
+        QM_LOG_WARN("[ModTab] *** LIVENESS INJECT DONE *** -> the 6th (duplicate) tab should now appear "
+                    "WITHOUT a manual click");
+    }
+
     void TryDumpTabsViaGetTabs()
     {
         if (g_getTabsDone) return;
@@ -635,6 +829,10 @@ namespace
         // @ 0x88) and compare to the GetTabs copy - this pins the clean injection point (SSOT).
         void* getTabsData = ok ? ReadPtr(buf) : nullptr;
         DumpLiveTabBacking(screen, getTabsData);
+
+        // MUTATING liveness test - only when qm_modtab_inject.txt is present. Recon dump above always
+        // runs (logs the pre-inject Num=5); this appends a duplicate + forces a re-cook.
+        if (g_injectArmed) TryLivenessInjectDupTab(screen);
         // NOTE: the returned TArray's heap backing-store is intentionally leaked - we have no element
         // destructor and this runs once (latched). For a recon-only path the one-shot leak is fine.
     }
@@ -676,6 +874,18 @@ bool QmModTab_Init()
                     "via the ProcessInternal hook (catches BP-internal calls); logging-only, nothing is modified", files, dir);
     else
         QM_LOG_INFO("[ModTab] no qm_modtab*.txt - idle (zero cost)");
+
+    // Separate opt-in for the MUTATING liveness test. The recon dump runs under qm_modtab.txt; the
+    // inject only fires if this explicit sentinel is also present (exact name, not the glob).
+    if (g_armed)
+    {
+        char injPath[MAX_PATH];
+        snprintf(injPath, sizeof(injPath), "%s\\qm_modtab_inject.txt", dir);
+        g_injectArmed = (GetFileAttributesA(injPath) != INVALID_FILE_ATTRIBUTES);
+        if (g_injectArmed)
+            QM_LOG_WARN("[ModTab] *** INJECT ARMED *** qm_modtab_inject.txt present - the liveness test WILL "
+                        "MUTATE the live tab arrays (duplicate-pointer append + forced re-cook)");
+    }
     return g_armed;
 }
 
@@ -708,11 +918,48 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
         // drowning the log. The three decisive functions below are never capped.
         if (v & MT_TRACE)
         {
-            if (InterlockedIncrement(&g_traceCount) > kMaxTraceLines) return;
+            ULONGLONG now = GetTickCount64();
+
+            // Per-frame flood (Tick): normally skipped. But during a verbose window (armed by a tab
+            // click) we DO want it - that's where the native/Tick-driven rebuild runs. To stay
+            // readable, emit only the FIRST Tick per distinct widget instance per window: a newly
+            // created 6th tab widget surfaces as a fresh line; the steady per-frame repeats don't.
+            if (v & MT_NOISE)
+            {
+                if (now >= g_verboseUntilTick) return;             // outside the window: skip as before
+                LONG gen = g_verboseGen;
+                TickSeen& ts = g_tickSeen[(((uintptr_t)self) >> 4) & kTickSeenMask];
+                if (ts.obj == self && ts.gen == gen) return;       // already logged this widget this window
+                if (InterlockedIncrement(&g_verboseLines) > kMaxVerboseLines) return;
+                ts.obj = self; ts.gen = gen;
+                char fnN[64] = { 0 }, sf[352];
+                QmUE::ResolveFNameNarrow(func->Name, fnN, sizeof(fnN));
+                DescribeObject(self, sf, sizeof(sf));
+                QM_LOG_INFO("[ModTab] verbose: %s on %s (1st this window)", fnN[0] ? fnN : "?", sf);
+                return;
+            }
+
             char fnNm[128] = { 0 }, slf[352];
             QmUE::ResolveFNameNarrow(func->Name, fnNm, sizeof(fnNm));
+
+            // A tab button CLICK is the navigation that (per recon #10) makes the injected 6th tab
+            // appear. Arm a short verbose window - BEFORE the trace cap, so it survives even a
+            // saturated log - so the otherwise-skipped Tick flood + Panel/ListView rebuild dispatches
+            // that follow the click become visible.
+            if (ContainsLc(fnNm, "onbuttonclick"))
+            {
+                InterlockedIncrement(&g_verboseGen);
+                g_verboseUntilTick = now + kVerboseWindowMs;
+                QM_LOG_WARN("[ModTab] *** VERBOSE WINDOW ARMED *** (%llu ms) by tab click - now logging "
+                            "Tick (1st/widget) + Draw + Panel/ListView rebuild dispatches",
+                            (unsigned long long)kVerboseWindowMs);
+            }
+
+            if (InterlockedIncrement(&g_traceCount) > kMaxTraceLines) return;
             DescribeObject(self, slf, sizeof(slf));
-            QM_LOG_INFO("[ModTab] trace: %s on %s", fnNm[0] ? fnNm : "?", slf);
+            // parmsSize disambiguates the rebuild call (UpdateTabs/SetData carry the tab array, so
+            // a non-trivial size) from trivial callbacks (size 0) when reading the click sequence.
+            QM_LOG_INFO("[ModTab] trace: %s on %s parmsSize=%d", fnNm[0] ? fnNm : "?", slf, ParmsSize(func));
             return;
         }
 

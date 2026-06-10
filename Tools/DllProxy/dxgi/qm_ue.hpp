@@ -126,7 +126,12 @@ namespace QmUE
     struct UFunction : public UStruct
     {
         uint32 FunctionFlags;           // 0xB0
-        uint8  _pad_B4[0x24];           // 0xB4
+        uint8  NumParms;                // 0xB4
+        uint8  _pad_B5;                 // 0xB5
+        uint16 ParmsSize;               // 0xB6  ProcessEvent param-buffer size (params + return value);
+                                        //       NOT StructSize/PropertiesSize (0x58), which also covers BP locals
+        uint16 ReturnValueOffset;       // 0xB8
+        uint8  _pad_BA[0x1E];           // 0xBA -> 0xD8
         FNativeFuncPtr ExecFunction;    // 0xD8
     };
     static_assert(sizeof(UFunction) == 0xE0, "UFunction must be 0xE0");
