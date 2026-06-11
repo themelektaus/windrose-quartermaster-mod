@@ -82,7 +82,9 @@ namespace ModTab
     bool    OurPanelMounted();
 
     // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
-    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2 };
+    // kRowMods never reaches the build: GetPanelLayout expands it into one text row per
+    // installed qm_profile_*.json (the per-mod source of truth in the sidecar folder).
+    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).

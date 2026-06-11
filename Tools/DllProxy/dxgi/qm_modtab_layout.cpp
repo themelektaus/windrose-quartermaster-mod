@@ -5,7 +5,7 @@
 // falls back to the compiled-in default below, so the panel can never come up empty.
 //
 // Row schema (unknown keys are skipped for forward-compat):
-//   type      "text" (default) | "header" | "button"
+//   type      "text" (default) | "header" | "button" | "modifications"
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
@@ -14,12 +14,19 @@
 //   align     "fill" | "left" | "center" | "right" (slot default: fill)
 //   command   buttons: action id, currently "open_url"
 //   arguments buttons: argument array; only the first entry is used today
+//
+// "modifications" rows expand into one text row per qm_profile_*.json in the sidecar folder
+// (one per installed mod, sorted by name). "text" acts as the per-mod template ("{name}" ->
+// profile name; default: bullet + name), the styling keys apply to every generated row. The
+// expansion re-runs whenever the profile set or any profile's write time changes, so a GUI
+// build/delete shows up on the next settings open without a game restart.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -37,8 +44,8 @@ namespace
   { "type": "header", "text": "Quartermaster", "size": 26, "color": "#FFCC59", "gap": 96 },
   { "type": "text",   "text": "v{version} - Developed by TheMelekTaus", "size": 14, "color": "#AA9966", "wrap": true, "gap": 4 },
   { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator.", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 16 },
-  { "type": "header", "text": "Active Mods", "size": 20, "color": "#FFCC59", "gap": 32 },
-  { "type": "text",   "text": "Active mods will be listed here in the future", "size": 16, "wrap": true, "gap": 4 },
+  { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 32 },
+  { "type": "modifications", "gap": 4 },
   { "type": "button", "text": "Visit nexusmods.com", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 32, "align": "left" }
 ])json";
 
@@ -60,6 +67,7 @@ namespace
     std::vector<PanelRow>   g_view;      // pointer view handed to the build
     bool                    g_loadedOnce   = false;
     bool                    g_fileWasThere = false;
+    bool                    g_fromFile     = false;
     FILETIME                g_lastWrite    = {};
 
     // "#RRGGBB" / "#RRGGBBAA" -> linear RGBA 0..1 (plain /255, no gamma).
@@ -102,9 +110,10 @@ namespace
             {
                 std::string v;
                 if (!jp.parseString(v)) return false;
-                out.type = (v == "header") ? kRowHeader
-                         : (v == "button") ? kRowButton
-                                           : kRowText;
+                out.type = (v == "header")        ? kRowHeader
+                         : (v == "button")        ? kRowButton
+                         : (v == "modifications") ? kRowMods
+                                                  : kRowText;
             }
             else if (key == "text")
             {
@@ -209,13 +218,114 @@ namespace
         return jp.expect(']');
     }
 
+    // ---- "modifications" row expansion --------------------------------------------------------
+
+    std::vector<RowStorage> g_modRows;       // expanded per-profile rows (own their strings)
+    uint64_t                g_modsSig = 0;   // change signature of the qm_profile_*.json set
+
+    // Top-level "name" of a profile JSON.
+    bool ParseProfileName(const char* data, size_t len, std::string& out)
+    {
+        QmJson::Parser jp(data, len);
+        if (!jp.expect('{')) return false;
+        if (jp.peek('}'))    return false;
+        for (;;)
+        {
+            std::string key;
+            if (!jp.parseString(key)) return false;
+            if (!jp.expect(':'))      return false;
+            if (key == "name")        return jp.parseString(out) && !out.empty();
+            if (!jp.skipValue())      return false;
+            if (jp.peek(',')) { ++jp.p; continue; }
+            return false;
+        }
+    }
+
+    // Lists the qm_profile_*.json file names and returns an FNV-1a signature over names + write
+    // times, so the expansion only re-runs when the installed-mod set actually changed.
+    uint64_t ScanProfiles(const char* dir, std::vector<std::string>& outFiles)
+    {
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](const void* p, size_t n)
+        {
+            const uint8_t* b = (const uint8_t*)p;
+            for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
+        };
+
+        char pattern[MAX_PATH];
+        if (snprintf(pattern, sizeof(pattern), "%s\\qm_profile_*.json", dir) <= 0) return h;
+        WIN32_FIND_DATAA fd;
+        HANDLE find = FindFirstFileA(pattern, &fd);
+        if (find == INVALID_HANDLE_VALUE) return h;
+        do
+        {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            mix(fd.cFileName, strlen(fd.cFileName));
+            mix(&fd.ftLastWriteTime, sizeof(fd.ftLastWriteTime));
+            outFiles.push_back(fd.cFileName);
+        } while (FindNextFileA(find, &fd));
+        FindClose(find);
+        return h;
+    }
+
+    // One text row per profile, sorted by display name; the kRowMods row acts as the styling +
+    // text template. A fixed notice row when no profile is installed.
+    void ExpandModRows(const char* dir, const std::vector<std::string>& files, const RowStorage& tpl)
+    {
+        g_modRows.clear();
+
+        std::vector<std::wstring> names;
+        for (size_t i = 0; i < files.size(); ++i)
+        {
+            std::string name;
+            char path[MAX_PATH];
+            std::string body;
+            if (snprintf(path, sizeof(path), "%s\\%s", dir, files[i].c_str()) > 0 &&
+                QmJson::ReadWholeFile(path, body))
+            {
+                QmJson::StripUtf8Bom(body);
+                if (!ParseProfileName(body.data(), body.size(), name)) name.clear();
+            }
+            if (name.empty())
+            {
+                // Fallback: the file name stem, qm_profile_<name>.json.
+                name = files[i];
+                constexpr size_t kPre = sizeof("qm_profile_") - 1, kExt = sizeof(".json") - 1;
+                if (name.size() > kPre + kExt) name = name.substr(kPre, name.size() - kPre - kExt);
+            }
+            names.push_back(QmJson::Utf8ToWide(name));
+        }
+        std::sort(names.begin(), names.end(),
+                  [](const std::wstring& a, const std::wstring& b)
+                  { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+
+        const std::wstring tplText = tpl.text.empty() ? std::wstring(L"\x2022 {name}") : tpl.text;
+        for (size_t i = 0; i < names.size(); ++i)
+        {
+            RowStorage r = tpl;
+            r.type = kRowText;
+            r.text = tplText;
+            for (size_t pos = r.text.find(L"{name}"); pos != std::wstring::npos;
+                 pos = r.text.find(L"{name}", pos))
+            {
+                r.text.replace(pos, sizeof("{name}") - 1, names[i]);
+                pos += names[i].size();
+            }
+            g_modRows.push_back(static_cast<RowStorage&&>(r));
+        }
+        if (g_modRows.empty())
+        {
+            RowStorage r = tpl;
+            r.type = kRowText;
+            r.text = L"No active modifications - build a profile in the Quartermaster Configurator.";
+            g_modRows.push_back(static_cast<RowStorage&&>(r));
+        }
+    }
+
     void RebuildView()
     {
-        g_view.clear();
-        g_view.reserve(g_storage.size());
-        for (size_t i = 0; i < g_storage.size(); ++i)
+        auto viewOf = [](const RowStorage& s)
         {
-            const RowStorage& s = g_storage[i];
             PanelRow r;
             r.type     = s.type;
             r.text     = s.text.c_str();
@@ -226,7 +336,20 @@ namespace
             r.halign   = s.halign;
             r.command  = (s.type == kRowButton && !s.command.empty())  ? s.command.c_str()  : nullptr;
             r.argument = (s.type == kRowButton && !s.argument.empty()) ? s.argument.c_str() : nullptr;
-            g_view.push_back(r);
+            return r;
+        };
+
+        g_view.clear();
+        g_view.reserve(g_storage.size() + g_modRows.size());
+        for (size_t i = 0; i < g_storage.size(); ++i)
+        {
+            if (g_storage[i].type == kRowMods)
+            {
+                for (size_t m = 0; m < g_modRows.size(); ++m)
+                    g_view.push_back(viewOf(g_modRows[m]));
+                continue;
+            }
+            g_view.push_back(viewOf(g_storage[i]));
         }
     }
 }
@@ -275,10 +398,41 @@ namespace ModTab
                 rows.clear();
                 ParseLayout(kDefaultLayoutJson, strlen(kDefaultLayoutJson), rows);
             }
-            g_storage = static_cast<std::vector<RowStorage>&&>(rows);
+            g_storage      = static_cast<std::vector<RowStorage>&&>(rows);
+            g_fromFile     = fromFile;
+        }
+
+        // The mods expansion is checked on EVERY call (one per panel build): the profile set
+        // changes independently of the layout file when the Configurator builds or deletes a mod
+        // while the game runs.
+        const RowStorage* modsTpl = nullptr;
+        for (size_t i = 0; i < g_storage.size() && !modsTpl; ++i)
+            if (g_storage[i].type == kRowMods) modsTpl = &g_storage[i];
+
+        bool modsChanged = false;
+        if (modsTpl)
+        {
+            std::vector<std::string> files;
+            uint64_t sig = havePath ? ScanProfiles(dir, files) : 0;
+            if (stale || sig != g_modsSig)
+            {
+                g_modsSig = sig;
+                ExpandModRows(dir, files, *modsTpl);
+                modsChanged = true;
+            }
+        }
+        else if (!g_modRows.empty()) { g_modRows.clear(); modsChanged = true; }
+
+        if (stale || modsChanged)
+        {
             RebuildView();
-            QM_LOG_INFO("[ModTab] layout: %d row(s) from %s", (int)g_view.size(),
-                        fromFile ? path : "the compiled-in default");
+            if (modsTpl)
+                QM_LOG_INFO("[ModTab] layout: %d row(s) from %s (%d mod row(s))",
+                            (int)g_view.size(), g_fromFile ? path : "the compiled-in default",
+                            (int)g_modRows.size());
+            else
+                QM_LOG_INFO("[ModTab] layout: %d row(s) from %s",
+                            (int)g_view.size(), g_fromFile ? path : "the compiled-in default");
         }
 
         if (outCount) *outCount = (int)g_view.size();
