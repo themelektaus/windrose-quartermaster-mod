@@ -1,0 +1,88 @@
+// Quartermaster "Mod Settings Tab" - internal shared declarations.
+// Public API: qm_modtab.hpp. This header is only included by the qm_modtab_* TUs.
+//
+// Module layout:
+//   qm_modtab.cpp         core: arming, ProcessInternal rider (click gate + lifecycle),
+//                         PLSF target resolve + thunk dispatch, self-heal driver
+//   qm_modtab_util.cpp    generic SEH-guarded read/describe/dump primitives
+//   qm_modtab_widgets.cpp reflected UMG layer: tree walks, live resolvers, visibility,
+//                         panel build + mount (ProbeViewPath)
+//   qm_modtab_inject.cpp  tab data layer: Quartermaster collection build + array append
+//   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps)
+
+#pragma once
+
+#include <windows.h>
+#include <stdint.h>
+
+#include "qm_ue.hpp"
+
+namespace ModTab
+{
+    // Settings-screen BP classes (lazy-loaded at first settings open, NOT at boot).
+    constexpr const char* kSettingsScreenClass     = "WBP_Settings_Screen_C";
+    constexpr const char* kSettingsControllerClass = "BP_Settings_SC_C";
+    constexpr const char* kTabsGroupClass          = "WBP_MetaUI_TabsGroup_C";
+
+    // UR5SettingScreen / UGameSettingRegistry fields (Dumper-7 SDK).
+    constexpr uintptr_t kOff_Screen_Registry = 0x3A8;   // UGameSettingScreen::Registry
+    constexpr uintptr_t kOff_Screen_Tabs     = 0x3B8;   // UR5SettingScreen::Tabs
+    constexpr uintptr_t kOff_Reg_TopLevel    = 0x88;    // UGameSettingRegistry::TopLevelSettings
+    constexpr uintptr_t kOff_Reg_Registered  = 0x98;    // UGameSettingRegistry::RegisteredSettings
+    constexpr uintptr_t kOff_Reg_OwningLP    = 0xA8;    // UGameSettingRegistry::OwningLocalPlayer
+
+    // FFrame fields (the script-VM frame handed to PLSF/ProcessInternal).
+    constexpr uintptr_t kFFrameNodeOff   = 0x10;   // FFrame::Node   (the executing UFunction)
+    constexpr uintptr_t kFFrameLocalsOff = 0x28;   // FFrame::Locals (the packed param block)
+
+    // ESlateVisibility values driven by the gate.
+    enum : uint8_t { ESV_Visible = 0, ESV_Collapsed = 1 };
+
+    // Hexdump cap for parms buffers (parms are small; this is a safety cap).
+    constexpr int32_t kMaxParmsDump = 256;
+
+    struct ArrHdr { void* data; int32_t num; int32_t max; bool ok; };
+
+    // ---- shared state (defined in qm_modtab.cpp) --------------------------------------------
+    // Live-instance latches: every settings (re)open builds a brand-new screen/tab-bar widget
+    // hierarchy while the previous instances linger un-GC'd in GObjects, so
+    // FindFirstInstanceOfClass returns the STALE one and anything resolved through it lands in
+    // a detached tree that never renders. The live instances are latched from their own fresh
+    // dispatches instead; cleared on OnExit.
+    extern void* g_liveTabsGroup;   // live WBP_MetaUI_TabsGroup_C (latched on Construct)
+    // Mount handles, owned by ProbeViewPath:
+    extern void* g_ourPanel;        // our content ScrollBox (rebuilt fresh on every open)
+    extern void* g_mountTarget;     // the content VerticalBox the panel is parented into
+    extern void* g_nativePanel;     // native WBP_Settings_Panel_C (inverse-gated vs our panel)
+
+    // ---- qm_modtab_util.cpp ------------------------------------------------------------------
+    bool    LocateDllDir(char* out, size_t outSz);
+    void    DescribeObject(QmUE::UObject* obj, char* out, size_t outSz);
+    bool    ContainsLc(const char* hay, const char* needleLc);
+    int32_t ParmsSize(QmUE::UFunction* func);
+    void    HexDump(const char* tag, const uint8_t* base, int32_t cap);
+    void    ScanForTArrays(const uint8_t* parms, int32_t size);
+    void*   ReadPtr(const void* p);
+    ArrHdr  ReadArrHdr(const void* p);
+    bool    ReadFTextNarrow(const void* ftext, char* out, size_t outSz);
+
+    // ---- qm_modtab_widgets.cpp ---------------------------------------------------------------
+    QmUE::UObject* ResolveOurTabWidget();
+    bool    SetWidgetVisibility(QmUE::UObject* widget, uint8_t vis);
+    int     GetWidgetVisibility(QmUE::UObject* widget);   // -1 when unreadable
+    void*   GetWidgetParent(QmUE::UObject* widget);
+    void    ProbeViewPath(QmUE::UObject* screen);
+    bool    OurPanelMounted();
+
+    // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
+    bool    OurCollectionPresentInTabs(QmUE::UObject* screen);
+    // bootstrapMount: run the panel mount from this self-heal path too (true until the
+    // CookTabs-post hook has proven itself - see g_cookTabsHookLive in qm_modtab.cpp).
+    void    TryLivenessInjectDupTab(QmUE::UObject* screen, bool bootstrapMount);
+
+    // ---- qm_modtab_recon.cpp -----------------------------------------------------------------
+    void    TryEnumerateSettingsClasses();
+    void    DumpGetTabsReconOnce(QmUE::UObject* screen);
+    void    DumpFnParms(const char* tag, void* ctx, void* stack, QmUE::UFunction* fn,
+                        volatile LONG* budget);
+}
