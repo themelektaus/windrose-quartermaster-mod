@@ -309,7 +309,17 @@ async function loadTabHtml() {
     host.innerHTML = fragments.join('\n');
 }
 
+// Fire-and-forget: a failed fetch keeps the static title from index.html.
+async function applyVersionTitle() {
+    try {
+        const r = await fetch('/api/version');
+        const d = await r.json();
+        if (d && d.version) document.title = 'Windrose Quartermaster v' + d.version;
+    } catch { /* keep static title */ }
+}
+
 async function boot() {
+    applyVersionTitle();
     await loadTabHtml();
     bindSetupHandlers();
     bindHandlers();

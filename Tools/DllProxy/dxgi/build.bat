@@ -25,6 +25,7 @@ if errorlevel 1 (
 
 rem Clean previous outputs
 if exist *.obj del /q *.obj
+if exist *.res del /q *.res
 if exist dxgi.dll del /q dxgi.dll
 if exist dxgi.exp del /q dxgi.exp
 if exist dxgi.lib del /q dxgi.lib
@@ -35,6 +36,14 @@ if not exist "%MH_DIR%\include\MinHook.h" (
     popd
     exit /b 1
 )
+
+rem qm_version.h is generated fresh each build from the configurator csproj -
+rem the single source of truth for the Quartermaster version. It feeds the PE
+rem version resource (version.rc) and the ModTab {version} text token.
+set VERSION_CSPROJ=..\..\..\GUI\Web\Quartermaster.Web.csproj
+echo [build] generate qm_version.h from GUI\Web\Quartermaster.Web.csproj ...
+powershell -NoProfile -Command "$m = Select-String -LiteralPath '%VERSION_CSPROJ%' -Pattern '<Version>([^<]+)</Version>' | Select-Object -First 1; if (-not $m) { exit 1 }; $v = $m.Matches[0].Groups[1].Value.Trim(); $c = ((($v -split '\.') + @('0','0','0','0'))[0..3] -join ','); $q = [char]34; Set-Content -Encoding ascii -LiteralPath 'qm_version.h' -Value @('#ifndef QM_VERSION_H', '#define QM_VERSION_H', ('#define QM_VERSION_STR ' + $q + $v + $q), ('#define QM_VERSION_COMMA ' + $c), '#endif')"
+if errorlevel 1 ( echo [build] version extraction failed - is ^<Version^> set in %VERSION_CSPROJ%? & popd & exit /b 1 )
 
 set CONFIG_DEFINE=
 set CONFIG_LABEL=dev
@@ -54,6 +63,10 @@ echo [build] ml64 /c passthrough_asm.asm ...
 ml64 /nologo /c passthrough_asm.asm
 if errorlevel 1 ( echo [build] ml64 failed. & popd & exit /b 1 )
 
+echo [build] rc version.rc ...
+rc /nologo /fo version.res version.rc
+if errorlevel 1 ( echo [build] rc failed. & popd & exit /b 1 )
+
 echo [build] cl /c MinHook sources ...
 cl %COMMON_FLAGS% "%MH_DIR%\src\buffer.c" "%MH_DIR%\src\hook.c" "%MH_DIR%\src\trampoline.c" "%MH_DIR%\src\hde\hde64.c"
 if errorlevel 1 ( echo [build] cl minhook failed. & popd & exit /b 1 )
@@ -63,7 +76,7 @@ link /nologo /DLL /MACHINE:X64 /OUT:dxgi.dll /DEF:passthrough.def ^
     main.obj passthrough.obj passthrough_asm.obj ^
     qm_log.obj qm_ue.obj qm_scan.obj qm_alloc.obj qm_crash.obj qm_config.obj qm_inject.obj qm_diag.obj qm_hook.obj qm_weather.obj qm_killxp.obj qm_shanty.obj ^
     qm_modtab.obj qm_modtab_util.obj qm_modtab_widgets.obj qm_modtab_layout.obj qm_modtab_inject.obj qm_modtab_recon.obj ^
-    buffer.obj hook.obj trampoline.obj hde64.obj ^
+    buffer.obj hook.obj trampoline.obj hde64.obj version.res ^
     kernel32.lib user32.lib shell32.lib ole32.lib advapi32.lib
 if errorlevel 1 ( echo [build] link failed. & popd & exit /b 1 )
 

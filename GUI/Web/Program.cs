@@ -149,6 +149,9 @@ public static class Program
         SavegameEndpoint.Map(app, resolvedRoot);
         UiScaleEndpoint.Map(app, resolvedRoot);
 
+        app.MapGet("/api/version", () =>
+            Microsoft.AspNetCore.Http.Results.Json(new { version = AppVersion.Display }));
+
         app.MapPost("/api/shutdown", (Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime) =>
         {
             lifetime.StopApplication();

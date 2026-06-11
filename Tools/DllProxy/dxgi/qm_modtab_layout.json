@@ -8,7 +8,7 @@
   },
   {
     "type": "text",
-    "text": "Developed by TheMelekTaus",
+    "text": "v{version} - Developed by TheMelekTaus",
     "size": 14,
     "color": "#AA9966",
     "wrap": true,
@@ -24,16 +24,13 @@
   },
   {
     "type": "header",
-    "text": "Active Mods",
+    "text": "Active Modifications",
     "size": 20,
     "color": "#FFCC59",
     "gap": 32
   },
   {
-    "type": "text",
-    "text": "Active mods will be listed here in the future",
-    "size": 16,
-    "wrap": true,
+    "type": "modifications",
     "gap": 4
   },
   {

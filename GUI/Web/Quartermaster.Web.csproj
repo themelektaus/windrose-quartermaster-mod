@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <Version>0.9.1.8</Version>
     <RootNamespace>Windrose.Quartermaster.Web</RootNamespace>
     <!--
       Cascade self-contained when App publishes (which depends on this

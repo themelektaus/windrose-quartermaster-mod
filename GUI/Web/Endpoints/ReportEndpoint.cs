@@ -5,7 +5,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -152,7 +151,7 @@ public static class ReportEndpoint
                         description = body.Description,
                         nickname = nickname,
                         timestampUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        quartermasterVersion = GetAssemblyVersion(),
+                        quartermasterVersion = AppVersion.Informational,
                         os = Environment.OSVersion.VersionString,
                         platform = Environment.OSVersion.Platform.ToString(),
                         machineName = Environment.MachineName,
@@ -196,7 +195,7 @@ public static class ReportEndpoint
                 attachment = Convert.ToBase64String(zipBytes),
                 metadata = new
                 {
-                    quartermasterVersion = GetAssemblyVersion(),
+                    quartermasterVersion = AppVersion.Informational,
                     os = Environment.OSVersion.VersionString,
                     timestampUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
                     attachmentSizeBytes = zipBytes.LongLength,
@@ -275,19 +274,6 @@ public static class ReportEndpoint
         using var entryStream = entry.Open();
         var bytes = Encoding.UTF8.GetBytes(text);
         entryStream.Write(bytes, 0, bytes.Length);
-    }
-
-    private static string GetAssemblyVersion()
-    {
-        try
-        {
-            var asm = typeof(ReportEndpoint).Assembly;
-            var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
-            if (info != null && !string.IsNullOrEmpty(info.InformationalVersion))
-                return info.InformationalVersion;
-            return asm.GetName().Version?.ToString() ?? "unknown";
-        }
-        catch { return "unknown"; }
     }
 
     private sealed class ReportRequestDto

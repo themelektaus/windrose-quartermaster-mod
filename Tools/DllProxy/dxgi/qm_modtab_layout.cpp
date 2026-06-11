@@ -1,11 +1,12 @@
-// Data-driven panel content: qm_modtab_layout.json (next to the DLL) is a JSON array of row
+// Data-driven panel content: qm_modtab_layout.json (in the Quartermaster sidecar folder next
+// to the DLL) is a JSON array of row
 // objects the panel build renders top-to-bottom. The file is re-read whenever its write time
 // changes (live-editable between settings opens, no game restart); a missing or unusable file
 // falls back to the compiled-in default below, so the panel can never come up empty.
 //
 // Row schema (unknown keys are skipped for forward-compat):
 //   type      "text" (default) | "header" | "button"
-//   text      row label (UTF-8)
+//   text      row label (UTF-8); "{version}" expands to the Quartermaster version
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
 //   wrap      true -> auto-wrap (text rows)
@@ -25,6 +26,7 @@
 #include "qm_modtab_internal.hpp"
 #include "qm_json.hpp"
 #include "qm_log.hpp"
+#include "qm_version.h"
 
 using namespace ModTab;
 
@@ -33,7 +35,7 @@ namespace
     // Compiled-in fallback - kept in sync with the shipped qm_modtab_layout.json.
     constexpr const char* kDefaultLayoutJson = R"json([
   { "type": "header", "text": "Quartermaster", "size": 26, "color": "#FFCC59", "gap": 96 },
-  { "type": "text",   "text": "Developed by TheMelekTaus", "size": 14, "color": "#AA9966", "wrap": true, "gap": 4 },
+  { "type": "text",   "text": "v{version} - Developed by TheMelekTaus", "size": 14, "color": "#AA9966", "wrap": true, "gap": 4 },
   { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator.", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 16 },
   { "type": "header", "text": "Active Mods", "size": 20, "color": "#FFCC59", "gap": 32 },
   { "type": "text",   "text": "Active mods will be listed here in the future", "size": 16, "wrap": true, "gap": 4 },
@@ -108,6 +110,8 @@ namespace
             {
                 std::string v;
                 if (!jp.parseString(v)) return false;
+                for (size_t pos = v.find("{version}"); pos != std::string::npos; pos = v.find("{version}", pos))
+                    v.replace(pos, sizeof("{version}") - 1, QM_VERSION_STR);
                 out.text = QmJson::Utf8ToWide(v);
             }
             else if (key == "color")
@@ -233,7 +237,7 @@ namespace ModTab
     {
         char path[MAX_PATH] = { 0 };
         char dir[MAX_PATH];
-        bool havePath = LocateDllDir(dir, sizeof(dir)) &&
+        bool havePath = LocateSidecarDir(dir, sizeof(dir)) &&
                         snprintf(path, sizeof(path), "%s\\qm_modtab_layout.json", dir) > 0;
 
         WIN32_FILE_ATTRIBUTE_DATA fad = {};

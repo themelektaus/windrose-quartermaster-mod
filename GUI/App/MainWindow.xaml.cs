@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
+using Windrose.Quartermaster.Web;
 
 namespace Windrose.Quartermaster.App;
 
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
     public MainWindow(string url, string dataRoot)
     {
         InitializeComponent();
+        Title = "Windrose Quartermaster v" + AppVersion.Display;
         _url = url;
         _dataRoot = dataRoot;
         ApplyStartupBounds();
