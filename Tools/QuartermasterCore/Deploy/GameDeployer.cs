@@ -431,6 +431,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             EnsureSidecarDir();
             File.WriteAllText(path, profileJson, new UTF8Encoding(false));
             RegenerateModsManifest();
+            RegenerateItemCatalog();
         }
 
         public bool RemoveProfileJson(string profileSafeName)
@@ -440,6 +441,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             LogLine("Removing qm_profile_" + profileSafeName + ".json -> " + path);
             File.Delete(path);
             RegenerateModsManifest();
+            RegenerateItemCatalog();
             return true;
         }
 
@@ -502,6 +504,45 @@ namespace Windrose.Quartermaster.Core.Deploy
                 foreach (var d in m.Value) sb.Append("  ").Append(d).Append('\n');
             }
             LogLine("Writing qm_modtab_mods.txt (" + mods.Count + " mod(s)) -> " + path);
+            EnsureSidecarDir();
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        }
+
+        // The in-game item spawner's render input: qm_modtab_items.txt is the finished item
+        // catalog ("<AssetId>|<English display name>" per line, pre-sorted by display name)
+        // built from the vanilla sources + icon localization (ItemCatalog). Same lifecycle as
+        // the mods manifest: regenerated with the profile set, removed with the last profile.
+        public string TargetItemCatalogPath() => Path.Combine(_sidecarDir, "qm_modtab_items.txt");
+
+        public void RegenerateItemCatalog()
+        {
+            var path = TargetItemCatalogPath();
+            if (EnumerateProfileJsonPaths().Count == 0)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_modtab_items.txt (no profile JSONs left) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+
+            var entries = ItemCatalog.Build(_modRoot);
+            if (entries.Count == 0)
+            {
+                // No extracted vanilla sources to build from - keep whatever catalog is already
+                // deployed rather than degrading it to an empty file.
+                LogLine("WARNING: item catalog source empty (Sources/Vanilla not extracted?) - "
+                        + "qm_modtab_items.txt left as-is");
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("# Quartermaster: item catalog (auto-generated).\n");
+            sb.Append("# <AssetId>|<Display name>, sorted by display name.\n");
+            foreach (var e in entries)
+                sb.Append(e.AssetId).Append('|').Append(e.DisplayName).Append('\n');
+            LogLine("Writing qm_modtab_items.txt (" + entries.Count + " item(s)) -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
