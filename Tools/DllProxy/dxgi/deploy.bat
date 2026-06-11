@@ -43,6 +43,18 @@ if errorlevel 1 (
 echo [deploy] Writing marker: %TARGET%\dxgi.dll.qm
 >"%TARGET%\dxgi.dll.qm" echo Quartermaster dxgi.dll proxy marker (deploy.bat)
 
+rem qm_modtab_layout.json drives the settings-panel content (the DLL re-reads
+rem it on change, no restart needed). Seed it once; an existing copy in the
+rem target is user-owned (live-edited) and must not be overwritten.
+if exist "%SCRIPT_DIR%qm_modtab_layout.json" (
+    if exist "%TARGET%\qm_modtab_layout.json" (
+        echo [deploy] qm_modtab_layout.json present in target - user-owned, left alone
+    ) else (
+        echo [deploy] Seeding default layout: %TARGET%\qm_modtab_layout.json
+        copy /Y "%SCRIPT_DIR%qm_modtab_layout.json" "%TARGET%\qm_modtab_layout.json" >nul
+    )
+)
+
 rem qm_items_<profile>.json files are written per-profile by the build pipeline
 rem (GameDeployer.WriteItemsJson) on every profile build. We MUST NOT copy any
 rem stale dev-spike stub from this source folder over the freshly-built files.

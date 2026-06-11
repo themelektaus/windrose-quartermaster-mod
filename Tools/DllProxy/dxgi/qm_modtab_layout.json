@@ -1,0 +1,47 @@
+[
+  {
+    "type": "header",
+    "text": "Quartermaster",
+    "size": 26,
+    "color": "#FFCC59",
+    "gap": 96
+  },
+  {
+    "type": "text",
+    "text": "Developed by TheMelekTaus",
+    "size": 14,
+    "color": "#AA9966",
+    "wrap": true,
+    "gap": 4
+  },
+  {
+    "type": "text",
+    "text": "Configurable mods and tweaks - built with the Quartermaster Configurator.",
+    "size": 16,
+    "color": "#C7C7C7",
+    "wrap": true,
+    "gap": 16
+  },
+  {
+    "type": "header",
+    "text": "Active Mods",
+    "size": 20,
+    "color": "#FFCC59",
+    "gap": 32
+  },
+  {
+    "type": "text",
+    "text": "Active mods will be listed here in the future",
+    "size": 16,
+    "wrap": true,
+    "gap": 4
+  },
+  {
+    "type": "button",
+    "text": "Visit nexusmods.com",
+    "command": "open_url",
+    "arguments": ["https://www.nexusmods.com/windrose/mods/375"],
+    "gap": 32,
+    "align": "left"
+  }
+]

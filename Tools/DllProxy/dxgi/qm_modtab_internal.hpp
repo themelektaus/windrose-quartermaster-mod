@@ -8,6 +8,7 @@
 //   qm_modtab_util.cpp    generic SEH-guarded read/describe/dump primitives
 //   qm_modtab_widgets.cpp reflected UMG layer: tree walks, visibility, panel build + mount
 //                         (ProbeViewPath)
+//   qm_modtab_layout.cpp  data-driven panel content: qm_modtab_layout.json -> PanelRow view
 //   qm_modtab_inject.cpp  tab data layer: Quartermaster collection build + array append
 //   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps)
 
@@ -52,10 +53,16 @@ namespace ModTab
     extern void* g_ourPanel;        // our content ScrollBox (rebuilt fresh on every cook)
     extern void* g_mountTarget;     // the content VerticalBox the panel is parented into
     extern void* g_nativePanel;     // native WBP_Settings_Panel_C (inverse-gated vs our panel)
-    // The themed nexus-link button INSIDE our panel. Its click reaches us as a
-    // BndEvt__*_OnClick ProcessEvent dispatch on exactly this instance (delegate dispatch from
-    // its inner button) - matched by pointer in QmModTab_OnProcessEvent, never dereferenced.
-    extern void* g_nexusButton;
+
+    // Click-action latches for the themed buttons INSIDE our panel. A click reaches us as a
+    // BndEvt__*_OnClick ProcessEvent dispatch on exactly that widget instance (delegate
+    // re-dispatch from its inner button) - matched by pointer in QmModTab_OnProcessEvent,
+    // never dereferenced. Rebuilt with every panel build (count reset on discard);
+    // command/argument point into the layout storage, which only reloads during a build.
+    struct ButtonAction { void* widget; const char* command; const char* argument; };
+    constexpr int kMaxButtonActions = 8;
+    extern ButtonAction g_buttonActions[kMaxButtonActions];
+    extern int          g_buttonActionCount;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateDllDir(char* out, size_t outSz);
@@ -73,6 +80,27 @@ namespace ModTab
     int     GetWidgetVisibility(QmUE::UObject* widget);   // -1 when unreadable
     void    ProbeViewPath(QmUE::UObject* screen);
     bool    OurPanelMounted();
+
+    // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
+    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2 };
+    // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
+    // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
+    // one cook frame; the button actions latch them - see ButtonAction above).
+    struct PanelRow
+    {
+        int            type;
+        const wchar_t* text;
+        float          size;       // font size; <= 0 -> kind default
+        const float*   color;      // RGBA 0..1; nullptr -> widget default
+        bool           wrap;       // auto-wrap (text rows)
+        float          gap;        // vertical space above the row
+        uint8_t        halign;     // EHorizontalAlignment; 255 = slot default (Fill)
+        const char*    command;    // buttons: action id ("open_url"); nullptr otherwise
+        const char*    argument;   // buttons: first argument (e.g. the URL); nullptr otherwise
+    };
+    // Rows from qm_modtab_layout.json next to the DLL (re-read when its write time changes),
+    // falling back to a compiled-in default - never returns an empty layout.
+    const PanelRow* GetPanelLayout(int* outCount);
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);

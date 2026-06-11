@@ -45,33 +45,11 @@ namespace
     constexpr size_t    kFontInfoSize          = 0x60;    // sizeof(FSlateFontInfo)      (SDK)
 
     // ---- panel content ------------------------------------------------------------------------
-    constexpr const wchar_t* kTxtTitle    = L"Quartermaster - Made by TheMelekTaus";
-    constexpr const wchar_t* kTxtDesc     = L"Configurable mods and tweaks - built with the Quartermaster Configurator.";
-    constexpr const wchar_t* kTxtSubtitle = L"Active Mods";
-    // Placeholder rows until the active mods / settings / modified values are wired up.
-    constexpr const wchar_t* kTxtDummy[] = {
-        L"(Placeholder) Active mods will be listed here",
-        L"(Placeholder) Settings and modified values follow",
-    };
-    constexpr const wchar_t* kTxtNexusBtn = L"Visit nexusmods.com";
-
-    constexpr float kColTitle[4]    = { 1.00f, 0.80f, 0.35f, 1.0f };
-    constexpr float kColDesc[4]     = { 0.78f, 0.78f, 0.78f, 1.0f };
-    constexpr float kColSubtitle[4] = { 0.92f, 0.88f, 0.62f, 1.0f };
-
-    // Game-font point sizes per row kind. Title/subtitle sizes only apply on the TextBlock
-    // fallback (the EntryHeader widget styles itself).
-    constexpr float kFontSizeTitle    = 26.0f;
-    constexpr float kFontSizeSubtitle = 20.0f;
-    constexpr float kFontSizeDesc     = 16.0f;
-    constexpr float kFontSizeBody     = 16.0f;
-
-    // Per-row slot layout (ScrollBoxSlot). Gap = vertical space ABOVE the row.
-    constexpr float kGapSection = 24.0f;   // row that starts a new section (subtitle, button)
-    constexpr float kGapRow     = 4.0f;    // consecutive rows within a section
-    // EHorizontalAlignment: 0=Fill 1=Left 2=Center 3=Right. Fill (slot default) stretches a
-    // child across the panel; Left makes the nexus button hug its label width.
-    constexpr uint8_t kBtnHAlign = 1;
+    // All content (texts, sizes, colors, gaps, button commands) comes from the layout rows
+    // (qm_modtab_layout.cpp). These are only the per-kind font-size fallbacks for rows that
+    // carry none; header sizes apply on the TextBlock fallback only (EntryHeader styles itself).
+    constexpr float kDefFontSizeBody   = 16.0f;
+    constexpr float kDefFontSizeHeader = 20.0f;
 
     // Recursively log a widget subtree. A node without GetChildrenCount (not a UPanelWidget) is
     // a leaf. Depth- and budget-capped. Up to two independent FIRST-match captures by
@@ -144,7 +122,7 @@ namespace
     QmUE::UObject* AddTextRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
                               const wchar_t* text, const float* rgba,
                               const uint8_t* font, float fontSize, bool wrap,
-                              float gapAbove = 0.0f)
+                              float gapAbove = 0.0f, uint8_t hAlign = 255)
     {
         if (!panel || !panel->Class) return nullptr;
         QmUE::UClass* txtClass = QmUE::FindClassByName("TextBlock");
@@ -183,11 +161,89 @@ namespace
             P_AddChild ac; ac.Content = txt; ac.ReturnValue = nullptr;
             if (QmUE::CallProcessEvent(panel, fnAdd, &ac) && ac.ReturnValue)
             {
-                StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove);
+                StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove, hAlign);
                 return txt;
             }
         }
         return nullptr;
+    }
+
+    // One button row. `donor` is the pre-created themed ArtButton (the font-clone source); the
+    // first button row consumes it (un-parented until then), later rows create fresh instances.
+    // Falls back to a raw Button+TextBlock: visible, but deliberately unwired - only the themed
+    // widget re-dispatches its inner click as a BndEvt__*_OnClick ProcessEvent the click watch
+    // can see. A mounted themed button carrying a command is latched into g_buttonActions.
+    bool AddButtonRow(QmUE::UObject* panel, QmUE::UObject* widgetTree, QmUE::UObject* screen,
+                      QmUE::UObject* owningPlayer, QmUE::UObject* wblCDO, QmUE::UFunction* fnCreate,
+                      QmUE::UObject*& donor, const PanelRow& row, bool& wired)
+    {
+        wired = false;
+        if (!panel || !panel->Class) return false;
+
+        QmUE::UObject* btn = nullptr;
+        bool themed = false;
+        if (donor) { btn = donor; donor = nullptr; themed = true; }
+        else if (wblCDO && fnCreate)
+        {
+            if (QmUE::UClass* artClass = QmUE::FindClassByName(kArtButtonClass))
+            {
+                P_Create cp; memset(&cp, 0, sizeof(cp));
+                cp.WorldContextObject = screen;
+                cp.WidgetType         = artClass;
+                cp.OwningPlayer       = owningPlayer;
+                if (QmUE::CallProcessEvent(wblCDO, fnCreate, &cp))
+                    btn = reinterpret_cast<QmUE::UObject*>(cp.ReturnValue);
+                themed = (btn && btn->Class);
+                if (!themed) btn = nullptr;
+            }
+        }
+
+        if (themed)
+        {
+            if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(btn->Class, "SetData"))
+            {
+                uint8_t ft[16]; memset(ft, 0, sizeof(ft));   // P_SetData = { FText Data; }
+                if (QmUE::TextFromString(row.text, ft)) QmUE::CallProcessEvent(btn, fnSet, ft);
+            }
+        }
+        else
+        {
+            QmUE::UClass*  btnClass = QmUE::FindClassByName("Button");
+            QmUE::UClass*  txtClass = QmUE::FindClassByName("TextBlock");
+            btn = btnClass ? QmUE::SpawnObjectViaUFunction(btnClass, widgetTree) : nullptr;
+            QmUE::UObject* txt = txtClass ? QmUE::SpawnObjectViaUFunction(txtClass, widgetTree) : nullptr;
+            if (txt && txt->Class)
+                if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(txt->Class, "SetText"))
+                {
+                    uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                    if (QmUE::TextFromString(row.text, ft)) QmUE::CallProcessEvent(txt, fnSet, ft);
+                }
+            if (btn && btn->Class && txt)    // UButton is a UContentWidget -> AddChild sets its content
+                if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(btn->Class, "AddChild"))
+                {
+                    P_AddChild ac; ac.Content = txt; ac.ReturnValue = nullptr;
+                    QmUE::CallProcessEvent(btn, fnAdd, &ac);
+                }
+        }
+        if (!btn) return false;
+
+        QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
+        if (!fnAdd) return false;
+        P_AddChild ac; ac.Content = btn; ac.ReturnValue = nullptr;
+        if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
+        if (ac.ReturnValue)
+            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign);
+
+        if (themed && row.command && g_buttonActionCount < kMaxButtonActions)
+        {
+            ButtonAction& a = g_buttonActions[g_buttonActionCount];
+            a.widget   = btn;
+            a.command  = row.command;
+            a.argument = row.argument;
+            ++g_buttonActionCount;
+            wired = true;
+        }
+        return true;
     }
 
     // One native section-header row: CreateWidget the game's own settings header blueprint and
@@ -344,8 +400,8 @@ namespace ModTab
             QM_LOG_WARN("[ModTab] *** FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
                         "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
                         (void*)g_ourPanel, (void*)mountTarget);
-            g_ourPanel    = nullptr;
-            g_nexusButton = nullptr;   // dies with its panel; re-latched by the content build
+            g_ourPanel          = nullptr;
+            g_buttonActionCount = 0;   // actions die with their panel; re-latched by the build
         }
 
         // Owning player (Create's 3rd arg).
@@ -369,24 +425,20 @@ namespace ModTab
         QM_LOG_WARN("[ModTab]   view: own ScrollBox class=0x%p -> panel=0x%p %s (%s)", (void*)scrollClass,
                     (void*)ourPanel, opnl, ourPanel ? "CONSTRUCTED" : "construct FAILED");
 
-        // Panel content: title / description / "Aktive Mods" subtitle / placeholder rows / nexus
-        // link button. Strictly additive + SEH-isolated: any failure is swallowed and never
-        // aborts the panel mount.
+        // Panel content from the layout rows (qm_modtab_layout.json or its compiled-in default).
+        // Strictly additive + SEH-isolated: any failure is swallowed and never aborts the
+        // panel mount.
         if (ourPanel)
         {
             __try
             {
-                // The themed button is built FIRST: its label TextBlock (txt_Name) is the
-                // font-clone source for the plain text rows. It is appended LAST (child order
-                // = visual order). Only the themed button's click is observable (it
-                // re-dispatches the inner button's click as BndEvt__*_OnClick via
-                // ProcessEvent); the raw Button+TextBlock fallback keeps the row visible but
-                // stays unwired (an empty OnClicked broadcast dispatches nothing).
-                bool themed = false, labelled = false, mounted = false;
-                QmUE::UObject* btn = nullptr;
+                // A themed ArtButton is created up front as the font-clone donor: its label
+                // TextBlock (txt_Name) carries the game font applied to the plain text rows.
+                // The first button row consumes the instance (un-parented until then); with no
+                // button rows it is left to GC.
                 uint8_t gameFont[kFontInfoSize];
                 const uint8_t* font = nullptr;
-
+                QmUE::UObject* donor = nullptr;
                 QmUE::UClass* artClass = QmUE::FindClassByName(kArtButtonClass);
                 if (artClass && wblCDO && fnCreate)
                 {
@@ -395,72 +447,50 @@ namespace ModTab
                     cp.WidgetType         = artClass;
                     cp.OwningPlayer       = owningPlayer;
                     if (QmUE::CallProcessEvent(wblCDO, fnCreate, &cp))
-                        btn = reinterpret_cast<QmUE::UObject*>(cp.ReturnValue);
-                    if (btn && btn->Class)
+                        donor = reinterpret_cast<QmUE::UObject*>(cp.ReturnValue);
+                    if (donor && donor->Class)
                     {
-                        themed = true;
-                        if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(btn->Class, "SetData"))
-                        {
-                            uint8_t ft[16]; memset(ft, 0, sizeof(ft));   // P_SetData = { FText Data; }
-                            if (QmUE::TextFromString(kTxtNexusBtn, ft))
-                                labelled = QmUE::CallProcessEvent(btn, fnSet, ft);
-                        }
                         QmUE::UObject* lbl = reinterpret_cast<QmUE::UObject*>(
-                            ReadPtr(reinterpret_cast<const uint8_t*>(btn) + kOff_ArtButton_TxtName));
+                            ReadPtr(reinterpret_cast<const uint8_t*>(donor) + kOff_ArtButton_TxtName));
                         if (CloneFontFromTextBlock(lbl, gameFont)) font = gameFont;
                     }
+                    else donor = nullptr;
                 }
 
-                int rows = 0, headers = 0;
-                if (AddHeaderRow(ourPanel, screen, owningPlayer, wblCDO, fnCreate, kTxtTitle))
-                    { ++rows; ++headers; }
-                else if (AddTextRow(ourPanel, widgetTree, kTxtTitle, kColTitle, font, kFontSizeTitle, false))
-                    ++rows;
-                if (AddTextRow(ourPanel, widgetTree, kTxtDesc, kColDesc, font, kFontSizeDesc, true, kGapRow))
-                    ++rows;
-                if (AddHeaderRow(ourPanel, screen, owningPlayer, wblCDO, fnCreate, kTxtSubtitle, kGapSection))
-                    { ++rows; ++headers; }
-                else if (AddTextRow(ourPanel, widgetTree, kTxtSubtitle, kColSubtitle, font, kFontSizeSubtitle, false, kGapSection))
-                    ++rows;
-                for (const wchar_t* dummy : kTxtDummy)
-                    if (AddTextRow(ourPanel, widgetTree, dummy, nullptr, font, kFontSizeBody, true, kGapRow)) ++rows;
-
-                if (!btn)
+                int rowCount = 0;
+                const PanelRow* layout = GetPanelLayout(&rowCount);
+                int rows = 0, headers = 0, buttons = 0, wiredCount = 0;
+                g_buttonActionCount = 0;
+                for (int i = 0; layout && i < rowCount; ++i)
                 {
-                    QmUE::UClass*  btnClass = QmUE::FindClassByName("Button");
-                    QmUE::UClass*  txtClass = QmUE::FindClassByName("TextBlock");
-                    btn = btnClass ? QmUE::SpawnObjectViaUFunction(btnClass, widgetTree) : nullptr;
-                    QmUE::UObject* txt = txtClass ? QmUE::SpawnObjectViaUFunction(txtClass, widgetTree) : nullptr;
-                    if (txt && txt->Class)
-                        if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(txt->Class, "SetText"))
-                        {
-                            uint8_t ft[16]; memset(ft, 0, sizeof(ft));
-                            if (QmUE::TextFromString(kTxtNexusBtn, ft))
-                                labelled = QmUE::CallProcessEvent(txt, fnSet, ft);
-                        }
-                    if (btn && btn->Class && txt)    // UButton is a UContentWidget -> AddChild sets its content
-                        if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(btn->Class, "AddChild"))
-                        {
-                            P_AddChild ac; ac.Content = txt; ac.ReturnValue = nullptr;
-                            QmUE::CallProcessEvent(btn, fnAdd, &ac);
-                        }
-                }
-
-                if (btn && ourPanel->Class)
-                    if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(ourPanel->Class, "AddChild"))
+                    const PanelRow& r = layout[i];
+                    if (r.type == kRowHeader)
                     {
-                        P_AddChild ac; ac.Content = btn; ac.ReturnValue = nullptr;
-                        mounted = QmUE::CallProcessEvent(ourPanel, fnAdd, &ac);
-                        if (mounted && ac.ReturnValue)
-                            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue),
-                                      kGapSection, kBtnHAlign);
+                        if (AddHeaderRow(ourPanel, screen, owningPlayer, wblCDO, fnCreate, r.text, r.gap))
+                            { ++rows; ++headers; }
+                        else if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
+                                            r.size > 0.0f ? r.size : kDefFontSizeHeader,
+                                            r.wrap, r.gap, r.halign))
+                            ++rows;
                     }
-                g_nexusButton = (mounted && themed) ? btn : nullptr;
-                QM_LOG_WARN("[ModTab]   view: CONTENT build rows=%d/%d headers=%d/2 gameFont=%d "
-                            "nexusBtn=0x%p themed=%d labelled=%d mounted=%d (click %s)", rows,
-                            3 + (int)(sizeof(kTxtDummy) / sizeof(kTxtDummy[0])), headers,
-                            font ? 1 : 0, (void*)btn, themed, labelled, mounted,
-                            g_nexusButton ? "wired via the PE BndEvt watch" : "NOT wired - raw fallback");
+                    else if (r.type == kRowButton)
+                    {
+                        bool wired = false;
+                        if (AddButtonRow(ourPanel, widgetTree, screen, owningPlayer, wblCDO,
+                                         fnCreate, donor, r, wired))
+                            { ++rows; ++buttons; if (wired) ++wiredCount; }
+                    }
+                    else
+                    {
+                        if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
+                                       r.size > 0.0f ? r.size : kDefFontSizeBody,
+                                       r.wrap, r.gap, r.halign))
+                            ++rows;
+                    }
+                }
+                QM_LOG_WARN("[ModTab]   view: CONTENT build rows=%d/%d headers=%d buttons=%d wired=%d "
+                            "gameFont=%d (wired clicks via the PE BndEvt watch)",
+                            rows, rowCount, headers, buttons, wiredCount, font ? 1 : 0);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: CONTENT build FAULTED"); }
         }
