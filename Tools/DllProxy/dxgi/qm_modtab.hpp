@@ -24,10 +24,12 @@ bool QmModTab_ReconArmed();
 // buffer. Hot path: pointer compare + bit test (memoized verdict). Game thread. SEH-guarded.
 void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
 
-// Early fn-target resolve driver on the global ProcessEvent hook's PRE position. ProcessEvent
-// is live from engine start - the earliest safe moment to poll GObjects for the lazy-loaded
-// settings BP classes and latch the PLSF target handles. Throttled + latched; a modtab-only
-// deploy installs the PE net-hook for exactly this driver. SEH-guarded.
+// Early fn-target resolve driver + nexus-button click watch on the global ProcessEvent hook's
+// PRE position. ProcessEvent is live from engine start - the earliest safe moment to poll
+// GObjects for the lazy-loaded settings BP classes and latch the PLSF target handles (throttled
+// + latched). The click watch stays live afterwards: the panel's themed button dispatches its
+// click as a BndEvt__*_OnClick ProcessEvent on itself - matched by pointer, opens the mod's
+// nexusmods page. A modtab-only deploy installs the PE net-hook for exactly this. SEH-guarded.
 void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
 
 // Called from the global ProcessLocalScriptFunction detour (qm_hook.cpp) for EVERY Blueprint

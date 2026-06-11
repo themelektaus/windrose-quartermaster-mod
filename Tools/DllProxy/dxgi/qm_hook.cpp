@@ -1217,10 +1217,10 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
         // the disable never runs (the shanty keeps playing).
         suppress = QmShanty_OnProcessEvent(self, func, parms);
 
-        // #18q: mod-settings-tab early fn-hook install driver. PRE position on purpose: the install poll must
-        // run BEFORE a dispatch whose body might contain the one-and-only lobby-boot CookTabs cook - in the
-        // post it would be too late by definition. Throttled + latched internally; no-op once installed or
-        // when modtab is not armed; SEH-guarded inside.
+        // Mod-settings-tab: early fn-target resolve driver + nexus-button click watch. PRE
+        // position on purpose: the resolve poll must run BEFORE a dispatch whose body might
+        // contain the first cook. Throttled + latched internally (the click watch stays live:
+        // one pointer compare); no-op when modtab is not armed; SEH-guarded inside.
         QmModTab_OnProcessEvent(self, func, parms);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}

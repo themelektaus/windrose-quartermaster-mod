@@ -20,6 +20,8 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <shellapi.h>
+#include <objbase.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,6 +38,7 @@ namespace ModTab
     void* g_ourPanel    = nullptr;
     void* g_mountTarget = nullptr;
     void* g_nativePanel = nullptr;
+    void* g_nexusButton = nullptr;
 }
 
 namespace
@@ -402,6 +405,38 @@ namespace
         s.verdict = v;       // publish complete verdict last
         return v;
     }
+
+    // ---- nexus-link button action --------------------------------------------------------------
+    constexpr const char* kNexusModUrl = "https://www.nexusmods.com/windrose/mods/375";
+    // Debounce: one click reaches us via a delegate dispatch, but rapid double-clicks (and any
+    // future extra OnClick-named dispatches on the same widget) must not spawn browser storms.
+    volatile ULONGLONG  g_lastUrlOpenTick   = 0;
+    constexpr ULONGLONG kUrlOpenDebounceMs  = 2000;
+
+    // ShellExecute off the game thread: it can block on shell extension loading, and it wants a
+    // COM-initialized thread.
+    DWORD WINAPI OpenUrlThread(LPVOID)
+    {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        intptr_t r = reinterpret_cast<intptr_t>(
+            ShellExecuteA(nullptr, "open", kNexusModUrl, nullptr, nullptr, SW_SHOWNORMAL));
+        if (SUCCEEDED(hr)) CoUninitialize();
+        QM_LOG_WARN("[ModTab] nexus link: ShellExecute -> %lld (%s)", (long long)r,
+                    (r > 32) ? "browser launched" : "FAILED");
+        return 0;
+    }
+
+    void OpenNexusPage()
+    {
+        ULONGLONG now  = GetTickCount64();
+        ULONGLONG last = g_lastUrlOpenTick;
+        if (last != 0 && (now - last) < kUrlOpenDebounceMs) return;
+        g_lastUrlOpenTick = now;
+        QM_LOG_WARN("[ModTab] *** NEXUS BUTTON CLICK *** opening %s", kNexusModUrl);
+        HANDLE h = CreateThread(nullptr, 0, OpenUrlThread, nullptr, 0, nullptr);
+        if (h) CloseHandle(h);
+        else   OpenUrlThread(nullptr);
+    }
 }
 
 bool QmModTab_Init()
@@ -561,13 +596,29 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// EARLY FN-TARGET RESOLVE DRIVER: ProcessEvent dispatches from engine start on the game thread,
-// the earliest safe moment to poll GObjects for the settings BP classes. Cheap fast path once
-// resolved/disarmed.
+// EARLY FN-TARGET RESOLVE DRIVER + NEXUS CLICK WATCH: ProcessEvent dispatches from engine start
+// on the game thread, the earliest safe moment to poll GObjects for the settings BP classes.
+// Cheap fast path once resolved; the click watch (one pointer compare) stays live.
 void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms)
 {
-    (void)self; (void)func; (void)parms;
+    (void)parms;
     if (!g_armed) return;
+
+    // The themed art button re-dispatches its inner button's click as a BndEvt__*_OnClick
+    // ProcessEvent on ITSELF - the only layer where our reflected build sees the click.
+    // self is matched by pointer only (a stale latch from a discarded panel cannot fault).
+    void* btn = g_nexusButton;
+    if (btn && self == btn && func)
+    {
+        __try
+        {
+            char fnNm[160] = { 0 };
+            QmUE::ResolveFNameNarrow(func->Name, fnNm, sizeof(fnNm));
+            if (ContainsLc(fnNm, "onclick")) OpenNexusPage();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+
     if (InterlockedCompareExchange(&g_allFnHooksInstalled, 0, 0) != 0) return;
     ULONGLONG now  = GetTickCount64();
     ULONGLONG last = g_fnHookPollLastTick;

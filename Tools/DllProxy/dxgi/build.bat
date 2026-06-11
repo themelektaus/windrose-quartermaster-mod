@@ -64,7 +64,7 @@ link /nologo /DLL /MACHINE:X64 /OUT:dxgi.dll /DEF:passthrough.def ^
     qm_log.obj qm_ue.obj qm_scan.obj qm_alloc.obj qm_crash.obj qm_config.obj qm_inject.obj qm_diag.obj qm_hook.obj qm_weather.obj qm_killxp.obj qm_shanty.obj ^
     qm_modtab.obj qm_modtab_util.obj qm_modtab_widgets.obj qm_modtab_inject.obj qm_modtab_recon.obj ^
     buffer.obj hook.obj trampoline.obj hde64.obj ^
-    kernel32.lib user32.lib shell32.lib advapi32.lib
+    kernel32.lib user32.lib shell32.lib ole32.lib advapi32.lib
 if errorlevel 1 ( echo [build] link failed. & popd & exit /b 1 )
 
 echo.

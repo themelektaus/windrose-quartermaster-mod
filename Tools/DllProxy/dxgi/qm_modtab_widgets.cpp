@@ -23,13 +23,29 @@ namespace
     struct P_AddChild        { void* Content; void* ReturnValue; };
     struct P_SetVisibility   { uint8_t InVisibility; uint8_t _pad[7]; };
     struct P_GetVisibility   { uint8_t ReturnValue; uint8_t _pad[7]; };
+    // FSlateColor: FLinearColor + ColorUseRule (0 = use the specified color).
+    struct P_SetColorAndOpacity { float R, G, B, A; uint8_t Rule; uint8_t _pad[3]; };
 
     constexpr uintptr_t kOff_UserWidget_WidgetTree = 0x2D8;   // UUserWidget::WidgetTree  (SDK)
     constexpr uintptr_t kOff_WidgetTree_RootWidget = 0x30;    // UWidgetTree::RootWidget  (SDK)
 
-    constexpr const char* kEntrySwitcherClass = "WBP_Settings_EntrySwitcher_C";
     // The game's own themed button widget (tiled art + txt_Name + SetData(FText) label setter).
-    constexpr const char* kArtButtonClass     = "WBP_ArtButton_TiledText_C";
+    constexpr const char* kArtButtonClass = "WBP_ArtButton_TiledText_C";
+
+    // ---- panel content ------------------------------------------------------------------------
+    constexpr const wchar_t* kTxtTitle    = L"Quartermaster - Made by TheMelekTaus";
+    constexpr const wchar_t* kTxtDesc     = L"Konfigurierbare Mods und Tweaks - gebaut mit dem Quartermaster-Configurator.";
+    constexpr const wchar_t* kTxtSubtitle = L"Aktive Mods";
+    // Placeholder rows until the active mods / settings / modified values are wired up.
+    constexpr const wchar_t* kTxtDummy[] = {
+        L"(Platzhalter) Aktive Mods werden hier gelistet",
+        L"(Platzhalter) Einstellungen und modifizierte Werte folgen",
+    };
+    constexpr const wchar_t* kTxtNexusBtn = L"Visit nexusmods.com";
+
+    constexpr float kColTitle[4]    = { 1.00f, 0.80f, 0.35f, 1.0f };
+    constexpr float kColDesc[4]     = { 0.78f, 0.78f, 0.78f, 1.0f };
+    constexpr float kColSubtitle[4] = { 0.92f, 0.88f, 0.62f, 1.0f };
 
     // Recursively log a widget subtree. A node without GetChildrenCount (not a UPanelWidget) is
     // a leaf. Depth- and budget-capped. Up to two independent FIRST-match captures by
@@ -61,6 +77,37 @@ namespace
             DumpWidgetSubtree(reinterpret_cast<QmUE::UObject*>(ga.ReturnValue), depth + 1, budget,
                               captureMatch, outMatch, captureMatch2, outMatch2);
         }
+    }
+
+    // One text row: spawn a TextBlock (Outer = the screen's WidgetTree), set text + optional
+    // color, append it to the panel. Returns the TextBlock on success.
+    QmUE::UObject* AddTextRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                              const wchar_t* text, const float* rgba)
+    {
+        if (!panel || !panel->Class) return nullptr;
+        QmUE::UClass* txtClass = QmUE::FindClassByName("TextBlock");
+        if (!txtClass) return nullptr;
+        QmUE::UObject* txt = QmUE::SpawnObjectViaUFunction(txtClass, widgetTree);
+        if (!txt || !txt->Class) return nullptr;
+
+        if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(txt->Class, "SetText"))
+        {
+            uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+            if (QmUE::TextFromString(text, ft)) QmUE::CallProcessEvent(txt, fnSet, ft);
+        }
+        if (rgba)
+            if (QmUE::UFunction* fnCol = QmUE::FindFunctionOnClass(txt->Class, "SetColorAndOpacity"))
+            {
+                P_SetColorAndOpacity c; memset(&c, 0, sizeof(c));
+                c.R = rgba[0]; c.G = rgba[1]; c.B = rgba[2]; c.A = rgba[3];
+                QmUE::CallProcessEvent(txt, fnCol, &c);
+            }
+        if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild"))
+        {
+            P_AddChild ac; ac.Content = txt; ac.ReturnValue = nullptr;
+            if (QmUE::CallProcessEvent(panel, fnAdd, &ac) && ac.ReturnValue) return txt;
+        }
+        return nullptr;
     }
 
 }
@@ -162,38 +209,9 @@ namespace ModTab
             QM_LOG_WARN("[ModTab] *** FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
                         "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
                         (void*)g_ourPanel, (void*)mountTarget);
-            g_ourPanel = nullptr;
+            g_ourPanel    = nullptr;
+            g_nexusButton = nullptr;   // dies with its panel; re-latched by the content build
         }
-
-        // Diagnostic: map Settings_Panel's INNER WidgetTree (its real per-tab content lives
-        // there, behind the UserWidget boundary the outer walk stops at).
-        if (settingsPanel)
-        {
-            QmUE::UObject* innerTree = nullptr;
-            QmUE::UObject* innerRoot = nullptr;
-            __try
-            {
-                innerTree = reinterpret_cast<QmUE::UObject*>(
-                    *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(settingsPanel) + kOff_UserWidget_WidgetTree));
-                if (innerTree)
-                    innerRoot = reinterpret_cast<QmUE::UObject*>(
-                        *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(innerTree) + kOff_WidgetTree_RootWidget));
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) { innerTree = nullptr; innerRoot = nullptr; }
-            char itid[352]; DescribeObject(innerTree, itid, sizeof(itid));
-            QM_LOG_WARN("[ModTab]   recon: Settings_Panel 0x%p -> inner WidgetTree@0x2D8 = 0x%p %s",
-                        (void*)settingsPanel, (void*)innerTree, itid);
-            if (innerRoot)
-            {
-                int ibudget = 250;
-                QmUE::UObject* innerScroll = nullptr;
-                __try { DumpWidgetSubtree(innerRoot, 0, ibudget, "scrollbox", &innerScroll); }
-                __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   recon: inner tree walk FAULTED"); }
-                QM_LOG_WARN("[ModTab]   recon: inner content ScrollBox candidate = 0x%p", (void*)innerScroll);
-            }
-            else QM_LOG_WARN("[ModTab]   recon: Settings_Panel has no inner RootWidget");
-        }
-        else QM_LOG_WARN("[ModTab]   recon: no Settings_Panel in outer tree");
 
         // Owning player (Create's 3rd arg).
         QmUE::UObject* owningPlayer = nullptr;
@@ -205,38 +223,9 @@ namespace ModTab
         char opid[352]; DescribeObject(owningPlayer, opid, sizeof(opid));
         QM_LOG_INFO("[ModTab]   view: GetOwningPlayer -> 0x%p %s", (void*)owningPlayer, opid);
 
-        QmUE::UClass* entryClass = QmUE::FindClassByName(kEntrySwitcherClass);
-        QM_LOG_INFO("[ModTab]   view: class '%s' = 0x%p (%s)", kEntrySwitcherClass, (void*)entryClass,
-                    entryClass ? "loaded" : "NOT loaded - round 2 must LoadAsset it");
-
         QmUE::UClass*    wblClass  = QmUE::FindClassByName("WidgetBlueprintLibrary");
         QmUE::UObject*   wblCDO    = wblClass ? QmUE::GetClassDefaultObject(wblClass) : nullptr;
         QmUE::UFunction* fnCreate  = wblClass ? QmUE::FindFunctionOnClass(wblClass, "Create") : nullptr;
-        QM_LOG_INFO("[ModTab]   view: WidgetBlueprintLibrary CDO=0x%p Create=0x%p", (void*)wblCDO, (void*)fnCreate);
-
-        QmUE::UObject* createdWidget = nullptr;
-        if (entryClass && wblCDO && fnCreate)
-        {
-            P_Create cp; memset(&cp, 0, sizeof(cp));
-            cp.WorldContextObject = screen;
-            cp.WidgetType         = entryClass;
-            cp.OwningPlayer       = owningPlayer;
-            if (QmUE::CallProcessEvent(wblCDO, fnCreate, &cp))
-                createdWidget = reinterpret_cast<QmUE::UObject*>(cp.ReturnValue);
-        }
-        char cwid[352]; DescribeObject(createdWidget, cwid, sizeof(cwid));
-        QM_LOG_INFO("[ModTab]   view: Create(EntrySwitcher) -> 0x%p %s (%s)", (void*)createdWidget, cwid,
-                    createdWidget ? "CREATE PRIMITIVE WORKS" : "create failed - check args above");
-
-        if (createdWidget)
-        {
-            QmUE::UObject* cwt = nullptr;
-            __try { cwt = reinterpret_cast<QmUE::UObject*>(
-                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(createdWidget) + kOff_UserWidget_WidgetTree)); }
-            __except (EXCEPTION_EXECUTE_HANDLER) { cwt = nullptr; }
-            QM_LOG_INFO("[ModTab]   view: created widget WidgetTree@0x2D8 = 0x%p (%s)", (void*)cwt,
-                        cwt ? "constructed" : "null - widget may need further init");
-        }
 
         // Our own ScrollBox panel (Outer = the screen's WidgetTree).
         QmUE::UClass*  scrollClass = QmUE::FindClassByName("ScrollBox");
@@ -245,25 +234,24 @@ namespace ModTab
         QM_LOG_WARN("[ModTab]   view: own ScrollBox class=0x%p -> panel=0x%p %s (%s)", (void*)scrollClass,
                     (void*)ourPanel, opnl, ourPanel ? "CONSTRUCTED" : "construct FAILED");
 
-        if (ourPanel && createdWidget)
-        {
-            if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(ourPanel->Class, "AddChild"))
-            {
-                P_AddChild ac; ac.Content = createdWidget; ac.ReturnValue = nullptr;
-                bool ok = QmUE::CallProcessEvent(ourPanel, fnAdd, &ac);
-                char sl[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), sl, sizeof(sl));
-                QM_LOG_WARN("[ModTab]   view: FILL EntrySwitcher -> our ScrollBox ok=%d slot=0x%p %s",
-                            ok, ac.ReturnValue, sl);
-            }
-        }
-
-        // Button: prefer the game-themed widget (matches native styling); fall back to a raw
-        // Button+TextBlock so a button always appears. Strictly additive + SEH-isolated: any
-        // failure is swallowed and never aborts the panel mount.
+        // Panel content: title / description / "Aktive Mods" subtitle / placeholder rows / nexus
+        // link button. Strictly additive + SEH-isolated: any failure is swallowed and never
+        // aborts the panel mount.
         if (ourPanel)
         {
             __try
             {
+                int rows = 0;
+                if (AddTextRow(ourPanel, widgetTree, kTxtTitle,    kColTitle))    ++rows;
+                if (AddTextRow(ourPanel, widgetTree, kTxtDesc,     kColDesc))     ++rows;
+                if (AddTextRow(ourPanel, widgetTree, kTxtSubtitle, kColSubtitle)) ++rows;
+                for (const wchar_t* dummy : kTxtDummy)
+                    if (AddTextRow(ourPanel, widgetTree, dummy, nullptr)) ++rows;
+
+                // Prefer the game-themed button: only ITS click is observable (it re-dispatches
+                // the inner button's click as BndEvt__*_OnClick via ProcessEvent). The raw
+                // Button+TextBlock fallback keeps the row visible but stays unwired (an empty
+                // OnClicked broadcast dispatches nothing).
                 bool themed = false, labelled = false, mounted = false;
                 QmUE::UObject* btn = nullptr;
 
@@ -282,7 +270,7 @@ namespace ModTab
                         if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(btn->Class, "SetData"))
                         {
                             uint8_t ft[16]; memset(ft, 0, sizeof(ft));   // P_SetData = { FText Data; }
-                            if (QmUE::TextFromString(L"Quartermaster", ft))
+                            if (QmUE::TextFromString(kTxtNexusBtn, ft))
                                 labelled = QmUE::CallProcessEvent(btn, fnSet, ft);
                         }
                     }
@@ -298,7 +286,7 @@ namespace ModTab
                         if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(txt->Class, "SetText"))
                         {
                             uint8_t ft[16]; memset(ft, 0, sizeof(ft));
-                            if (QmUE::TextFromString(L"Quartermaster", ft))
+                            if (QmUE::TextFromString(kTxtNexusBtn, ft))
                                 labelled = QmUE::CallProcessEvent(txt, fnSet, ft);
                         }
                     if (btn && btn->Class && txt)    // UButton is a UContentWidget -> AddChild sets its content
@@ -315,11 +303,14 @@ namespace ModTab
                         P_AddChild ac; ac.Content = btn; ac.ReturnValue = nullptr;
                         mounted = QmUE::CallProcessEvent(ourPanel, fnAdd, &ac);
                     }
-                QM_LOG_WARN("[ModTab]   view: BUTTON build btn=0x%p themed=%d labelled=%d mounted=%d (%s)",
-                            (void*)btn, themed, labelled, mounted,
-                            themed ? "game-themed WBP_ArtButton_TiledText" : "raw fallback - themed class not loaded");
+                g_nexusButton = (mounted && themed) ? btn : nullptr;
+                QM_LOG_WARN("[ModTab]   view: CONTENT build rows=%d/%d nexusBtn=0x%p themed=%d labelled=%d "
+                            "mounted=%d (click %s)", rows,
+                            3 + (int)(sizeof(kTxtDummy) / sizeof(kTxtDummy[0])), (void*)btn,
+                            themed, labelled, mounted,
+                            g_nexusButton ? "wired via the PE BndEvt watch" : "NOT wired - raw fallback");
             }
-            __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: BUTTON build FAULTED"); }
+            __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: CONTENT build FAULTED"); }
         }
 
         if (ourPanel && mountTarget)

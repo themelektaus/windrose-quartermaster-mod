@@ -52,6 +52,10 @@ namespace ModTab
     extern void* g_ourPanel;        // our content ScrollBox (rebuilt fresh on every cook)
     extern void* g_mountTarget;     // the content VerticalBox the panel is parented into
     extern void* g_nativePanel;     // native WBP_Settings_Panel_C (inverse-gated vs our panel)
+    // The themed nexus-link button INSIDE our panel. Its click reaches us as a
+    // BndEvt__*_OnClick ProcessEvent dispatch on exactly this instance (delegate dispatch from
+    // its inner button) - matched by pointer in QmModTab_OnProcessEvent, never dereferenced.
+    extern void* g_nexusButton;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateDllDir(char* out, size_t outSz);
