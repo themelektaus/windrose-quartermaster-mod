@@ -44,6 +44,25 @@ namespace
     constexpr uintptr_t kOff_FontInfo_Size     = 0x48;    // FSlateFontInfo::Size        (SDK)
     constexpr size_t    kFontInfoSize          = 0x60;    // sizeof(FSlateFontInfo)      (SDK)
 
+    // Scrollbar style clone: FScrollBarStyle (9 consecutive FSlateBrushes + Thickness) is
+    // lifted as a raw byte copy from the native settings list onto our ScrollBox. Footgun:
+    // each FSlateBrush hides a non-reflected FSlateResourceHandle (TSharedPtr render cache)
+    // that a byte copy would alias WITHOUT bumping the refcount - it must be zeroed in the
+    // copy (the renderer re-resolves it lazily).
+    constexpr uintptr_t kOff_GameSettingPanel_ListView    = 0x738;  // UGameSettingPanel::ListView_Settings (SDK)
+    constexpr uintptr_t kOff_ListView_ScrollBarStyle      = 0x450;  // UListView::ScrollBarStyle      (SDK)
+    constexpr uintptr_t kOff_ListView_ScrollBarPadding    = 0xAD0;  // UListView::ScrollBarPadding    (SDK)
+    constexpr uintptr_t kOff_ScrollBox_WidgetBarStyle     = 0x4A0;  // UScrollBox::WidgetBarStyle     (SDK)
+    constexpr uintptr_t kOff_ScrollBox_ScrollbarThickness = 0xAF8;  // UScrollBox::ScrollbarThickness (SDK)
+    constexpr uintptr_t kOff_ScrollBox_ScrollBarPadding   = 0xB08;  // UScrollBox::ScrollBarPadding   (SDK)
+    constexpr size_t    kScrollBarStyleSize               = 0x650;  // sizeof(FScrollBarStyle)        (SDK)
+    constexpr uintptr_t kBarStyleFirstBrush               = 0x10;   // vtable + pad precede the brushes
+    constexpr int       kBarStyleBrushCount               = 9;
+    constexpr size_t    kBrushSize                        = 0xB0;   // sizeof(FSlateBrush)            (SDK)
+    constexpr uintptr_t kOff_Brush_ResourceHandle         = 0x98;   // non-reflected TSharedPtr cache
+    constexpr size_t    kResourceHandleSize               = 0x10;
+    constexpr uintptr_t kOff_BarStyle_Thickness           = 0x640;  // FScrollBarStyle::Thickness     (SDK)
+
     // ---- panel content ------------------------------------------------------------------------
     // All content (texts, sizes, colors, gaps, button commands) comes from the layout rows
     // (qm_modtab_layout.cpp). These are only the per-kind font-size fallbacks for rows that
@@ -91,6 +110,65 @@ namespace
         __try
         {
             memcpy(out, reinterpret_cast<const uint8_t*>(txt) + kOff_TextBlock_Font, kFontInfoSize);
+            ok = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        return ok;
+    }
+
+    // The native settings list (GameSettingListView'ListView_Settings') - the scrollbar-style
+    // donor. Direct member read off the panel first; inner-tree walk as the fallback in case
+    // the panel class is not a GameSettingPanel after all (the read is name-validated).
+    QmUE::UObject* ResolveNativeSettingsList(QmUE::UObject* settingsPanel)
+    {
+        if (!settingsPanel) return nullptr;
+        QmUE::UObject* lv = nullptr;
+        __try
+        {
+            QmUE::UObject* cand = reinterpret_cast<QmUE::UObject*>(
+                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(settingsPanel) + kOff_GameSettingPanel_ListView));
+            char id[352]; DescribeObject(cand, id, sizeof(id));
+            if (cand && ContainsLc(id, "gamesettinglistview")) lv = cand;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        if (lv) return lv;
+        __try
+        {
+            QmUE::UObject* inner = reinterpret_cast<QmUE::UObject*>(
+                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(settingsPanel) + kOff_UserWidget_WidgetTree));
+            QmUE::UObject* innerRoot = inner ? reinterpret_cast<QmUE::UObject*>(
+                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(inner) + kOff_WidgetTree_RootWidget)) : nullptr;
+            int budget = 120;
+            if (innerRoot) DumpWidgetSubtree(innerRoot, 0, budget, "gamesettinglistview", &lv);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        return lv;
+    }
+
+    // Game-theme the scrollbar: raw-copy FScrollBarStyle from the native settings list onto
+    // our ScrollBox (the proven raw-clone pattern, see the constants above for the
+    // ResourceHandle footgun). Bar geometry (thickness/padding) is mirrored too - SScrollBox
+    // takes those from the UScrollBox properties, not from the style.
+    bool CloneScrollBarStyle(QmUE::UObject* ourPanel, QmUE::UObject* listView)
+    {
+        if (!ourPanel || !listView) return false;
+        bool ok = false;
+        __try
+        {
+            uint8_t*       dst = reinterpret_cast<uint8_t*>(ourPanel) + kOff_ScrollBox_WidgetBarStyle;
+            const uint8_t* src = reinterpret_cast<const uint8_t*>(listView) + kOff_ListView_ScrollBarStyle;
+            memcpy(dst + kBarStyleFirstBrush, src + kBarStyleFirstBrush, kScrollBarStyleSize - kBarStyleFirstBrush);
+            for (int i = 0; i < kBarStyleBrushCount; ++i)
+                memset(dst + kBarStyleFirstBrush + i * kBrushSize + kOff_Brush_ResourceHandle, 0, kResourceHandleSize);
+
+            float thick = *reinterpret_cast<const float*>(src + kOff_BarStyle_Thickness);
+            if (thick >= 2.0f && thick <= 64.0f)
+            {
+                double* tv = reinterpret_cast<double*>(reinterpret_cast<uint8_t*>(ourPanel) + kOff_ScrollBox_ScrollbarThickness);
+                tv[0] = thick; tv[1] = thick;   // FVector2D is double-based in UE5
+            }
+            memcpy(reinterpret_cast<uint8_t*>(ourPanel) + kOff_ScrollBox_ScrollBarPadding,
+                   reinterpret_cast<const uint8_t*>(listView) + kOff_ListView_ScrollBarPadding, 0x10);
             ok = true;
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -427,6 +505,17 @@ namespace ModTab
                          (void*)scrollClass, (void*)ourPanel, opnl);
         else
             QM_LOG_WARN("[ModTab]   view: own ScrollBox construct FAILED (class=0x%p)", (void*)scrollClass);
+
+        // Game-themed scrollbar: clone the native list's FScrollBarStyle onto our panel before
+        // the mount - Slate reads WidgetBarStyle once, when the SScrollBox is built.
+        if (ourPanel)
+        {
+            QmUE::UObject* barDonor = ResolveNativeSettingsList(settingsPanel);
+            bool themedBar = barDonor ? CloneScrollBarStyle(ourPanel, barDonor) : false;
+            char bdid[352]; DescribeObject(barDonor, bdid, sizeof(bdid));
+            QM_LOG_DEBUG("[ModTab]   view: scrollbar style clone ok=%d donor=0x%p %s",
+                         themedBar, (void*)barDonor, bdid);
+        }
 
         // Panel content from the layout rows (qm_modtab_layout.json or its compiled-in default).
         // Strictly additive + SEH-isolated: any failure is swallowed and never aborts the
