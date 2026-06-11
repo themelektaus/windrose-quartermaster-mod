@@ -11,16 +11,17 @@
 //   - WBP_MetaUI_TabsGroup_C      : the tab bar widget.        Fn: SetData(TabsData array).
 //   - WBP_Settings_Screen_C       : the screen widget.         Fn: OnTabsStateChanged.
 //   - WBP_MetaUI_Tab_Main_C       : one tab (txt_TabName).
-// RECON FINDING (2026-06-10): these three decisive functions are called Blueprint-to-Blueprint
-// INTERNALLY (CookTabs -> SetData -> OnTabsStateChanged), which bypasses the public
-// UObject::ProcessEvent entry entirely. The global ProcessEvent net-hook only sees engine->script
-// dispatch (lifecycle events, Tick, input, RPCs) - it caught Construct/Tick on these widgets but
-// never CookTabs/SetData. So this module instead rides UObject::ProcessInternal, the Blueprint
-// VM's universal script-function funnel (same vector UE4SS uses), which DOES see the BP-internal
-// calls. NOTE: every pure-BP UFunction's ExecFunction *is* ProcessInternal, so the lifecycle
-// pre-warm hook (sitting on ReceiveBeginPlay's ExecFunction) already occupies that single
-// address - MinHook forbids a second hook there. This module therefore piggybacks on that one
-// detour via DispatchProcessInternalRiders (qm_hook.cpp) instead of installing its own.
+// RECON FINDING (2026-06-10, sharpened 2026-06-11 by the 18q log): these three decisive functions
+// are called Blueprint-to-Blueprint INTERNALLY (CookTabs -> SetData -> OnTabsStateChanged), which
+// bypasses BOTH public entries: never ProcessEvent (the net-hook only sees engine->script dispatch)
+// and - 18q-disproven assumption - never ProcessInternal either (that is only the ProcessEvent->
+// Invoke exec for BP functions; an in-field-verified ExecFunction swap never fired once). The VM
+// routes BP-internal calls straight into ProcessLocalScriptFunction (PLSF), the script-VM body
+// executor EVERYTHING funnels through. #18r therefore hooks PLSF globally (qm_hook.cpp; its own
+// body, no MinHook collision with the lifecycle detour on ProcessInternal) - the same layer UE4SS's
+// HookProcessLocalScriptFunction provides, which is how the reference mod catches CookTabs. The
+// ProcessInternal rider (DispatchProcessInternalRiders) stays for OnEnter/OnExit, which DO
+// dispatch via ProcessEvent->ProcessInternal.
 //
 // THIS FILE IS THE RECON PHASE: logging-only. It NEVER modifies parms or suppresses dispatch.
 // It observes the three decisive UFunctions and dumps enough (self identity, parms size, a
@@ -53,3 +54,22 @@ bool QmModTab_ReconArmed();
 // ProcessEvent Parms buffer. Per-UFunction memoized name verdict keeps the hot path to a pointer
 // compare + bit test. Game-thread only. SEH-guarded.
 void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
+
+// EARLY FN-TARGET RESOLVE DRIVER, called from the global ProcessEvent hook's PRE position for every
+// dispatch. ProcessEvent is live from engine start (game thread) - the earliest safe moment to poll GObjects
+// for the settings BP classes and latch the three target UFunction handles the PLSF detour matches against.
+// Throttled (~1/frame) + latched internally; cheap no-op once resolved or when modtab is not armed.
+// SEH-guarded. A modtab-only deploy installs the PE net-hook for exactly this driver.
+void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
+
+// #18r: called from the global ProcessLocalScriptFunction detour (qm_hook.cpp) for EVERY Blueprint
+// script-function execution - the only funnel that sees BP-internal calls. Matches FFrame::Node (+0x10)
+// against the resolved target handles; on a match it runs the corresponding thunk (which forwards through
+// the PLSF trampoline itself) and returns true. false = caller forwards to the trampoline. Hot path: one
+// SEH-guarded read + three pointer compares. Game thread.
+bool QmModTab_OnScriptFunction(void* context, void* stack, void* result);
+
+// Hands the module the MinHook trampoline to the real PLSF body. MUST be called before the detour is
+// enabled: the thunks forward through it (forwarding through ProcessInternal instead would re-enter the
+// patched PLSF entry and recurse).
+void QmModTab_SetPlsfOriginal(QmUE::FNativeFuncPtr orig);

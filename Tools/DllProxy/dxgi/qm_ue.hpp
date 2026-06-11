@@ -36,6 +36,13 @@ namespace QmUE
     constexpr uintptr_t OFFSET_AppendString    = 0x014E53F0;
     constexpr uintptr_t OFFSET_GWorld          = 0x10542CB0;
     constexpr uintptr_t OFFSET_ProcessEvent    = 0x017235E0;
+    // ProcessLocalScriptFunction: the script-VM body executor (the `while (*Stack.Code != EX_Return)
+    // Stack.Step()` loop). EVERY Blueprint function execution funnels through it, on BOTH dispatch
+    // paths (ProcessEvent -> ProcessInternal -> PLSF, and BP-internal EX_LocalFinalFunction ->
+    // ProcessScriptFunction -> PLSF). Extracted offline from the direct E8 call inside
+    // UObject::ProcessInternal's Local-callspace branch (Tools/refmod_re/find_plsf.py); validated at
+    // install time by re-finding that call in the live ProcessInternal body (see InstallPlsfHook).
+    constexpr uintptr_t OFFSET_ProcessLocalScriptFunction = 0x01723AD0;
     constexpr int32     PROCESS_EVENT_VTBL_IDX = 0x4C;
 
     // ---- FName layout (8 bytes) ----
@@ -241,11 +248,12 @@ namespace QmUE
 
     // ProcessInternal: the Blueprint VM's universal script-function-execution funnel.
     // Unlike ProcessEvent (the public entry, used for engine->script dispatch:
-    // events, Tick, input, RPCs, reflection-invoked BlueprintCallables), this also
-    // runs for script->script Blueprint calls (EX_LocalFinalFunction / EX_FinalFunction)
-    // that bypass ProcessEvent entirely. Hooking it is how we observe BP-internal calls
-    // like BP_Settings_SC::CookTabs -> WBP_MetaUI_TabsGroup::SetData, which never reach
-    // ProcessEvent.
+    // events, Tick, input, RPCs, reflection-invoked BlueprintCallables). NOTE (18q-log,
+    // disproves the earlier assumption): script->script Blueprint calls (EX_LocalFinalFunction
+    // etc.) do NOT come through here - the VM routes them straight into
+    // ProcessLocalScriptFunction without ever reading ExecFunction. BP-internal calls like
+    // BP_Settings_SC::CookTabs -> WBP_MetaUI_TabsGroup::SetData are therefore only visible
+    // on the PLSF hook (OFFSET_ProcessLocalScriptFunction), never on ProcessInternal.
     //
     // Signature matches FNativeFuncPtr: (UObject* Context, FFrame& Stack, void* Result).
     // The executing UFunction is Stack.Node; the target object is Stack.Object (==Context);

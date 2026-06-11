@@ -1,0 +1,3 @@
+# generated analysis output (re-create via the .py scripts against the reference main.dll / shipping exe)
+dis_*.txt
+strings_all.txt

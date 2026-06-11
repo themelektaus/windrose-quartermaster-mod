@@ -1217,10 +1217,11 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
         // the disable never runs (the shanty keeps playing).
         suppress = QmShanty_OnProcessEvent(self, func, parms);
 
-        // NOTE: the mod-settings-tab recon does NOT ride this ProcessEvent hook. Its targets
-        // (CookTabs/SetData/OnTabsStateChanged) are Blueprint-internal calls that bypass
-        // ProcessEvent (recon-confirmed). It rides the shared ProcessInternal detour instead
-        // (DispatchProcessInternalRiders, called from Hook_LifecyclePreWarm).
+        // #18q: mod-settings-tab early fn-hook install driver. PRE position on purpose: the install poll must
+        // run BEFORE a dispatch whose body might contain the one-and-only lobby-boot CookTabs cook - in the
+        // post it would be too late by definition. Throttled + latched internally; no-op once installed or
+        // when modtab is not armed; SEH-guarded inside.
+        QmModTab_OnProcessEvent(self, func, parms);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -1262,6 +1263,92 @@ static bool InstallProcessEventHook()
     QM_LOG_INFO("[PE] *** INSTALLED *** global ProcessEvent net-hook @ 0x%p (R5ConsumeAbility cls=0x%p) - "
                 "functional spawner trigger + spawner/montage recon active",
         pe, g_consumeAbilityClass);
+    return true;
+}
+
+// ============================================================================
+// #18r Global ProcessLocalScriptFunction (PLSF) detour - the script-VM body
+// executor. EVERY Blueprint function execution funnels through it, on BOTH
+// dispatch paths (ProcessEvent -> ProcessInternal -> PLSF, and BP-internal
+// EX_LocalFinalFunction -> ProcessScriptFunction -> PLSF). This is the layer
+// UE4SS's HookProcessLocalScriptFunction provides and the ONLY one that sees
+// CookTabs/SetData/OnTabsStateChanged (18q-log-proven: the in-field-verified
+// ExecFunction swap never fired once across a session with 8 tab clicks).
+// PLSF is a DIFFERENT body than ProcessInternal - no MinHook collision with
+// the lifecycle/prewarm detour. Mod-tab-only cost; not installed otherwise.
+// ============================================================================
+static volatile LONG           g_plsfHookInstalled = 0;
+static QmUE::ProcessInternalFn g_origPLSF          = nullptr;   // trampoline to the real PLSF body
+
+static void __fastcall Hook_PLSF(QmUE::UObject* Context, void* Stack, void* Result)
+{
+    // true = a mod-tab thunk ran and already forwarded through the trampoline itself.
+    if (QmModTab_OnScriptFunction(Context, Stack, Result)) return;
+    g_origPLSF(Context, Stack, Result);
+}
+
+static bool InstallPlsfHook()
+{
+    if (InterlockedCompareExchange(&g_plsfHookInstalled, 1, 0) != 0) return true;
+
+    uint8_t* pi = reinterpret_cast<uint8_t*>(QmUE::GetProcessInternalFn());
+    if (!pi)
+    {
+        InterlockedExchange(&g_plsfHookInstalled, 0);   // ProcessInternal not resolvable yet - retry next pass
+        return false;
+    }
+    uintptr_t base     = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    uint8_t*  expected = reinterpret_cast<uint8_t*>(base + QmUE::OFFSET_ProcessLocalScriptFunction);
+
+    // Validate the hardcoded offset against the live binary: ProcessInternal's Local-callspace branch
+    // makes a direct E8 call to PLSF (its only rel32 call until the out-parm tail). If the expected
+    // target is not among PI's direct calls (Steam-update drift), fall back to the FIRST direct call -
+    // PLSF in the known layout - and log loudly so the offset gets refreshed via find_plsf.py.
+    uint8_t* firstCall = nullptr;
+    bool     validated = false;
+    __try
+    {
+        for (int i = 0; i < 0x140; ++i)
+        {
+            if (pi[i] != 0xE8) continue;
+            int32_t  rel = *reinterpret_cast<int32_t*>(pi + i + 1);
+            uint8_t* tgt = pi + i + 5 + rel;
+            if (!firstCall) firstCall = tgt;
+            if (tgt == expected) { validated = true; break; }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+    uint8_t* target = validated ? expected : firstCall;
+    if (!target)
+    {
+        QM_LOG_ERROR("[PLSF] no direct call found in ProcessInternal body @ 0x%p - script-exec hook NOT installed "
+                     "(BP-internal CookTabs/SetData/OnTabsStateChanged stay invisible)", pi);
+        return true;   // structural mismatch - retrying won't change the bytes
+    }
+    if (!validated)
+        QM_LOG_WARN("[PLSF] OFFSET_ProcessLocalScriptFunction stale (expected 0x%p) - using ProcessInternal's first "
+                    "direct call 0x%p instead; refresh the offset via Tools/refmod_re/find_plsf.py", expected, target);
+
+    MH_STATUS st = MH_CreateHook(reinterpret_cast<LPVOID>(target), reinterpret_cast<LPVOID>(&Hook_PLSF),
+                                 reinterpret_cast<LPVOID*>(&g_origPLSF));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PLSF] MH_CreateHook(0x%p) FAILED: %s", target, MH_StatusToString(st));
+        return true;
+    }
+    // BEFORE enable - the thunks forward through it. Cast: ProcessInternalFn and FNativeFuncPtr are the
+    // same x64 ABI (rcx/rdx/r8), they only differ in the declared first-param type.
+    QmModTab_SetPlsfOriginal(reinterpret_cast<QmUE::FNativeFuncPtr>(g_origPLSF));
+    st = MH_EnableHook(reinterpret_cast<LPVOID>(target));
+    if (st != MH_OK)
+    {
+        QM_LOG_ERROR("[PLSF] MH_EnableHook(0x%p) FAILED: %s", target, MH_StatusToString(st));
+        return true;
+    }
+    QM_LOG_WARN("[PLSF] *** INSTALLED *** global script-exec hook @ 0x%p (%s) - BP-internal dispatch "
+                "(CookTabs/SetData/OnTabsStateChanged) is now visible + hookable",
+                target, validated ? "offset validated against live ProcessInternal" : "RELOCATED first-call fallback");
     return true;
 }
 
@@ -1494,14 +1581,17 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
     // Global ProcessEvent net-hook is only needed (and only paid for) when the
     // weather trigger OR the kill-XP/shanty recon is armed. If none is armed, treat
     // it as already done so the probe loop's exit condition isn't held open by it.
-    bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed() || QmShanty_ReconArmed());
-    // Mod-settings-tab recon (CookTabs/SetData/OnTabsStateChanged) bypasses ProcessEvent; it
-    // rides the lifecycle ProcessInternal detour instead (see DispatchProcessInternalRiders),
-    // so there's no separate install gate - lifecycleFound below guarantees its coverage.
+    bool peNetDone      = !(QmWeather_TriggerArmed() || QmKillXp_ReconArmed() || QmShanty_ReconArmed()
+                            || QmModTab_ReconArmed());   // modtab needs PE as its early fn-target-resolve driver
+    // #18r: the PLSF script-exec hook is the mod-tab module's actual catch layer (BP-internal CookTabs/
+    // SetData/OnTabsStateChanged never reach ProcessEvent or ProcessInternal). Only installed when modtab
+    // is armed; needs ProcessInternal resolvable (BP UFunctions in GObjects), hence probe-loop driven.
+    bool plsfDone       = !QmModTab_ReconArmed();
     int  buildMenuFoundOnPass = 0;
     int  lifecycleFoundOnPass = 0;
     int  consumeFoundOnPass   = 0;
     int  peNetDoneOnPass      = 0;
+    int  plsfDoneOnPass       = 0;
 
     for (int p = 0; p < kProbeMaxAttempts; ++p)
     {
@@ -1530,16 +1620,24 @@ DWORD WINAPI QmUeProbeThreadEntry(LPVOID /*lpParam*/)
         // recon is armed). Same prerequisites as the consume hook (GObjects ready
         // + ProcessEvent resolved). Kill-XP doesn't need the consume class, so it
         // can install the net-hook even if the consume probe hasn't landed yet.
-        if (!peNetDone && (consumeFound || QmKillXp_ReconArmed() || QmShanty_ReconArmed()) && InstallProcessEventHook())
+        if (!peNetDone && (consumeFound || QmKillXp_ReconArmed() || QmShanty_ReconArmed() || QmModTab_ReconArmed()) && InstallProcessEventHook())
         {
             peNetDone = true;
             peNetDoneOnPass = p + 1;
         }
-        if (buildMenuFound && lifecycleFound && consumeFound && peNetDone)
+        // #18r global PLSF script-exec hook (mod-tab only). Same prerequisites as the PE hook;
+        // GetProcessInternalFn() inside retries until BP UFunctions populate GObjects.
+        if (!plsfDone && InstallPlsfHook())
         {
-            QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d consume=pass#%d pe-net=%s - probe loop exiting",
+            plsfDone = true;
+            plsfDoneOnPass = p + 1;
+        }
+        if (buildMenuFound && lifecycleFound && consumeFound && peNetDone && plsfDone)
+        {
+            QM_LOG_INFO("[UE] *** ALL HOOKS INSTALLED *** build-menu=pass#%d lifecycle=pass#%d consume=pass#%d pe-net=%s plsf=%s - probe loop exiting",
                 buildMenuFoundOnPass, lifecycleFoundOnPass, consumeFoundOnPass,
-                peNetDoneOnPass ? "installed" : "skipped(not armed)");
+                peNetDoneOnPass ? "installed" : "skipped(not armed)",
+                plsfDoneOnPass  ? "installed" : "skipped(not armed)");
             return 0;
         }
 
