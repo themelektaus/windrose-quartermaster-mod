@@ -5,7 +5,7 @@
 // falls back to the compiled-in default below, so the panel can never come up empty.
 //
 // Row schema (unknown keys are skipped for forward-compat):
-//   type      "text" (default) | "header" | "button" | "modifications"
+//   type      "text" (default) | "header" | "button" | "modifications" | "itemDropdown"
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
@@ -26,6 +26,12 @@
 //   textIndent                          detail rows' left indent (default 18; details always wrap)
 // The file's write time is re-checked on every panel build, so a GUI build/delete shows up on
 // the next settings open without a game restart.
+//
+// "itemDropdown" rows render as a ComboBoxString over qm_modtab_items.txt in the sidecar
+// folder - the Configurator's pre-built item catalog ("<AssetId>|<Display name>" per line,
+// pre-sorted; '#' lines are comments). Loaded mtime-watched like the mods file; the catalog
+// is exposed to the build + the click dispatch via GetItemOption*(). With no usable catalog
+// the row degrades to a fixed notice text row, so the dropdown can never come up dead.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -50,9 +56,9 @@ namespace
   { "type": "text",   "text": "v{version} - Developed by TheMelekTaus", "size": 14, "color": "#AA9966", "wrap": true, "gap": 4 },
   { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator. Thank you for using Quartermaster!", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 12 },
   { "type": "button", "text": "Leave an Endorsement", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 24, "align": "left" },
-  { "type": "header", "text": "Debug Commands", "size": 20, "color": "#FFCC59", "gap": 24 },
-  { "type": "button", "text": "Log Test", "command": "log_test", "arguments": ["Hello, World!"], "align": "left" },
-  { "type": "button", "text": "Add Item Test", "command": "add_item_test", "arguments": ["DA_CID_Alchemy_Bandages_T01:3"], "align": "left" },
+  { "type": "header", "text": "Item Spawner", "size": 20, "color": "#FFCC59", "gap": 24 },
+  { "type": "itemDropdown", "gap": 8 },
+  { "type": "button", "text": "Add Item", "command": "add_selected_item", "arguments": ["1"], "align": "left", "gap": 8 },
   { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "modifications", "gap": 4, "titleSize": 18, "titleColor": "#EBE09E", "titleGap": 16, "textSize": 14, "textColor": "#9A9A9A", "textGap": 2 },
   { "type": "text",   "text": "", "gap": 24 }
@@ -136,6 +142,7 @@ namespace
                 out.type = (v == "header")        ? kRowHeader
                          : (v == "button")        ? kRowButton
                          : (v == "modifications") ? kRowMods
+                         : (v == "itemDropdown")  ? kRowItemDropdown
                                                   : kRowText;
             }
             else if (key == "text")
@@ -346,6 +353,43 @@ namespace
         }
     }
 
+    // ---- "itemDropdown" row backing data -------------------------------------------------------
+
+    struct ItemOption { std::string key; std::wstring name; };
+    std::vector<ItemOption> g_itemOptions;
+    bool                    g_itemsLoadedOnce = false;
+    bool                    g_itemsWasThere   = false;
+    FILETIME                g_itemsLastWrite  = {};
+
+    // "<AssetId>|<Display name>" per line (the Configurator writes the file pre-sorted by
+    // display name); '#' and empty lines are skipped, a line without '|' is key-only.
+    void LoadItemCatalog(const char* path)
+    {
+        g_itemOptions.clear();
+        std::string body;
+        if (!path || !QmJson::ReadWholeFile(path, body)) return;
+        QmJson::StripUtf8Bom(body);
+        for (size_t pos = 0; pos < body.size();)
+        {
+            size_t eol = body.find('\n', pos);
+            size_t len = (eol == std::string::npos ? body.size() : eol) - pos;
+            std::string line = body.substr(pos, len);
+            pos += len + 1;
+
+            size_t b = line.find_first_not_of(" \t\r");
+            if (b == std::string::npos || line[b] == '#') continue;
+            size_t e = line.find_last_not_of(" \t\r");
+            line = line.substr(b, e - b + 1);
+
+            ItemOption opt;
+            size_t sep = line.find('|');
+            opt.key  = (sep == std::string::npos) ? line : line.substr(0, sep);
+            opt.name = QmJson::Utf8ToWide(sep == std::string::npos ? line : line.substr(sep + 1));
+            if (!opt.key.empty() && !opt.name.empty())
+                g_itemOptions.push_back(static_cast<ItemOption&&>(opt));
+        }
+    }
+
     void RebuildView()
     {
         auto viewOf = [](const RowStorage& s)
@@ -372,6 +416,16 @@ namespace
             {
                 for (size_t m = 0; m < g_modRows.size(); ++m)
                     g_view.push_back(viewOf(g_modRows[m]));
+                continue;
+            }
+            if (g_storage[i].type == kRowItemDropdown && g_itemOptions.empty())
+            {
+                // No usable catalog - a fixed notice instead of a dead dropdown.
+                PanelRow r  = viewOf(g_storage[i]);
+                r.type      = kRowText;
+                r.text      = L"Item catalog not found - build a profile in the Quartermaster Configurator.";
+                r.wrap      = true;
+                g_view.push_back(r);
                 continue;
             }
             g_view.push_back(viewOf(g_storage[i]));
@@ -457,7 +511,37 @@ namespace ModTab
         }
         else if (!g_modRows.empty()) { g_modRows.clear(); modsChanged = true; }
 
-        if (stale || modsChanged)
+        // Same per-build re-check for the item catalog (regenerated by Configurator builds).
+        bool haveDropdown = false;
+        for (size_t i = 0; i < g_storage.size() && !haveDropdown; ++i)
+            if (g_storage[i].type == kRowItemDropdown) haveDropdown = true;
+
+        bool itemsChanged = false;
+        if (haveDropdown)
+        {
+            char itemsPath[MAX_PATH] = { 0 };
+            WIN32_FILE_ATTRIBUTE_DATA ifad = {};
+            bool itemsThere = havePath &&
+                              snprintf(itemsPath, sizeof(itemsPath), "%s\\qm_modtab_items.txt", dir) > 0 &&
+                              GetFileAttributesExA(itemsPath, GetFileExInfoStandard, &ifad) &&
+                              !(ifad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+            bool itemsStale = stale || !g_itemsLoadedOnce ||
+                              itemsThere != g_itemsWasThere ||
+                              (itemsThere && CompareFileTime(&ifad.ftLastWriteTime, &g_itemsLastWrite) != 0);
+            if (itemsStale)
+            {
+                g_itemsLoadedOnce = true;
+                g_itemsWasThere   = itemsThere;
+                if (itemsThere) g_itemsLastWrite = ifad.ftLastWriteTime;
+                LoadItemCatalog(itemsThere ? itemsPath : nullptr);
+                itemsChanged = true;
+                QM_LOG_INFO("[ModTab] item catalog: %d item(s) from %s",
+                            (int)g_itemOptions.size(), itemsThere ? itemsPath : "(missing file)");
+            }
+        }
+        else if (!g_itemOptions.empty()) { g_itemOptions.clear(); itemsChanged = true; }
+
+        if (stale || modsChanged || itemsChanged)
         {
             RebuildView();
             if (modsTpl)
@@ -471,5 +555,22 @@ namespace ModTab
 
         if (outCount) *outCount = (int)g_view.size();
         return g_view.empty() ? nullptr : g_view.data();
+    }
+
+    int GetItemOptionCount()
+    {
+        return (int)g_itemOptions.size();
+    }
+
+    const wchar_t* GetItemOptionName(int idx)
+    {
+        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
+        return g_itemOptions[(size_t)idx].name.c_str();
+    }
+
+    const char* GetItemOptionKey(int idx)
+    {
+        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
+        return g_itemOptions[(size_t)idx].key.c_str();
     }
 }

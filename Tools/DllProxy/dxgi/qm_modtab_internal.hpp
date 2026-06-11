@@ -65,6 +65,12 @@ namespace ModTab
     extern ButtonAction g_buttonActions[kMaxButtonActions];
     extern int          g_buttonActionCount;
 
+    // The item-spawner ComboBoxString (rebuilt with every panel build, dies with its panel).
+    // Selection is only READ at dispatch time ("add_selected_item" click) - no delegate
+    // binding; g_lastItemSel re-applies the last known selection across panel rebuilds.
+    extern void* g_itemCombo;
+    extern int   g_lastItemSel;
+
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateSidecarDir(char* out, size_t outSz);
     void    DescribeObject(QmUE::UObject* obj, char* out, size_t outSz);
@@ -86,7 +92,7 @@ namespace ModTab
     // kRowMods never reaches the build: GetPanelLayout expands it into text rows from
     // qm_modtab_mods.txt (the Configurator's pre-merged installed-mods file; flush-left
     // lines = mod names, indented lines = that mod's detail rows).
-    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3 };
+    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).
@@ -107,6 +113,13 @@ namespace ModTab
     // write time changes),
     // falling back to a compiled-in default - never returns an empty layout.
     const PanelRow* GetPanelLayout(int* outCount);
+
+    // Item catalog backing kRowItemDropdown rows: qm_modtab_items.txt (the Configurator's
+    // pre-built "<AssetId>|<Display name>" list), loaded by GetPanelLayout alongside the rows.
+    // Indices are dropdown option indices; pointers stay valid until the next GetPanelLayout.
+    int            GetItemOptionCount();
+    const wchar_t* GetItemOptionName(int idx);   // nullptr when out of range
+    const char*    GetItemOptionKey(int idx);    // nullptr when out of range
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);

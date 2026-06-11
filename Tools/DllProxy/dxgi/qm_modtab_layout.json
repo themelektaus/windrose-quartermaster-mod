@@ -32,24 +32,22 @@
   },
   {
     "type": "header",
-    "text": "Debug Commands",
+    "text": "Item Spawner",
     "size": 20,
     "color": "#FFCC59",
     "gap": 24
   },
   {
-    "type": "button",
-    "text": "Log Test",
-    "command": "log_test",
-    "arguments": ["Hello, World!"],
-    "align": "left"
+    "type": "itemDropdown",
+    "gap": 8
   },
   {
     "type": "button",
-    "text": "Add Item Test",
-    "command": "add_item_test",
-    "arguments": ["DA_CID_Alchemy_Bandages_T01:3"],
-    "align": "left"
+    "text": "Add Item",
+    "command": "add_selected_item",
+    "arguments": ["1"],
+    "align": "left",
+    "gap": 8
   },
   {
     "type": "header",

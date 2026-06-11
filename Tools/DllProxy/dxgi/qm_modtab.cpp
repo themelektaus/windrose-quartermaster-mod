@@ -24,6 +24,7 @@
 #include <objbase.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "qm_modtab.hpp"
@@ -41,6 +42,8 @@ namespace ModTab
     void* g_nativePanel = nullptr;
     ButtonAction g_buttonActions[kMaxButtonActions] = {};
     int          g_buttonActionCount = 0;
+    void*        g_itemCombo   = nullptr;
+    int          g_lastItemSel = 0;
 }
 
 namespace
@@ -462,6 +465,26 @@ namespace
         return 0;
     }
 
+    // Click-time read of the item-spawner dropdown selection (the combo is never
+    // delegate-bound; its state only matters at the moment "Add Item" is clicked).
+    int ReadItemComboSelection()
+    {
+        QmUE::UObject* combo = reinterpret_cast<QmUE::UObject*>(g_itemCombo);
+        if (!combo) return -1;
+        int idx = -1;
+        __try
+        {
+            if (combo->Class)
+                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(combo->Class, "GetSelectedIndex"))
+                {
+                    int32_t p[2] = { -1, 0 };
+                    if (QmUE::CallProcessEvent(combo, fn, p)) idx = p[0];
+                }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { idx = -1; }
+        return idx;
+    }
+
     void DispatchButtonCommand(const char* command, const char* argument)
     {
         if (!command || !*command) return;
@@ -489,6 +512,25 @@ namespace
         {
             // "<AssetName>[:<Count>]"; empty argument = recon dump (see qm_itemgrant.hpp).
             QmItemGrant_Fire(argument);
+        }
+        else if (strcmp(command, "add_selected_item") == 0)
+        {
+            // Grant the item-dropdown selection; the button argument is the count (default 1).
+            int idx = ReadItemComboSelection();
+            const char* key = GetItemOptionKey(idx);
+            if (!key)
+            {
+                QM_LOG_WARN("[ModTab] add_selected_item: no usable selection (combo=0x%p idx=%d "
+                            "catalog=%d) - ignored", g_itemCombo, idx, GetItemOptionCount());
+                return;
+            }
+            g_lastItemSel = idx;
+            long count = (argument && *argument) ? strtol(argument, nullptr, 10) : 1;
+            if (count < 1) count = 1; else if (count > 999) count = 999;
+            char spec[320];
+            snprintf(spec, sizeof(spec), "%s:%ld", key, count);
+            QM_LOG_INFO("[ModTab] add_selected_item: idx=%d -> %s", idx, spec);
+            QmItemGrant_Fire(spec);
         }
         else QM_LOG_WARN("[ModTab] button command '%s' not implemented - ignored", command);
     }

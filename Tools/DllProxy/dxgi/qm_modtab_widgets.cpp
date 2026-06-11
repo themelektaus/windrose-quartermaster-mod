@@ -44,6 +44,13 @@ namespace
     constexpr uintptr_t kOff_FontInfo_Size     = 0x48;    // FSlateFontInfo::Size        (SDK)
     constexpr size_t    kFontInfoSize          = 0x60;    // sizeof(FSlateFontInfo)      (SDK)
 
+    // Item-spawner dropdown (UComboBoxString). No SetFont UFunction exists on the class, so
+    // the game font is raw-written into the Font property BEFORE the mount - Slate reads it
+    // once, when the SComboBox is built (same pre-construct rule as the scrollbar style).
+    constexpr uintptr_t kOff_Combo_MaxListHeight = 0x1900;  // UComboBoxString::MaxListHeight (SDK)
+    constexpr uintptr_t kOff_Combo_Font          = 0x1908;  // UComboBoxString::Font          (SDK)
+    constexpr float     kComboMaxListHeight      = 420.0f;
+
     // Scrollbar style clone: FScrollBarStyle (9 consecutive FSlateBrushes + Thickness) is
     // lifted as a raw byte copy from the native settings list onto our ScrollBox. Footgun:
     // each FSlateBrush hides a non-reflected FSlateResourceHandle (TSharedPtr render cache)
@@ -324,6 +331,87 @@ namespace
         return true;
     }
 
+    // Persist the dropdown selection across panel rebuilds: the combo dies with its panel,
+    // so the last live selection is read back right before the discard. Across a reopen the
+    // instance may already be GC'd - the SEH guard turns that into "keep the previous value".
+    void SnapshotItemSelection()
+    {
+        QmUE::UObject* combo = reinterpret_cast<QmUE::UObject*>(g_itemCombo);
+        if (!combo) return;
+        __try
+        {
+            if (combo->Class)
+                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(combo->Class, "GetSelectedIndex"))
+                {
+                    int32_t p[2] = { -1, 0 };
+                    if (QmUE::CallProcessEvent(combo, fn, p) && p[0] >= 0) g_lastItemSel = p[0];
+                }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+
+    // The item-spawner dropdown: spawn a ComboBoxString, fill it from the item catalog
+    // (AddOption per entry, BEFORE the mount - no Slate widget exists yet, so the fill is
+    // cheap), re-apply the last known selection, append it to the panel and latch it into
+    // g_itemCombo for the click-time "add_selected_item" dispatch (qm_modtab.cpp).
+    bool AddItemDropdownRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                            const uint8_t* font, const PanelRow& row)
+    {
+        if (!panel || !panel->Class) return false;
+        QmUE::UClass* comboClass = QmUE::FindClassByName("ComboBoxString");
+        if (!comboClass) return false;
+        QmUE::UObject* combo = QmUE::SpawnObjectViaUFunction(comboClass, widgetTree);
+        if (!combo || !combo->Class) return false;
+
+        // Pre-construct property writes (game font + a bounded open-list height for the
+        // ~1000-entry catalog; the inner list view virtualizes its rows).
+        __try
+        {
+            uint8_t* base = reinterpret_cast<uint8_t*>(combo);
+            *reinterpret_cast<float*>(base + kOff_Combo_MaxListHeight) = kComboMaxListHeight;
+            if (font)
+            {
+                memcpy(base + kOff_Combo_Font, font, kFontInfoSize);
+                *reinterpret_cast<float*>(base + kOff_Combo_Font + kOff_FontInfo_Size) =
+                    row.size > 0.0f ? row.size : kDefFontSizeBody;
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+        struct FStringParm { const wchar_t* data; int32_t num; int32_t max; };
+        int added = 0;
+        if (QmUE::UFunction* fnOpt = QmUE::FindFunctionOnClass(combo->Class, "AddOption"))
+        {
+            const int n = GetItemOptionCount();
+            for (int i = 0; i < n; ++i)
+            {
+                const wchar_t* name = GetItemOptionName(i);
+                if (!name) continue;
+                int32_t len = (int32_t)wcslen(name) + 1;
+                FStringParm p = { name, len, len };
+                if (QmUE::CallProcessEvent(combo, fnOpt, &p)) ++added;
+            }
+        }
+        if (QmUE::UFunction* fnSel = QmUE::FindFunctionOnClass(combo->Class, "SetSelectedIndex"))
+        {
+            int32_t idx[2] = { g_lastItemSel, 0 };
+            if (idx[0] < 0 || idx[0] >= added) idx[0] = 0;
+            QmUE::CallProcessEvent(combo, fnSel, idx);
+        }
+
+        QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
+        if (!fnAdd) return false;
+        P_AddChild ac; ac.Content = combo; ac.ReturnValue = nullptr;
+        if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
+        if (ac.ReturnValue)
+            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
+
+        g_itemCombo = combo;
+        QM_LOG_DEBUG("[ModTab]   view: item dropdown combo=0x%p options=%d sel=%d",
+                     (void*)combo, added, g_lastItemSel);
+        return true;
+    }
+
     // One native section-header row: CreateWidget the game's own settings header blueprint and
     // label it. The label setter is resolved at runtime (class not in the offline SDK dump);
     // a candidate is only called when its parms are exactly one FText, and the row is only
@@ -464,6 +552,7 @@ namespace ModTab
         // Discard any prior panel (dead Slate on reopen - see the invariants above).
         if (g_ourPanel)
         {
+            SnapshotItemSelection();
             QmUE::UObject* panel = reinterpret_cast<QmUE::UObject*>(g_ourPanel);
             __try
             {
@@ -479,7 +568,8 @@ namespace ModTab
                          "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
                          (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
-            g_buttonActionCount = 0;   // actions die with their panel; re-latched by the build
+            g_buttonActionCount = 0;        // actions die with their panel; re-latched by the build
+            g_itemCombo         = nullptr;  // so does the dropdown latch
         }
 
         // Owning player (Create's 3rd arg).
@@ -551,8 +641,9 @@ namespace ModTab
 
                 int rowCount = 0;
                 const PanelRow* layout = GetPanelLayout(&rowCount);
-                int rows = 0, headers = 0, buttons = 0, wiredCount = 0;
+                int rows = 0, headers = 0, buttons = 0, wiredCount = 0, combos = 0;
                 g_buttonActionCount = 0;
+                g_itemCombo         = nullptr;
                 for (int i = 0; layout && i < rowCount; ++i)
                 {
                     const PanelRow& r = layout[i];
@@ -572,6 +663,11 @@ namespace ModTab
                                          fnCreate, donor, r, wired))
                             { ++rows; ++buttons; if (wired) ++wiredCount; }
                     }
+                    else if (r.type == kRowItemDropdown)
+                    {
+                        if (AddItemDropdownRow(ourPanel, widgetTree, font, r))
+                            { ++rows; ++combos; }
+                    }
                     else
                     {
                         if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
@@ -581,8 +677,8 @@ namespace ModTab
                     }
                 }
                 QM_LOG_DEBUG("[ModTab]   view: CONTENT build rows=%d/%d headers=%d buttons=%d wired=%d "
-                             "gameFont=%d (wired clicks via the PE BndEvt watch)",
-                             rows, rowCount, headers, buttons, wiredCount, font ? 1 : 0);
+                             "combos=%d gameFont=%d (wired clicks via the PE BndEvt watch)",
+                             rows, rowCount, headers, buttons, wiredCount, combos, font ? 1 : 0);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: CONTENT build FAULTED"); }
         }
