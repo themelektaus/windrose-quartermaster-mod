@@ -2,11 +2,12 @@
 // Public API: qm_modtab.hpp. This header is only included by the qm_modtab_* TUs.
 //
 // Module layout:
-//   qm_modtab.cpp         core: arming, ProcessInternal rider (click gate + lifecycle),
-//                         PLSF target resolve + thunk dispatch, self-heal driver
+//   qm_modtab.cpp         core: arming, ProcessInternal rider (lifecycle + recon driver),
+//                         PLSF thunks (cook-pre inject, cook-post mount, tab-state gate,
+//                         SetData sync check), self-heal bootstrap
 //   qm_modtab_util.cpp    generic SEH-guarded read/describe/dump primitives
-//   qm_modtab_widgets.cpp reflected UMG layer: tree walks, live resolvers, visibility,
-//                         panel build + mount (ProbeViewPath)
+//   qm_modtab_widgets.cpp reflected UMG layer: tree walks, visibility, panel build + mount
+//                         (ProbeViewPath)
 //   qm_modtab_inject.cpp  tab data layer: Quartermaster collection build + array append
 //   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps)
 
@@ -44,14 +45,11 @@ namespace ModTab
     struct ArrHdr { void* data; int32_t num; int32_t max; bool ok; };
 
     // ---- shared state (defined in qm_modtab.cpp) --------------------------------------------
-    // Live-instance latches: every settings (re)open builds a brand-new screen/tab-bar widget
-    // hierarchy while the previous instances linger un-GC'd in GObjects, so
-    // FindFirstInstanceOfClass returns the STALE one and anything resolved through it lands in
-    // a detached tree that never renders. The live instances are latched from their own fresh
-    // dispatches instead; cleared on OnExit.
-    extern void* g_liveTabsGroup;   // live WBP_MetaUI_TabsGroup_C (latched on Construct)
-    // Mount handles, owned by ProbeViewPath:
-    extern void* g_ourPanel;        // our content ScrollBox (rebuilt fresh on every open)
+    // Mount handles, owned by ProbeViewPath. Stale-instance footgun applies to everything
+    // around them: every settings (re)open builds a brand-new screen hierarchy while previous
+    // instances linger un-GC'd in GObjects, so FindFirstInstanceOfClass returns the STALE one -
+    // live instances are latched from their own fresh dispatches instead.
+    extern void* g_ourPanel;        // our content ScrollBox (rebuilt fresh on every cook)
     extern void* g_mountTarget;     // the content VerticalBox the panel is parented into
     extern void* g_nativePanel;     // native WBP_Settings_Panel_C (inverse-gated vs our panel)
 
@@ -67,15 +65,15 @@ namespace ModTab
     bool    ReadFTextNarrow(const void* ftext, char* out, size_t outSz);
 
     // ---- qm_modtab_widgets.cpp ---------------------------------------------------------------
-    QmUE::UObject* ResolveOurTabWidget();
     bool    SetWidgetVisibility(QmUE::UObject* widget, uint8_t vis);
     int     GetWidgetVisibility(QmUE::UObject* widget);   // -1 when unreadable
-    void*   GetWidgetParent(QmUE::UObject* widget);
     void    ProbeViewPath(QmUE::UObject* screen);
     bool    OurPanelMounted();
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);
+    bool    IsOurCollectionAt(QmUE::UObject* screen, int32_t idx);
+    bool    EnsureTabInjected(QmUE::UObject* screen);
     // bootstrapMount: run the panel mount from this self-heal path too (true until the
     // CookTabs-post hook has proven itself - see g_cookTabsHookLive in qm_modtab.cpp).
     void    TryLivenessInjectDupTab(QmUE::UObject* screen, bool bootstrapMount);
@@ -83,6 +81,4 @@ namespace ModTab
     // ---- qm_modtab_recon.cpp -----------------------------------------------------------------
     void    TryEnumerateSettingsClasses();
     void    DumpGetTabsReconOnce(QmUE::UObject* screen);
-    void    DumpFnParms(const char* tag, void* ctx, void* stack, QmUE::UFunction* fn,
-                        volatile LONG* budget);
 }

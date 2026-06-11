@@ -23,7 +23,6 @@ namespace
     struct P_AddChild        { void* Content; void* ReturnValue; };
     struct P_SetVisibility   { uint8_t InVisibility; uint8_t _pad[7]; };
     struct P_GetVisibility   { uint8_t ReturnValue; uint8_t _pad[7]; };
-    struct P_GetParent       { void* ReturnValue; };
 
     constexpr uintptr_t kOff_UserWidget_WidgetTree = 0x2D8;   // UUserWidget::WidgetTree  (SDK)
     constexpr uintptr_t kOff_WidgetTree_RootWidget = 0x30;    // UWidgetTree::RootWidget  (SDK)
@@ -64,80 +63,10 @@ namespace
         }
     }
 
-    // Silent subtree walk returning the LAST descendant whose "Class'Name'" contains classSub.
-    // DFS visits siblings in order, so the last match is the last sibling of that class.
-    QmUE::UObject* CollectLastMatch(QmUE::UObject* widget, const char* classSub, int depth, int& budget)
-    {
-        if (!widget || depth > 8 || budget <= 0 || !widget->Class) return nullptr;
-        --budget;
-        QmUE::UObject* found = nullptr;
-        char wid[352]; DescribeObject(widget, wid, sizeof(wid));
-        if (ContainsLc(wid, classSub)) found = widget;   // tentative; a later sibling/descendant overwrites
-
-        QmUE::UFunction* fnCount = QmUE::FindFunctionOnClass(widget->Class, "GetChildrenCount");
-        QmUE::UFunction* fnAt    = QmUE::FindFunctionOnClass(widget->Class, "GetChildAt");
-        if (fnCount && fnAt)
-        {
-            P_GetChildCount cc; cc.ReturnValue = 0; cc._pad = 0;
-            if (QmUE::CallProcessEvent(widget, fnCount, &cc) && cc.ReturnValue > 0 && cc.ReturnValue <= 256)
-            {
-                int n = cc.ReturnValue;
-                for (int i = 0; i < n && budget > 0; ++i)
-                {
-                    P_GetChildAt ga; ga.Index = i; ga._pad = 0; ga.ReturnValue = nullptr;
-                    if (!QmUE::CallProcessEvent(widget, fnAt, &ga) || !ga.ReturnValue) continue;
-                    QmUE::UObject* sub = CollectLastMatch(reinterpret_cast<QmUE::UObject*>(ga.ReturnValue),
-                                                          classSub, depth + 1, budget);
-                    if (sub) found = sub;
-                }
-            }
-        }
-        return found;
-    }
-
-    // RootWidget of the LIVE tab bar: prefer the group latched from its most recent Construct
-    // (a reopen's re-cooked bar wins over the lingering un-GC'd one), else the global lookup.
-    // The latched pointer may have been freed if a click races a teardown -> SEH-validated.
-    QmUE::UObject* ResolveLiveTabBarRoot()
-    {
-        QmUE::UObject* grp = nullptr;
-        if (g_liveTabsGroup)
-        {
-            QmUE::UObject* cand = reinterpret_cast<QmUE::UObject*>(g_liveTabsGroup);
-            __try { if (cand->Class) grp = cand; }
-            __except (EXCEPTION_EXECUTE_HANDLER) { grp = nullptr; }
-        }
-        if (!grp) grp = QmUE::FindFirstInstanceOfClass(kTabsGroupClass);
-        if (!grp || !grp->Class) return nullptr;
-        QmUE::UObject* root = nullptr;
-        __try
-        {
-            QmUE::UObject* wt = reinterpret_cast<QmUE::UObject*>(
-                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(grp) + kOff_UserWidget_WidgetTree));
-            if (wt) root = reinterpret_cast<QmUE::UObject*>(
-                *reinterpret_cast<void* const*>(reinterpret_cast<const uint8_t*>(wt) + kOff_WidgetTree_RootWidget));
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) { root = nullptr; }
-        return root;
-    }
 }
 
 namespace ModTab
 {
-    // Our Quartermaster tab widget = the LAST WBP_MetaUI_Tab_Main_C in the live bar (our
-    // collection is injected as the last tab data entry, so our tab is the last leaf).
-    // Read-only, silent; nullptr while the bar isn't built yet.
-    QmUE::UObject* ResolveOurTabWidget()
-    {
-        QmUE::UObject* root = ResolveLiveTabBarRoot();
-        if (!root) return nullptr;
-        QmUE::UObject* last = nullptr;
-        int budget = 250;
-        __try { last = CollectLastMatch(root, "tab_main", 0, budget); }
-        __except (EXCEPTION_EXECUTE_HANDLER) { last = nullptr; }
-        return last;
-    }
-
     bool SetWidgetVisibility(QmUE::UObject* widget, uint8_t vis)
     {
         if (!widget || !widget->Class) return false;
@@ -164,22 +93,6 @@ namespace ModTab
         return r;
     }
 
-    void* GetWidgetParent(QmUE::UObject* widget)
-    {
-        if (!widget) return nullptr;
-        void* r = nullptr;
-        __try
-        {
-            if (!widget->Class) return nullptr;
-            QmUE::UFunction* fn = QmUE::FindFunctionOnClass(widget->Class, "GetParent");
-            if (!fn) return nullptr;
-            P_GetParent p; memset(&p, 0, sizeof(p));
-            if (QmUE::CallProcessEvent(widget, fn, &p)) r = p.ReturnValue;
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) { r = nullptr; }
-        return r;
-    }
-
     // Build + mount our content panel into the screen's content VerticalBox.
     //
     // Invariants this encodes (all empirically proven, none reflectable):
@@ -189,17 +102,17 @@ namespace ModTab
     //    the orphans are left to GC.
     //  - The mount target is the content VerticalBox; our panel is a SIBLING of the native
     //    Settings_Panel (its content host is a data-driven GameSettingListView that cannot be
-    //    AddChild'd into). The click gate, not the container, makes the panel tab-scoped.
-    //  - The panel starts Collapsed (Quartermaster is never the default tab on open); the gate
-    //    flips visibility per tab click, inverse-gating the native panel.
+    //    AddChild'd into). The tab-state gate, not the container, makes the panel tab-scoped.
+    //  - The panel starts Collapsed (Quartermaster is never the default tab on open); the
+    //    tab-state gate flips visibility per selection, inverse-gating the native panel.
     //  - When the content box is not resolvable yet (tree mid-rebuild), defer cleanly to the
     //    next call - no detach, no construct, no leak.
     void ProbeViewPath(QmUE::UObject* screen)
     {
         if (!screen) return;
-        QM_LOG_WARN("[ModTab] *** VIEW-PATH #18e *** map screen tree + build our own ScrollBox as a sibling of "
+        QM_LOG_WARN("[ModTab] *** VIEW-PATH *** map screen tree + build our own ScrollBox as a sibling of "
                     "Settings_Panel, fill it, mount it into the content VerticalBox, start it hidden "
-                    "(visibility gated by #18d tab click)");
+                    "(visibility owned by the tab-state gate)");
 
         QmUE::UObject* widgetTree = nullptr;
         QmUE::UObject* rootWidget = nullptr;
@@ -246,7 +159,7 @@ namespace ModTab
                     }
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {}
-            QM_LOG_WARN("[ModTab] *** VIEW-PATH #18l FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
+            QM_LOG_WARN("[ModTab] *** FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
                         "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
                         (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel = nullptr;
@@ -430,8 +343,8 @@ namespace ModTab
                 }
             }
         }
-        QM_LOG_WARN("[ModTab] *** VIEW-PATH #18e DONE *** panel=0x%p mountTarget=0x%p - visibility gated by the "
-                    "#18d tab click (starts hidden, shows on Quartermaster tab)", (void*)g_ourPanel, (void*)mountTarget);
+        QM_LOG_WARN("[ModTab] *** VIEW-PATH DONE *** panel=0x%p mountTarget=0x%p - starts hidden, the tab-state "
+                    "gate shows it on the Quartermaster tab", (void*)g_ourPanel, (void*)mountTarget);
     }
 
     // Is our panel STILL a live child of the content VerticalBox? False when never mounted OR

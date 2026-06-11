@@ -259,26 +259,32 @@ namespace ModTab
         return found;
     }
 
-    // Inject our collection into the live tab arrays (when absent) and force the bar reconcile
-    // via a simulated tab click. Caller holds the rebuild guard - the ProcessEvent dispatches
-    // below re-enter the rider, and the guard makes those polls no-ops.
-    void TryLivenessInjectDupTab(QmUE::UObject* screen, bool bootstrapMount)
+    // Identity test for the tab-state gate: is Screen::Tabs[idx] our injected collection?
+    // Pointer compared, never deref'd.
+    bool IsOurCollectionAt(QmUE::UObject* screen, int32_t idx)
     {
-        if (!screen) return;
+        if (!screen || !g_ourCollection || idx < 0) return false;
+        ArrHdr tabs = ReadArrHdr(reinterpret_cast<const uint8_t*>(screen) + kOff_Screen_Tabs);
+        if (!tabs.ok || !tabs.data || idx >= tabs.num || tabs.num > 4096) return false;
+        bool ours = false;
+        __try { ours = (reinterpret_cast<void* const*>(tabs.data)[idx] == g_ourCollection); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { ours = false; }
+        return ours;
+    }
 
-        // Bootstrap mount: this self-heal path owns the panel mount until the CookTabs-post
-        // hook has proven itself (a hook that never fires must never regress the first open).
-        if (bootstrapMount)
-            ProbeViewPath(screen);
+    // Append-only inject: build the Quartermaster collection and append it to the live tab
+    // arrays when absent. NO UI reconcile here - the caller owns that (the CookTabs-pre call
+    // relies on the native cook that follows; the self-heal bootstrap simulates a tab click).
+    // Skipped when already present: the Registry append persists across reopens (every fresh
+    // screen sources its Tabs from it), and re-appending would stack a duplicate tab.
+    // Returns true only when it appended just now.
+    bool EnsureTabInjected(QmUE::UObject* screen)
+    {
+        if (!screen) return false;
+        if (OurCollectionPresentInTabs(screen)) return false;
 
-        // Only inject when absent: on a reopen the tab DATA is pooled, so our collection is
-        // still in Screen::Tabs and the native cook rebuilds the bar from it - re-appending
-        // would stack a duplicate tab.
-        if (OurCollectionPresentInTabs(screen))
-            return;
-
-        QM_LOG_WARN("[ModTab] *** LIVENESS INJECT *** duplicating an existing tab pointer into both live "
-                    "arrays, then forcing a re-cook (this MUTATES game state)");
+        QM_LOG_WARN("[ModTab] *** TAB INJECT *** appending our collection to the live tab arrays "
+                    "(this MUTATES game state)");
 
         const uint8_t* sb = reinterpret_cast<const uint8_t*>(screen);
         QmUE::UObject* registry = reinterpret_cast<QmUE::UObject*>(ReadPtr(sb + kOff_Screen_Registry));
@@ -298,7 +304,7 @@ namespace ModTab
         if (!dupPtr)
         {
             QM_LOG_WARN("[ModTab]   inject: no existing tab pointer to duplicate - aborting");
-            return;
+            return false;
         }
         char did[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(dupPtr), did, sizeof(did));
         QM_LOG_INFO("[ModTab]   inject: sibling/source collection = 0x%p %s", dupPtr, did);
@@ -314,12 +320,31 @@ namespace ModTab
         g_ourCollection = injectPtr;   // aligned ptr write, atomic on x64
 
         // Append to BOTH lists (separate backing stores).
-        AppendDupToArray(const_cast<uint8_t*>(sb) + kOff_Screen_Tabs, injectPtr, "Screen::Tabs");
+        int32_t appended = AppendDupToArray(const_cast<uint8_t*>(sb) + kOff_Screen_Tabs, injectPtr, "Screen::Tabs");
         if (registry)
             AppendDupToArray(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(registry)) + kOff_Reg_TopLevel,
                              injectPtr, "Registry::TopLevelSettings");
+        return appended > 0;
+    }
 
-        // Force the bar reconcile: a real tab-button click is the only proven path (the BP nav
+    // Self-heal bootstrap: panel mount + inject + forced bar reconcile. Only the fallback for a
+    // dead CookTabs hook - once that hook is live, its cook-pre inject runs before any cook and
+    // this path never sees an absent tab. Caller holds the rebuild guard - the ProcessEvent
+    // dispatches below re-enter the rider, and the guard makes those polls no-ops.
+    void TryLivenessInjectDupTab(QmUE::UObject* screen, bool bootstrapMount)
+    {
+        if (!screen) return;
+
+        // Bootstrap mount: this self-heal path owns the panel mount until the CookTabs-post
+        // hook has proven itself (a hook that never fires must never regress the first open).
+        if (bootstrapMount)
+            ProbeViewPath(screen);
+
+        if (!EnsureTabInjected(screen))
+            return;
+
+        // Nothing re-cooked the bar for this append (the cook hook was not the injector):
+        // force the reconcile via a simulated tab click - the only proven path (the BP nav
         // functions only switch the active content; CookTabs takes args we cannot fake).
         QmUE::UObject* tabw = QmUE::FindFirstInstanceOfClass(kTabWidgetClass);
         if (!tabw)
@@ -332,10 +357,8 @@ namespace ModTab
         QM_LOG_INFO("[ModTab]   inject: simulating tab-button click on %s", tid);
         CallNavRefresh(tabw, kTabClickDelegate, /*onlyIfParameterless=*/false);
 
-        ArrHdr after = ReadArrHdr(sb + kOff_Screen_Tabs);
+        ArrHdr after = ReadArrHdr(reinterpret_cast<const uint8_t*>(screen) + kOff_Screen_Tabs);
         QM_LOG_INFO("[ModTab]   inject: POST-click Screen::Tabs Num=%d Max=%d Data=0x%p",
                     after.num, after.max, after.data);
-        QM_LOG_WARN("[ModTab] *** LIVENESS INJECT DONE *** -> the 6th (duplicate) tab should now appear "
-                    "WITHOUT a manual click");
     }
 }

@@ -299,25 +299,4 @@ namespace ModTab
         // The returned TArray's heap backing is intentionally leaked - no element destructor
         // is available and this runs once.
     }
-
-    // Dump a hooked function's parms (self + parmsSize + hexdump + TArray scan), budgeted per
-    // open. `stack` is the FFrame; its Locals is the param block, laid out exactly like a
-    // ProcessEvent Parms buffer. SEH-guarded by the calling thunk.
-    void DumpFnParms(const char* tag, void* ctx, void* stack, QmUE::UFunction* fn, volatile LONG* budget)
-    {
-        if (!budget || InterlockedDecrement(budget) < 0) return;
-        void* locals = nullptr;
-        __try { locals = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(stack) + kFFrameLocalsOff); }
-        __except (EXCEPTION_EXECUTE_HANDLER) { locals = nullptr; }
-        char slf[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(ctx), slf, sizeof(slf));
-        int32_t psize = fn ? ParmsSize(fn) : 0;
-        QM_LOG_WARN("[ModTab] *** #18p FN-HOOK %s *** self=%s parms=0x%p parmsSize=%d (capturing the real layout the "
-                    "reference-faithful gate/sync needs - Build B)", tag, slf, locals, psize);
-        if (locals && psize > 0)
-        {
-            int32_t cap = psize < kMaxParmsDump ? psize : kMaxParmsDump;
-            HexDump("fnparm", reinterpret_cast<const uint8_t*>(locals), cap);
-            ScanForTArrays(reinterpret_cast<const uint8_t*>(locals), cap);
-        }
-    }
 }
