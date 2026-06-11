@@ -45,12 +45,13 @@ namespace
 {
     // Compiled-in fallback - kept in sync with the shipped qm_modtab_layout.json.
     constexpr const char* kDefaultLayoutJson = R"json([
-  { "type": "header", "text": "Quartermaster", "size": 26, "color": "#FFCC59", "gap": 96 },
+  { "type": "header", "text": "Quartermaster", "size": 26, "color": "#FFCC59", "gap": 4 },
   { "type": "text",   "text": "v{version} - Developed by TheMelekTaus", "size": 14, "color": "#AA9966", "wrap": true, "gap": 4 },
-  { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator.", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 16 },
-  { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 32 },
+  { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator. Thank you for using Quartermaster!", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 12 },
+  { "type": "button", "text": "Leave an Endorsement", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 24, "align": "left" },
+  { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "modifications", "gap": 4 },
-  { "type": "button", "text": "Visit nexusmods.com", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 32, "align": "left" }
+  { "type": "text",   "text": "", "gap": 24 }
 ])json";
 
     struct RowStorage

@@ -16,7 +16,7 @@
   },
   {
     "type": "text",
-    "text": "Configurable mods and tweaks - built with the Quartermaster Configurator.",
+    "text": "Configurable mods and tweaks - built with the Quartermaster Configurator. Thank you for using Quartermaster!",
     "size": 16,
     "color": "#C7C7C7",
     "wrap": true,
@@ -24,7 +24,7 @@
   },
   {
     "type": "button",
-    "text": "Visit nexusmods.com",
+    "text": "Leave an Endorsement",
     "command": "open_url",
     "arguments": ["https://www.nexusmods.com/windrose/mods/375"],
     "gap": 24,
