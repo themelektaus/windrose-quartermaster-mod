@@ -22,7 +22,8 @@
 
 #pragma once
 
-// Read qm_weather.txt next to the DLL. Returns true iff a valid weather id
+// Read qm_weather.txt from the Quartermaster sidecar folder next to the DLL.
+// Returns true iff a valid weather id
 // (0..13) parsed and the PoC should run. Call once at startup (off DllMain).
 bool QmWeather_Init();
 
@@ -38,7 +39,7 @@ bool QmWeather_IsEnabled();
 void QmWeather_Heartbeat();
 
 // ---- Stage 2b: consumable-use trigger -------------------------------------
-// Reads a second sentinel `qm_weather_trigger.txt` (next to the DLL) of the
+// Reads a second sentinel `qm_weather_trigger.txt` (same sidecar folder) of the
 // form `<substring> <weatherId>` (e.g. `Bandages 6`). When armed, the consume
 // hook calls QmWeather_TryConsumableTrigger() on every R5ConsumeAbility::
 // EventReceived. If the consumed ConsumableData's name contains <substring>

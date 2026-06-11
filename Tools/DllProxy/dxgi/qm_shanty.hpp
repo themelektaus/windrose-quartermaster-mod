@@ -14,7 +14,7 @@
 
 #include "qm_ue.hpp"
 
-// Arm the module from any qm_shanty*.txt sentinel next to this DLL. Result is cached.
+// Arm the module from any qm_shanty*.txt sentinel in the Quartermaster sidecar folder. Result is cached.
 // Call once at startup (off DllMain) so the armed state is logged and ReconArmed() is
 // warm before the probe loop decides whether to install the ProcessEvent net-hook.
 bool QmShanty_Init();

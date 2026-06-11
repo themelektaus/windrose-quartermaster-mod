@@ -55,16 +55,17 @@ namespace
     bool g_armed    = false;
     char g_dllDir[MAX_PATH] = { 0 };   // cached in Init for the trigger sentinels
 
-    // Write the directory containing THIS DLL into `out` (no trailing sep).
-    // Anchors on a local symbol so it resolves this module regardless of which
-    // DLL shares the basename. Mirrors qm_weather.cpp's LocateDllDir.
-    bool LocateDllDir(char* out, size_t outSz)
+    // Write the Quartermaster sidecar dir (<dll dir>\Quartermaster) into `out`
+    // (no trailing sep). Anchors on a local symbol so it resolves this module
+    // regardless of which DLL shares the basename. Mirrors qm_weather.cpp's
+    // LocateSidecarDir.
+    bool LocateSidecarDir(char* out, size_t outSz)
     {
         if (!out || outSz == 0) return false;
         HMODULE self = nullptr;
         if (!GetModuleHandleExA(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCSTR>(&LocateDllDir), &self) || !self)
+                reinterpret_cast<LPCSTR>(&LocateSidecarDir), &self) || !self)
             return false;
 
         char dllPath[MAX_PATH];
@@ -75,10 +76,8 @@ namespace
         if (!lastSep) return false;
         *lastSep = '\0';
 
-        size_t dlen = strlen(dllPath);
-        if (dlen + 1 > outSz) return false;
-        memcpy(out, dllPath, dlen + 1);
-        return true;
+        int w = snprintf(out, outSz, "%s\\Quartermaster", dllPath);
+        return w > 0 && (size_t)w < outSz;
     }
 
     // ---- OnDamageDealt_Event param layout ---------------------------------
@@ -638,7 +637,7 @@ namespace
         return applied;
     }
 
-    // Glob every qm_killxp_onkill*.txt next to the DLL (profile-bound, like
+    // Glob every qm_killxp_onkill*.txt in the sidecar folder (profile-bound, like
     // qm_weather_<profile>.txt) and load all into the reward table. Read ONCE at
     // startup. Sets g_onKillArmed if any file contributed a value.
     void LoadOnKillConfig(const char* dir)
@@ -684,7 +683,7 @@ bool QmKillXp_Init()
     g_initDone = true;
 
     char dir[MAX_PATH];
-    if (!LocateDllDir(dir, sizeof(dir)))
+    if (!LocateSidecarDir(dir, sizeof(dir)))
     {
         QM_LOG_WARN("[KillXP] could not locate DLL dir - recon disabled");
         g_armed = false;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -14,6 +15,10 @@ namespace Windrose.Quartermaster.Core.Deploy
 
         readonly string _modRoot;
         readonly string _gameWin64Dir;
+        // All qm_* sidecars (sentinels, configs, profile JSONs) live in this
+        // subfolder. Only dxgi.dll stays in the Win64 root: the proxy is
+        // only picked up by the loader directly next to the EXE.
+        readonly string _sidecarDir;
 
         public GameDeployer(string modRoot, string gameWin64Dir = null)
         {
@@ -22,6 +27,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             _gameWin64Dir = !string.IsNullOrEmpty(gameWin64Dir)
                 ? gameWin64Dir
                 : SteamLocator.FindBinariesWin64Dir();
+            _sidecarDir = Path.Combine(_gameWin64Dir, "Quartermaster");
         }
 
         string ResolveDllSourcePath()
@@ -35,27 +41,64 @@ namespace Windrose.Quartermaster.Core.Deploy
 
         public string DllSourcePath => ResolveDllSourcePath();
         public string GameWin64Dir  => _gameWin64Dir;
+        public string SidecarDir    => _sidecarDir;
 
         public string TargetDllPath()      => Path.Combine(_gameWin64Dir, "dxgi.dll");
-        // Presence of this marker (not its contents) is the proof we own the adjacent dxgi.dll.
-        public string TargetDllMarkerPath() => Path.Combine(_gameWin64Dir, "dxgi.dll.qm");
+
+        // Ownership proof lives inside the DLL itself: the PE version resource
+        // (Tools/DllProxy/dxgi/version.rc) carries this ProductName. The old
+        // dxgi.dll.qm sidecar marker is only honored as a legacy fallback for
+        // proxies deployed before the resource existed, and removed on sight.
+        const string DllProductName = "Quartermaster";
+        string LegacyDllMarkerPath() => Path.Combine(_gameWin64Dir, "dxgi.dll.qm");
+
+        static bool IsQuartermasterDll(string dllPath)
+        {
+            try
+            {
+                return string.Equals(
+                    FileVersionInfo.GetVersionInfo(dllPath).ProductName,
+                    DllProductName, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         bool IsOurProxyAtTarget()
         {
-            return File.Exists(TargetDllMarkerPath());
+            var targetDll = TargetDllPath();
+            if (File.Exists(targetDll) && IsQuartermasterDll(targetDll)) return true;
+            return File.Exists(LegacyDllMarkerPath());
+        }
+
+        void RemoveLegacyDllMarker()
+        {
+            var marker = LegacyDllMarkerPath();
+            if (!File.Exists(marker)) return;
+            try
+            {
+                File.Delete(marker);
+                LogLine("Removed legacy dxgi.dll.qm marker (ownership is embedded in the DLL now).");
+            }
+            catch (Exception ex)
+            {
+                LogLine("WARNING: could not remove legacy marker " + marker + ": " + ex.Message);
+            }
         }
 
         public string TargetItemsJsonPath(string profileSafeName)
         {
             if (string.IsNullOrEmpty(profileSafeName))
                 throw new ArgumentNullException(nameof(profileSafeName));
-            return Path.Combine(_gameWin64Dir, "qm_items_" + profileSafeName + ".json");
+            return Path.Combine(_sidecarDir, "qm_items_" + profileSafeName + ".json");
         }
 
         public IList<string> EnumerateProfileItemsJsonPaths()
         {
-            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
-            return Directory.GetFiles(_gameWin64Dir, "qm_items_*.json", SearchOption.TopDirectoryOnly);
+            if (!Directory.Exists(_sidecarDir)) return Array.Empty<string>();
+            return Directory.GetFiles(_sidecarDir, "qm_items_*.json", SearchOption.TopDirectoryOnly);
         }
 
         public bool EnsureDllInstalled()
@@ -81,28 +124,55 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
 
             var targetDll = TargetDllPath();
-            var targetMarker = TargetDllMarkerPath();
 
             if (File.Exists(targetDll) && !IsOurProxyAtTarget())
             {
                 throw new InvalidOperationException(
                     "Refusing to overwrite existing dxgi.dll at " + targetDll
-                    + " - no dxgi.dll.qm marker alongside, "
-                    + "so it's probably not our proxy. "
+                    + " - its version resource does not identify it as Quartermaster, "
+                    + "so it's probably a foreign proxy (ReShade etc.). "
                     + "Investigate or remove it manually, then retry.");
             }
 
             LogLine("Copying " + dllSourcePath + " -> " + targetDll);
             File.Copy(dllSourcePath, targetDll, overwrite: true);
 
-            var markerBody =
-                "Quartermaster dxgi.dll proxy marker\n"
-                + "Installed: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ssZ") + "\n"
-                + "Source:    " + dllSourcePath + "\n";
-            LogLine("Writing marker -> " + targetMarker);
-            File.WriteAllText(targetMarker, markerBody, new UTF8Encoding(false));
+            RemoveLegacyDllMarker();
+
+            MigrateLegacySidecars();
 
             return true;
+        }
+
+        void EnsureSidecarDir() => Directory.CreateDirectory(_sidecarDir);
+
+        // Sidecars used to live directly in Win64; the DLL only reads the
+        // Quartermaster subfolder now, so a stale root copy would silently
+        // deactivate its feature. Move them once (an existing subfolder copy wins).
+        public int MigrateLegacySidecars()
+        {
+            if (!Directory.Exists(_gameWin64Dir)) return 0;
+            int moved = 0;
+            foreach (var pattern in new[] { "qm_*.txt", "qm_*.json" })
+            {
+                foreach (var src in Directory.GetFiles(_gameWin64Dir, pattern, SearchOption.TopDirectoryOnly))
+                {
+                    try
+                    {
+                        var dst = Path.Combine(_sidecarDir, Path.GetFileName(src));
+                        EnsureSidecarDir();
+                        if (File.Exists(dst)) File.Delete(src);
+                        else File.Move(src, dst);
+                        moved++;
+                        LogLine("Migrated legacy sidecar " + Path.GetFileName(src) + " -> " + _sidecarDir);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogLine("Warning: could not migrate legacy sidecar " + src + ": " + ex.Message);
+                    }
+                }
+            }
+            return moved;
         }
 
         // Empty/null buildings deletes the JSON; non-empty overwrites (no merge).
@@ -127,6 +197,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
             var body = BuildItemsJson(buildings, tabPurityFilter);
             LogLine("Writing qm_items_" + profileSafeName + ".json (" + count + " building(s)) -> " + path);
+            EnsureSidecarDir();
             File.WriteAllText(path, body, new UTF8Encoding(false));
         }
 
@@ -147,7 +218,7 @@ namespace Windrose.Quartermaster.Core.Deploy
         // longer write it; this accessor only exists so cleanup can purge a stale
         // copy. (It still matches the qm_weather_*.txt glob below, so the DLL keeps
         // reading it for back-compat.)
-        public string TargetWeatherTriggerPath() => Path.Combine(_gameWin64Dir, "qm_weather_trigger.txt");
+        public string TargetWeatherTriggerPath() => Path.Combine(_sidecarDir, "qm_weather_trigger.txt");
 
         // Per-profile weather trigger sidecar. Mirrors qm_items_<profile>.json: the
         // DLL globs qm_weather_*.txt and merges every profile's mappings, so two
@@ -156,7 +227,7 @@ namespace Windrose.Quartermaster.Core.Deploy
         {
             if (string.IsNullOrEmpty(profileSafeName))
                 throw new ArgumentNullException(nameof(profileSafeName));
-            return Path.Combine(_gameWin64Dir, "qm_weather_" + profileSafeName + ".txt");
+            return Path.Combine(_sidecarDir, "qm_weather_" + profileSafeName + ".txt");
         }
 
         // All deployed weather trigger files (per-profile qm_weather_<profile>.txt
@@ -165,8 +236,8 @@ namespace Windrose.Quartermaster.Core.Deploy
         // underscore after "weather" so it is NOT matched here.
         public IList<string> EnumerateProfileWeatherTriggerPaths()
         {
-            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
-            return Directory.GetFiles(_gameWin64Dir, "qm_weather_*.txt", SearchOption.TopDirectoryOnly);
+            if (!Directory.Exists(_sidecarDir)) return Array.Empty<string>();
+            return Directory.GetFiles(_sidecarDir, "qm_weather_*.txt", SearchOption.TopDirectoryOnly);
         }
 
         // Writes one "<token> <weatherId>" line per Weather Control clone into this
@@ -210,6 +281,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             sb.Append("#              12 TortugaMist 13 Default. Lines starting with '#' are ignored.\n");
 
             LogLine("Writing qm_weather_" + profileSafeName + ".txt (" + lines.Count + " mapping(s)) -> " + path);
+            EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
@@ -222,15 +294,15 @@ namespace Windrose.Quartermaster.Core.Deploy
         {
             if (string.IsNullOrEmpty(profileSafeName))
                 throw new ArgumentNullException(nameof(profileSafeName));
-            return Path.Combine(_gameWin64Dir, "qm_killxp_onkill_" + profileSafeName + ".txt");
+            return Path.Combine(_sidecarDir, "qm_killxp_onkill_" + profileSafeName + ".txt");
         }
 
         // All deployed per-profile XP-for-kills sidecars. Used for DLL-idle detection
         // (this is a DLL-only feature, no pak, so a deployed file keeps the DLL alive).
         public IList<string> EnumerateProfileKillXpPaths()
         {
-            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
-            return Directory.GetFiles(_gameWin64Dir, "qm_killxp_onkill_*.txt", SearchOption.TopDirectoryOnly);
+            if (!Directory.Exists(_sidecarDir)) return Array.Empty<string>();
+            return Directory.GetFiles(_sidecarDir, "qm_killxp_onkill_*.txt", SearchOption.TopDirectoryOnly);
         }
 
         // Writes "default=N" + one "<keyword>=N" line per entry into this profile's
@@ -284,6 +356,7 @@ namespace Windrose.Quartermaster.Core.Deploy
 
             LogLine("Writing qm_killxp_onkill_" + profileSafeName + ".txt (default=" + def
                     + ", " + clean.Count + " keyword(s)) -> " + path);
+            EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
@@ -296,15 +369,15 @@ namespace Windrose.Quartermaster.Core.Deploy
         {
             if (string.IsNullOrEmpty(profileSafeName))
                 throw new ArgumentNullException(nameof(profileSafeName));
-            return Path.Combine(_gameWin64Dir, "qm_shanty_" + profileSafeName + ".txt");
+            return Path.Combine(_sidecarDir, "qm_shanty_" + profileSafeName + ".txt");
         }
 
         // All deployed per-profile shanty sentinels. Used for DLL-idle detection (this is
         // a DLL-only feature, no pak, so a deployed file keeps the DLL alive).
         public IList<string> EnumerateProfileShantyPaths()
         {
-            if (!Directory.Exists(_gameWin64Dir)) return Array.Empty<string>();
-            return Directory.GetFiles(_gameWin64Dir, "qm_shanty_*.txt", SearchOption.TopDirectoryOnly);
+            if (!Directory.Exists(_sidecarDir)) return Array.Empty<string>();
+            return Directory.GetFiles(_sidecarDir, "qm_shanty_*.txt", SearchOption.TopDirectoryOnly);
         }
 
         // Creates/removes this profile's qm_shanty_<profile>.txt. The DLL arms its
@@ -324,15 +397,57 @@ namespace Windrose.Quartermaster.Core.Deploy
                 return;
             }
             LogLine("Writing qm_shanty_" + profileSafeName + ".txt (Keep Shanties Playing on) -> " + path);
+            EnsureSidecarDir();
             File.WriteAllText(path,
                 "# Quartermaster: Keep Shanties Playing (auto-generated marker).\n"
                 + "# The DLL arms its helm-leave shanty keep-alive when this file is present.\n",
                 new UTF8Encoding(false));
         }
 
+        // The deployed pak's source of truth: the full profile JSON ships next to
+        // the feature sidecars, one qm_profile_<profile>.json per installed
+        // Quartermaster_<profile>_P.pak. Its presence keeps the DLL alive (see
+        // RemoveDllIfNoProfilesLeft) and feeds the in-game mod tab.
+        public string TargetProfileJsonPath(string profileSafeName)
+        {
+            if (string.IsNullOrEmpty(profileSafeName))
+                throw new ArgumentNullException(nameof(profileSafeName));
+            return Path.Combine(_sidecarDir, "qm_profile_" + profileSafeName + ".json");
+        }
+
+        public IList<string> EnumerateProfileJsonPaths()
+        {
+            if (!Directory.Exists(_sidecarDir)) return Array.Empty<string>();
+            return Directory.GetFiles(_sidecarDir, "qm_profile_*.json", SearchOption.TopDirectoryOnly);
+        }
+
+        public void WriteProfileJson(string profileSafeName, string profileJson)
+        {
+            if (string.IsNullOrEmpty(profileJson))
+                throw new ArgumentNullException(nameof(profileJson));
+            var path = TargetProfileJsonPath(profileSafeName);
+            LogLine("Writing qm_profile_" + profileSafeName + ".json -> " + path);
+            EnsureSidecarDir();
+            File.WriteAllText(path, profileJson, new UTF8Encoding(false));
+        }
+
+        public bool RemoveProfileJson(string profileSafeName)
+        {
+            var path = TargetProfileJsonPath(profileSafeName);
+            if (!File.Exists(path)) return false;
+            LogLine("Removing qm_profile_" + profileSafeName + ".json -> " + path);
+            File.Delete(path);
+            return true;
+        }
+
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)
         {
             if (!Directory.Exists(_gameWin64Dir)) return false;
+
+            // Every built pak deploys its profile JSON, and the DLL ships with
+            // every build (it carries the in-game mod tab) - so the DLL stays as
+            // long as any Quartermaster mod remains installed.
+            if (EnumerateProfileJsonPaths().Count > 0) return false;
 
             if (EnumerateProfileItemsJsonPaths().Count > 0) return false;
 
@@ -350,17 +465,17 @@ namespace Windrose.Quartermaster.Core.Deploy
             if (EnumerateProfileShantyPaths().Count > 0) return false;
 
             var targetDll = TargetDllPath();
-            var targetMarker = TargetDllMarkerPath();
+            var legacyMarker = LegacyDllMarkerPath();
 
             bool dllExists = File.Exists(targetDll);
-            bool markerExists = File.Exists(targetMarker);
+            bool markerExists = File.Exists(legacyMarker);
 
             if (!dllExists && !markerExists) return false;
 
-            if (dllExists && !markerExists)
+            if (dllExists && !IsOurProxyAtTarget())
             {
                 LogLine("Skipping DLL cleanup: dxgi.dll exists at " + targetDll
-                    + " but no dxgi.dll.qm marker alongside (not our proxy).");
+                    + " but is not identified as Quartermaster (foreign proxy left alone).");
                 return false;
             }
 
@@ -375,8 +490,8 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
             if (markerExists)
             {
-                LogLine("Removing dxgi.dll.qm marker -> " + targetMarker);
-                deleter(targetMarker);
+                LogLine("Removing legacy dxgi.dll.qm marker -> " + legacyMarker);
+                deleter(legacyMarker);
                 removedAny = true;
             }
             return removedAny;
@@ -423,28 +538,35 @@ namespace Windrose.Quartermaster.Core.Deploy
         public CleanupResult CleanupGame(string pakBasename = null)
         {
             var result = new CleanupResult();
-            foreach (var jsonPath in EnumerateProfileItemsJsonPaths())
+            // Purge every qm_* sidecar: the Quartermaster subfolder plus any legacy
+            // copies still sitting in the Win64 root, then the empty folder itself.
+            foreach (var dir in new[] { _sidecarDir, _gameWin64Dir })
             {
-                TryDelete(jsonPath, result);
+                if (!Directory.Exists(dir)) continue;
+                foreach (var pattern in new[] { "qm_*.txt", "qm_*.json" })
+                {
+                    foreach (var path in Directory.GetFiles(dir, pattern, SearchOption.TopDirectoryOnly))
+                        TryDelete(path, result);
+                }
             }
-            // Per-profile qm_weather_<profile>.txt + any legacy qm_weather_trigger.txt
-            // (both match the glob).
-            foreach (var weatherPath in EnumerateProfileWeatherTriggerPaths())
+            try
             {
-                TryDelete(weatherPath, result);
+                if (Directory.Exists(_sidecarDir)
+                    && !Directory.EnumerateFileSystemEntries(_sidecarDir).Any())
+                {
+                    Directory.Delete(_sidecarDir);
+                    result.Removed.Add(_sidecarDir);
+                }
             }
-            // Per-profile qm_killxp_onkill_<profile>.txt (XP for Kills sidecars).
-            foreach (var killXpPath in EnumerateProfileKillXpPaths())
+            catch (Exception ex)
             {
-                TryDelete(killXpPath, result);
+                result.Errors.Add(_sidecarDir + ": " + ex.Message);
             }
-            // Per-profile qm_shanty_<profile>.txt (Keep Shanties Playing sentinels).
-            foreach (var shantyPath in EnumerateProfileShantyPaths())
-            {
-                TryDelete(shantyPath, result);
-            }
-            TryDelete(TargetDllPath(),       result);
-            TryDelete(TargetDllMarkerPath(), result);
+            if (!File.Exists(TargetDllPath()) || IsOurProxyAtTarget())
+                TryDelete(TargetDllPath(), result);
+            else
+                LogLine("Skipping dxgi.dll: not identified as Quartermaster (foreign proxy left alone).");
+            TryDelete(LegacyDllMarkerPath(), result);
             if (!string.IsNullOrEmpty(pakBasename))
             {
                 string modsDir;

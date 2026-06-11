@@ -51,16 +51,16 @@ namespace
     // consume rule, the exact value is not load-bearing.
     constexpr DWORD kHelmInputWindowMs = 1500;
 
-    // Write the directory containing THIS DLL into `out` (no trailing sep). Anchors on a
-    // local symbol so it resolves this module regardless of which DLL shares the basename.
-    // Mirrors qm_killxp.cpp / qm_weather.cpp LocateDllDir.
-    bool LocateDllDir(char* out, size_t outSz)
+    // Write the Quartermaster sidecar dir (<dll dir>\Quartermaster) into `out` (no trailing
+    // sep). Anchors on a local symbol so it resolves this module regardless of which DLL
+    // shares the basename. Mirrors qm_killxp.cpp / qm_weather.cpp LocateSidecarDir.
+    bool LocateSidecarDir(char* out, size_t outSz)
     {
         if (!out || outSz == 0) return false;
         HMODULE self = nullptr;
         if (!GetModuleHandleExA(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCSTR>(&LocateDllDir), &self) || !self)
+                reinterpret_cast<LPCSTR>(&LocateSidecarDir), &self) || !self)
             return false;
 
         char dllPath[MAX_PATH];
@@ -71,10 +71,8 @@ namespace
         if (!lastSep) return false;
         *lastSep = '\0';
 
-        size_t dlen = strlen(dllPath);
-        if (dlen + 1 > outSz) return false;
-        memcpy(out, dllPath, dlen + 1);
-        return true;
+        int w = snprintf(out, outSz, "%s\\Quartermaster", dllPath);
+        return w > 0 && (size_t)w < outSz;
     }
 
     // Best-effort "ClassName 'ObjectName'" for an object, into a caller buffer. Caller is
@@ -153,7 +151,7 @@ bool QmShanty_Init()
     g_initDone = true;
 
     char dir[MAX_PATH];
-    if (!LocateDllDir(dir, sizeof(dir)))
+    if (!LocateSidecarDir(dir, sizeof(dir)))
     {
         QM_LOG_WARN("[Shanty] could not locate DLL dir - keep-alive disabled");
         g_armed = false;

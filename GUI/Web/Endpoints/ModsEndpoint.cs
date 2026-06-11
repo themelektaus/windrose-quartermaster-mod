@@ -173,8 +173,7 @@ public static class ModsEndpoint
                         if (File.Exists(rawPakPath))
                             RecycleTriplet(rawPakPath, recycled);
 
-                        TryRemoveDeployedProfileJson(repoRoot, displayName, recycled);
-                        TryRemoveDeployedProfileWeatherTrigger(repoRoot, displayName, recycled);
+                        TryRemoveDeployedSidecars(repoRoot, displayName, recycled);
 
                         TryRemoveDeployedDllIfIdle(repoRoot, recycled);
                     }
@@ -199,30 +198,26 @@ public static class ModsEndpoint
         });
     }
 
-    static void TryRemoveDeployedProfileJson(string repoRoot, string displayName, List<string> recycled)
+    // Removes everything this profile deployed into Win64/Quartermaster: the
+    // profile JSON (the pak's source of truth) plus all four feature sidecars.
+    static void TryRemoveDeployedSidecars(string repoRoot, string displayName, List<string> recycled)
     {
         try
         {
             var deployer = new GameDeployer(repoRoot);
-            var path = deployer.TargetItemsJsonPath(displayName);
-            if (!File.Exists(path)) return;
-            CrossPlatformTrash.DeleteToTrash(path);
-            recycled.Add(Path.GetFileName(path));
-        }
-        catch
-        {
-        }
-    }
-
-    static void TryRemoveDeployedProfileWeatherTrigger(string repoRoot, string displayName, List<string> recycled)
-    {
-        try
-        {
-            var deployer = new GameDeployer(repoRoot);
-            var path = deployer.TargetProfileWeatherTriggerPath(displayName);
-            if (!File.Exists(path)) return;
-            CrossPlatformTrash.DeleteToTrash(path);
-            recycled.Add(Path.GetFileName(path));
+            foreach (var path in new[]
+            {
+                deployer.TargetProfileJsonPath(displayName),
+                deployer.TargetItemsJsonPath(displayName),
+                deployer.TargetProfileWeatherTriggerPath(displayName),
+                deployer.TargetProfileKillXpPath(displayName),
+                deployer.TargetProfileShantyPath(displayName),
+            })
+            {
+                if (!File.Exists(path)) continue;
+                CrossPlatformTrash.DeleteToTrash(path);
+                recycled.Add(Path.GetFileName(path));
+            }
         }
         catch
         {

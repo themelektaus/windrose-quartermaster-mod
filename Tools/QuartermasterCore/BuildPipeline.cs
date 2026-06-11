@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Windrose.Quartermaster.Core.BuildingCreator;
 using Windrose.Quartermaster.Core.Deploy;
 
@@ -615,25 +616,24 @@ namespace Windrose.Quartermaster.Core
                     LogLine("No item / loot changes - main pak skipped (IoStore-only build).");
                 }
 
-                // Touch the game folder when the DLL is needed - buildings (item
-                // JSON inject) OR Weather Controls (weather trigger config). Never
-                // inject the DLL for a stack/loot-only profile.
+                // The DLL ships with EVERY build (it always carries the in-game mod
+                // tab), the profile JSON is the deployed pak's source of truth, and
+                // the per-profile sidecars in Win64/Quartermaster arm the DLL's
+                // features (each write deletes its file when the feature is off).
                 int buildingsCount = buildingResults != null ? buildingResults.Count : 0;
                 var weatherClones = weatherControlResult != null ? weatherControlResult.Clones : null;
                 bool weatherDeployActive = weatherClones != null && weatherClones.Count > 0;
-                if (buildingsCount > 0 || weatherDeployActive || killXpActive || shantyActive)
+                try
                 {
-                    LogLine("Deploying DLL to game Binaries/Win64"
-                            + (buildingsCount > 0 ? " + qm_items_" + safeName + ".json" : "")
-                            + (weatherDeployActive ? " + qm_weather_trigger.txt (" + weatherClones.Count + " weather)" : "")
-                            + (killXpActive ? " + qm_killxp_onkill_" + safeName + ".txt" : "")
-                            + (shantyActive ? " + qm_shanty_" + safeName + ".txt" : ""));
+                    LogLine("Deploying DLL -> Binaries/Win64 + qm_profile_" + safeName
+                            + ".json + feature sidecars -> Binaries/Win64/Quartermaster");
                     var deployer = new GameDeployer(_paths.ModRoot);
                     deployer.Log = Log;
                     // EnsureDllInstalled returns false on non-Windows; skip the
-                    // config writes too so no orphaned files are left in Win64.
+                    // sidecar writes too so no orphaned files are left behind.
                     if (deployer.EnsureDllInstalled())
                     {
+                        deployer.WriteProfileJson(safeName, JsonSerializer.Serialize(profile, ProfileStore.JsonOpts));
                         // Empty list deletes this profile's building JSON.
                         deployer.WriteItemsJson(safeName, buildingResults ?? new List<BuildingPatchResult>());
                         deployer.WriteWeatherTriggerConfig(safeName, weatherClones);
@@ -641,31 +641,13 @@ namespace Windrose.Quartermaster.Core
                         deployer.WriteShantyConfig(safeName, shantyActive);
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    // No buildings, no weather, no kill-XP now: if the DLL was
-                    // previously deployed, delete this profile's JSON + sidecars so
-                    // they stop affecting the game. Never touch the folder if no DLL.
-                    try
-                    {
-                        var deployer = new GameDeployer(_paths.ModRoot);
-                        deployer.Log = Log;
-                        if (File.Exists(deployer.TargetDllPath()))
-                        {
-                            // Null/0 removes only THIS profile's JSON + sidecars;
-                            // other deployed profiles' sidecars stay, so the DLL is
-                            // kept whenever any of them still need it.
-                            deployer.WriteItemsJson(safeName, new List<BuildingPatchResult>());
-                            deployer.WriteWeatherTriggerConfig(safeName, null);
-                            deployer.WriteKillXpConfig(safeName, 0, null);
-                            deployer.WriteShantyConfig(safeName, false);
-                            deployer.RemoveDllIfNoProfilesLeft();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogLine("Warning: skipped per-profile JSON cleanup (game folder lookup failed): " + ex.Message);
-                    }
+                    // A pak-only profile must still build when the game's Win64 can't
+                    // be touched; DLL-backed features are dead without it, so surface
+                    // that loudly instead.
+                    if (buildingsCount > 0 || weatherDeployActive || killXpActive || shantyActive) throw;
+                    LogLine("Warning: DLL/sidecar deploy skipped: " + ex.Message);
                 }
 
                 return new BuildPipelineResult

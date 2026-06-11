@@ -12,17 +12,18 @@
 namespace
 {
     // Write the directory containing this DLL into `out` (no trailing sep).
-    // Mirrors qm_config.cpp's LocateConfigDir (which is TU-local there); kept
-    // self-contained so the sentinel is located like the qm_items_*.json files
-    // without exposing qm_config internals. Anchors on a local symbol so it
-    // resolves THIS module, not whichever DLL happens to share the basename.
-    bool LocateDllDir(char* out, size_t outSz)
+    // Quartermaster sidecar dir (<dll dir>\Quartermaster, no trailing sep). Mirrors
+    // qm_config.cpp's LocateSidecarDir (which is TU-local there); kept self-contained
+    // so the sentinel is located like the qm_items_*.json files without exposing
+    // qm_config internals. Anchors on a local symbol so it resolves THIS module,
+    // not whichever DLL happens to share the basename.
+    bool LocateSidecarDir(char* out, size_t outSz)
     {
         if (!out || outSz == 0) return false;
         HMODULE self = nullptr;
         if (!GetModuleHandleExA(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCSTR>(&LocateDllDir), &self) || !self)
+                reinterpret_cast<LPCSTR>(&LocateSidecarDir), &self) || !self)
             return false;
 
         char dllPath[MAX_PATH];
@@ -33,10 +34,8 @@ namespace
         if (!lastSep) return false;
         *lastSep = '\0';
 
-        size_t dlen = strlen(dllPath);
-        if (dlen + 1 > outSz) return false;
-        memcpy(out, dllPath, dlen + 1);
-        return true;
+        int w = snprintf(out, outSz, "%s\\Quartermaster", dllPath);
+        return w > 0 && (size_t)w < outSz;
     }
 
     // R5N_WeatherComponent property offsets (Dumper-7 R5Weather_classes.hpp):
@@ -267,7 +266,7 @@ bool QmWeather_Init()
     g_triggerCount     = 0;
 
     char dir[MAX_PATH];
-    if (!LocateDllDir(dir, sizeof(dir)))
+    if (!LocateSidecarDir(dir, sizeof(dir)))
     {
         QM_LOG_WARN("[Weather] cannot locate DLL dir - weather module disabled");
         return false;

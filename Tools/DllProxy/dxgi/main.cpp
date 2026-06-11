@@ -105,7 +105,8 @@ static DWORD WINAPI WorkerThread(LPVOID /*lpParam*/)
     // Crash diagnostics first so any subsequent failure gets captured.
     QmCrashInstallHandler();
 
-    // Load injectable-item list by scanning qm_items_*.json next to this DLL.
+    // Load injectable-item list by scanning qm_items_*.json in the Quartermaster
+    // sidecar folder next to this DLL.
     // The GUI writes one file per deployed profile on "Build" / "Deploy"; no
     // matching files = no injects (DLL stays idle, no harm). Done off DllMain
     // to keep Loader-Lock clean.

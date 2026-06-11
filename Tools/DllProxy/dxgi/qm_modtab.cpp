@@ -454,9 +454,9 @@ bool QmModTab_Init()
     g_initDone = true;
 
     char dir[MAX_PATH];
-    if (!LocateDllDir(dir, sizeof(dir)))
+    if (!LocateSidecarDir(dir, sizeof(dir)))
     {
-        QM_LOG_WARN("[ModTab] could not locate DLL dir - recon disabled");
+        QM_LOG_WARN("[ModTab] could not locate sidecar dir - recon disabled");
         g_armed = false;
         return false;
     }

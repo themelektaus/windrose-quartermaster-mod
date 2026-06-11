@@ -17,15 +17,15 @@ namespace
 
 namespace ModTab
 {
-    // Directory containing THIS DLL (no trailing sep). Anchors on a local symbol so it resolves
-    // this module regardless of which loaded DLL shares the basename.
-    bool LocateDllDir(char* out, size_t outSz)
+    // Quartermaster sidecar dir next to THIS DLL (no trailing sep). Anchors on a local symbol
+    // so it resolves this module regardless of which loaded DLL shares the basename.
+    bool LocateSidecarDir(char* out, size_t outSz)
     {
         if (!out || outSz == 0) return false;
         HMODULE self = nullptr;
         if (!GetModuleHandleExA(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCSTR>(&LocateDllDir), &self) || !self)
+                reinterpret_cast<LPCSTR>(&LocateSidecarDir), &self) || !self)
             return false;
 
         char dllPath[MAX_PATH];
@@ -36,10 +36,8 @@ namespace ModTab
         if (!lastSep) return false;
         *lastSep = '\0';
 
-        size_t dlen = strlen(dllPath);
-        if (dlen + 1 > outSz) return false;
-        memcpy(out, dllPath, dlen + 1);
-        return true;
+        int w = snprintf(out, outSz, "%s\\Quartermaster", dllPath);
+        return w > 0 && (size_t)w < outSz;
     }
 
     // Best-effort "ClassName'ObjectName'" into a caller buffer. Safe on any pointer.

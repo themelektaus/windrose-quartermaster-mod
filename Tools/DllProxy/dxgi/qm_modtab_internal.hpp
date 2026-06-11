@@ -65,7 +65,7 @@ namespace ModTab
     extern int          g_buttonActionCount;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
-    bool    LocateDllDir(char* out, size_t outSz);
+    bool    LocateSidecarDir(char* out, size_t outSz);
     void    DescribeObject(QmUE::UObject* obj, char* out, size_t outSz);
     bool    ContainsLc(const char* hay, const char* needleLc);
     int32_t ParmsSize(QmUE::UFunction* func);
@@ -98,7 +98,8 @@ namespace ModTab
         const char*    command;    // buttons: action id ("open_url"); nullptr otherwise
         const char*    argument;   // buttons: first argument (e.g. the URL); nullptr otherwise
     };
-    // Rows from qm_modtab_layout.json next to the DLL (re-read when its write time changes),
+    // Rows from qm_modtab_layout.json in the Quartermaster sidecar folder (re-read when its
+    // write time changes),
     // falling back to a compiled-in default - never returns an empty layout.
     const PanelRow* GetPanelLayout(int* outCount);
 

@@ -20,7 +20,7 @@
 #include "qm_ue.hpp"
 
 // Arm the module + read the per-kill reward config ONCE. Armed iff qm_killxp.txt
-// OR any qm_killxp_onkill*.txt is present next to this DLL; the reward table is
+// OR any qm_killxp_onkill*.txt is present in the Quartermaster sidecar folder; the reward table is
 // parsed here (not re-read later). Result is cached. Call once at startup (off
 // DllMain) so the armed state is logged and ReconArmed() is warm before the probe
 // loop reads it.

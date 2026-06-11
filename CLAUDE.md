@@ -21,6 +21,7 @@ Mehrere parallele Mod-Workstreams für das Spiel
 | Game-Install | `E:\Games\steamapps\common\Windrose\` |
 | Deploy-Ziel Paks | `E:\Games\steamapps\common\Windrose\R5\Content\Paks\~mods\` |
 | Deploy-Ziel DLL | `E:\Games\steamapps\common\Windrose\R5\Binaries\Win64\dxgi.dll` |
+| Deploy-Ziel Sidecars (Profile-JSON + alle `qm_*.txt`/`qm_*.json`) | `E:\Games\steamapps\common\Windrose\R5\Binaries\Win64\Quartermaster\` |
 | DLL-Runtime-Log | `%LOCALAPPDATA%\R5\Saved\Logs\Quartermaster_Inject.log` |
 | Referenz-Mods (read-only) | `E:\Windrose\Mods\Quartermaster\References\` |
 | usmap (UE-Reflection) | `R5-5.6.1-0+UE5-20260518.usmap` (root, Zstd-komprimiert, von Dumper-7) |

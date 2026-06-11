@@ -180,9 +180,9 @@ bool ParseRoot(JsonParser& jp, std::string& tabFilterOut, std::vector<ItemStorag
 // Disk I/O and self-locating helpers.
 // ---------------------------------------------------------------------------
 
-// Writes the directory containing this DLL into `out`. No trailing
-// separator. Used as the scan-root for qm_items_*.json files.
-bool LocateConfigDir(char* out, size_t outSz)
+// Writes the Quartermaster sidecar directory (<dll dir>\Quartermaster) into
+// `out`. No trailing separator. Used as the scan-root for qm_items_*.json files.
+bool LocateSidecarDir(char* out, size_t outSz)
 {
     if (!out || outSz == 0) return false;
 
@@ -215,10 +215,8 @@ bool LocateConfigDir(char* out, size_t outSz)
     }
     *lastSep = '\0';
 
-    size_t dlen = strlen(dllPath);
-    if (dlen + 1 > outSz) return false;
-    memcpy(out, dllPath, dlen + 1);
-    return true;
+    int w = snprintf(out, outSz, "%s\\Quartermaster", dllPath);
+    return w > 0 && (size_t)w < outSz;
 }
 
 // Scans `dir` for files matching qm_items_*.json (top-level only) and
@@ -290,7 +288,7 @@ bool QmConfigLoad()
     RebuildView();
 
     char dir[MAX_PATH];
-    if (!LocateConfigDir(dir, sizeof(dir)))
+    if (!LocateSidecarDir(dir, sizeof(dir)))
         return false;
 
     auto files = EnumerateConfigFiles(dir);
