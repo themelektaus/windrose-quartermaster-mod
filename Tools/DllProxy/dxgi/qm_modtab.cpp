@@ -443,13 +443,7 @@ namespace
     }
 
     // ---- panel button commands -----------------------------------------------------------------
-    // Debounce per command: rapid double-clicks (and any future extra OnClick-named dispatches
-    // on the same widget) must not spawn browser storms, but a click on a DIFFERENT button right
-    // afterwards must still go through. Game thread only (PE hook dispatch).
-    ULONGLONG           g_lastCommandTick   = 0;
-    char                g_lastCommand[64]   = { 0 };
-    constexpr ULONGLONG kCommandDebounceMs  = 2000;
-    // Written only on the game thread under the debounce; the worker thread reads it.
+    // Written on the game thread (PE hook dispatch); the OpenUrl worker thread reads it.
     char                g_urlBuf[512]       = { 0 };
 
     // ShellExecute off the game thread: it can block on shell extension loading, and it wants a
@@ -488,12 +482,6 @@ namespace
     void DispatchButtonCommand(const char* command, const char* argument)
     {
         if (!command || !*command) return;
-        ULONGLONG now = GetTickCount64();
-        if (g_lastCommandTick != 0 && (now - g_lastCommandTick) < kCommandDebounceMs &&
-            strcmp(command, g_lastCommand) == 0)
-            return;
-        g_lastCommandTick = now;
-        snprintf(g_lastCommand, sizeof(g_lastCommand), "%s", command);
         QM_LOG_INFO("[ModTab] *** BUTTON CLICK *** command=%s argument=%s",
                     command, (argument && *argument) ? argument : "(none)");
         if (strcmp(command, "open_url") == 0 && argument && *argument)

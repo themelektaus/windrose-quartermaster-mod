@@ -12,6 +12,10 @@
 //   wrap      true -> auto-wrap (text rows)
 //   gap       vertical space above the row
 //   align     "fill" | "left" | "center" | "right" (slot default: fill)
+//   sameRow   true -> this row shares one horizontal row with the row above it (consecutive
+//             sameRow rows pack left-to-right in a HorizontalBox; the lead row's gap is the
+//             vertical space above the whole row, each follower's gap is its left spacing;
+//             an itemDropdown member fills the width, others auto-size)
 //   command   buttons: action id, dispatched by DispatchButtonCommand (qm_modtab.cpp)
 //   arguments buttons: argument array; only the first entry is used today
 //
@@ -58,7 +62,7 @@ namespace
   { "type": "button", "text": "Leave an Endorsement", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 24, "align": "left" },
   { "type": "header", "text": "Item Spawner", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "itemDropdown", "gap": 8 },
-  { "type": "button", "text": "Add Item", "command": "add_selected_item", "arguments": ["1"], "align": "left", "gap": 8 },
+  { "type": "button", "text": "Add Item", "command": "add_selected_item", "arguments": ["1"], "align": "left", "gap": 8, "sameRow": true },
   { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "modifications", "gap": 4, "titleSize": 18, "titleColor": "#EBE09E", "titleGap": 16, "textSize": 14, "textColor": "#9A9A9A", "textGap": 2 },
   { "type": "text",   "text": "", "gap": 24 }
@@ -75,6 +79,7 @@ namespace
         float        gap      = 0.0f;
         uint8_t      halign   = 255;
         float        indent   = 0.0f;
+        bool         sameRow  = false;
         std::string  command;
         std::string  argument;
 
@@ -226,6 +231,10 @@ namespace
             {
                 if (!jp.parseBool(out.wrap)) return false;
             }
+            else if (key == "sameRow")
+            {
+                if (!jp.parseBool(out.sameRow)) return false;
+            }
             else
             {
                 if (!jp.skipValue()) return false;
@@ -313,6 +322,7 @@ namespace
         {
             RowStorage r = tpl;
             r.type = kRowText;
+            r.sameRow = false;   // mod list is always a vertical stack, never inline-grouped
             if (entries[i].detail)
             {
                 r.text   = entries[i].text;
@@ -403,6 +413,7 @@ namespace
             r.gap      = s.gap;
             r.halign   = s.halign;
             r.indent   = s.indent;
+            r.sameRow  = s.sameRow;
             r.command  = (s.type == kRowButton && !s.command.empty())  ? s.command.c_str()  : nullptr;
             r.argument = (s.type == kRowButton && !s.argument.empty()) ? s.argument.c_str() : nullptr;
             return r;

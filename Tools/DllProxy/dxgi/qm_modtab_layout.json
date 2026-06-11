@@ -47,7 +47,8 @@
     "command": "add_selected_item",
     "arguments": ["1"],
     "align": "left",
-    "gap": 8
+    "gap": 8,
+    "sameRow": true
   },
   {
     "type": "header",

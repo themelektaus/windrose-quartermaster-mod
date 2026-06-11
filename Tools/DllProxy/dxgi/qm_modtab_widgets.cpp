@@ -51,6 +51,47 @@ namespace
     constexpr uintptr_t kOff_Combo_Font          = 0x1908;  // UComboBoxString::Font          (SDK)
     constexpr float     kComboMaxListHeight      = 420.0f;
 
+    // Dropdown game-look. The engine default is white list / blue selection; no game widget BP
+    // uses ComboBoxString, so there is no native donor to clone the combo styles from. Instead
+    // the button/list/selection styles are built from flat palette solids (a brush with no
+    // resource and DrawAs Image renders Slate's default white texture tinted - the
+    // FSlateColorBrush pattern), while the open-list scrollbar reuses the proven native-list
+    // clone. All styles are written pre-mount: Slate reads them once, at SComboBox build.
+    constexpr uintptr_t kOff_Combo_WidgetStyle     = 0x190;   // UComboBoxString::WidgetStyle     (SDK)
+    constexpr uintptr_t kOff_Combo_ItemStyle       = 0x750;   // UComboBoxString::ItemStyle       (SDK)
+    constexpr uintptr_t kOff_Combo_ScrollBarStyle  = 0x12A0;  // UComboBoxString::ScrollBarStyle  (SDK)
+    constexpr uintptr_t kOff_Combo_ContentPadding  = 0x18F0;  // UComboBoxString::ContentPadding  (SDK)
+    constexpr uintptr_t kOff_Combo_ForegroundColor = 0x1968;  // UComboBoxString::ForegroundColor (SDK)
+    constexpr uintptr_t kOff_CBS_ButtonStyle    = 0x10 + 0x10;   // FComboBoxStyle::ComboButtonStyle.ButtonStyle
+    constexpr uintptr_t kOff_CBS_DownArrow      = 0x10 + 0x3A0;  // ..ComboButtonStyle.DownArrowImage
+    constexpr uintptr_t kOff_CBS_MenuBorder     = 0x10 + 0x470;  // ..ComboButtonStyle.MenuBorderBrush
+    constexpr uintptr_t kOff_CBS_MenuRowPadding = 0x5B0;         // FComboBoxStyle::MenuRowPadding
+    constexpr uintptr_t kOff_BtnStyle_Normal    = 0x10;    // FButtonStyle: Normal/Hovered/Pressed/
+    constexpr uintptr_t kOff_BtnStyle_Hovered   = 0xC0;    // Disabled brushes, then 4 consecutive
+    constexpr uintptr_t kOff_BtnStyle_Pressed   = 0x170;   // foreground FSlateColors (0x14 apart)
+    constexpr uintptr_t kOff_BtnStyle_Disabled  = 0x220;
+    constexpr uintptr_t kOff_BtnStyle_NormalFg  = 0x2D0;
+    constexpr uintptr_t kOff_Row_SelectorFocused     = 0x10;   // FTableRowStyle brushes/colors (SDK)
+    constexpr uintptr_t kOff_Row_ActiveHovered       = 0xC0;
+    constexpr uintptr_t kOff_Row_Active              = 0x170;
+    constexpr uintptr_t kOff_Row_InactiveHovered     = 0x220;
+    constexpr uintptr_t kOff_Row_Inactive            = 0x2D0;
+    constexpr uintptr_t kOff_Row_EvenHovered         = 0x4F0;
+    constexpr uintptr_t kOff_Row_Even                = 0x5A0;
+    constexpr uintptr_t kOff_Row_OddHovered          = 0x650;
+    constexpr uintptr_t kOff_Row_Odd                 = 0x700;
+    constexpr uintptr_t kOff_Row_TextColor           = 0x7B0;
+    constexpr uintptr_t kOff_Row_SelectedText        = 0x7C4;
+    constexpr uintptr_t kOff_Row_ActiveHighlighted   = 0x9F0;
+    constexpr uintptr_t kOff_Row_InactiveHighlighted = 0xAA0;
+    constexpr uintptr_t kOff_Brush_Tint         = 0x08;    // FSlateBrush internals (SDK)
+    constexpr uintptr_t kOff_Brush_DrawAs       = 0x1C;    // 0=NoDraw 3=Image 4=RoundedBox
+    constexpr uintptr_t kOff_Brush_Tiling       = 0x1D;
+    constexpr uintptr_t kOff_Brush_Margin       = 0x28;
+    constexpr uintptr_t kOff_Brush_ResourceObj  = 0x38;
+    constexpr uintptr_t kOff_Brush_Outline      = 0x40;    // FSlateBrushOutlineSettings: CornerRadii
+    constexpr uintptr_t kOff_Brush_ResourceName = 0xA8;    // (FVector4=4 doubles) +0x20 Color +0x34 Width
+
     // Scrollbar style clone: FScrollBarStyle (9 consecutive FSlateBrushes + Thickness) is
     // lifted as a raw byte copy from the native settings list onto our ScrollBox. Footgun:
     // each FSlateBrush hides a non-reflected FSlateResourceHandle (TSharedPtr render cache)
@@ -152,6 +193,15 @@ namespace
         return lv;
     }
 
+    // The raw FScrollBarStyle copy shared by the panel ScrollBox and the dropdown's open list
+    // (see the constants above for the ResourceHandle footgun). Caller provides SEH.
+    void CopyScrollBarStyleRaw(uint8_t* dst, const uint8_t* src)
+    {
+        memcpy(dst + kBarStyleFirstBrush, src + kBarStyleFirstBrush, kScrollBarStyleSize - kBarStyleFirstBrush);
+        for (int i = 0; i < kBarStyleBrushCount; ++i)
+            memset(dst + kBarStyleFirstBrush + i * kBrushSize + kOff_Brush_ResourceHandle, 0, kResourceHandleSize);
+    }
+
     // Game-theme the scrollbar: raw-copy FScrollBarStyle from the native settings list onto
     // our ScrollBox (the proven raw-clone pattern, see the constants above for the
     // ResourceHandle footgun). Bar geometry (thickness/padding) is mirrored too - SScrollBox
@@ -164,9 +214,7 @@ namespace
         {
             uint8_t*       dst = reinterpret_cast<uint8_t*>(ourPanel) + kOff_ScrollBox_WidgetBarStyle;
             const uint8_t* src = reinterpret_cast<const uint8_t*>(listView) + kOff_ListView_ScrollBarStyle;
-            memcpy(dst + kBarStyleFirstBrush, src + kBarStyleFirstBrush, kScrollBarStyleSize - kBarStyleFirstBrush);
-            for (int i = 0; i < kBarStyleBrushCount; ++i)
-                memset(dst + kBarStyleFirstBrush + i * kBrushSize + kOff_Brush_ResourceHandle, 0, kResourceHandleSize);
+            CopyScrollBarStyleRaw(dst, src);
 
             float thick = *reinterpret_cast<const float*>(src + kOff_BarStyle_Thickness);
             if (thick >= 2.0f && thick <= 64.0f)
@@ -207,7 +255,8 @@ namespace
     QmUE::UObject* AddTextRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
                               const wchar_t* text, const float* rgba,
                               const uint8_t* font, float fontSize, bool wrap,
-                              float gapAbove = 0.0f, uint8_t hAlign = 255, float indent = 0.0f)
+                              float gapAbove = 0.0f, uint8_t hAlign = 255, float indent = 0.0f,
+                              QmUE::UObject** outSlot = nullptr)
     {
         if (!panel || !panel->Class) return nullptr;
         QmUE::UClass* txtClass = QmUE::FindClassByName("TextBlock");
@@ -247,6 +296,7 @@ namespace
             if (QmUE::CallProcessEvent(panel, fnAdd, &ac) && ac.ReturnValue)
             {
                 StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove, hAlign, indent);
+                if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
                 return txt;
             }
         }
@@ -260,7 +310,8 @@ namespace
     // can see. A mounted themed button carrying a command is latched into g_buttonActions.
     bool AddButtonRow(QmUE::UObject* panel, QmUE::UObject* widgetTree, QmUE::UObject* screen,
                       QmUE::UObject* owningPlayer, QmUE::UObject* wblCDO, QmUE::UFunction* fnCreate,
-                      QmUE::UObject*& donor, const PanelRow& row, bool& wired)
+                      QmUE::UObject*& donor, const PanelRow& row, bool& wired,
+                      QmUE::UObject** outSlot = nullptr)
     {
         wired = false;
         if (!panel || !panel->Class) return false;
@@ -318,6 +369,7 @@ namespace
         if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
         if (ac.ReturnValue)
             StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign);
+        if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
 
         if (themed && row.command && g_buttonActionCount < kMaxButtonActions)
         {
@@ -350,12 +402,113 @@ namespace
         __except (EXCEPTION_EXECUTE_HANDLER) {}
     }
 
+    struct QmColor { float r, g, b, a; };
+
+    void WriteSlateColor(uint8_t* dst, const QmColor& c)
+    {
+        memcpy(dst, &c, 0x10);
+        dst[0x10] = 0;   // ESlateColorStylingMode::UseColor_Specified
+    }
+
+    // Turn a CDO-initialized FSlateBrush into a flat palette solid; optional thin outline via
+    // RoundedBox. Fields are written individually - FSlateBrush is polymorphic, offset 0 holds
+    // a vtable that a blanket memset would destroy (the brush is destructed on panel discard).
+    void MakeSolidBrush(uint8_t* b, const QmColor& tint, float corner = 0.0f,
+                        const QmColor& outline = { 0, 0, 0, 0 }, float outlineW = 0.0f)
+    {
+        WriteSlateColor(b + kOff_Brush_Tint, tint);
+        b[kOff_Brush_DrawAs] = (tint.a <= 0.0f && outlineW <= 0.0f) ? 0       // NoDrawType
+                             : (corner > 0.0f)                      ? 4       // RoundedBox
+                                                                    : 3;      // Image (solid)
+        b[kOff_Brush_Tiling] = 0;                                             // NoTile
+        memset(b + kOff_Brush_Margin, 0, 0x10);
+        *reinterpret_cast<void**>(b + kOff_Brush_ResourceObj) = nullptr;
+        double* radii = reinterpret_cast<double*>(b + kOff_Brush_Outline);    // FVector4 CornerRadii
+        radii[0] = radii[1] = radii[2] = radii[3] = corner;
+        WriteSlateColor(b + kOff_Brush_Outline + 0x20, outline);
+        *reinterpret_cast<float*>(b + kOff_Brush_Outline + 0x34) = outlineW;
+        b[kOff_Brush_Outline + 0x38] = 0;                                     // FixedRadius
+        memset(b + kOff_Brush_ResourceHandle, 0, kResourceHandleSize);
+        *reinterpret_cast<uint64_t*>(b + kOff_Brush_ResourceName) = 0;        // NAME_None
+    }
+
+    // Game-look the spawned combo before its Slate widget exists. Dark solids with the panel's
+    // gold accent for button/menu/selection; row backgrounds stay transparent so the menu
+    // border brush provides one seamless backdrop; the open-list scrollbar is cloned from the
+    // same native settings list that themes the panel bar.
+    void StyleItemCombo(QmUE::UObject* combo, QmUE::UObject* barDonor)
+    {
+        const QmColor btnNormal  = { 0.035f, 0.030f, 0.020f, 0.94f };
+        const QmColor btnHover   = { 0.100f, 0.082f, 0.045f, 1.00f };
+        const QmColor btnPressed = { 0.190f, 0.150f, 0.065f, 1.00f };
+        const QmColor goldLine   = { 0.830f, 0.740f, 0.340f, 0.45f };
+        const QmColor goldArrow  = { 0.830f, 0.740f, 0.340f, 1.00f };
+        const QmColor menuBack   = { 0.016f, 0.014f, 0.010f, 0.98f };
+        const QmColor rowClear   = { 0.000f, 0.000f, 0.000f, 0.00f };
+        const QmColor rowHover   = { 0.110f, 0.092f, 0.050f, 0.90f };
+        const QmColor rowSel     = { 0.330f, 0.250f, 0.085f, 1.00f };
+        const QmColor rowSelHov  = { 0.420f, 0.320f, 0.115f, 1.00f };
+        const QmColor textNorm   = { 0.760f, 0.745f, 0.700f, 1.00f };
+        const QmColor textSel    = { 1.000f, 0.920f, 0.560f, 1.00f };
+        const QmColor foreground = { 0.920f, 0.900f, 0.820f, 1.00f };
+
+        __try
+        {
+            uint8_t* base = reinterpret_cast<uint8_t*>(combo);
+
+            // Combo button: dark rounded solids with a thin gold outline + gold arrow.
+            uint8_t* bs = base + kOff_Combo_WidgetStyle + kOff_CBS_ButtonStyle;
+            MakeSolidBrush(bs + kOff_BtnStyle_Normal,   btnNormal,  3.0f, goldLine, 1.0f);
+            MakeSolidBrush(bs + kOff_BtnStyle_Hovered,  btnHover,   3.0f, goldLine, 1.0f);
+            MakeSolidBrush(bs + kOff_BtnStyle_Pressed,  btnPressed, 3.0f, goldLine, 1.0f);
+            MakeSolidBrush(bs + kOff_BtnStyle_Disabled, btnNormal,  3.0f, goldLine, 1.0f);
+            for (int i = 0; i < 4; ++i)
+                WriteSlateColor(bs + kOff_BtnStyle_NormalFg + i * 0x14, foreground);
+            WriteSlateColor(base + kOff_Combo_WidgetStyle + kOff_CBS_DownArrow + kOff_Brush_Tint, goldArrow);
+            MakeSolidBrush(base + kOff_Combo_WidgetStyle + kOff_CBS_MenuBorder, menuBack, 3.0f, goldLine, 1.0f);
+            float rowPad[4] = { 10.0f, 4.0f, 10.0f, 4.0f };   // FMargin {L,T,R,B}
+            memcpy(base + kOff_Combo_WidgetStyle + kOff_CBS_MenuRowPadding, rowPad, 0x10);
+
+            // List rows: transparent at rest (menu border shows through), warm hover, gold
+            // selection. Active/Inactive = selected row focused/unfocused - styled alike.
+            uint8_t* is = base + kOff_Combo_ItemStyle;
+            MakeSolidBrush(is + kOff_Row_SelectorFocused,     rowHover);
+            MakeSolidBrush(is + kOff_Row_ActiveHovered,       rowSelHov);
+            MakeSolidBrush(is + kOff_Row_Active,              rowSel);
+            MakeSolidBrush(is + kOff_Row_InactiveHovered,     rowSelHov);
+            MakeSolidBrush(is + kOff_Row_Inactive,            rowSel);
+            MakeSolidBrush(is + kOff_Row_EvenHovered,         rowHover);
+            MakeSolidBrush(is + kOff_Row_Even,                rowClear);
+            MakeSolidBrush(is + kOff_Row_OddHovered,          rowHover);
+            MakeSolidBrush(is + kOff_Row_Odd,                 rowClear);
+            MakeSolidBrush(is + kOff_Row_ActiveHighlighted,   rowSel);
+            MakeSolidBrush(is + kOff_Row_InactiveHighlighted, rowSel);
+            WriteSlateColor(is + kOff_Row_TextColor,    textNorm);
+            WriteSlateColor(is + kOff_Row_SelectedText, textSel);
+
+            WriteSlateColor(base + kOff_Combo_ForegroundColor, foreground);
+            float contentPad[4] = { 10.0f, 4.0f, 10.0f, 4.0f };
+            memcpy(base + kOff_Combo_ContentPadding, contentPad, 0x10);
+
+            if (barDonor)
+                CopyScrollBarStyleRaw(base + kOff_Combo_ScrollBarStyle,
+                                      reinterpret_cast<const uint8_t*>(barDonor) + kOff_ListView_ScrollBarStyle);
+            QM_LOG_DEBUG("[ModTab]   view: combo game-look applied (scrollbar clone=%d)",
+                         barDonor ? 1 : 0);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_WARN("[ModTab]   view: combo style FAULTED (default look stays)");
+        }
+    }
+
     // The item-spawner dropdown: spawn a ComboBoxString, fill it from the item catalog
     // (AddOption per entry, BEFORE the mount - no Slate widget exists yet, so the fill is
     // cheap), re-apply the last known selection, append it to the panel and latch it into
     // g_itemCombo for the click-time "add_selected_item" dispatch (qm_modtab.cpp).
     bool AddItemDropdownRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
-                            const uint8_t* font, const PanelRow& row)
+                            const uint8_t* font, const PanelRow& row, QmUE::UObject* barDonor,
+                            QmUE::UObject** outSlot = nullptr)
     {
         if (!panel || !panel->Class) return false;
         QmUE::UClass* comboClass = QmUE::FindClassByName("ComboBoxString");
@@ -377,6 +530,8 @@ namespace
             }
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+        StyleItemCombo(combo, barDonor);
 
         struct FStringParm { const wchar_t* data; int32_t num; int32_t max; };
         int added = 0;
@@ -405,6 +560,7 @@ namespace
         if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
         if (ac.ReturnValue)
             StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
+        if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
 
         g_itemCombo = combo;
         QM_LOG_DEBUG("[ModTab]   view: item dropdown combo=0x%p options=%d sel=%d",
@@ -421,7 +577,7 @@ namespace
     QmUE::UObject* AddHeaderRow(QmUE::UObject* panel, QmUE::UObject* screen,
                                 QmUE::UObject* owningPlayer, QmUE::UObject* wblCDO,
                                 QmUE::UFunction* fnCreate, const wchar_t* text,
-                                float gapAbove = 0.0f)
+                                float gapAbove = 0.0f, QmUE::UObject** outSlot = nullptr)
     {
         if (!panel || !panel->Class || !wblCDO || !fnCreate) return nullptr;
         QmUE::UClass* cls = QmUE::FindClassByName(kEntryHeaderClass);
@@ -461,10 +617,73 @@ namespace
             if (QmUE::CallProcessEvent(panel, fnAdd, &ac) && ac.ReturnValue)
             {
                 StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove);
+                if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
                 return hdr;
             }
         }
         return nullptr;
+    }
+
+    // Vertical-box slot styling assumes a column; an inline (sameRow) group instead lives in a
+    // HorizontalBox where the row's gap means "left spacing" and children center vertically. This
+    // re-styles a member's slot AFTER its Add*Row call (which set column-style top padding): left
+    // padding for spacing, vertical-center, and a Fill/Auto size rule.
+    void StyleHSlot(QmUE::UObject* slot, float leftPad, bool fill)
+    {
+        if (!slot || !slot->Class) return;
+        if (QmUE::UFunction* fnPad = QmUE::FindFunctionOnClass(slot->Class, "SetPadding"))
+        {
+            float margin[4] = { leftPad, 0.0f, 0.0f, 0.0f };   // FMargin {L,T,R,B}
+            QmUE::CallProcessEvent(slot, fnPad, margin);
+        }
+        if (QmUE::UFunction* fnVA = QmUE::FindFunctionOnClass(slot->Class, "SetVerticalAlignment"))
+        {
+            uint8_t p[8]; memset(p, 0, sizeof(p)); p[0] = 2;   // VAlign_Center
+            QmUE::CallProcessEvent(slot, fnVA, p);
+        }
+        if (QmUE::UFunction* fnSize = QmUE::FindFunctionOnClass(slot->Class, "SetSize"))
+        {
+            struct { float Value; uint8_t SizeRule; uint8_t pad[3]; } sz = { 1.0f, (uint8_t)(fill ? 1 : 0), {} };
+            QmUE::CallProcessEvent(slot, fnSize, &sz);   // FSlateChildSize: Automatic=0, Fill=1
+        }
+    }
+
+    // Render one PanelRow into `panel` (the content column, or a HorizontalBox for an inline
+    // group). Mirrors the build's type switch, bumps the per-kind counters, and on success hands
+    // back the child's panel-slot via outSlot for inline horizontal fix-up. Returns whether a
+    // widget landed (so the caller can count it).
+    bool RenderRowInto(QmUE::UObject* panel, const PanelRow& r,
+                       QmUE::UObject* screen, QmUE::UObject* owningPlayer, QmUE::UObject* wblCDO,
+                       QmUE::UFunction* fnCreate, QmUE::UObject*& donor, QmUE::UObject* widgetTree,
+                       QmUE::UObject* barDonor, const uint8_t* font,
+                       int& headers, int& buttons, int& combos, int& wired,
+                       QmUE::UObject** outSlot)
+    {
+        if (outSlot) *outSlot = nullptr;
+        if (r.type == kRowHeader)
+        {
+            if (AddHeaderRow(panel, screen, owningPlayer, wblCDO, fnCreate, r.text, r.gap, outSlot))
+                { ++headers; return true; }
+            return AddTextRow(panel, widgetTree, r.text, r.color, font,
+                              r.size > 0.0f ? r.size : kDefFontSizeHeader, r.wrap, r.gap, r.halign,
+                              0.0f, outSlot) != nullptr;
+        }
+        if (r.type == kRowButton)
+        {
+            bool w = false;
+            if (AddButtonRow(panel, widgetTree, screen, owningPlayer, wblCDO, fnCreate, donor, r, w, outSlot))
+                { ++buttons; if (w) ++wired; return true; }
+            return false;
+        }
+        if (r.type == kRowItemDropdown)
+        {
+            if (AddItemDropdownRow(panel, widgetTree, font, r, barDonor, outSlot))
+                { ++combos; return true; }
+            return false;
+        }
+        return AddTextRow(panel, widgetTree, r.text, r.color, font,
+                          r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
+                          r.indent, outSlot) != nullptr;
     }
 
 }
@@ -597,10 +816,12 @@ namespace ModTab
             QM_LOG_WARN("[ModTab]   view: own ScrollBox construct FAILED (class=0x%p)", (void*)scrollClass);
 
         // Game-themed scrollbar: clone the native list's FScrollBarStyle onto our panel before
-        // the mount - Slate reads WidgetBarStyle once, when the SScrollBox is built.
+        // the mount - Slate reads WidgetBarStyle once, when the SScrollBox is built. The donor
+        // outlives this block: the item dropdown clones the same style for its open list.
+        QmUE::UObject* barDonor = nullptr;
         if (ourPanel)
         {
-            QmUE::UObject* barDonor = ResolveNativeSettingsList(settingsPanel);
+            barDonor = ResolveNativeSettingsList(settingsPanel);
             bool themedBar = barDonor ? CloneScrollBarStyle(ourPanel, barDonor) : false;
             char bdid[352]; DescribeObject(barDonor, bdid, sizeof(bdid));
             QM_LOG_DEBUG("[ModTab]   view: scrollbar style clone ok=%d donor=0x%p %s",
@@ -644,41 +865,67 @@ namespace ModTab
                 int rows = 0, headers = 0, buttons = 0, wiredCount = 0, combos = 0;
                 g_buttonActionCount = 0;
                 g_itemCombo         = nullptr;
-                for (int i = 0; layout && i < rowCount; ++i)
+                int hboxes = 0;
+                for (int i = 0; layout && i < rowCount; )
                 {
-                    const PanelRow& r = layout[i];
-                    if (r.type == kRowHeader)
+                    // A row plus any consecutive sameRow followers form one inline group; a lone
+                    // row (group size 1) renders straight into the content column as before.
+                    int j = i + 1;
+                    while (j < rowCount && layout[j].sameRow) ++j;
+                    if (j - i == 1)
                     {
-                        if (AddHeaderRow(ourPanel, screen, owningPlayer, wblCDO, fnCreate, r.text, r.gap))
-                            { ++rows; ++headers; }
-                        else if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
-                                            r.size > 0.0f ? r.size : kDefFontSizeHeader,
-                                            r.wrap, r.gap, r.halign))
+                        if (RenderRowInto(ourPanel, layout[i], screen, owningPlayer, wblCDO, fnCreate,
+                                          donor, widgetTree, barDonor, font,
+                                          headers, buttons, combos, wiredCount, nullptr))
                             ++rows;
+                        i = j;
+                        continue;
                     }
-                    else if (r.type == kRowButton)
+
+                    // Inline group: a HorizontalBox hosts the members; it carries the lead row's
+                    // vertical gap into the column, members pack left-to-right inside it.
+                    QmUE::UObject* hbox = nullptr;
+                    if (QmUE::UClass* hbCls = QmUE::FindClassByName("HorizontalBox"))
+                        hbox = QmUE::SpawnObjectViaUFunction(hbCls, widgetTree);
+                    if (hbox && hbox->Class)
                     {
-                        bool wired = false;
-                        if (AddButtonRow(ourPanel, widgetTree, screen, owningPlayer, wblCDO,
-                                         fnCreate, donor, r, wired))
-                            { ++rows; ++buttons; if (wired) ++wiredCount; }
-                    }
-                    else if (r.type == kRowItemDropdown)
-                    {
-                        if (AddItemDropdownRow(ourPanel, widgetTree, font, r))
-                            { ++rows; ++combos; }
+                        if (QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(ourPanel->Class, "AddChild"))
+                        {
+                            P_AddChild ac; ac.Content = hbox; ac.ReturnValue = nullptr;
+                            if (QmUE::CallProcessEvent(ourPanel, fnAdd, &ac) && ac.ReturnValue)
+                                StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue),
+                                          layout[i].gap, layout[i].halign);
+                        }
+                        ++hboxes;
+                        for (int k = i; k < j; ++k)
+                        {
+                            QmUE::UObject* slot = nullptr;
+                            if (RenderRowInto(hbox, layout[k], screen, owningPlayer, wblCDO, fnCreate,
+                                              donor, widgetTree, barDonor, font,
+                                              headers, buttons, combos, wiredCount, &slot))
+                            {
+                                ++rows;
+                                // Lead has no left spacing; an itemDropdown member fills the width
+                                // (pushing trailing buttons to the right), others auto-size.
+                                StyleHSlot(slot, k == i ? 0.0f : layout[k].gap,
+                                           layout[k].type == kRowItemDropdown);
+                            }
+                        }
                     }
                     else
                     {
-                        if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
-                                       r.size > 0.0f ? r.size : kDefFontSizeBody,
-                                       r.wrap, r.gap, r.halign, r.indent))
-                            ++rows;
+                        // HorizontalBox unavailable: degrade to stacked vertical rows (never lose content).
+                        for (int k = i; k < j; ++k)
+                            if (RenderRowInto(ourPanel, layout[k], screen, owningPlayer, wblCDO, fnCreate,
+                                              donor, widgetTree, barDonor, font,
+                                              headers, buttons, combos, wiredCount, nullptr))
+                                ++rows;
                     }
+                    i = j;
                 }
                 QM_LOG_DEBUG("[ModTab]   view: CONTENT build rows=%d/%d headers=%d buttons=%d wired=%d "
-                             "combos=%d gameFont=%d (wired clicks via the PE BndEvt watch)",
-                             rows, rowCount, headers, buttons, wiredCount, combos, font ? 1 : 0);
+                             "combos=%d inlineRows=%d gameFont=%d (wired clicks via the PE BndEvt watch)",
+                             rows, rowCount, headers, buttons, wiredCount, combos, hboxes, font ? 1 : 0);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: CONTENT build FAULTED"); }
         }
