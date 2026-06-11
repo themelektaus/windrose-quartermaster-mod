@@ -104,10 +104,11 @@ namespace
     // AddChild, the tab-click sim). This guard makes those re-entrant polls no-ops.
     volatile LONG g_rebuildInProgress = 0;
 
-    // Self-heal scan throttle: keeps the O(GObjects) instance walk at ~1/frame instead of the
-    // full Tick dispatch rate.
+    // Self-heal throttle. The instance-walk fallback below is O(GObjects) - at in-world object
+    // counts (1M+) it must never run anywhere near tick rate; 100ms still beats any human
+    // open-then-click sequence, and the bootstrap mount covers a missed first cook.
     volatile ULONGLONG g_getTabsLastTick = 0;
-    constexpr ULONGLONG kGetTabsScanIntervalMs = 16;
+    constexpr ULONGLONG kGetTabsScanIntervalMs = 100;
 
     // ---- PLSF per-UFunction hook state -------------------------------------------------------
     // Resolved targets, matched against FFrame::Node in the global PLSF detour (qm_hook.cpp).
@@ -124,11 +125,6 @@ namespace
     volatile LONG        g_cookTabsHookLive    = 0;
     volatile LONG        g_cookTabsFiredCount  = 0;
     volatile LONG        g_allFnHooksInstalled = 0;   // 1 once every target handle is resolved
-    // Early-resolve poll driver state: the settings BP classes lazy-load at first settings
-    // open; the global ProcessEvent hook (live from engine start) polls so the handles are
-    // latched before the first cook runs.
-    volatile ULONGLONG   g_fnHookPollLastTick  = 0;
-    constexpr ULONGLONG  kFnHookEarlyPollMs    = 16;
     // Per-open log budgets for the gate/sync lines (pre-armed so boot-time fires log too;
     // re-armed on OnEnter). The gate LATCH itself is never budgeted, only its log line.
     constexpr LONG       kPerOpenLogBudget     = 8;
@@ -278,9 +274,11 @@ namespace
     }
 
     // Deferred target-handle resolution. A target whose BP class is not in GObjects yet is
-    // retried on the next call; latches off once all three are resolved. Driven primarily from
-    // the global ProcessEvent hook (live from engine start), with the rider's self-heal as
-    // backstop. Read-only.
+    // retried on the next call; latches off once all three are resolved. Driven from the
+    // rider's self-heal inside an open settings session: the OnEnter dispatch that opens the
+    // session precedes the first cook, so the handles latch in time (a permanent engine-wide
+    // poll would burn O(GObjects) walks in-world while the classes are not even loaded; the
+    // bootstrap mount covers a missed first cook). Read-only.
     void TryInstallSettingsFnHooks()
     {
         if (InterlockedCompareExchange(&g_allFnHooksInstalled, 0, 0) != 0) return;
@@ -334,13 +332,48 @@ namespace
         if (last != 0 && (now - last) < kGetTabsScanIntervalMs) return;
         g_getTabsLastTick = now;
 
+        // Session gate FIRST: the rider also fires for the inventory's MetaUI tab widgets
+        // (same classes), where there is no settings screen to resolve, inject into or mount
+        // into - only O(GObjects) walks to burn. The OnEnter dispatch opens the session
+        // before the probes run, so the very first install still precedes the first cook.
+        if (!g_settingsOpen) return;
+
         // Install backstop BEFORE the screen-instance gate: the resolve needs only the CLASSES
         // in GObjects - waiting for an instance would miss a cook that runs before any
         // instance-gated poll.
         TryInstallSettingsFnHooks();
 
-        QmUE::UObject* screen = QmUE::FindFirstInstanceOfClass(kSettingsScreenClass);
+        // Prefer the gate-latched live screen (no walk, immune to the stale-instance footgun);
+        // the O(GObjects) walk runs only until the first cook of a session latches it.
+        QmUE::UObject* screen = reinterpret_cast<QmUE::UObject*>(g_liveScreen);
+        if (!screen) screen = QmUE::FindFirstInstanceOfClass(kSettingsScreenClass);
         if (!screen) return;   // settings not live yet - keep watching across reopens
+
+        // Level changes reload the settings UI package: latched UFunction handles then point
+        // at the unloaded generation and the PLSF node-match goes permanently dead (cooks
+        // fire, nothing matches, nothing mounts). Probe the LIVE screen's class; on mismatch
+        // re-latch OnTabsStateChanged straight from the live generation (self-stabilizing -
+        // never resolved via a name walk that could return a lingering old class), drop the
+        // other two for re-resolution, and drop the hook-live latch so the bootstrap owns the
+        // mount again until the re-resolved hook proves itself.
+        if (InterlockedCompareExchange(&g_allFnHooksInstalled, 0, 0) != 0)
+        {
+            QmUE::UFunction* fresh = QmUE::FindFunctionOnClass(
+                reinterpret_cast<QmUE::UStruct*>(screen->Class), "OnTabsStateChanged");
+            if (fresh && fresh != g_fnTabState)
+            {
+                QM_LOG_INFO("[ModTab] *** FN-TARGETS STALE *** settings UI reloaded (level change) - "
+                            "re-latching from the live screen (tabState old=0x%p new=0x%p), bootstrap "
+                            "re-owns the mount until the hook proves itself",
+                            (void*)g_fnTabState, (void*)fresh);
+                g_fnCookTabs = nullptr;
+                g_fnSetData  = nullptr;
+                g_fnTabState = fresh;
+                InterlockedExchange(&g_cookTabsHookLive, 0);
+                InterlockedExchange(&g_allFnHooksInstalled, 0);
+                TryInstallSettingsFnHooks();
+            }
+        }
 
         if (g_rebuildInProgress) return;
 
@@ -454,9 +487,8 @@ namespace
         }
         else if (strcmp(command, "add_item_test") == 0)
         {
-            // Recon stage: dumps the AddReward grant surface (see qm_itemgrant.hpp).
-            QM_LOG_INFO("[ModTab] add_item_test: running item-grant recon dump");
-            QmItemGrant_ReconDump();
+            // "<AssetName>[:<Count>]"; empty argument = recon dump (see qm_itemgrant.hpp).
+            QmItemGrant_Fire(argument);
         }
         else QM_LOG_WARN("[ModTab] button command '%s' not implemented - ignored", command);
     }
@@ -516,6 +548,11 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
     {
         uint8_t v = GetVerdict(func);
         if (!(v & MT_ANY)) return;
+
+        // Open the session BEFORE the probes: the self-heal is session-gated and the very
+        // first handle-install must happen inside THIS OnEnter dispatch, ahead of the first
+        // cook (the block further down re-arms the per-open budgets).
+        if (v & MT_ENTER) g_settingsOpen = true;
 
         // We are inside a settings-screen dispatch, so the settings classes are live in
         // GObjects now. Both probes throttle + latch internally; placed before the trace-cap
@@ -607,9 +644,10 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// EARLY FN-TARGET RESOLVE DRIVER + BUTTON CLICK WATCH: ProcessEvent dispatches from engine start
-// on the game thread, the earliest safe moment to poll GObjects for the settings BP classes.
-// Cheap fast path once resolved; the click watch (a few pointer compares) stays live.
+// BUTTON CLICK WATCH on the global ProcessEvent hook: a few pointer compares per dispatch.
+// (FN-target resolution is driven by the rider's session-gated self-heal - a permanent PE
+// poll would burn O(GObjects) class walks in-world while the settings classes are not even
+// loaded yet.)
 void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms)
 {
     (void)parms;
@@ -633,14 +671,6 @@ void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
             __except (EXCEPTION_EXECUTE_HANDLER) {}
             break;
         }
-
-    if (InterlockedCompareExchange(&g_allFnHooksInstalled, 0, 0) != 0) return;
-    ULONGLONG now  = GetTickCount64();
-    ULONGLONG last = g_fnHookPollLastTick;
-    if (last != 0 && (now - last) < kFnHookEarlyPollMs) return;
-    g_fnHookPollLastTick = now;
-    __try { TryInstallSettingsFnHooks(); }
-    __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 void QmModTab_SetPlsfOriginal(QmUE::FNativeFuncPtr orig)
