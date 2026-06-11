@@ -32,6 +32,27 @@
   },
   {
     "type": "header",
+    "text": "Debug Commands",
+    "size": 20,
+    "color": "#FFCC59",
+    "gap": 24
+  },
+  {
+    "type": "button",
+    "text": "Log Test",
+    "command": "log_test",
+    "arguments": ["Hello, World!"],
+    "align": "left"
+  },
+  {
+    "type": "button",
+    "text": "Add Item Test",
+    "command": "add_item_test",
+    "arguments": [],
+    "align": "left"
+  },
+  {
+    "type": "header",
     "text": "Active Modifications",
     "size": 20,
     "color": "#FFCC59",

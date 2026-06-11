@@ -28,6 +28,7 @@
 
 #include "qm_modtab.hpp"
 #include "qm_modtab_internal.hpp"
+#include "qm_itemgrant.hpp"
 #include "qm_log.hpp"
 
 using namespace ModTab;
@@ -406,9 +407,11 @@ namespace
     }
 
     // ---- panel button commands -----------------------------------------------------------------
-    // Debounce: one click reaches us via a delegate dispatch, but rapid double-clicks (and any
-    // future extra OnClick-named dispatches on the same widget) must not spawn browser storms.
-    volatile ULONGLONG  g_lastCommandTick   = 0;
+    // Debounce per command: rapid double-clicks (and any future extra OnClick-named dispatches
+    // on the same widget) must not spawn browser storms, but a click on a DIFFERENT button right
+    // afterwards must still go through. Game thread only (PE hook dispatch).
+    ULONGLONG           g_lastCommandTick   = 0;
+    char                g_lastCommand[64]   = { 0 };
     constexpr ULONGLONG kCommandDebounceMs  = 2000;
     // Written only on the game thread under the debounce; the worker thread reads it.
     char                g_urlBuf[512]       = { 0 };
@@ -429,10 +432,12 @@ namespace
     void DispatchButtonCommand(const char* command, const char* argument)
     {
         if (!command || !*command) return;
-        ULONGLONG now  = GetTickCount64();
-        ULONGLONG last = g_lastCommandTick;
-        if (last != 0 && (now - last) < kCommandDebounceMs) return;
+        ULONGLONG now = GetTickCount64();
+        if (g_lastCommandTick != 0 && (now - g_lastCommandTick) < kCommandDebounceMs &&
+            strcmp(command, g_lastCommand) == 0)
+            return;
         g_lastCommandTick = now;
+        snprintf(g_lastCommand, sizeof(g_lastCommand), "%s", command);
         QM_LOG_INFO("[ModTab] *** BUTTON CLICK *** command=%s argument=%s",
                     command, (argument && *argument) ? argument : "(none)");
         if (strcmp(command, "open_url") == 0 && argument && *argument)
@@ -441,6 +446,17 @@ namespace
             HANDLE h = CreateThread(nullptr, 0, OpenUrlThread, nullptr, 0, nullptr);
             if (h) CloseHandle(h);
             else   OpenUrlThread(nullptr);
+        }
+        else if (strcmp(command, "log_test") == 0)
+        {
+            QM_LOG_INFO("[ModTab] log_test: %s",
+                        (argument && *argument) ? argument : "(no argument)");
+        }
+        else if (strcmp(command, "add_item_test") == 0)
+        {
+            // Recon stage: dumps the AddReward grant surface (see qm_itemgrant.hpp).
+            QM_LOG_INFO("[ModTab] add_item_test: running item-grant recon dump");
+            QmItemGrant_ReconDump();
         }
         else QM_LOG_WARN("[ModTab] button command '%s' not implemented - ignored", command);
     }

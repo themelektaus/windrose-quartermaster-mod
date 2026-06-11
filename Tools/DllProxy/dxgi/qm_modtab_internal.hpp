@@ -100,8 +100,8 @@ namespace ModTab
         float          gap;        // vertical space above the row
         uint8_t        halign;     // EHorizontalAlignment; 255 = slot default (Fill)
         float          indent;     // left padding on the slot (mod detail rows)
-        const char*    command;    // buttons: action id ("open_url"); nullptr otherwise
-        const char*    argument;   // buttons: first argument (e.g. the URL); nullptr otherwise
+        const char*    command;    // buttons: action id (see DispatchButtonCommand); nullptr otherwise
+        const char*    argument;   // buttons: first argument; nullptr otherwise
     };
     // Rows from qm_modtab_layout.json in the Quartermaster sidecar folder (re-read when its
     // write time changes),
