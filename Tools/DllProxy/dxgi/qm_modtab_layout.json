@@ -39,7 +39,13 @@
   },
   {
     "type": "modifications",
-    "gap": 4
+    "gap": 4,
+    "titleSize": 18,
+    "titleColor": "#EBE09E",
+    "titleGap": 16,
+    "textSize": 14,
+    "textColor": "#9A9A9A",
+    "textGap": 2
   },
   {
     "type": "text",

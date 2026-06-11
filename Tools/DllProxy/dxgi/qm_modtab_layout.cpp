@@ -18,13 +18,14 @@
 // "modifications" rows expand into text rows from qm_modtab_mods.txt in the sidecar folder -
 // the pre-merged installed-mods file the Configurator regenerates on every profile build/
 // delete (empty and '#' lines are skipped, order is rendered verbatim). Flush-left lines are
-// mod names; lines with leading whitespace are DETAIL rows of the mod above them. "text" acts
-// as the per-mod template ("{name}" -> the line; default: bullet + name), the styling keys
-// apply to every generated name row. Detail rows style via the optional keys
-//   detailText / detailSize / detailColor / detailGap / detailIndent
-// (defaults: "{name}", name size - 2, dim gray, 0, 18; details always wrap). The file's write
-// time is re-checked on every panel build, so a GUI build/delete shows up on the next settings
-// open without a game restart.
+// mod NAME rows; lines with leading whitespace are DETAIL rows of the mod above them. "text"
+// acts as the name-row template ("{name}" -> the line; default: the plain name, no bullet).
+// Both generated row kinds style via optional keys on the modifications row:
+//   titleSize / titleColor / titleGap   name rows (default: the row's own size/color/gap)
+//   textSize / textColor / textGap      detail rows (default: name size - 2, dim gray, 0)
+//   textIndent                          detail rows' left indent (default 18; details always wrap)
+// The file's write time is re-checked on every panel build, so a GUI build/delete shows up on
+// the next settings open without a game restart.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -50,7 +51,7 @@ namespace
   { "type": "text",   "text": "Configurable mods and tweaks - built with the Quartermaster Configurator. Thank you for using Quartermaster!", "size": 16, "color": "#C7C7C7", "wrap": true, "gap": 12 },
   { "type": "button", "text": "Leave an Endorsement", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 24, "align": "left" },
   { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 24 },
-  { "type": "modifications", "gap": 4 },
+  { "type": "modifications", "gap": 4, "titleSize": 18, "titleColor": "#EBE09E", "titleGap": 16, "textSize": 14, "textColor": "#9A9A9A", "textGap": 2 },
   { "type": "text",   "text": "", "gap": 24 }
 ])json";
 
@@ -68,13 +69,18 @@ namespace
         std::string  command;
         std::string  argument;
 
-        // Detail-row template (only read off a kRowMods row).
-        std::wstring detailText;
-        float        detailSize     = 0.0f;
-        bool         hasDetailColor = false;
-        float        detailColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-        float        detailGap      = 0.0f;
-        float        detailIndent   = 18.0f;
+        // Per-kind style template (only read off a kRowMods row): title* styles the generated
+        // mod-name rows, text* the detail rows beneath them. titleGap uses -1 as "unset" (falls
+        // back to the row's own gap) so an explicit 0 stays expressible.
+        float        titleSize     = 0.0f;
+        bool         hasTitleColor = false;
+        float        titleColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        float        titleGap      = -1.0f;
+        float        textSize      = 0.0f;
+        bool         hasTextColor  = false;
+        float        textColor[4]  = { 1.0f, 1.0f, 1.0f, 1.0f };
+        float        textGap       = 0.0f;
+        float        textIndent    = 18.0f;
     };
 
     std::vector<RowStorage> g_storage;   // owns the strings
@@ -145,27 +151,27 @@ namespace
                 if (!out.hasColor)
                     QM_LOG_WARN("[ModTab] layout: bad color '%s' (want #RRGGBB or #RRGGBBAA) - ignored", v.c_str());
             }
-            else if (key == "detailText")
+            else if (key == "titleColor" || key == "textColor")
             {
                 std::string v;
                 if (!jp.parseString(v)) return false;
-                out.detailText = QmJson::Utf8ToWide(v);
+                bool&  has = (key == "titleColor") ? out.hasTitleColor : out.hasTextColor;
+                float* dst = (key == "titleColor") ? out.titleColor    : out.textColor;
+                has = ParseColor(v, dst);
+                if (!has)
+                    QM_LOG_WARN("[ModTab] layout: bad %s '%s' (want #RRGGBB or #RRGGBBAA) - ignored",
+                                key.c_str(), v.c_str());
             }
-            else if (key == "detailColor")
-            {
-                std::string v;
-                if (!jp.parseString(v)) return false;
-                out.hasDetailColor = ParseColor(v, out.detailColor);
-                if (!out.hasDetailColor)
-                    QM_LOG_WARN("[ModTab] layout: bad detailColor '%s' (want #RRGGBB or #RRGGBBAA) - ignored", v.c_str());
-            }
-            else if (key == "detailSize" || key == "detailGap" || key == "detailIndent")
+            else if (key == "titleSize" || key == "titleGap" || key == "textSize" ||
+                     key == "textGap"   || key == "textIndent")
             {
                 double v = 0.0;
                 if (!jp.parseNumber(v)) return false;
-                if (key == "detailSize")      out.detailSize   = (float)v;
-                else if (key == "detailGap")  out.detailGap    = (float)v;
-                else                          out.detailIndent = (float)v;
+                if      (key == "titleSize") out.titleSize  = (float)v;
+                else if (key == "titleGap")  out.titleGap   = (float)v;
+                else if (key == "textSize")  out.textSize   = (float)v;
+                else if (key == "textGap")   out.textGap    = (float)v;
+                else                         out.textIndent = (float)v;
             }
             else if (key == "align")
             {
@@ -262,10 +268,10 @@ namespace
     FILETIME                g_modsLastWrite  = {};
 
     // Text rows from qm_modtab_mods.txt; the kRowMods row acts as the styling + text template.
-    // Flush-left lines are mod names, indented lines are detail rows of the mod above (styled
-    // by the detail* template keys). Empty and '#' lines are skipped, order is rendered
-    // verbatim (the Configurator writes the file pre-merged and pre-sorted). A fixed notice
-    // row when the file is missing or lists nothing.
+    // Flush-left lines are mod names (styled by the title* keys), indented lines are detail
+    // rows of the mod above (rendered verbatim, styled by the text* keys). Empty and '#' lines
+    // are skipped, order is rendered verbatim (the Configurator writes the file pre-merged and
+    // pre-sorted). A fixed notice row when the file is missing or lists nothing.
     void ExpandModRows(const char* path, const RowStorage& tpl)
     {
         g_modRows.clear();
@@ -290,31 +296,41 @@ namespace
             }
         }
 
-        const std::wstring nameTpl   = tpl.text.empty()       ? std::wstring(L"\x2022 {name}") : tpl.text;
-        const std::wstring detailTpl = tpl.detailText.empty() ? std::wstring(L"{name}")        : tpl.detailText;
-        const float defDetailColor[4] = { 0.55f, 0.55f, 0.55f, 1.0f };
+        const std::wstring nameTpl = tpl.text.empty() ? std::wstring(L"{name}") : tpl.text;
+        const float defTextColor[4] = { 0.55f, 0.55f, 0.55f, 1.0f };
+        const float nameSize = tpl.titleSize > 0.0f ? tpl.titleSize : tpl.size;
         for (size_t i = 0; i < entries.size(); ++i)
         {
             RowStorage r = tpl;
             r.type = kRowText;
             if (entries[i].detail)
             {
-                r.text   = detailTpl;
-                r.size   = tpl.detailSize > 0.0f ? tpl.detailSize
-                         : tpl.size       > 0.0f ? tpl.size - 2.0f : 0.0f;
-                r.gap    = tpl.detailGap;
-                r.indent = tpl.detailIndent;
+                r.text   = entries[i].text;
+                r.size   = tpl.textSize > 0.0f ? tpl.textSize
+                         : nameSize     > 0.0f ? nameSize - 2.0f : 0.0f;
+                r.gap    = tpl.textGap;
+                r.indent = tpl.textIndent;
                 r.wrap   = true;
-                if (tpl.hasDetailColor) memcpy(r.color, tpl.detailColor, sizeof(r.color));
-                else                    memcpy(r.color, defDetailColor,  sizeof(r.color));
+                if (tpl.hasTextColor) memcpy(r.color, tpl.textColor, sizeof(r.color));
+                else                  memcpy(r.color, defTextColor,  sizeof(r.color));
                 r.hasColor = true;
             }
-            else r.text = nameTpl;
-            for (size_t pos = r.text.find(L"{name}"); pos != std::wstring::npos;
-                 pos = r.text.find(L"{name}", pos))
+            else
             {
-                r.text.replace(pos, sizeof("{name}") - 1, entries[i].text);
-                pos += entries[i].text.size();
+                r.text = nameTpl;
+                r.size = nameSize;
+                if (tpl.titleGap >= 0.0f) r.gap = tpl.titleGap;
+                if (tpl.hasTitleColor)
+                {
+                    memcpy(r.color, tpl.titleColor, sizeof(r.color));
+                    r.hasColor = true;
+                }
+                for (size_t pos = r.text.find(L"{name}"); pos != std::wstring::npos;
+                     pos = r.text.find(L"{name}", pos))
+                {
+                    r.text.replace(pos, sizeof("{name}") - 1, entries[i].text);
+                    pos += entries[i].text.size();
+                }
             }
             g_modRows.push_back(static_cast<RowStorage&&>(r));
         }
