@@ -517,8 +517,10 @@ namespace
             if (count < 1) count = 1; else if (count > 999) count = 999;
             char spec[320];
             snprintf(spec, sizeof(spec), "%s:%ld", key, count);
-            QM_LOG_INFO("[ModTab] add_selected_item: idx=%d -> %s", idx, spec);
-            QmItemGrant_Fire(spec);
+            const char* pkg = GetItemOptionPkg(idx);   // custom items: sync-load fallback path
+            QM_LOG_INFO("[ModTab] add_selected_item: idx=%d -> %s%s%s", idx, spec,
+                        pkg ? " pkg=" : "", pkg ? pkg : "");
+            QmItemGrant_Fire(spec, pkg);
         }
         else QM_LOG_WARN("[ModTab] button command '%s' not implemented - ignored", command);
     }

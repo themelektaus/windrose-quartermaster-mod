@@ -319,7 +319,7 @@ void QmItemGrant_ReconDump()
                 rwdSeen, rwdWithData, kMaxRewardDumps, itemSeen, kMaxItemPdaDumps);
 }
 
-void QmItemGrant_Fire(const char* argument)
+void QmItemGrant_Fire(const char* argument, const char* packagePath)
 {
     if (!argument || !*argument)
     {
@@ -360,6 +360,22 @@ void QmItemGrant_Fire(const char* argument)
         }
 
         QmUE::UObject* pda = FindItemPdaByName(itemCls, asset);
+        if (!pda && packagePath && *packagePath)
+        {
+            // Custom mod-pak item: its PDA is only in memory once something referenced it.
+            // The catalog carries the mounted package path - one sync load hydrates it.
+            wchar_t pkgW[256] = {}, assetW[160] = {};
+            for (int i = 0; packagePath[i] && i < 255; ++i) pkgW[i]   = (wchar_t)(unsigned char)packagePath[i];
+            for (int i = 0; asset[i]       && i < 159; ++i) assetW[i] = (wchar_t)(unsigned char)asset[i];
+            QM_LOG_INFO("[ItemGrant] grant: '%s' not loaded - sync-loading %s ...", asset, packagePath);
+            QmUE::UObject* loaded = QmUE::LoadAssetByPath(pkgW, assetW);
+            if (loaded && loaded->Class == itemCls && !(loaded->Flags & 0x30))
+                pda = loaded;
+            else if (loaded)
+                QM_LOG_WARN("[ItemGrant] grant: sync load returned 0x%p but not a plain "
+                            "R5BLInventoryItem PDA (class=0x%p flags=0x%X) - ignored",
+                            loaded, loaded->Class, loaded->Flags);
+        }
         if (!pda)
         {
             QM_LOG_WARN("[ItemGrant] grant: no LOADED R5BLInventoryItem PDA named '%s' - "

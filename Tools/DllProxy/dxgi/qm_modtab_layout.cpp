@@ -32,8 +32,8 @@
 // the next settings open without a game restart.
 //
 // "itemDropdown" rows render as a ComboBoxString over qm_modtab_items.txt in the sidecar
-// folder - the Configurator's pre-built item catalog ("<AssetId>|<Display name>" per line,
-// pre-sorted; '#' lines are comments). Loaded mtime-watched like the mods file; the catalog
+// folder - the Configurator's pre-built item catalog ("<AssetId>|<Display name>[|<PackagePath>]"
+// per line, pre-sorted; '#' lines are comments; the third field marks custom mod-pak items). Loaded mtime-watched like the mods file; the catalog
 // is exposed to the build + the click dispatch via GetItemOption*(). With no usable catalog
 // the row degrades to a fixed notice text row, so the dropdown can never come up dead.
 
@@ -365,14 +365,16 @@ namespace
 
     // ---- "itemDropdown" row backing data -------------------------------------------------------
 
-    struct ItemOption { std::string key; std::wstring name; };
+    struct ItemOption { std::string key; std::wstring name; std::string pkg; };
     std::vector<ItemOption> g_itemOptions;
     bool                    g_itemsLoadedOnce = false;
     bool                    g_itemsWasThere   = false;
     FILETIME                g_itemsLastWrite  = {};
 
-    // "<AssetId>|<Display name>" per line (the Configurator writes the file pre-sorted by
-    // display name); '#' and empty lines are skipped, a line without '|' is key-only.
+    // "<AssetId>|<Display name>[|<PackagePath>]" per line (the Configurator writes the file
+    // pre-sorted by display name); '#' and empty lines are skipped, a line without '|' is
+    // key-only. The third field marks a custom (mod-pak) item: its mounted package path,
+    // used by the grant as a sync-load fallback when the PDA is not in memory yet.
     void LoadItemCatalog(const char* path)
     {
         g_itemOptions.clear();
@@ -393,8 +395,15 @@ namespace
 
             ItemOption opt;
             size_t sep = line.find('|');
+            std::string rest = (sep == std::string::npos) ? line : line.substr(sep + 1);
+            size_t sep2 = rest.find('|');
+            if (sep2 != std::string::npos)
+            {
+                opt.pkg = rest.substr(sep2 + 1);
+                rest    = rest.substr(0, sep2);
+            }
             opt.key  = (sep == std::string::npos) ? line : line.substr(0, sep);
-            opt.name = QmJson::Utf8ToWide(sep == std::string::npos ? line : line.substr(sep + 1));
+            opt.name = QmJson::Utf8ToWide(rest);
             if (!opt.key.empty() && !opt.name.empty())
                 g_itemOptions.push_back(static_cast<ItemOption&&>(opt));
         }
@@ -583,5 +592,12 @@ namespace ModTab
     {
         if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
         return g_itemOptions[(size_t)idx].key.c_str();
+    }
+
+    const char* GetItemOptionPkg(int idx)
+    {
+        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
+        const std::string& pkg = g_itemOptions[(size_t)idx].pkg;
+        return pkg.empty() ? nullptr : pkg.c_str();
     }
 }

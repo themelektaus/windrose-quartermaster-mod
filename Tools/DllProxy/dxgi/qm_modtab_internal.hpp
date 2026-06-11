@@ -116,11 +116,13 @@ namespace ModTab
     const PanelRow* GetPanelLayout(int* outCount);
 
     // Item catalog backing kRowItemDropdown rows: qm_modtab_items.txt (the Configurator's
-    // pre-built "<AssetId>|<Display name>" list), loaded by GetPanelLayout alongside the rows.
-    // Indices are dropdown option indices; pointers stay valid until the next GetPanelLayout.
+    // pre-built "<AssetId>|<Display name>[|<PackagePath>]" list), loaded by GetPanelLayout
+    // alongside the rows. Indices are dropdown option indices; pointers stay valid until the
+    // next GetPanelLayout.
     int            GetItemOptionCount();
     const wchar_t* GetItemOptionName(int idx);   // nullptr when out of range
     const char*    GetItemOptionKey(int idx);    // nullptr when out of range
+    const char*    GetItemOptionPkg(int idx);    // custom items: mounted package path for the grant's sync-load fallback; nullptr otherwise
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);
