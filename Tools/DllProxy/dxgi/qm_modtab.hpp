@@ -2,16 +2,16 @@
 // screen (tab-data append + own content panel mounted in the CookTabs-post moment), without a
 // UE4SS dependency. Architecture details: qm_modtab.cpp / qm_modtab_internal.hpp.
 //
-// Arming (sentinels next to dxgi.dll; absent = zero cost, the module is never consulted):
-//   qm_modtab*.txt       : arms the module (observation rider + recon dumps + hook drivers)
-//   qm_modtab_inject.txt : additionally arms the MUTATING paths (tab inject + panel mount)
+// Arming: any qm_profile_*.json in the Quartermaster sidecar folder (the per-pak source of
+// truth the Configurator deploys with every build). No profiles = zero cost, the module is
+// never consulted - the DLL itself is removed alongside the last profile anyway.
 
 #pragma once
 
 #include "qm_ue.hpp"
 
-// Arm the module from the sentinels. Call once at startup (off DllMain) so the armed state is
-// logged and ReconArmed() is warm before the probe loop runs.
+// Arm the module from the installed profiles. Call once at startup (off DllMain) so the armed
+// state is logged and ReconArmed() is warm before the probe loop runs.
 bool QmModTab_Init();
 
 // Cached armed state; gates whether the shared hooks consult this module at all.

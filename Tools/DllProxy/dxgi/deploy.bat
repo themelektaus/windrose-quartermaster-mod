@@ -71,6 +71,15 @@ for %%F in ("%TARGET%\qm_*.txt" "%TARGET%\qm_*.json") do (
     )
 )
 
+rem The mod tab used to arm on qm_modtab.txt / qm_modtab_inject.txt sentinels;
+rem it arms on the installed qm_profile_*.json now. Drop the obsolete files.
+for %%F in ("%SIDECAR%\qm_modtab.txt" "%SIDECAR%\qm_modtab_inject.txt") do (
+    if exist "%%~fF" (
+        echo [deploy] Removing obsolete sentinel %%~nxF - mod tab arms on profile JSONs now
+        del /q "%%~fF"
+    )
+)
+
 rem qm_modtab_layout.json drives the settings-panel content (the DLL re-reads
 rem it on change, no restart needed). Seed it once; an existing copy in the
 rem sidecar folder is user-owned (live-edited) and must not be overwritten.

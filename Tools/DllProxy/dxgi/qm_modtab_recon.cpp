@@ -1,5 +1,6 @@
 // Logging-only diagnostics: settings-class UFunction enumeration + tab/registry/parms layout
-// dumps. Nothing in here modifies game state.
+// dumps. Nothing in here modifies game state. Compiled to no-op stubs in a production build
+// (QM_DIAG=0) - pure recon, no runtime behavior depends on it.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -11,6 +12,16 @@
 #include "qm_log.hpp"
 
 using namespace ModTab;
+
+#if !QM_DIAG
+
+namespace ModTab
+{
+    void TryEnumerateSettingsClasses() {}
+    void DumpGetTabsReconOnce(QmUE::UObject*) {}
+}
+
+#else
 
 namespace
 {
@@ -301,3 +312,5 @@ namespace ModTab
         // is available and this runs once.
     }
 }
+
+#endif // QM_DIAG

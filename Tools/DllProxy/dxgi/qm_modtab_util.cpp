@@ -87,7 +87,7 @@ namespace ModTab
     // SEH-guarded per 16-byte row so a bad page truncates cleanly.
     void HexDump(const char* tag, const uint8_t* base, int32_t cap)
     {
-        if (!base || cap <= 0) { QM_LOG_INFO("[ModTab]   %s <null/empty>", tag); return; }
+        if (!base || cap <= 0) { QM_LOG_DEBUG("[ModTab]   %s <null/empty>", tag); return; }
         for (int32_t off = 0; off < cap; off += 16)
         {
             char hex[16 * 3 + 1]; char asc[17];
@@ -105,8 +105,8 @@ namespace ModTab
                 asc[an] = '\0';
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { faulted = true; }
-            if (faulted) { QM_LOG_INFO("[ModTab]   %s +0x%02X: <fault>", tag, off); return; }
-            QM_LOG_INFO("[ModTab]   %s +0x%02X: %-48s | %s", tag, off, hex, asc);
+            if (faulted) { QM_LOG_DEBUG("[ModTab]   %s +0x%02X: <fault>", tag, off); return; }
+            QM_LOG_DEBUG("[ModTab]   %s +0x%02X: %-48s | %s", tag, off, hex, asc);
         }
     }
 
@@ -137,15 +137,15 @@ namespace ModTab
             if (!plausible) continue;
 
             ++found;
-            QM_LOG_INFO("[ModTab]   TArray-candidate @ parms+0x%02X: Data=0x%p Num=%d Max=%d "
-                        "(dumping first %d bytes of the buffer; repetition reveals the element stride)",
-                        o, data, num, max, kMaxElemDump);
+            QM_LOG_DEBUG("[ModTab]   TArray-candidate @ parms+0x%02X: Data=0x%p Num=%d Max=%d "
+                         "(dumping first %d bytes of the buffer; repetition reveals the element stride)",
+                         o, data, num, max, kMaxElemDump);
             char etag[32];
             snprintf(etag, sizeof(etag), "elem@+0x%02X", o);
             HexDump(etag, reinterpret_cast<const uint8_t*>(data), kMaxElemDump);
         }
         if (found == 0)
-            QM_LOG_INFO("[ModTab]   (no TArray-header candidate found in parms - array may be empty here or live behind a pointer)");
+            QM_LOG_DEBUG("[ModTab]   (no TArray-header candidate found in parms - array may be empty here or live behind a pointer)");
     }
 
     void* ReadPtr(const void* p)

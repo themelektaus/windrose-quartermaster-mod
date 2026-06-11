@@ -1,4 +1,4 @@
-// Tab data layer (MUTATING, gated on qm_modtab_inject.txt): builds the "Quartermaster"
+// Tab data layer (MUTATING): builds the "Quartermaster"
 // UGameSettingCollection and appends it to the live tab arrays. Runs on the game thread inside
 // a BP dispatch, so there is no cross-thread race with Slate; arrays are only appended in-place
 // when there is spare capacity (Num < Max), so no FMalloc realloc ever happens from our thread.
@@ -57,8 +57,8 @@ namespace
             _ReadWriteBarrier();
             *numP = num + 1;            // then publish the new count
             result = num + 1;
-            QM_LOG_INFO("[ModTab]   inject: %s appended dup 0x%p at index %d -> Num now %d (Max=%d, no realloc)",
-                        tag, dupPtr, num, result, max);
+            QM_LOG_DEBUG("[ModTab]   inject: %s appended dup 0x%p at index %d -> Num now %d (Max=%d, no realloc)",
+                         tag, dupPtr, num, result, max);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
@@ -95,7 +95,7 @@ namespace
         }
         memset(buf, 0, sizeof(buf));
         bool ok = QmUE::CallProcessEvent(obj, fn, buf);
-        QM_LOG_INFO("[ModTab]   inject: called '%s' (parmsSize=%d) ok=%d", fnName, sz, ok ? 1 : 0);
+        QM_LOG_DEBUG("[ModTab]   inject: called '%s' (parmsSize=%d) ok=%d", fnName, sz, ok ? 1 : 0);
         return ok;
     }
 
@@ -123,8 +123,8 @@ namespace
                 __try { srcTextData = *reinterpret_cast<void* const*>(pb); }
                 __except (EXCEPTION_EXECUTE_HANDLER) { srcTextData = nullptr; }
         }
-        QM_LOG_INFO("[ModTab]   build: src getters -> DevName{ci=%d num=%d} DisplayName.TextData=0x%p",
-                    srcDev.ComparisonIndex, srcDev.Number, srcTextData);
+        QM_LOG_DEBUG("[ModTab]   build: src getters -> DevName{ci=%d num=%d} DisplayName.TextData=0x%p",
+                     srcDev.ComparisonIndex, srcDev.Number, srcTextData);
         if (srcDev.ComparisonIndex == 0 && !srcTextData)
         {
             QM_LOG_WARN("[ModTab]   build: getters returned nothing usable (devIdx=%d textData=0x%p)",
@@ -147,8 +147,8 @@ namespace
                     if (ci == srcDev.ComparisonIndex && nm == srcDev.Number)
                     {
                         *devOff = o;
-                        QM_LOG_INFO("[ModTab]   build: DevName FName located @ +0x%llx (idx=%d num=%d)",
-                                    (unsigned long long)o, ci, nm);
+                        QM_LOG_DEBUG("[ModTab]   build: DevName FName located @ +0x%llx (idx=%d num=%d)",
+                                     (unsigned long long)o, ci, nm);
                     }
                 }
                 if (*dispOff == 0 && srcTextData && (o % 8) == 0)
@@ -157,8 +157,8 @@ namespace
                     if (p == srcTextData)
                     {
                         *dispOff = o;
-                        QM_LOG_INFO("[ModTab]   build: DisplayName FText located @ +0x%llx (TextData=0x%p)",
-                                    (unsigned long long)o, p);
+                        QM_LOG_DEBUG("[ModTab]   build: DisplayName FText located @ +0x%llx (TextData=0x%p)",
+                                     (unsigned long long)o, p);
                     }
                 }
             }
@@ -197,7 +197,7 @@ namespace
         QmUE::UObject* obj = QmUE::SpawnObjectViaUFunction(collClass, registry ? registry : srcColl);
         if (!obj) { QM_LOG_WARN("[ModTab]   build: SpawnObject(GameSettingCollection) returned null"); return nullptr; }
         char nid[352]; DescribeObject(obj, nid, sizeof(nid));
-        QM_LOG_INFO("[ModTab]   build: constructed %s", nid);
+        QM_LOG_DEBUG("[ModTab]   build: constructed %s", nid);
 
         QmUE::FName devName = { 0, 0 };
         if (!QmUE::FNameFromString(L"QuartermasterCollection", &devName))
@@ -231,8 +231,8 @@ namespace
             uint8_t pb[16]; memset(pb, 0, sizeof(pb));
             if (QmUE::CallProcessEvent(obj, dnFn, pb)) ReadFTextNarrow(pb, chk, sizeof(chk));
         }
-        QM_LOG_INFO("[ModTab]   build: poked DevName@+0x%llx + DisplayName@+0x%llx -> readback label='%s'",
-                    (unsigned long long)devOff, (unsigned long long)dispOff, chk[0] ? chk : "<empty>");
+        QM_LOG_DEBUG("[ModTab]   build: poked DevName@+0x%llx + DisplayName@+0x%llx -> readback label='%s'",
+                     (unsigned long long)devOff, (unsigned long long)dispOff, chk[0] ? chk : "<empty>");
 
         return obj;
     }
@@ -283,7 +283,7 @@ namespace ModTab
         if (!screen) return false;
         if (OurCollectionPresentInTabs(screen)) return false;
 
-        QM_LOG_WARN("[ModTab] *** TAB INJECT *** appending our collection to the live tab arrays "
+        QM_LOG_INFO("[ModTab] *** TAB INJECT *** appending our collection to the live tab arrays "
                     "(this MUTATES game state)");
 
         const uint8_t* sb = reinterpret_cast<const uint8_t*>(screen);
@@ -307,7 +307,7 @@ namespace ModTab
             return false;
         }
         char did[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(dupPtr), did, sizeof(did));
-        QM_LOG_INFO("[ModTab]   inject: sibling/source collection = 0x%p %s", dupPtr, did);
+        QM_LOG_DEBUG("[ModTab]   inject: sibling/source collection = 0x%p %s", dupPtr, did);
 
         // Prefer a real constructed "Quartermaster" collection; fall back to the dup append so
         // the run still yields a visible tab + a clear log of what to fix.
@@ -316,7 +316,7 @@ namespace ModTab
         QmUE::UObject* realColl = BuildQuartermasterCollection(registry, reinterpret_cast<QmUE::UObject*>(dupPtr));
         if (realColl) { injectPtr = realColl; injectKind = "real Quartermaster collection"; }
         else            injectPtr = dupPtr;
-        QM_LOG_WARN("[ModTab]   inject: appending %s (0x%p)", injectKind, injectPtr);
+        QM_LOG_DEBUG("[ModTab]   inject: appending %s (0x%p)", injectKind, injectPtr);
         g_ourCollection = injectPtr;   // aligned ptr write, atomic on x64
 
         // Append to BOTH lists (separate backing stores).
@@ -354,11 +354,11 @@ namespace ModTab
             return;
         }
         char tid[352]; DescribeObject(tabw, tid, sizeof(tid));
-        QM_LOG_INFO("[ModTab]   inject: simulating tab-button click on %s", tid);
+        QM_LOG_DEBUG("[ModTab]   inject: simulating tab-button click on %s", tid);
         CallNavRefresh(tabw, kTabClickDelegate, /*onlyIfParameterless=*/false);
 
         ArrHdr after = ReadArrHdr(reinterpret_cast<const uint8_t*>(screen) + kOff_Screen_Tabs);
-        QM_LOG_INFO("[ModTab]   inject: POST-click Screen::Tabs Num=%d Max=%d Data=0x%p",
-                    after.num, after.max, after.data);
+        QM_LOG_DEBUG("[ModTab]   inject: POST-click Screen::Tabs Num=%d Max=%d Data=0x%p",
+                     after.num, after.max, after.data);
     }
 }

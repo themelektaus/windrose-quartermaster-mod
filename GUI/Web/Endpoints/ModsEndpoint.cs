@@ -218,6 +218,9 @@ public static class ModsEndpoint
                 CrossPlatformTrash.DeleteToTrash(path);
                 recycled.Add(Path.GetFileName(path));
             }
+            // The trash deletes above bypass RemoveProfileJson, so re-merge the
+            // mod tab's qm_modtab_mods.txt here.
+            deployer.RegenerateModsManifest();
         }
         catch
         {

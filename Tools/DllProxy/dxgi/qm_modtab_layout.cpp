@@ -15,18 +15,22 @@
 //   command   buttons: action id, currently "open_url"
 //   arguments buttons: argument array; only the first entry is used today
 //
-// "modifications" rows expand into one text row per qm_profile_*.json in the sidecar folder
-// (one per installed mod, sorted by name). "text" acts as the per-mod template ("{name}" ->
-// profile name; default: bullet + name), the styling keys apply to every generated row. The
-// expansion re-runs whenever the profile set or any profile's write time changes, so a GUI
-// build/delete shows up on the next settings open without a game restart.
+// "modifications" rows expand into text rows from qm_modtab_mods.txt in the sidecar folder -
+// the pre-merged installed-mods file the Configurator regenerates on every profile build/
+// delete (empty and '#' lines are skipped, order is rendered verbatim). Flush-left lines are
+// mod names; lines with leading whitespace are DETAIL rows of the mod above them. "text" acts
+// as the per-mod template ("{name}" -> the line; default: bullet + name), the styling keys
+// apply to every generated name row. Detail rows style via the optional keys
+//   detailText / detailSize / detailColor / detailGap / detailIndent
+// (defaults: "{name}", name size - 2, dim gray, 0, 18; details always wrap). The file's write
+// time is re-checked on every panel build, so a GUI build/delete shows up on the next settings
+// open without a game restart.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -59,8 +63,17 @@ namespace
         bool         wrap     = false;
         float        gap      = 0.0f;
         uint8_t      halign   = 255;
+        float        indent   = 0.0f;
         std::string  command;
         std::string  argument;
+
+        // Detail-row template (only read off a kRowMods row).
+        std::wstring detailText;
+        float        detailSize     = 0.0f;
+        bool         hasDetailColor = false;
+        float        detailColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        float        detailGap      = 0.0f;
+        float        detailIndent   = 18.0f;
     };
 
     std::vector<RowStorage> g_storage;   // owns the strings
@@ -130,6 +143,28 @@ namespace
                 out.hasColor = ParseColor(v, out.color);
                 if (!out.hasColor)
                     QM_LOG_WARN("[ModTab] layout: bad color '%s' (want #RRGGBB or #RRGGBBAA) - ignored", v.c_str());
+            }
+            else if (key == "detailText")
+            {
+                std::string v;
+                if (!jp.parseString(v)) return false;
+                out.detailText = QmJson::Utf8ToWide(v);
+            }
+            else if (key == "detailColor")
+            {
+                std::string v;
+                if (!jp.parseString(v)) return false;
+                out.hasDetailColor = ParseColor(v, out.detailColor);
+                if (!out.hasDetailColor)
+                    QM_LOG_WARN("[ModTab] layout: bad detailColor '%s' (want #RRGGBB or #RRGGBBAA) - ignored", v.c_str());
+            }
+            else if (key == "detailSize" || key == "detailGap" || key == "detailIndent")
+            {
+                double v = 0.0;
+                if (!jp.parseNumber(v)) return false;
+                if (key == "detailSize")      out.detailSize   = (float)v;
+                else if (key == "detailGap")  out.detailGap    = (float)v;
+                else                          out.detailIndent = (float)v;
             }
             else if (key == "align")
             {
@@ -220,96 +255,65 @@ namespace
 
     // ---- "modifications" row expansion --------------------------------------------------------
 
-    std::vector<RowStorage> g_modRows;       // expanded per-profile rows (own their strings)
-    uint64_t                g_modsSig = 0;   // change signature of the qm_profile_*.json set
+    std::vector<RowStorage> g_modRows;        // expanded per-mod rows (own their strings)
+    bool                    g_modsLoadedOnce = false;
+    bool                    g_modsWasThere   = false;
+    FILETIME                g_modsLastWrite  = {};
 
-    // Top-level "name" of a profile JSON.
-    bool ParseProfileName(const char* data, size_t len, std::string& out)
-    {
-        QmJson::Parser jp(data, len);
-        if (!jp.expect('{')) return false;
-        if (jp.peek('}'))    return false;
-        for (;;)
-        {
-            std::string key;
-            if (!jp.parseString(key)) return false;
-            if (!jp.expect(':'))      return false;
-            if (key == "name")        return jp.parseString(out) && !out.empty();
-            if (!jp.skipValue())      return false;
-            if (jp.peek(',')) { ++jp.p; continue; }
-            return false;
-        }
-    }
-
-    // Lists the qm_profile_*.json file names and returns an FNV-1a signature over names + write
-    // times, so the expansion only re-runs when the installed-mod set actually changed.
-    uint64_t ScanProfiles(const char* dir, std::vector<std::string>& outFiles)
-    {
-        uint64_t h = 1469598103934665603ull;
-        auto mix = [&h](const void* p, size_t n)
-        {
-            const uint8_t* b = (const uint8_t*)p;
-            for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
-        };
-
-        char pattern[MAX_PATH];
-        if (snprintf(pattern, sizeof(pattern), "%s\\qm_profile_*.json", dir) <= 0) return h;
-        WIN32_FIND_DATAA fd;
-        HANDLE find = FindFirstFileA(pattern, &fd);
-        if (find == INVALID_HANDLE_VALUE) return h;
-        do
-        {
-            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-            mix(fd.cFileName, strlen(fd.cFileName));
-            mix(&fd.ftLastWriteTime, sizeof(fd.ftLastWriteTime));
-            outFiles.push_back(fd.cFileName);
-        } while (FindNextFileA(find, &fd));
-        FindClose(find);
-        return h;
-    }
-
-    // One text row per profile, sorted by display name; the kRowMods row acts as the styling +
-    // text template. A fixed notice row when no profile is installed.
-    void ExpandModRows(const char* dir, const std::vector<std::string>& files, const RowStorage& tpl)
+    // Text rows from qm_modtab_mods.txt; the kRowMods row acts as the styling + text template.
+    // Flush-left lines are mod names, indented lines are detail rows of the mod above (styled
+    // by the detail* template keys). Empty and '#' lines are skipped, order is rendered
+    // verbatim (the Configurator writes the file pre-merged and pre-sorted). A fixed notice
+    // row when the file is missing or lists nothing.
+    void ExpandModRows(const char* path, const RowStorage& tpl)
     {
         g_modRows.clear();
 
-        std::vector<std::wstring> names;
-        for (size_t i = 0; i < files.size(); ++i)
+        struct ModLine { std::wstring text; bool detail; };
+        std::vector<ModLine> entries;
+        std::string body;
+        if (path && QmJson::ReadWholeFile(path, body))
         {
-            std::string name;
-            char path[MAX_PATH];
-            std::string body;
-            if (snprintf(path, sizeof(path), "%s\\%s", dir, files[i].c_str()) > 0 &&
-                QmJson::ReadWholeFile(path, body))
+            QmJson::StripUtf8Bom(body);
+            for (size_t pos = 0; pos < body.size();)
             {
-                QmJson::StripUtf8Bom(body);
-                if (!ParseProfileName(body.data(), body.size(), name)) name.clear();
-            }
-            if (name.empty())
-            {
-                // Fallback: the file name stem, qm_profile_<name>.json.
-                name = files[i];
-                constexpr size_t kPre = sizeof("qm_profile_") - 1, kExt = sizeof(".json") - 1;
-                if (name.size() > kPre + kExt) name = name.substr(kPre, name.size() - kPre - kExt);
-            }
-            names.push_back(QmJson::Utf8ToWide(name));
-        }
-        std::sort(names.begin(), names.end(),
-                  [](const std::wstring& a, const std::wstring& b)
-                  { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+                size_t eol = body.find('\n', pos);
+                size_t len = (eol == std::string::npos ? body.size() : eol) - pos;
+                std::string line = body.substr(pos, len);
+                pos += len + 1;
 
-        const std::wstring tplText = tpl.text.empty() ? std::wstring(L"\x2022 {name}") : tpl.text;
-        for (size_t i = 0; i < names.size(); ++i)
+                size_t b = line.find_first_not_of(" \t\r");
+                if (b == std::string::npos || line[b] == '#') continue;
+                size_t e = line.find_last_not_of(" \t\r");
+                entries.push_back({ QmJson::Utf8ToWide(line.substr(b, e - b + 1)), b > 0 });
+            }
+        }
+
+        const std::wstring nameTpl   = tpl.text.empty()       ? std::wstring(L"\x2022 {name}") : tpl.text;
+        const std::wstring detailTpl = tpl.detailText.empty() ? std::wstring(L"{name}")        : tpl.detailText;
+        const float defDetailColor[4] = { 0.55f, 0.55f, 0.55f, 1.0f };
+        for (size_t i = 0; i < entries.size(); ++i)
         {
             RowStorage r = tpl;
             r.type = kRowText;
-            r.text = tplText;
+            if (entries[i].detail)
+            {
+                r.text   = detailTpl;
+                r.size   = tpl.detailSize > 0.0f ? tpl.detailSize
+                         : tpl.size       > 0.0f ? tpl.size - 2.0f : 0.0f;
+                r.gap    = tpl.detailGap;
+                r.indent = tpl.detailIndent;
+                r.wrap   = true;
+                if (tpl.hasDetailColor) memcpy(r.color, tpl.detailColor, sizeof(r.color));
+                else                    memcpy(r.color, defDetailColor,  sizeof(r.color));
+                r.hasColor = true;
+            }
+            else r.text = nameTpl;
             for (size_t pos = r.text.find(L"{name}"); pos != std::wstring::npos;
                  pos = r.text.find(L"{name}", pos))
             {
-                r.text.replace(pos, sizeof("{name}") - 1, names[i]);
-                pos += names[i].size();
+                r.text.replace(pos, sizeof("{name}") - 1, entries[i].text);
+                pos += entries[i].text.size();
             }
             g_modRows.push_back(static_cast<RowStorage&&>(r));
         }
@@ -334,6 +338,7 @@ namespace
             r.wrap     = s.wrap;
             r.gap      = s.gap;
             r.halign   = s.halign;
+            r.indent   = s.indent;
             r.command  = (s.type == kRowButton && !s.command.empty())  ? s.command.c_str()  : nullptr;
             r.argument = (s.type == kRowButton && !s.argument.empty()) ? s.argument.c_str() : nullptr;
             return r;
@@ -402,9 +407,9 @@ namespace ModTab
             g_fromFile     = fromFile;
         }
 
-        // The mods expansion is checked on EVERY call (one per panel build): the profile set
-        // changes independently of the layout file when the Configurator builds or deletes a mod
-        // while the game runs.
+        // The mods file is checked on EVERY call (one per panel build): the Configurator
+        // regenerates qm_modtab_mods.txt independently of the layout file when it builds or
+        // deletes a mod while the game runs.
         const RowStorage* modsTpl = nullptr;
         for (size_t i = 0; i < g_storage.size() && !modsTpl; ++i)
             if (g_storage[i].type == kRowMods) modsTpl = &g_storage[i];
@@ -412,12 +417,21 @@ namespace ModTab
         bool modsChanged = false;
         if (modsTpl)
         {
-            std::vector<std::string> files;
-            uint64_t sig = havePath ? ScanProfiles(dir, files) : 0;
-            if (stale || sig != g_modsSig)
+            char modsPath[MAX_PATH] = { 0 };
+            WIN32_FILE_ATTRIBUTE_DATA mfad = {};
+            bool modsThere = havePath &&
+                             snprintf(modsPath, sizeof(modsPath), "%s\\qm_modtab_mods.txt", dir) > 0 &&
+                             GetFileAttributesExA(modsPath, GetFileExInfoStandard, &mfad) &&
+                             !(mfad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+            bool modsStale = stale || !g_modsLoadedOnce ||
+                             modsThere != g_modsWasThere ||
+                             (modsThere && CompareFileTime(&mfad.ftLastWriteTime, &g_modsLastWrite) != 0);
+            if (modsStale)
             {
-                g_modsSig = sig;
-                ExpandModRows(dir, files, *modsTpl);
+                g_modsLoadedOnce = true;
+                g_modsWasThere   = modsThere;
+                if (modsThere) g_modsLastWrite = mfad.ftLastWriteTime;
+                ExpandModRows(modsThere ? modsPath : nullptr, *modsTpl);
                 modsChanged = true;
             }
         }

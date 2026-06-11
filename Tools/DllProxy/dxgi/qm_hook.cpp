@@ -1346,7 +1346,7 @@ static bool InstallPlsfHook()
         QM_LOG_ERROR("[PLSF] MH_EnableHook(0x%p) FAILED: %s", target, MH_StatusToString(st));
         return true;
     }
-    QM_LOG_WARN("[PLSF] *** INSTALLED *** global script-exec hook @ 0x%p (%s) - BP-internal dispatch "
+    QM_LOG_INFO("[PLSF] *** INSTALLED *** global script-exec hook @ 0x%p (%s) - BP-internal dispatch "
                 "(CookTabs/SetData/OnTabsStateChanged) is now visible + hookable",
                 target, validated ? "offset validated against live ProcessInternal" : "RELOCATED first-call fallback");
     return true;

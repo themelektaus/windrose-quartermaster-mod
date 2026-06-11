@@ -62,7 +62,7 @@ namespace
         char wid[352]; DescribeObject(widget, wid, sizeof(wid));
         char indent[33]; int sp = depth * 2; if (sp > 32) sp = 32;
         memset(indent, ' ', sp); indent[sp] = '\0';
-        QM_LOG_INFO("[ModTab]   tree %s%s", indent, wid);
+        QM_LOG_TRACE("[ModTab]   tree %s%s", indent, wid);
         --budget;
         if (captureMatch  && outMatch  && !*outMatch  && ContainsLc(wid, captureMatch))  *outMatch  = widget;
         if (captureMatch2 && outMatch2 && !*outMatch2 && ContainsLc(wid, captureMatch2)) *outMatch2 = widget;
@@ -97,15 +97,15 @@ namespace
         return ok;
     }
 
-    // Style the ScrollBoxSlot a row landed in: gap above the row (FMargin top) + optional
-    // horizontal alignment (255 = leave the slot default, Fill).
-    void StyleSlot(QmUE::UObject* slot, float gapAbove, uint8_t hAlign = 255)
+    // Style the ScrollBoxSlot a row landed in: gap above the row (FMargin top), optional left
+    // indent (FMargin left) + optional horizontal alignment (255 = leave the slot default, Fill).
+    void StyleSlot(QmUE::UObject* slot, float gapAbove, uint8_t hAlign = 255, float padLeft = 0.0f)
     {
         if (!slot || !slot->Class) return;
-        if (gapAbove > 0.0f)
+        if (gapAbove > 0.0f || padLeft > 0.0f)
             if (QmUE::UFunction* fnPad = QmUE::FindFunctionOnClass(slot->Class, "SetPadding"))
             {
-                float margin[4] = { 0.0f, gapAbove, 0.0f, 0.0f };   // FMargin {L,T,R,B}
+                float margin[4] = { padLeft, gapAbove, 0.0f, 0.0f };   // FMargin {L,T,R,B}
                 QmUE::CallProcessEvent(slot, fnPad, margin);
             }
         if (hAlign != 255)
@@ -122,7 +122,7 @@ namespace
     QmUE::UObject* AddTextRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
                               const wchar_t* text, const float* rgba,
                               const uint8_t* font, float fontSize, bool wrap,
-                              float gapAbove = 0.0f, uint8_t hAlign = 255)
+                              float gapAbove = 0.0f, uint8_t hAlign = 255, float indent = 0.0f)
     {
         if (!panel || !panel->Class) return nullptr;
         QmUE::UClass* txtClass = QmUE::FindClassByName("TextBlock");
@@ -161,7 +161,7 @@ namespace
             P_AddChild ac; ac.Content = txt; ac.ReturnValue = nullptr;
             if (QmUE::CallProcessEvent(panel, fnAdd, &ac) && ac.ReturnValue)
             {
-                StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove, hAlign);
+                StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), gapAbove, hAlign, indent);
                 return txt;
             }
         }
@@ -348,9 +348,9 @@ namespace ModTab
     void ProbeViewPath(QmUE::UObject* screen)
     {
         if (!screen) return;
-        QM_LOG_WARN("[ModTab] *** VIEW-PATH *** map screen tree + build our own ScrollBox as a sibling of "
-                    "Settings_Panel, fill it, mount it into the content VerticalBox, start it hidden "
-                    "(visibility owned by the tab-state gate)");
+        QM_LOG_DEBUG("[ModTab] *** VIEW-PATH *** map screen tree + build our own ScrollBox as a sibling of "
+                     "Settings_Panel, fill it, mount it into the content VerticalBox, start it hidden "
+                     "(visibility owned by the tab-state gate)");
 
         QmUE::UObject* widgetTree = nullptr;
         QmUE::UObject* rootWidget = nullptr;
@@ -364,7 +364,7 @@ namespace ModTab
         }
         __except (EXCEPTION_EXECUTE_HANDLER) { widgetTree = nullptr; rootWidget = nullptr; }
         char wtid[352]; DescribeObject(widgetTree, wtid, sizeof(wtid));
-        QM_LOG_INFO("[ModTab]   view: screen->WidgetTree@0x2D8 = 0x%p %s", (void*)widgetTree, wtid);
+        QM_LOG_DEBUG("[ModTab]   view: screen->WidgetTree@0x2D8 = 0x%p %s", (void*)widgetTree, wtid);
 
         QmUE::UObject* mountTarget   = nullptr;   // first VerticalBox in the reachable tree
         QmUE::UObject* settingsPanel = nullptr;   // WBP_Settings_Panel_C (per-tab content host)
@@ -379,7 +379,7 @@ namespace ModTab
 
         if (!mountTarget)
         {
-            QM_LOG_INFO("[ModTab]   view: content VerticalBox not resolved yet (tree mid-rebuild) - deferring (re)build to next poll");
+            QM_LOG_DEBUG("[ModTab]   view: content VerticalBox not resolved yet (tree mid-rebuild) - deferring (re)build to next poll");
             return;
         }
 
@@ -397,9 +397,9 @@ namespace ModTab
                     }
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {}
-            QM_LOG_WARN("[ModTab] *** FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
-                        "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
-                        (void*)g_ourPanel, (void*)mountTarget);
+            QM_LOG_DEBUG("[ModTab] *** FRESH REBUILD *** discarded stale panel=0x%p (dead Slate on "
+                         "reopen) - building a brand-new ScrollBox into content VerticalBox 0x%p",
+                         (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
             g_buttonActionCount = 0;   // actions die with their panel; re-latched by the build
         }
@@ -412,7 +412,7 @@ namespace ModTab
             if (QmUE::CallProcessEvent(screen, fnOP, &op)) owningPlayer = reinterpret_cast<QmUE::UObject*>(op.ReturnValue);
         }
         char opid[352]; DescribeObject(owningPlayer, opid, sizeof(opid));
-        QM_LOG_INFO("[ModTab]   view: GetOwningPlayer -> 0x%p %s", (void*)owningPlayer, opid);
+        QM_LOG_DEBUG("[ModTab]   view: GetOwningPlayer -> 0x%p %s", (void*)owningPlayer, opid);
 
         QmUE::UClass*    wblClass  = QmUE::FindClassByName("WidgetBlueprintLibrary");
         QmUE::UObject*   wblCDO    = wblClass ? QmUE::GetClassDefaultObject(wblClass) : nullptr;
@@ -422,8 +422,11 @@ namespace ModTab
         QmUE::UClass*  scrollClass = QmUE::FindClassByName("ScrollBox");
         QmUE::UObject* ourPanel    = scrollClass ? QmUE::SpawnObjectViaUFunction(scrollClass, widgetTree) : nullptr;
         char opnl[352]; DescribeObject(ourPanel, opnl, sizeof(opnl));
-        QM_LOG_WARN("[ModTab]   view: own ScrollBox class=0x%p -> panel=0x%p %s (%s)", (void*)scrollClass,
-                    (void*)ourPanel, opnl, ourPanel ? "CONSTRUCTED" : "construct FAILED");
+        if (ourPanel)
+            QM_LOG_DEBUG("[ModTab]   view: own ScrollBox class=0x%p -> panel=0x%p %s (CONSTRUCTED)",
+                         (void*)scrollClass, (void*)ourPanel, opnl);
+        else
+            QM_LOG_WARN("[ModTab]   view: own ScrollBox construct FAILED (class=0x%p)", (void*)scrollClass);
 
         // Panel content from the layout rows (qm_modtab_layout.json or its compiled-in default).
         // Strictly additive + SEH-isolated: any failure is swallowed and never aborts the
@@ -484,13 +487,13 @@ namespace ModTab
                     {
                         if (AddTextRow(ourPanel, widgetTree, r.text, r.color, font,
                                        r.size > 0.0f ? r.size : kDefFontSizeBody,
-                                       r.wrap, r.gap, r.halign))
+                                       r.wrap, r.gap, r.halign, r.indent))
                             ++rows;
                     }
                 }
-                QM_LOG_WARN("[ModTab]   view: CONTENT build rows=%d/%d headers=%d buttons=%d wired=%d "
-                            "gameFont=%d (wired clicks via the PE BndEvt watch)",
-                            rows, rowCount, headers, buttons, wiredCount, font ? 1 : 0);
+                QM_LOG_DEBUG("[ModTab]   view: CONTENT build rows=%d/%d headers=%d buttons=%d wired=%d "
+                             "gameFont=%d (wired clicks via the PE BndEvt watch)",
+                             rows, rowCount, headers, buttons, wiredCount, font ? 1 : 0);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { QM_LOG_WARN("[ModTab]   view: CONTENT build FAULTED"); }
         }
@@ -502,22 +505,38 @@ namespace ModTab
                 P_AddChild ac; ac.Content = ourPanel; ac.ReturnValue = nullptr;
                 bool ok = QmUE::CallProcessEvent(mountTarget, fnAdd, &ac);
                 char sl[352]; DescribeObject(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), sl, sizeof(sl));
-                QM_LOG_WARN("[ModTab]   view: MOUNT ScrollBox -> content VerticalBox ok=%d slot=0x%p %s",
-                            ok, ac.ReturnValue, sl);
+                if (ok)
+                    QM_LOG_DEBUG("[ModTab]   view: MOUNT ScrollBox -> content VerticalBox ok=%d slot=0x%p %s",
+                                 ok, ac.ReturnValue, sl);
+                else
+                    QM_LOG_WARN("[ModTab]   view: MOUNT ScrollBox -> content VerticalBox FAILED (slot=0x%p)",
+                                ac.ReturnValue);
                 if (ok)
                 {
+                    // The VerticalBoxSlot defaults to Automatic sizing: the ScrollBox is granted
+                    // its full desired height, the screen clips it, and with no internal overflow
+                    // it never scrolls. Fill (like the native Settings_Panel sibling) constrains
+                    // the panel to the visible area - that constraint is what enables scrolling.
+                    QmUE::UObject* mountSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
+                    if (mountSlot && mountSlot->Class)
+                        if (QmUE::UFunction* fnSize = QmUE::FindFunctionOnClass(mountSlot->Class, "SetSize"))
+                        {
+                            struct { float Value; uint8_t SizeRule; uint8_t pad[3]; } sz = { 1.0f, 1, {} };   // FSlateChildSize, Fill
+                            bool sok = QmUE::CallProcessEvent(mountSlot, fnSize, &sz);
+                            QM_LOG_DEBUG("[ModTab]   view: mount slot SetSize(Fill 1.0) ok=%d (enables vertical scrolling)", sok);
+                        }
                     g_ourPanel    = ourPanel;
                     g_mountTarget = mountTarget;
                     g_nativePanel = settingsPanel;
                     bool vok = SetWidgetVisibility(ourPanel, ESV_Collapsed);
                     bool nok = settingsPanel ? SetWidgetVisibility(settingsPanel, ESV_Visible) : false;
-                    QM_LOG_WARN("[ModTab]   view: gate INIT -> our panel Collapsed ok=%d, native Settings_Panel(0x%p) Visible ok=%d",
-                                vok, (void*)settingsPanel, nok);
+                    QM_LOG_DEBUG("[ModTab]   view: gate INIT -> our panel Collapsed ok=%d, native Settings_Panel(0x%p) Visible ok=%d",
+                                 vok, (void*)settingsPanel, nok);
                 }
             }
         }
-        QM_LOG_WARN("[ModTab] *** VIEW-PATH DONE *** panel=0x%p mountTarget=0x%p - starts hidden, the tab-state "
-                    "gate shows it on the Quartermaster tab", (void*)g_ourPanel, (void*)mountTarget);
+        QM_LOG_DEBUG("[ModTab] *** VIEW-PATH DONE *** panel=0x%p mountTarget=0x%p - starts hidden, the tab-state "
+                     "gate shows it on the Quartermaster tab", (void*)g_ourPanel, (void*)mountTarget);
     }
 
     // Is our panel STILL a live child of the content VerticalBox? False when never mounted OR

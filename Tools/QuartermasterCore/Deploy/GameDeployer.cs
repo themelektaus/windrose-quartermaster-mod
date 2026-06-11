@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using Windrose.Quartermaster.Core.BuildingCreator;
 
 namespace Windrose.Quartermaster.Core.Deploy
@@ -429,6 +430,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             LogLine("Writing qm_profile_" + profileSafeName + ".json -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, profileJson, new UTF8Encoding(false));
+            RegenerateModsManifest();
         }
 
         public bool RemoveProfileJson(string profileSafeName)
@@ -437,7 +439,71 @@ namespace Windrose.Quartermaster.Core.Deploy
             if (!File.Exists(path)) return false;
             LogLine("Removing qm_profile_" + profileSafeName + ".json -> " + path);
             File.Delete(path);
+            RegenerateModsManifest();
             return true;
+        }
+
+        // The in-game mod tab's render input: qm_modtab_mods.txt is the pre-merged
+        // view over all installed qm_profile_*.json. Flush-left lines are mod
+        // display names (sorted); indented lines are that mod's active-feature
+        // detail rows (ProfileSummary); '#' lines are comments. Regenerated
+        // whenever the profile set changes, so the DLL renders the list without
+        // parsing profile JSONs.
+        public string TargetModsManifestPath() => Path.Combine(_sidecarDir, "qm_modtab_mods.txt");
+
+        public void RegenerateModsManifest()
+        {
+            var mods = new List<KeyValuePair<string, List<string>>>();
+            foreach (var file in EnumerateProfileJsonPaths())
+            {
+                string name = null;
+                List<string> details = null;
+                try
+                {
+                    var profile = JsonSerializer.Deserialize<Profile>(File.ReadAllText(file), ProfileStore.JsonOpts);
+                    if (profile != null)
+                    {
+                        name = profile.Name;
+                        details = ProfileSummary.Lines(profile);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Unreadable profile JSON still gets a row via the file-stem fallback.
+                }
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    name = Path.GetFileNameWithoutExtension(file);
+                    const string prefix = "qm_profile_";
+                    if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        name = name.Substring(prefix.Length);
+                }
+                mods.Add(new KeyValuePair<string, List<string>>(name.Trim(), details ?? new List<string>()));
+            }
+            mods.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Key, b.Key));
+
+            var path = TargetModsManifestPath();
+            if (mods.Count == 0)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_modtab_mods.txt (no profile JSONs left) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("# Quartermaster: installed modifications (auto-generated).\n");
+            sb.Append("# Flush-left lines are mod names; indented lines are that mod's detail rows.\n");
+            foreach (var m in mods)
+            {
+                sb.Append(m.Key).Append('\n');
+                foreach (var d in m.Value) sb.Append("  ").Append(d).Append('\n');
+            }
+            LogLine("Writing qm_modtab_mods.txt (" + mods.Count + " mod(s)) -> " + path);
+            EnsureSidecarDir();
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)

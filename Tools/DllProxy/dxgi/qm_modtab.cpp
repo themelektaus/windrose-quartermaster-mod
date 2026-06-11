@@ -1,4 +1,4 @@
-// Quartermaster "Mod Settings Tab" - module core: sentinel arming, the ProcessInternal rider
+// Quartermaster "Mod Settings Tab" - module core: profile-based arming, the ProcessInternal rider
 // (lifecycle + recon driver), PLSF target resolve + thunk dispatch, and the self-heal bootstrap.
 //
 // Dispatch-layer invariant the module is built around: the decisive settings functions
@@ -46,7 +46,6 @@ namespace
 {
     bool g_initDone    = false;
     bool g_armed       = false;
-    bool g_injectArmed = false;   // qm_modtab_inject.txt present: the MUTATING paths are live
 
     volatile LONG g_seq        = 0;   // decisive-dispatch sequence number
     volatile LONG g_traceCount = 0;   // bounded lifecycle-trace lines
@@ -150,9 +149,9 @@ namespace
     {
         LONG nfire = InterlockedIncrement(&g_cookTabsFiredCount);
         if (nfire <= 16)
-            QM_LOG_WARN("[ModTab] *** COOKTABS FIRED *** #%d ctx=0x%p", nfire, ctx);
+            QM_LOG_DEBUG("[ModTab] *** COOKTABS FIRED *** #%d ctx=0x%p", nfire, ctx);
         bool owned = (InterlockedCompareExchange(&g_rebuildInProgress, 1, 0) == 0);
-        if (owned && g_armed && g_injectArmed)
+        if (owned && g_armed)
         {
             __try
             {
@@ -163,7 +162,7 @@ namespace
                 QmUE::UObject* preScreen = reinterpret_cast<QmUE::UObject*>(g_liveScreen);
                 if (!preScreen) preScreen = QmUE::FindFirstInstanceOfClass(kSettingsScreenClass);
                 if (preScreen && EnsureTabInjected(preScreen))
-                    QM_LOG_WARN("[ModTab] cook-pre: Quartermaster tab injected ahead of the native cook "
+                    QM_LOG_INFO("[ModTab] cook-pre: Quartermaster tab injected ahead of the native cook "
                                 "(the cook reconciles the bar - no forced re-cook)");
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -174,7 +173,7 @@ namespace
         {
             __try
             {
-                if (g_armed && g_injectArmed)
+                if (g_armed)
                 {
                     // Mount into the LIVE screen latched by the nested OnTabsStateChanged fire
                     // of THIS cook; FindFirstInstanceOfClass is only the bootstrap fallback
@@ -184,9 +183,9 @@ namespace
                     if (!screen) screen = QmUE::FindFirstInstanceOfClass(kSettingsScreenClass);
                     if (screen)
                     {
-                        QM_LOG_WARN("[ModTab] *** COOKTABS-POST *** mounting a fresh panel into the just-cooked "
-                                    "content tree of screen=0x%p (%s)", (void*)screen,
-                                    live ? "LIVE latch" : "first-instance fallback");
+                        QM_LOG_DEBUG("[ModTab] *** COOKTABS-POST *** mounting a fresh panel into the just-cooked "
+                                     "content tree of screen=0x%p (%s)", (void*)screen,
+                                     live ? "LIVE latch" : "first-instance fallback");
                         ProbeViewPath(screen);   // fresh discard+build+mount, starts Collapsed; self-defers if the box isn't live yet
                         // Hand the mount authority to this hook ONLY once its post-mount
                         // actually LANDED (see g_cookTabsHookLive).
@@ -203,9 +202,9 @@ namespace
                                     ? SetWidgetVisibility(reinterpret_cast<QmUE::UObject*>(g_nativePanel), ESV_Collapsed)
                                     : false;
                                 int rb = GetWidgetVisibility(reinterpret_cast<QmUE::UObject*>(g_ourPanel));
-                                QM_LOG_WARN("[ModTab] *** GATE RE-APPLY (post-cook) *** QM tab is the live selection - "
-                                            "showing the fresh panel=0x%p (setVis=%d natCollapsed=%d visReadback=%d)",
-                                            (void*)g_ourPanel, sv, sn, rb);
+                                QM_LOG_DEBUG("[ModTab] *** GATE RE-APPLY (post-cook) *** QM tab is the live selection - "
+                                             "showing the fresh panel=0x%p (setVis=%d natCollapsed=%d visReadback=%d)",
+                                             (void*)g_ourPanel, sv, sn, rb);
                             }
                         }
                     }
@@ -245,8 +244,8 @@ namespace
                 sn = SetWidgetVisibility(reinterpret_cast<QmUE::UObject*>(g_nativePanel),
                                          ours ? ESV_Collapsed : ESV_Visible);
             if (InterlockedDecrement(&g_gateLogBudget) >= 0)
-                QM_LOG_WARN("[ModTab] *** GATE (tab-state) *** idx=%d ours=%d screen=0x%p setVis=%d setNat=%d",
-                            idx, ours ? 1 : 0, ctx, sv, sn);
+                QM_LOG_DEBUG("[ModTab] *** GATE (tab-state) *** idx=%d ours=%d screen=0x%p setVis=%d setNat=%d",
+                             idx, ours ? 1 : 0, ctx, sv, sn);
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {}
     }
@@ -268,7 +267,7 @@ namespace
                 if (locals) data = ReadArrHdr(locals);
                 ArrHdr tabs = { nullptr, 0, 0, false };
                 if (g_liveScreen) tabs = ReadArrHdr(reinterpret_cast<const uint8_t*>(g_liveScreen) + kOff_Screen_Tabs);
-                QM_LOG_INFO("[ModTab] sync: SetData(TabsGroup) barData Num=%d vs Screen::Tabs Num=%d (%s)",
+                QM_LOG_DEBUG("[ModTab] sync: SetData(TabsGroup) barData Num=%d vs Screen::Tabs Num=%d (%s)",
                             data.num, tabs.num,
                             (data.ok && tabs.ok && data.num == tabs.num) ? "in sync"
                             : !tabs.ok ? "no live screen latched yet" : "MISMATCH");
@@ -312,13 +311,13 @@ namespace
             if (!fn) { ++remaining; continue; }
 
             *t.fnSlot = fn;
-            QM_LOG_WARN("[ModTab] *** FN-TARGET RESOLVED *** %s::%s fn=0x%p (matched by FFrame::Node in the "
-                        "global PLSF detour)", t.cls, t.fn, (void*)fn);
+            QM_LOG_DEBUG("[ModTab] *** FN-TARGET RESOLVED *** %s::%s fn=0x%p (matched by FFrame::Node in the "
+                         "global PLSF detour)", t.cls, t.fn, (void*)fn);
         }
         if (remaining == 0)
         {
             InterlockedExchange(&g_allFnHooksInstalled, 1);
-            QM_LOG_WARN("[ModTab] *** FN-TARGETS COMPLETE *** all three resolved - PLSF pipeline live: CookTabs "
+            QM_LOG_INFO("[ModTab] *** FN-TARGETS COMPLETE *** all three resolved - PLSF pipeline live: CookTabs "
                         "pre-inject + post-mount, OnTabsStateChanged gate, SetData sync check; self-heal bootstrap "
                         "keeps owning inject+mount until a CookTabs post-mount lands");
         }
@@ -354,9 +353,8 @@ namespace
         __try
         {
             DumpGetTabsReconOnce(screen);
-            if (g_injectArmed)
-                TryLivenessInjectDupTab(screen,
-                    /*bootstrapMount=*/InterlockedCompareExchange(&g_cookTabsHookLive, 0, 0) == 0);
+            TryLivenessInjectDupTab(screen,
+                /*bootstrapMount=*/InterlockedCompareExchange(&g_cookTabsHookLive, 0, 0) == 0);
         }
         __finally { InterlockedExchange(&g_rebuildInProgress, 0); }
     }
@@ -423,7 +421,7 @@ namespace
         intptr_t r = reinterpret_cast<intptr_t>(
             ShellExecuteA(nullptr, "open", g_urlBuf, nullptr, nullptr, SW_SHOWNORMAL));
         if (SUCCEEDED(hr)) CoUninitialize();
-        QM_LOG_WARN("[ModTab] open_url: ShellExecute -> %lld (%s)", (long long)r,
+        QM_LOG_INFO("[ModTab] open_url: ShellExecute -> %lld (%s)", (long long)r,
                     (r > 32) ? "browser launched" : "FAILED");
         return 0;
     }
@@ -435,7 +433,7 @@ namespace
         ULONGLONG last = g_lastCommandTick;
         if (last != 0 && (now - last) < kCommandDebounceMs) return;
         g_lastCommandTick = now;
-        QM_LOG_WARN("[ModTab] *** BUTTON CLICK *** command=%s argument=%s",
+        QM_LOG_INFO("[ModTab] *** BUTTON CLICK *** command=%s argument=%s",
                     command, (argument && *argument) ? argument : "(none)");
         if (strcmp(command, "open_url") == 0 && argument && *argument)
         {
@@ -461,10 +459,11 @@ bool QmModTab_Init()
         return false;
     }
 
-    // Arm on ANY qm_modtab*.txt (manual qm_modtab.txt or a future profile-bound
-    // qm_modtab_<profile>.txt). Mirrors the weather/killxp/shanty sentinel glob.
+    // Arm on ANY installed qm_profile_*.json - the source of truth the Configurator deploys
+    // one of per built pak. The DLL itself only stays installed while profiles exist
+    // (GameDeployer.RemoveDllIfNoProfilesLeft), so no separate sentinel files are needed.
     char pattern[MAX_PATH];
-    snprintf(pattern, sizeof(pattern), "%s\\qm_modtab*.txt", dir);
+    snprintf(pattern, sizeof(pattern), "%s\\qm_profile_*.json", dir);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pattern, &fd);
     int files = 0;
@@ -479,24 +478,11 @@ bool QmModTab_Init()
     g_armed = files > 0;
 
     if (g_armed)
-        QM_LOG_INFO("[ModTab] *** ARMED *** recon active (%d sentinel file(s) matching %s\\qm_modtab*.txt) - "
-                    "settings-screen UFunctions (CookTabs / TabsGroup.SetData / OnTabsStateChanged) hooked via "
-                    "the PLSF detour (BP-internal calls), lifecycle via the ProcessInternal rider; "
-                    "logging-only, nothing is modified", files, dir);
+        QM_LOG_INFO("[ModTab] *** ARMED *** %d installed profile(s) in %s - Quartermaster settings tab "
+                    "active (CookTabs / TabsGroup.SetData / OnTabsStateChanged via the PLSF detour, "
+                    "lifecycle via the ProcessInternal rider)", files, dir);
     else
-        QM_LOG_INFO("[ModTab] no qm_modtab*.txt - idle (zero cost)");
-
-    // Separate opt-in for the MUTATING paths (tab inject + panel mount): exact sentinel name,
-    // not the glob.
-    if (g_armed)
-    {
-        char injPath[MAX_PATH];
-        snprintf(injPath, sizeof(injPath), "%s\\qm_modtab_inject.txt", dir);
-        g_injectArmed = (GetFileAttributesA(injPath) != INVALID_FILE_ATTRIBUTES);
-        if (g_injectArmed)
-            QM_LOG_WARN("[ModTab] *** INJECT ARMED *** qm_modtab_inject.txt present - the liveness test WILL "
-                        "MUTATE the live tab arrays (duplicate-pointer append + forced re-cook)");
-    }
+        QM_LOG_INFO("[ModTab] no qm_profile_*.json - idle (zero cost)");
     return g_armed;
 }
 
@@ -538,7 +524,7 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
                 char fnN[64] = { 0 }, sf[352];
                 QmUE::ResolveFNameNarrow(func->Name, fnN, sizeof(fnN));
                 DescribeObject(self, sf, sizeof(sf));
-                QM_LOG_INFO("[ModTab] verbose: %s on %s (1st this window)", fnN[0] ? fnN : "?", sf);
+                QM_LOG_TRACE("[ModTab] verbose: %s on %s (1st this window)", fnN[0] ? fnN : "?", sf);
                 return;
             }
 
@@ -552,16 +538,16 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
             {
                 InterlockedIncrement(&g_verboseGen);
                 g_verboseUntilTick = now + kVerboseWindowMs;
-                QM_LOG_WARN("[ModTab] *** VERBOSE WINDOW ARMED *** (%llu ms) by tab click - now logging "
-                            "Tick (1st/widget) + Draw + Panel/ListView rebuild dispatches",
-                            (unsigned long long)kVerboseWindowMs);
+                QM_LOG_TRACE("[ModTab] *** VERBOSE WINDOW ARMED *** (%llu ms) by tab click - now logging "
+                             "Tick (1st/widget) + Draw + Panel/ListView rebuild dispatches",
+                             (unsigned long long)kVerboseWindowMs);
             }
 
             if (InterlockedIncrement(&g_traceCount) > kMaxTraceLines) return;
             DescribeObject(self, slf, sizeof(slf));
             // parmsSize disambiguates the rebuild call (carries the tab array) from trivial
             // callbacks (size 0) when reading the click sequence.
-            QM_LOG_INFO("[ModTab] trace: %s on %s parmsSize=%d", fnNm[0] ? fnNm : "?", slf, ParmsSize(func));
+            QM_LOG_TRACE("[ModTab] trace: %s on %s parmsSize=%d", fnNm[0] ? fnNm : "?", slf, ParmsSize(func));
             return;
         }
 
@@ -575,8 +561,8 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
         char slf[352];
         DescribeObject(self, slf, sizeof(slf));
         int32_t psize = ParmsSize(func);
-        QM_LOG_INFO("[ModTab] #%ld %-18s self=0x%p %s parms=0x%p parmsSize=%d",
-                    n, what, (void*)self, slf, parms, psize);
+        QM_LOG_DEBUG("[ModTab] #%ld %-18s self=0x%p %s parms=0x%p parmsSize=%d",
+                     n, what, (void*)self, slf, parms, psize);
 
         // Settings is closing. The screen tree may be pooled across opens, so the handles are
         // KEPT (a genuinely rebuilt tree is healed by the next mount); only the visibility is

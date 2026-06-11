@@ -2,7 +2,8 @@
 // Public API: qm_modtab.hpp. This header is only included by the qm_modtab_* TUs.
 //
 // Module layout:
-//   qm_modtab.cpp         core: arming, ProcessInternal rider (lifecycle + recon driver),
+//   qm_modtab.cpp         core: profile-based arming, ProcessInternal rider (lifecycle +
+//                         recon driver),
 //                         PLSF thunks (cook-pre inject, cook-post mount, tab-state gate,
 //                         SetData sync check), self-heal bootstrap
 //   qm_modtab_util.cpp    generic SEH-guarded read/describe/dump primitives
@@ -10,7 +11,7 @@
 //                         (ProbeViewPath)
 //   qm_modtab_layout.cpp  data-driven panel content: qm_modtab_layout.json -> PanelRow view
 //   qm_modtab_inject.cpp  tab data layer: Quartermaster collection build + array append
-//   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps)
+//   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps; QM_DIAG only)
 
 #pragma once
 
@@ -82,8 +83,9 @@ namespace ModTab
     bool    OurPanelMounted();
 
     // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
-    // kRowMods never reaches the build: GetPanelLayout expands it into one text row per
-    // installed qm_profile_*.json (the per-mod source of truth in the sidecar folder).
+    // kRowMods never reaches the build: GetPanelLayout expands it into text rows from
+    // qm_modtab_mods.txt (the Configurator's pre-merged installed-mods file; flush-left
+    // lines = mod names, indented lines = that mod's detail rows).
     enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
@@ -97,6 +99,7 @@ namespace ModTab
         bool           wrap;       // auto-wrap (text rows)
         float          gap;        // vertical space above the row
         uint8_t        halign;     // EHorizontalAlignment; 255 = slot default (Fill)
+        float          indent;     // left padding on the slot (mod detail rows)
         const char*    command;    // buttons: action id ("open_url"); nullptr otherwise
         const char*    argument;   // buttons: first argument (e.g. the URL); nullptr otherwise
     };
