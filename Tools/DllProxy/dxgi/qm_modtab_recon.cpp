@@ -18,10 +18,11 @@ namespace
 
     struct EnumTarget { const char* className; volatile LONG done; };
     EnumTarget g_enumTargets[] = {
-        { "BP_Settings_SC_C",       0 },
-        { "WBP_Settings_Screen_C",  0 },
-        { "WBP_MetaUI_TabsGroup_C", 0 },
-        { "WBP_MetaUI_Tab_Main_C",  0 },
+        { "BP_Settings_SC_C",           0 },
+        { "WBP_Settings_Screen_C",      0 },
+        { "WBP_MetaUI_TabsGroup_C",     0 },
+        { "WBP_MetaUI_Tab_Main_C",      0 },
+        { "WBP_Settings_EntryHeader_C", 0 },   // header-row label setter (AddHeaderRow candidates)
     };
     constexpr int kEnumTargetCount = (int)(sizeof(g_enumTargets) / sizeof(g_enumTargets[0]));
 
