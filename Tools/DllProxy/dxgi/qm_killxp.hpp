@@ -37,3 +37,10 @@ bool QmKillXp_ReconArmed();
 // pawn's per-enemy amount. Also drives the one-shot manual test grant. Game-thread
 // only (ProcessEvent dispatches in-thread). SEH-guarded internally.
 void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* parms);
+
+// Pins a G5a-validated LOCAL PlayerState into owner@+0xC8 of the given scenario-task
+// buffer and returns it (nullptr while not fully in-world). The G5a gate reads only
+// base-class fields, so this works for ANY R5ScenarioTask-derived clone (AddExp,
+// AddReward, ...). Shares this module's validated-owner cache: cheap re-validate on
+// the fast path, full GObjects scan only when the cache is stale. Game-thread only.
+QmUE::UObject* QmKillXp_PinGrantableOwner(void* taskBuf, bool verbose);

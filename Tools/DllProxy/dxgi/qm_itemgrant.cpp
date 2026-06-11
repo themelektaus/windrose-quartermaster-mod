@@ -1,11 +1,13 @@
-// Quartermaster item grant - recon stage (see qm_itemgrant.hpp).
+// Quartermaster item grant (see qm_itemgrant.hpp).
 
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "qm_itemgrant.hpp"
+#include "qm_killxp.hpp"   // QmKillXp_PinGrantableOwner (shared G5a owner validation)
 #include "qm_ue.hpp"
 #include "qm_log.hpp"
 
@@ -118,6 +120,99 @@ namespace
         QM_LOG_INFO("[ItemGrant]       layoutA(+08/+10): pkg='%s' asset='%s'", pkgA, assetA);
         QM_LOG_INFO("[ItemGrant]       layoutB(+10/+18): pkg='%s' asset='%s'", pkgB, assetB);
     }
+
+    // ---- the grant ----------------------------------------------------------------
+    // Task base-class fields proven by the qm_killxp construct grant (same base).
+    constexpr size_t OFF_TaskStateByte = 0xC0;   // 0 -> the G3 state gate passes
+    constexpr size_t OFF_TaskOwner     = 0xC8;   // pinned by QmKillXp_PinGrantableOwner
+    constexpr size_t OFF_TaskOuter     = 0x20;   // UObject::Outer (GetContext walks it to the World)
+
+    // Fallback only; the primary resolve derives Execute live from the shared vtable
+    // slot (recon-proven: vtbl[101]), which survives slot-stable relinks.
+    constexpr uintptr_t RVA_AddRewardExecuteFallback = 0x98036D0;
+
+    // Soft-ptr at-rest layout (FSoftObjectPath = 0x20 per SDK; shipping has no
+    // TagAtLastTest): +0x00 FWeakObjectPtr(8, left INVALID), +0x08 FName PackageName,
+    // +0x10 FName AssetName, +0x18 FString SubPath (empty). This is exactly the state
+    // of a soft ptr deserialized from an asset, which Execute must resolve anyway.
+    constexpr size_t OFF_SoftWeakIdx  = 0x00;
+    constexpr size_t OFF_SoftPkgName  = 0x08;
+    constexpr size_t OFF_SoftAssetNm  = 0x10;
+
+    constexpr size_t kTaskCloneCap = 0x400;
+    __declspec(align(16)) uint8_t g_fireTaskBuf[kTaskCloneCap] = {};
+    __declspec(align(16)) uint8_t g_fireEntryBuf[SZ_StackData] = {};
+    volatile LONG g_fireBusy = 0;
+
+    bool IsLiveUObject(void* p)
+    {
+        int32_t idx = -1;
+        if (!SafeReadI32(reinterpret_cast<uint8_t*>(p) + 0x0C, &idx)) return false;
+        QmUE::TUObjectArray* g = QmUE::GetGObjects();
+        if (!g || idx < 0 || idx >= g->Num()) return false;
+        return g->GetByIndex(idx) == reinterpret_cast<QmUE::UObject*>(p);
+    }
+
+    // live World via GWorld (single OR double deref depending on build layout)
+    void* ResolveWorld(uintptr_t base)
+    {
+        void* w1 = nullptr;
+        if (!SafeReadPtr(reinterpret_cast<void*>(base + QmUE::OFFSET_GWorld), &w1) || !w1) return nullptr;
+        if (IsLiveUObject(w1)) return w1;
+        void* w2 = nullptr;
+        if (SafeReadPtr(w1, &w2) && w2 && IsLiveUObject(w2)) return w2;
+        return nullptr;
+    }
+
+    // AddReward::Execute = the slot in the AddReward CDO vtable where the AddExp CDO
+    // vtable holds the proven AddExp Execute entry (Execute is virtual, recon-proven).
+    void* ResolveAddRewardExecute(uintptr_t base, QmUE::UObject* expCdo, QmUE::UObject* rwdCdo)
+    {
+        void* expVt = nullptr; void* rwdVt = nullptr;
+        SafeReadPtr(&expCdo->VTable, &expVt);
+        SafeReadPtr(&rwdCdo->VTable, &rwdVt);
+        void* target = reinterpret_cast<void*>(base + RVA_AddExpExecute);
+        for (int slot = 0; slot < kVtblScanSlots && expVt && rwdVt; ++slot)
+        {
+            void* fn = nullptr;
+            if (!SafeReadPtr(reinterpret_cast<uint8_t*>(expVt) + (size_t)slot * 8, &fn)) break;
+            if (fn != target) continue;
+            void* rfn = nullptr;
+            if (SafeReadPtr(reinterpret_cast<uint8_t*>(rwdVt) + (size_t)slot * 8, &rfn) && rfn)
+                return rfn;
+        }
+        return reinterpret_cast<void*>(base + RVA_AddRewardExecuteFallback);
+    }
+
+    QmUE::UObject* OutermostOf(QmUE::UObject* o)
+    {
+        for (int i = 0; o && i < 8; ++i)
+        {
+            void* nx = nullptr;
+            if (!SafeReadPtr(&o->Outer, &nx) || !nx) break;
+            o = reinterpret_cast<QmUE::UObject*>(nx);
+        }
+        return o;
+    }
+
+    // Case-insensitive match of a LOADED R5BLInventoryItem PDA by asset name
+    // (CDO/archetypes excluded). Name resolves run only on class hits.
+    QmUE::UObject* FindItemPdaByName(QmUE::UClass* itemCls, const char* assetName)
+    {
+        QmUE::TUObjectArray* g = QmUE::GetGObjects();
+        if (!g || !itemCls || !assetName || !*assetName) return nullptr;
+        int n = g->Num();
+        for (int i = 0; i < n; ++i)
+        {
+            QmUE::UObject* o = g->GetByIndex(i);
+            if (!o || o->Class != itemCls) continue;
+            if (o->Flags & 0x30) continue;   // RF_ClassDefaultObject | RF_ArchetypeObject
+            char nm[160];
+            if (!SafeResolveName(&o->Name, nm, sizeof(nm)) || !nm[0]) continue;
+            if (_stricmp(nm, assetName) == 0) return o;
+        }
+        return nullptr;
+    }
 }
 
 void QmItemGrant_ReconDump()
@@ -222,4 +317,109 @@ void QmItemGrant_ReconDump()
     QM_LOG_INFO("[ItemGrant] recon done: AddReward instances=%d (with Reward data=%d, dumped<=%d), "
                 "InventoryItem PDAs=%d (dumped<=%d)",
                 rwdSeen, rwdWithData, kMaxRewardDumps, itemSeen, kMaxItemPdaDumps);
+}
+
+void QmItemGrant_Fire(const char* argument)
+{
+    if (!argument || !*argument)
+    {
+        QM_LOG_INFO("[ItemGrant] add_item_test: no argument - running the recon dump instead");
+        QmItemGrant_ReconDump();
+        return;
+    }
+    if (!QmUE::IsReady())
+    {
+        QM_LOG_INFO("[ItemGrant] grant: QmUE not ready yet - try again once in-world");
+        return;
+    }
+    if (InterlockedCompareExchange(&g_fireBusy, 1, 0) != 0) return;
+
+    // "<AssetName>[:<Count>]" - asset names never contain ':'
+    char asset[160] = {};
+    snprintf(asset, sizeof(asset), "%s", argument);
+    int32_t count = 1;
+    char* sep = strchr(asset, ':');
+    if (sep) { *sep = 0; count = atoi(sep + 1); }
+    if (count < 1)   count = 1;
+    if (count > 999) count = 999;
+
+    bool fired = false;
+    do
+    {
+        uintptr_t base = QmUE::GetImageBase();
+        QmUE::UClass*  expCls  = QmUE::FindClassByName("R5ScenarioTask_AddExp");
+        QmUE::UClass*  rwdCls  = QmUE::FindClassByName("R5ScenarioTask_AddReward");
+        QmUE::UClass*  itemCls = QmUE::FindClassByName("R5BLInventoryItem");
+        QmUE::UObject* expCdo  = expCls ? QmUE::GetClassDefaultObject(expCls) : nullptr;
+        QmUE::UObject* rwdCdo  = rwdCls ? QmUE::GetClassDefaultObject(rwdCls) : nullptr;
+        if (!base || !expCdo || !rwdCdo || !itemCls)
+        {
+            QM_LOG_WARN("[ItemGrant] grant: surface not resolved (base=0x%p expCdo=0x%p rwdCdo=0x%p itemCls=0x%p)",
+                        (void*)base, expCdo, rwdCdo, itemCls);
+            break;
+        }
+
+        QmUE::UObject* pda = FindItemPdaByName(itemCls, asset);
+        if (!pda)
+        {
+            QM_LOG_WARN("[ItemGrant] grant: no LOADED R5BLInventoryItem PDA named '%s' - "
+                        "run the recon census (empty button argument) for valid names", asset);
+            break;
+        }
+        QmUE::UObject* pkg = OutermostOf(pda);
+        char pdaPath[256]; PathOf(pda, pdaPath, sizeof(pdaPath));
+
+        int32_t ss = rwdCls->StructSize;
+        size_t  sz = (ss >= 0x140 && ss <= (int)kTaskCloneCap) ? (size_t)ss : 0x140;
+        if (!SafeCopy(g_fireTaskBuf, rwdCdo, sz))
+        {
+            QM_LOG_WARN("[ItemGrant] grant: AddReward CDO clone faulted");
+            break;
+        }
+
+        // One synthesized Reward entry. Zero-init = empty Attributes/Effects + None
+        // ItemId - the plain-item-stack shape of a quest reward; only the PDA's two
+        // FTopLevelAssetPath names go in (both FNames already exist - the PDA is live).
+        memset(g_fireEntryBuf, 0, sizeof(g_fireEntryBuf));
+        *reinterpret_cast<int32_t*>(g_fireEntryBuf + OFF_SoftWeakIdx)  = -1;          // FWeakObjectPtr: invalid (uncached)
+        *reinterpret_cast<QmUE::FName*>(g_fireEntryBuf + OFF_SoftPkgName) = pkg->Name;
+        *reinterpret_cast<QmUE::FName*>(g_fireEntryBuf + OFF_SoftAssetNm) = pda->Name;
+        *reinterpret_cast<int32_t*>(g_fireEntryBuf + OFF_StackCount)   = count;
+
+        uint8_t* t = g_fireTaskBuf;
+        *reinterpret_cast<void**>(t + OFF_Reward)         = g_fireEntryBuf;
+        *reinterpret_cast<int32_t*>(t + OFF_Reward + 0x8) = 1;                        // Num
+        *reinterpret_cast<int32_t*>(t + OFF_Reward + 0xC) = 1;                        // Max
+        t[OFF_HideNotif]     = 0;                                                     // show the reward notification
+        t[OFF_TaskStateByte] = 0;                                                     // G3 state gate passes
+        void* world = ResolveWorld(base);
+        if (world) *reinterpret_cast<void**>(t + OFF_TaskOuter) = world;
+
+        QmUE::UObject* owner = QmKillXp_PinGrantableOwner(t, /*verbose=*/true);
+        if (!owner)
+        {
+            QM_LOG_WARN("[ItemGrant] grant: no grantable PlayerState - aborted (no Execute fired)");
+            break;
+        }
+
+        void* exec = ResolveAddRewardExecute(base, expCdo, rwdCdo);
+        QM_LOG_INFO("[ItemGrant] grant: firing Execute=0x%p (RVA 0x%llX) item='%s' x%d owner=0x%p world=0x%p (%s)",
+                    exec, (unsigned long long)((uintptr_t)exec - base), asset, count, owner, world, pdaPath);
+
+        __try
+        {
+            using ExecFn = void(__fastcall*)(void*);
+            reinterpret_cast<ExecFn>(exec)(g_fireTaskBuf);
+            fired = true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { fired = false; }
+
+        if (fired)
+            QM_LOG_INFO("[ItemGrant] *** GRANT *** %dx '%s' fired on a synthetic from-CDO AddReward task "
+                        "(engine-native, persistent) - verify in the inventory", count, asset);
+        else
+            QM_LOG_WARN("[ItemGrant] *** GRANT FAULTED *** Execute raised on the synthetic task - save untouched");
+    } while (0);
+
+    InterlockedExchange(&g_fireBusy, 0);
 }

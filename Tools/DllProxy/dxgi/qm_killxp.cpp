@@ -677,6 +677,31 @@ namespace
     }
 }
 
+QmUE::UObject* QmKillXp_PinGrantableOwner(void* taskBuf, bool verbose)
+{
+    if (!taskBuf) return nullptr;
+    uint8_t* buf = reinterpret_cast<uint8_t*>(taskBuf);
+
+    QmUE::UObject* ps = nullptr;
+    if (g_grantableOwner)
+    {
+        *reinterpret_cast<void**>(buf + OFF_TaskOwnerCached) = g_grantableOwner;
+        if (EvalOwnerG5a(buf) == 1) ps = g_grantableOwner;
+        else g_grantableOwner = nullptr;   // stale - rescan below
+    }
+    if (!ps)
+    {
+        int psEnum = 0, psGrantable = 0;
+        ps = FindGrantableOwner(buf, &psEnum, &psGrantable, verbose);
+        g_grantableOwner = ps;
+        if (!ps && verbose)
+            QM_LOG_INFO("[KillXP] no grantable PlayerState yet (%d enumerated) - "
+                        "load fully into the world; local entity may still be registering", psEnum);
+    }
+    if (ps) *reinterpret_cast<void**>(buf + OFF_TaskOwnerCached) = ps;
+    return ps;
+}
+
 bool QmKillXp_Init()
 {
     if (g_initDone) return g_armed;

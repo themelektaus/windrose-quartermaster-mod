@@ -48,7 +48,7 @@
     "type": "button",
     "text": "Add Item Test",
     "command": "add_item_test",
-    "arguments": [],
+    "arguments": ["DA_CID_Alchemy_Bandages_T01:3"],
     "align": "left"
   },
   {

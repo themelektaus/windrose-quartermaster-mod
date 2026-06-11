@@ -52,7 +52,7 @@ namespace
   { "type": "button", "text": "Leave an Endorsement", "command": "open_url", "arguments": ["https://www.nexusmods.com/windrose/mods/375"], "gap": 24, "align": "left" },
   { "type": "header", "text": "Debug Commands", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "button", "text": "Log Test", "command": "log_test", "arguments": ["Hello, World!"], "align": "left" },
-  { "type": "button", "text": "Add Item Test", "command": "add_item_test", "arguments": [], "align": "left" },
+  { "type": "button", "text": "Add Item Test", "command": "add_item_test", "arguments": ["DA_CID_Alchemy_Bandages_T01:3"], "align": "left" },
   { "type": "header", "text": "Active Modifications", "size": 20, "color": "#FFCC59", "gap": 24 },
   { "type": "modifications", "gap": 4, "titleSize": 18, "titleColor": "#EBE09E", "titleGap": 16, "textSize": 14, "textColor": "#9A9A9A", "textGap": 2 },
   { "type": "text",   "text": "", "gap": 24 }
