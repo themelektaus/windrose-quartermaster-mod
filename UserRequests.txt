@@ -1,14 +1,25 @@
-Arczikov: "Is it possible to add a mod that improves rings and necklaces?"
+Arczikov:
+- Is it possible to add a mod that improves rings and necklaces?
 
-RoyaleGaming: "Can you please add a mod for FOV when sailing.
-While sailing the frigate I hate how close the camera is to the wheel.
-I tried the in game camera option and it did nothing.
-If this is at all possible I'd greatly appreciate it."
+RoyaleGaming:
+- Can you please add a mod for FOV when sailing. While sailing the frigate I hate how close the camera is to the wheel.
+- I tried the in game camera option and it did nothing. If this is at all possible I'd greatly appreciate it.
 
-bignoob77: "add better dig so we can dig deep and raise the ground level
-much higher maybe ever a radius for the scroll wheel on the mouse
-for how big or small the terraform is"
+bignoob77:
+- add better dig so we can dig deep and raise the ground level much higher maybe ever a radius for the scroll wheel on the mouse for how big or small the terraform is
 
-bignoob77: "can you add reduce respawn times for resources like copper ore, iron ore,
-stone, sulfur, clay, salt, soil, trees and
-if this is already in the tool I just dont see it."
+bignoob77:
+- can you add reduce respawn times for resources like copper ore, iron ore, stone, sulfur, clay, salt, soil, trees and if this is already in the tool I just dont see it.
+
+lFUSEl:
+- Bag Size Edits I see ship size edit but it would be nice to also do bags ( another mod gone)
+- Storage Size Edits (Boom another mod gone)
+- Adding a mass Quick depost function (BOOM BOOM BANG another mod gone)
+- Caracter inventory Slots (yep you guessed it ... SIKE dont use this but still in the same scope as the others)
+
+lFUSEl (optional features, out of scope):
+- World edits (like amount of islands, Options like how big, How close and total world size.)
+- Undo/Redo Function for building. (Currently making this mod myself because It annoys me not existing)
+- possible weather options or storm intensity like the mod vilent storm or calm waters.
+- More hud controls more then just sizing but possibly the ability to move the hud around. Currently using HUDControl for this, But would be a nice option
+- adding keybinding modifiers (currently making this mod aswell because I wanna use modifires like ctrl+anything. The keybinding relistate is being consumed we need more options.)
