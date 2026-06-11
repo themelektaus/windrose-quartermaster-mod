@@ -23,3 +23,11 @@ lFUSEl (optional features, out of scope):
 - possible weather options or storm intensity like the mod vilent storm or calm waters.
 - More hud controls more then just sizing but possibly the ability to move the hud around. Currently using HUDControl for this, But would be a nice option
 - adding keybinding modifiers (currently making this mod aswell because I wanna use modifires like ctrl+anything. The keybinding relistate is being consumed we need more options.)
+
+banditodude:
+- I did a bit of googling and using the AI mode it suggested trying to copy the mod files into the server directory as well, and that fixed the issue! Maybe this could be mentioned for others trying to use the coop multiplayer mode, since the standard install location is not enough.
+- To get this working, find windrose in your game list. Right click and select Manage > Browse Local Files.
+Now you will need to copy the mod files from the standard install location into the WindowsServer folder.
+Navigate to R5/Content/Paks/~mods and copy your Quartermaster_....pak/ucas/utoc files. Now go back to the base Windrose folder and navigate to R5/Builds/WindowsServer/R5/Content/Paks and create the ~mods folder if it does not exist yet. Open the ~mods folder then paste the mod files you copied from the first location.
+- This will allow the mods to function in self hosted multiplayer games. 
+- Another nice option would be a prepackaged zip with the folder structure defined from the Windrose root. So you can export the mod with both paths configured (R5/Builds/WindowsServer/R5/Content/Paks/~mods and R5/Content/Paks/~mods) this would make it easier to propagate the mod onto other machines.

@@ -17,31 +17,84 @@ namespace Windrose.Quartermaster.Core
         {
             public string AssetId;      // PDA asset name, e.g. DA_CID_Alchemy_Bandages_T01
             public string DisplayName;  // English name; disambiguated when duplicated
+            public string PackagePath;  // custom items only: mounted package for the DLL's sync-load fallback; null for vanilla
         }
 
+        // Custom items created in the Configurator's item creator are cooked into each
+        // profile's pak under this mount (ItemCreatorPatcher writes
+        // R5/Plugins/R5BusinessRules/Content/InventoryItems/Custom/<Id>.json).
+        const string CustomItemPackageRoot = "/R5BusinessRules/InventoryItems/Custom/";
+
         // Sorted by display name (case-insensitive). Empty when the vanilla sources are not
-        // extracted yet - callers should keep any previously written catalog in that case.
-        public static List<Entry> Build(string dataRoot)
+        // extracted yet AND no installed profile carries custom items - callers should keep
+        // any previously written catalog in that case. profileJsonPaths: the installed
+        // qm_profile_*.json files; their customItems (id + friendly name) join the catalog.
+        public static List<Entry> Build(string dataRoot, IEnumerable<string> profileJsonPaths = null)
         {
             var entries = new List<Entry>();
             var sourcesDir = Path.Combine(dataRoot, "Sources", "Vanilla");
             var iconsDir = Path.Combine(dataRoot, "Icons");
-            if (!Directory.Exists(sourcesDir)) return entries;
 
-            foreach (var path in Directory.EnumerateFiles(sourcesDir, "*.json", SearchOption.AllDirectories))
+            if (Directory.Exists(sourcesDir))
             {
-                string id = IsInventoryItem(path);
-                if (id == null) continue;
-                entries.Add(new Entry
+                foreach (var path in Directory.EnumerateFiles(sourcesDir, "*.json", SearchOption.AllDirectories))
                 {
-                    AssetId = id,
-                    DisplayName = ReadEnglishName(iconsDir, id) ?? id,
-                });
+                    string id = IsInventoryItem(path);
+                    if (id == null) continue;
+                    entries.Add(new Entry
+                    {
+                        AssetId = id,
+                        DisplayName = ReadEnglishName(iconsDir, id) ?? id,
+                    });
+                }
             }
 
+            AppendCustomItems(entries, profileJsonPaths);
             DisambiguateDuplicates(entries);
             entries.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
             return entries;
+        }
+
+        // The installed profile JSONs are the source of truth for custom items: the pak
+        // itself is opaque at this layer, but every build deploys its profile JSON with
+        // the customItems list (id = PDA asset name in the pak, name = friendly name).
+        static void AppendCustomItems(List<Entry> entries, IEnumerable<string> profileJsonPaths)
+        {
+            if (profileJsonPaths == null) return;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in entries) seen.Add(e.AssetId);
+
+            foreach (var profilePath in profileJsonPaths)
+            {
+                try
+                {
+                    using var stream = File.OpenRead(profilePath);
+                    using var doc = JsonDocument.Parse(stream);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object) continue;
+                    if (!doc.RootElement.TryGetProperty("customItems", out var items)
+                        || items.ValueKind != JsonValueKind.Array) continue;
+
+                    foreach (var item in items.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object) continue;
+                        string id = item.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                            ? idEl.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(id) || !seen.Add(id)) continue;
+                        string name = item.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String
+                            ? nameEl.GetString() : null;
+                        entries.Add(new Entry
+                        {
+                            AssetId = id,
+                            DisplayName = string.IsNullOrWhiteSpace(name) ? id : name.Trim(),
+                            PackagePath = CustomItemPackageRoot + id,
+                        });
+                    }
+                }
+                catch
+                {
+                    // Unreadable profile JSON - its custom items just stay out of the catalog.
+                }
+            }
         }
 
         // Asset id (file stem) when the JSON is an R5BLInventoryItem dump, else null.

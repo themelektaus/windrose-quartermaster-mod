@@ -509,9 +509,11 @@ namespace Windrose.Quartermaster.Core.Deploy
         }
 
         // The in-game item spawner's render input: qm_modtab_items.txt is the finished item
-        // catalog ("<AssetId>|<English display name>" per line, pre-sorted by display name)
-        // built from the vanilla sources + icon localization (ItemCatalog). Same lifecycle as
-        // the mods manifest: regenerated with the profile set, removed with the last profile.
+        // catalog ("<AssetId>|<English display name>[|<PackagePath>]" per line, pre-sorted by
+        // display name) built from the vanilla sources + icon localization (ItemCatalog) plus
+        // the custom items of every installed profile JSON (third field = mounted package so
+        // the DLL can sync-load mod-pak PDAs before granting). Same lifecycle as the mods
+        // manifest: regenerated with the profile set, removed with the last profile.
         public string TargetItemCatalogPath() => Path.Combine(_sidecarDir, "qm_modtab_items.txt");
 
         public void RegenerateItemCatalog()
@@ -527,7 +529,7 @@ namespace Windrose.Quartermaster.Core.Deploy
                 return;
             }
 
-            var entries = ItemCatalog.Build(_modRoot);
+            var entries = ItemCatalog.Build(_modRoot, EnumerateProfileJsonPaths());
             if (entries.Count == 0)
             {
                 // No extracted vanilla sources to build from - keep whatever catalog is already
@@ -539,9 +541,13 @@ namespace Windrose.Quartermaster.Core.Deploy
 
             var sb = new StringBuilder();
             sb.Append("# Quartermaster: item catalog (auto-generated).\n");
-            sb.Append("# <AssetId>|<Display name>, sorted by display name.\n");
+            sb.Append("# <AssetId>|<Display name>[|<PackagePath>], sorted by display name.\n");
             foreach (var e in entries)
-                sb.Append(e.AssetId).Append('|').Append(e.DisplayName).Append('\n');
+            {
+                sb.Append(e.AssetId).Append('|').Append(e.DisplayName);
+                if (!string.IsNullOrEmpty(e.PackagePath)) sb.Append('|').Append(e.PackagePath);
+                sb.Append('\n');
+            }
             LogLine("Writing qm_modtab_items.txt (" + entries.Count + " item(s)) -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
