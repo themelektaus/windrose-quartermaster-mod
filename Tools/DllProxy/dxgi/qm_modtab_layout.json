@@ -51,6 +51,9 @@
     "sameRow": true
   },
   {
+    "type": "userLayout"
+  },
+  {
     "type": "header",
     "text": "Active Modifications",
     "size": 20,

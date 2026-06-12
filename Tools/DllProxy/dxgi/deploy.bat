@@ -12,8 +12,8 @@ rem                       PE version resource ProductName=Quartermaster
 rem                       (version.rc). A legacy dxgi.dll.qm marker from
 rem                       older deploys is honored once and removed.
 rem    - Quartermaster\ : sidecar folder; ALL qm_*.txt / qm_*.json the
-rem                       DLL reads (sentinels, configs, layout, profile
-rem                       JSONs) live here, not in the Win64 root.
+rem                       DLL reads (sentinels, configs, layout extensions,
+rem                       profile JSONs) live here, not in the Win64 root.
 rem ============================================================
 
 set SCRIPT_DIR=%~dp0
@@ -80,16 +80,14 @@ for %%F in ("%SIDECAR%\qm_modtab.txt" "%SIDECAR%\qm_modtab_inject.txt") do (
     )
 )
 
-rem qm_modtab_layout.json drives the settings-panel content (the DLL re-reads
-rem it on change, no restart needed). Seed it once; an existing copy in the
-rem sidecar folder is user-owned (live-edited) and must not be overwritten.
-if exist "%SCRIPT_DIR%qm_modtab_layout.json" (
-    if exist "%SIDECAR%\qm_modtab_layout.json" (
-        echo [deploy] qm_modtab_layout.json present in sidecar folder - user-owned, left alone
-    ) else (
-        echo [deploy] Seeding default layout: %SIDECAR%\qm_modtab_layout.json
-        copy /Y "%SCRIPT_DIR%qm_modtab_layout.json" "%SIDECAR%\qm_modtab_layout.json" >nul
-    )
+rem The base panel layout is baked into the DLL at build time now (build.bat
+rem generates it from the repo qm_modtab_layout.json); the old full-layout
+rem override qm_modtab_layout.json is obsolete and ignored by the DLL - drop
+rem it once. Optional qm_modtab_layout_*.json files EXTEND the base layout
+rem (user-owned, live-editable, splice in at the "userLayout" row) - left alone.
+if exist "%SIDECAR%\qm_modtab_layout.json" (
+    echo [deploy] Removing obsolete qm_modtab_layout.json - the base layout is compiled into the DLL
+    del /q "%SIDECAR%\qm_modtab_layout.json"
 )
 
 rem qm_items_<profile>.json files are written per-profile by the build pipeline

@@ -9,7 +9,9 @@
 //   qm_modtab_util.cpp    generic SEH-guarded read/describe/dump primitives
 //   qm_modtab_widgets.cpp reflected UMG layer: tree walks, visibility, panel build + mount
 //                         (ProbeViewPath)
-//   qm_modtab_layout.cpp  data-driven panel content: qm_modtab_layout.json -> PanelRow view
+//   qm_modtab_layout.cpp  data-driven panel content: compiled-in base layout (baked from
+//                         qm_modtab_layout.json at build time) + optional user-extension
+//                         files (qm_modtab_layout_*.json) -> PanelRow view
 //   qm_modtab_inject.cpp  tab data layer: Quartermaster collection build + array append
 //   qm_modtab_recon.cpp   logging-only diagnostics (class enum + layout dumps; QM_DIAG only)
 
@@ -91,8 +93,11 @@ namespace ModTab
     // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
     // kRowMods never reaches the build: GetPanelLayout expands it into text rows from
     // qm_modtab_mods.txt (the Configurator's pre-merged installed-mods file; flush-left
-    // lines = mod names, indented lines = that mod's detail rows).
-    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4 };
+    // lines = mod names, indented lines = that mod's detail rows). kRowUserLayout never
+    // reaches the build either: it marks where the rows from the optional
+    // qm_modtab_layout_*.json user-extension files splice into the base layout.
+    enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4,
+                 kRowUserLayout = 5 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).
@@ -110,9 +115,10 @@ namespace ModTab
         const char*    command;    // buttons: action id (see DispatchButtonCommand); nullptr otherwise
         const char*    argument;   // buttons: first argument; nullptr otherwise
     };
-    // Rows from qm_modtab_layout.json in the Quartermaster sidecar folder (re-read when its
-    // write time changes),
-    // falling back to a compiled-in default - never returns an empty layout.
+    // Rows from the compiled-in base layout (baked from the repo qm_modtab_layout.json at
+    // build time), extended by optional qm_modtab_layout_*.json files in the Quartermaster
+    // sidecar folder (re-read whenever their set or write times change) - never returns an
+    // empty layout.
     const PanelRow* GetPanelLayout(int* outCount);
 
     // Item catalog backing kRowItemDropdown rows: qm_modtab_items.txt (the Configurator's
