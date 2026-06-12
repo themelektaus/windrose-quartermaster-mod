@@ -18,6 +18,7 @@ namespace Windrose.Quartermaster.Core
             public string AssetId;      // PDA asset name, e.g. DA_CID_Alchemy_Bandages_T01
             public string DisplayName;  // English name; disambiguated when duplicated
             public string PackagePath;  // custom items only: mounted package for the DLL's sync-load fallback; null for vanilla
+            public string Category;     // spawner group (see Categorize); "Custom" for item-creator items
         }
 
         // Custom items created in the Configurator's item creator are cooked into each
@@ -41,10 +42,17 @@ namespace Windrose.Quartermaster.Core
                 {
                     string id = IsInventoryItem(path);
                     if (id == null) continue;
+                    string displayName = ReadEnglishName(iconsDir, id) ?? id;
+                    // The game's localization flags dead items with an uppercase "NOT USED"
+                    // marker (usually a name prefix, sometimes after "Decoration: ") - those
+                    // assets are cut content and stay out of the spawner. Case-sensitive on
+                    // purpose: lowercase occurrences would be regular item names.
+                    if (displayName.Contains("NOT USED", StringComparison.Ordinal)) continue;
                     entries.Add(new Entry
                     {
                         AssetId = id,
-                        DisplayName = ReadEnglishName(iconsDir, id) ?? id,
+                        DisplayName = displayName,
+                        Category = Categorize(path, sourcesDir),
                     });
                 }
             }
@@ -87,6 +95,7 @@ namespace Windrose.Quartermaster.Core
                             AssetId = id,
                             DisplayName = string.IsNullOrWhiteSpace(name) ? id : name.Trim(),
                             PackagePath = CustomItemPackageRoot + id,
+                            Category = "Custom",
                         });
                     }
                 }
@@ -95,6 +104,33 @@ namespace Windrose.Quartermaster.Core
                     // Unreadable profile JSON - its custom items just stay out of the catalog.
                 }
             }
+        }
+
+        // Spawner category from the vanilla source folder under .../InventoryItems/ - the
+        // folder tree is the cleanest taxonomy the game data offers (the PDA's own
+        // InventoryItemUIData.Category puts over half the items into "Misc"). Folders are
+        // mapped onto ~10 coarse groups; anything unmapped (NPC station items, treasure
+        // maps, expedition curios, items outside the InventoryItems tree) lands in "Misc".
+        // Match order matters: the specific Consumables/* splits run before the catch-all.
+        static string Categorize(string jsonPath, string sourcesDir)
+        {
+            string rel = Path.GetRelativePath(sourcesDir, jsonPath).Replace('\\', '/');
+            int idx = rel.IndexOf("/InventoryItems/", StringComparison.OrdinalIgnoreCase);
+            string sub = idx >= 0 ? rel.Substring(idx + "/InventoryItems/".Length) : "";
+
+            bool Under(string prefix) => sub.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+            if (Under("Equipments/Weapon") || Under("Ammo/"))            return "Weapons";
+            if (Under("Equipments/Armor") || Under("Equipments/Backpack")) return "Armor";
+            if (Under("Equipments/Jewelry"))                              return "Jewelry";
+            if (Under("Equipments/Tool") || Under("Equipments/Resource")) return "Tools";
+            if (Under("Consumables/SeaTrade") || Under("DefaultItems/Trading")) return "Trading";
+            if (Under("Consumables/Ship"))                                return "Ship";
+            if (Under("Consumables/"))                                    return "Consumables";
+            if (Under("DefaultItems/Resource"))                           return "Resources";
+            if (Under("Ship/") || Under("DefaultItems/Misc/ShipCustomization")) return "Ship";
+            if (Under("DefaultItems/Misc/RecipePaperUnlock"))             return "Recipes";
+            return "Misc";
         }
 
         // Asset id (file stem) when the JSON is an R5BLInventoryItem dump, else null.
