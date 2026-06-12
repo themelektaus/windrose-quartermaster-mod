@@ -437,6 +437,24 @@ namespace
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {}
         }
+
+        QmUE::UObject* cnt = reinterpret_cast<QmUE::UObject*>(g_countBox);
+        if (cnt)
+        {
+            __try
+            {
+                if (cnt->Class)
+                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cnt->Class, "GetText"))
+                    {
+                        uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                        wchar_t buf[64];
+                        if (QmUE::CallProcessEvent(cnt, fn, ft) &&
+                            QmUE::StringFromText(ft, buf, 64))
+                            SetItemCountText(buf);
+                    }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {}
+        }
     }
 
     struct QmColor { float r, g, b, a; };
@@ -757,6 +775,44 @@ namespace
         return true;
     }
 
+    // The item-spawner count box: an EditableTextBox holding the grant count, seeded with
+    // the persisted value (the row's "text" as the first-run default, "1" when unset) and
+    // latched into g_countBox. Never polled - the "add_selected_item" dispatch reads it at
+    // click time (qm_modtab.cpp), like the item combo's selection.
+    bool AddItemCountRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                         const uint8_t* font, const PanelRow& row,
+                         QmUE::UObject** outSlot = nullptr)
+    {
+        if (!panel || !panel->Class) return false;
+        QmUE::UClass* boxClass = QmUE::FindClassByName("EditableTextBox");
+        if (!boxClass) return false;
+        QmUE::UObject* box = QmUE::SpawnObjectViaUFunction(boxClass, widgetTree);
+        if (!box || !box->Class) return false;
+
+        StyleSearchBox(box, font, row.size > 0.0f ? row.size : kDefFontSizeBody);
+
+        const wchar_t* prev = GetItemCountText();
+        const wchar_t* seed = (prev && prev[0]) ? prev
+                            : (row.text && row.text[0]) ? row.text : L"1";
+        if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(box->Class, "SetText"))
+        {
+            uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+            if (QmUE::TextFromString(seed, ft)) QmUE::CallProcessEvent(box, fnSet, ft);
+        }
+
+        QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
+        if (!fnAdd) return false;
+        P_AddChild ac; ac.Content = box; ac.ReturnValue = nullptr;
+        if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
+        if (ac.ReturnValue)
+            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
+        if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
+
+        g_countBox = box;
+        QM_LOG_DEBUG("[ModTab]   view: item count box=0x%p seed='%ls'", (void*)box, seed);
+        return true;
+    }
+
     // One native section-header row: CreateWidget the game's own settings header blueprint and
     // label it. The label setter is resolved at runtime (class not in the offline SDK dump);
     // a candidate is only called when its parms are exactly one FText, and the row is only
@@ -882,6 +938,8 @@ namespace
         }
         if (r.type == kRowItemSearch)
             return AddItemSearchRow(panel, widgetTree, font, r, outSlot);
+        if (r.type == kRowItemCount)
+            return AddItemCountRow(panel, widgetTree, font, r, outSlot);
         return AddTextRow(panel, widgetTree, r.text, r.color, font,
                           r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
                           r.indent, outSlot) != nullptr;
@@ -989,9 +1047,10 @@ namespace ModTab
                          (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
             g_buttonActionCount = 0;        // actions die with their panel; re-latched by the build
-            g_itemCombo         = nullptr;  // so do the dropdown/search latches
+            g_itemCombo         = nullptr;  // so do the dropdown/search/count latches
             g_catCombo          = nullptr;
             g_searchBox         = nullptr;
+            g_countBox          = nullptr;
         }
 
         // Owning player (Create's 3rd arg).
@@ -1210,6 +1269,41 @@ namespace ModTab
         }
         __except (EXCEPTION_EXECUTE_HANDLER) { found = false; }
         return found;
+    }
+
+    // Settings closed: the screen tree is about to be released (or pooled), and the next
+    // world travel GCs every widget we latched. Recycled UObject memory does NOT fault, so
+    // SEH cannot turn a stale dereference into a no-op - it lands on a live FOREIGN object
+    // and dispatches reflected calls into it (the dead-HUD/input bug). Therefore the
+    // persistence state is read back NOW, while the widgets are provably alive, our panel
+    // is unparented (a pooled tree must not carry a second copy into the next mount), and
+    // every widget latch is dropped. The next open rebuilds everything from scratch.
+    void DropPanelLatches()
+    {
+        SnapshotItemSelection();
+        if (g_ourPanel)
+        {
+            QmUE::UObject* panel = reinterpret_cast<QmUE::UObject*>(g_ourPanel);
+            __try
+            {
+                if (panel->Class)
+                    if (QmUE::UFunction* fnRm = QmUE::FindFunctionOnClass(panel->Class, "RemoveFromParent"))
+                    {
+                        char rmbuf[16]; memset(rmbuf, 0, sizeof(rmbuf));
+                        QmUE::CallProcessEvent(panel, fnRm, rmbuf);
+                    }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {}
+        }
+        g_ourPanel          = nullptr;
+        g_mountTarget       = nullptr;
+        g_buttonActionCount = 0;
+        g_itemCombo         = nullptr;
+        g_catCombo          = nullptr;
+        g_searchBox         = nullptr;
+        g_countBox          = nullptr;
+        QM_LOG_DEBUG("[ModTab] settings closed - spawner state snapshotted, panel unparented, "
+                     "all widget latches dropped");
     }
 
     // Neither the category combo nor the search box broadcasts a ProcessEvent without a

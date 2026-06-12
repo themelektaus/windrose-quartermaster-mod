@@ -75,11 +75,14 @@ namespace ModTab
     // selection is polled (throttled pointer-held reads, no GObjects walk) from the
     // ProcessEvent hook; a change refills the item combo with that category's slice.
     // The SEARCH box (EditableTextBox) follows the same poll: its FText data pointer
-    // is compared per tick and only converted to a string on change.
+    // is compared per tick and only converted to a string on change. The COUNT box
+    // (EditableTextBox) is never polled - like the item combo it is only read at
+    // dispatch time ("add_selected_item" click).
     extern void* g_itemCombo;
     extern int   g_lastItemSel;     // index into the FILTERED item list (active category)
     extern void* g_catCombo;
     extern void* g_searchBox;
+    extern void* g_countBox;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateSidecarDir(char* out, size_t outSz);
@@ -100,6 +103,11 @@ namespace ModTab
     // Throttled spawner-control watch: category-combo selection + search-box text
     // (PE-hook driven, see g_catCombo / g_searchBox above).
     void    PollSpawnerControls();
+    // Settings-close teardown: snapshot the spawner persistence state from the still-live
+    // widgets, unparent our panel, drop every widget latch. MUST run on close - a world
+    // travel GCs the latched widgets and recycled UObject memory does not fault, so a kept
+    // handle turns later reflected calls into dispatches on foreign live objects.
+    void    DropPanelLatches();
 
     // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
     // kRowMods never reaches the build: GetPanelLayout expands it into text rows from
@@ -108,7 +116,8 @@ namespace ModTab
     // reaches the build either: it marks where the rows from the optional
     // qm_modtab_layout_*.json user-extension files splice into the base layout.
     enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4,
-                 kRowUserLayout = 5, kRowCategoryDropdown = 6, kRowItemSearch = 7 };
+                 kRowUserLayout = 5, kRowCategoryDropdown = 6, kRowItemSearch = 7,
+                 kRowItemCount = 8 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).
@@ -154,6 +163,10 @@ namespace ModTab
     // ANDed with the active category. Survives panel rebuilds like the category pick.
     bool           SetItemSearchText(const wchar_t* text); // true when the filter CHANGED (view rebuilt)
     const wchar_t* GetItemSearchText();                    // the raw text, for re-seeding a fresh box
+    // Grant count (kRowItemCount row): plain persisted text, no filter effect. The empty
+    // string means "never touched" - the fresh box then seeds from its row default ("1").
+    void           SetItemCountText(const wchar_t* text);
+    const wchar_t* GetItemCountText();
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);

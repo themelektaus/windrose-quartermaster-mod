@@ -10,10 +10,12 @@
 //
 // Row schema (unknown keys are skipped for forward-compat):
 //   type      "text" (default) | "header" | "button" | "modifications" | "itemDropdown"
-//             | "categoryDropdown" | "itemSearch" | "userLayout" (base layout only: splice
-//             marker, renders nothing itself; inside extension files it is inert - no recursion)
+//             | "categoryDropdown" | "itemSearch" | "itemCount" | "userLayout" (base layout
+//             only: splice marker, renders nothing itself; inside extension files it is
+//             inert - no recursion)
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
-//             (itemSearch rows: the box's hint text; default "Search...")
+//             (itemSearch rows: the box's hint text, default "Search...";
+//             itemCount rows: the box's initial value, default "1")
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
 //   wrap      true -> auto-wrap (text rows)
@@ -51,8 +53,10 @@
 // combo, the category poll (qm_modtab_widgets.cpp) and the click dispatch all share one
 // filtered view. "itemSearch" rows render an EditableTextBox whose text is a case-insensitive
 // substring filter over the item names, ANDed with the active category into the same view.
+// "itemCount" rows render an EditableTextBox holding the grant count - read at click time by
+// the "add_selected_item" dispatch (qm_modtab.cpp), persisted across rebuilds like the search.
 // With no usable catalog the item row degrades to a fixed notice text row and the category /
-// search rows render nothing, so the spawner can never come up dead.
+// search / count rows render nothing, so the spawner can never come up dead.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -162,6 +166,7 @@ namespace
                          : (v == "itemDropdown")     ? kRowItemDropdown
                          : (v == "categoryDropdown") ? kRowCategoryDropdown
                          : (v == "itemSearch")       ? kRowItemSearch
+                         : (v == "itemCount")        ? kRowItemCount
                          : (v == "userLayout")       ? kRowUserLayout
                                                      : kRowText;
             }
@@ -470,6 +475,10 @@ namespace
     std::wstring g_itemSearchRaw;
     std::wstring g_itemSearchLc;
 
+    // The grant count (kRowItemCount): persisted text only - parsed at click time by the
+    // dispatch, never touches the filter. Empty = never touched (box seeds its row default).
+    std::wstring g_itemCountRaw;
+
     bool NameMatchesSearch(const std::wstring& name)
     {
         if (g_itemSearchLc.empty()) return true;
@@ -632,7 +641,8 @@ namespace
                 g_view.push_back(r);
                 return;
             }
-            if ((s.type == kRowCategoryDropdown || s.type == kRowItemSearch)
+            if ((s.type == kRowCategoryDropdown || s.type == kRowItemSearch ||
+                 s.type == kRowItemCount)
                 && g_itemOptions.empty())
                 return;   // the item row's notice already covers the missing catalog
             g_view.push_back(viewOf(s));
@@ -854,5 +864,15 @@ namespace ModTab
     const wchar_t* GetItemSearchText()
     {
         return g_itemSearchRaw.c_str();
+    }
+
+    void SetItemCountText(const wchar_t* text)
+    {
+        g_itemCountRaw = text ? text : L"";
+    }
+
+    const wchar_t* GetItemCountText()
+    {
+        return g_itemCountRaw.c_str();
     }
 }

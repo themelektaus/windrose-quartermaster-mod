@@ -46,6 +46,7 @@ namespace ModTab
     int          g_lastItemSel = 0;
     void*        g_catCombo    = nullptr;
     void*        g_searchBox   = nullptr;
+    void*        g_countBox    = nullptr;
 }
 
 namespace
@@ -481,6 +482,30 @@ namespace
         return idx;
     }
 
+    // Click-time read of the item-spawner count box (kRowItemCount; latched like the combo,
+    // never polled). Returns -1 when no box is live/readable - the caller then falls back to
+    // the button's JSON argument. Garbage/empty text parses to 0 and clamps to 1 downstream.
+    long ReadItemCountBox()
+    {
+        QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(g_countBox);
+        if (!box) return -1;
+        long count = -1;
+        __try
+        {
+            if (box->Class)
+                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(box->Class, "GetText"))
+                {
+                    uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                    wchar_t buf[64];
+                    if (QmUE::CallProcessEvent(box, fn, ft) &&
+                        QmUE::StringFromText(ft, buf, 64))
+                        count = wcstol(buf, nullptr, 10);
+                }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { count = -1; }
+        return count;
+    }
+
     void DispatchButtonCommand(const char* command, const char* argument)
     {
         if (!command || !*command) return;
@@ -515,7 +540,10 @@ namespace
                 return;
             }
             g_lastItemSel = idx;
-            long count = (argument && *argument) ? strtol(argument, nullptr, 10) : 1;
+            // Count precedence: live count box (kRowItemCount, read now) > button argument > 1.
+            long count = ReadItemCountBox();
+            if (count < 0)
+                count = (argument && *argument) ? strtol(argument, nullptr, 10) : 1;
             if (count < 1) count = 1; else if (count > 999) count = 999;
             char spec[320];
             snprintf(spec, sizeof(spec), "%s:%ld", key, count);
@@ -651,15 +679,16 @@ void QmModTab_OnProcessInternal(QmUE::UObject* self, QmUE::UFunction* func, void
         QM_LOG_DEBUG("[ModTab] #%ld %-18s self=0x%p %s parms=0x%p parmsSize=%d",
                      n, what, (void*)self, slf, parms, psize);
 
-        // Settings is closing. The screen tree may be pooled across opens, so the handles are
-        // KEPT (a genuinely rebuilt tree is healed by the next mount); only the visibility is
-        // reset to the closed/default state: our panel Collapsed (a reopen lands on a native
-        // tab), native content host Visible (never leave the native settings hidden).
+        // Settings is closing. Restore the native visibility default (never leave the native
+        // settings hidden), then tear the spawner widgets down while they are provably alive:
+        // a world travel GCs the whole screen tree, and recycled UObject memory does not
+        // fault - a kept widget handle would let the PE-hook watches dispatch reflected
+        // calls into foreign live objects (the dead-HUD/input bug after lobby -> world).
         if (v & MT_ONEXIT)
         {
             InterlockedExchange(&g_qmTabActive, 0);
-            if (g_ourPanel)    SetWidgetVisibility(reinterpret_cast<QmUE::UObject*>(g_ourPanel),    ESV_Collapsed);
             if (g_nativePanel) SetWidgetVisibility(reinterpret_cast<QmUE::UObject*>(g_nativePanel), ESV_Visible);
+            DropPanelLatches();
             // Close the session + drop the live-screen latch: the screen is re-cooked on the
             // next open and a freed pointer must never be walked before the fresh re-latch.
             g_settingsOpen = false;
@@ -686,6 +715,12 @@ void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
 {
     (void)parms;
     if (!g_armed) return;
+
+    // Session gate for BOTH watches below: they poke pointer-latched widgets, and outside
+    // an open settings session the latches are dropped (DropPanelLatches on close) - and
+    // must never be poked anyway, since after a world travel a stale latch lands on
+    // RECYCLED UObject memory, which does not fault.
+    if (!g_settingsOpen) return;
 
     // Spawner-control watch (category combo + search box): pointer null-checks while no
     // panel is alive, throttled reflected reads while one is (see PollSpawnerControls).
