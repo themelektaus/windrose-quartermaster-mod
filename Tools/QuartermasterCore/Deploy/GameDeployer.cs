@@ -511,9 +511,10 @@ namespace Windrose.Quartermaster.Core.Deploy
         }
 
         // The in-game item spawner's render input: qm_modtab_items.txt is the finished item
-        // catalog ("<AssetId>|<English display name>|<PackagePath>|<Category>" per line,
+        // catalog ("<AssetId>|<Display name>|<PackagePath>|<Category>" per line,
         // pre-sorted by display name) built from the vanilla sources + icon localization
-        // (ItemCatalog) plus the custom items of every installed profile JSON. The package
+        // (ItemCatalog, display names in the GUI's persisted item language) plus the
+        // custom items of every installed profile JSON. The package
         // path (custom items only, empty for vanilla) lets the DLL sync-load mod-pak PDAs
         // before granting; the category feeds the spawner's cascading category dropdown.
         // Same lifecycle as the mods manifest: regenerated with the profile set, removed
@@ -533,7 +534,8 @@ namespace Windrose.Quartermaster.Core.Deploy
                 return;
             }
 
-            var entries = ItemCatalog.Build(_modRoot, EnumerateProfileJsonPaths());
+            var language = ItemLanguagePreference.Load(_modRoot) ?? "en";
+            var entries = ItemCatalog.Build(_modRoot, EnumerateProfileJsonPaths(), language);
             if (entries.Count == 0)
             {
                 // No extracted vanilla sources to build from - keep whatever catalog is already
@@ -553,7 +555,7 @@ namespace Windrose.Quartermaster.Core.Deploy
                   .Append('|').Append(string.IsNullOrEmpty(e.Category) ? "Misc" : e.Category)
                   .Append('\n');
             }
-            LogLine("Writing qm_modtab_items.txt (" + entries.Count + " item(s)) -> " + path);
+            LogLine("Writing qm_modtab_items.txt (" + entries.Count + " item(s), lang=" + language + ") -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }

@@ -7,16 +7,16 @@ using System.Text.Json;
 namespace Windrose.Quartermaster.Core
 {
     // Data source of the in-game item spawner: every vanilla R5BLInventoryItem data asset
-    // (Sources/Vanilla JSON dump) paired with its English display name (resolved by the
-    // IconExtractor into Icons/[AssetId].json; asset id when no localization exists).
-    // The GameDeployer writes the result as qm_modtab_items.txt so the DLL only reads a
-    // finished list - no JSON parsing on the game side.
+    // (Sources/Vanilla JSON dump) paired with its display name in the requested language
+    // (resolved by the IconExtractor into Icons/[AssetId].json; asset id when no
+    // localization exists). The GameDeployer writes the result as qm_modtab_items.txt so
+    // the DLL only reads a finished list - no JSON parsing on the game side.
     public static class ItemCatalog
     {
         public sealed class Entry
         {
             public string AssetId;      // PDA asset name, e.g. DA_CID_Alchemy_Bandages_T01
-            public string DisplayName;  // English name; disambiguated when duplicated
+            public string DisplayName;  // localized name; disambiguated when duplicated
             public string PackagePath;  // custom items only: mounted package for the DLL's sync-load fallback; null for vanilla
             public string Category;     // spawner group (see Categorize); "Custom" for item-creator items
         }
@@ -30,7 +30,11 @@ namespace Windrose.Quartermaster.Core
         // extracted yet AND no installed profile carries custom items - callers should keep
         // any previously written catalog in that case. profileJsonPaths: the installed
         // qm_profile_*.json files; their customItems (id + friendly name) join the catalog.
-        public static List<Entry> Build(string dataRoot, IEnumerable<string> profileJsonPaths = null)
+        // language: icon-metadata language code for the display names (fallback chain
+        // exact -> case-insensitive -> en -> first present, same as the Web items API);
+        // null/empty means English.
+        public static List<Entry> Build(string dataRoot, IEnumerable<string> profileJsonPaths = null,
+                                        string language = null)
         {
             var entries = new List<Entry>();
             var sourcesDir = Path.Combine(dataRoot, "Sources", "Vanilla");
@@ -42,11 +46,16 @@ namespace Windrose.Quartermaster.Core
                 {
                     string id = IsInventoryItem(path);
                     if (id == null) continue;
-                    string displayName = ReadEnglishName(iconsDir, id) ?? id;
+                    ReadNames(iconsDir, id, language, out var localizedName, out var englishName);
+                    string displayName = localizedName ?? id;
                     // The game's localization flags dead items with an uppercase "NOT USED"
                     // marker (usually a name prefix, sometimes after "Decoration: ") - those
-                    // assets are cut content and stay out of the spawner. Case-sensitive on
-                    // purpose: lowercase occurrences would be regular item names.
+                    // assets are cut content and stay out of the spawner. The marker lives in
+                    // the ENGLISH localization, so the filter checks that name regardless of
+                    // the catalog language (plus the display name, which may be the en
+                    // fallback). Case-sensitive on purpose: lowercase occurrences would be
+                    // regular item names.
+                    if (englishName != null && englishName.Contains("NOT USED", StringComparison.Ordinal)) continue;
                     if (displayName.Contains("NOT USED", StringComparison.Ordinal)) continue;
                     entries.Add(new Entry
                     {
@@ -152,23 +161,49 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
-        static string ReadEnglishName(string iconsDir, string assetId)
+        // Both names from the icon metadata (keyed by language code) in one parse:
+        // localizedName follows the fallback chain exact -> case-insensitive -> en ->
+        // first present; englishName is the en entry verbatim (feeds the NOT-USED filter).
+        static void ReadNames(string iconsDir, string assetId, string language,
+                              out string localizedName, out string englishName)
         {
+            localizedName = null;
+            englishName = null;
             var metaPath = Path.Combine(iconsDir, assetId + ".json");
-            if (!File.Exists(metaPath)) return null;
+            if (!File.Exists(metaPath)) return;
             try
             {
                 using var stream = File.OpenRead(metaPath);
                 using var doc = JsonDocument.Parse(stream);
-                if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
-                if (!doc.RootElement.TryGetProperty("en", out var en) || en.ValueKind != JsonValueKind.Object) return null;
-                if (!en.TryGetProperty("name", out var nameEl) || nameEl.ValueKind != JsonValueKind.String) return null;
-                var name = nameEl.GetString();
-                return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
+
+                string exact = null, caseInsensitive = null, english = null, first = null;
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind != JsonValueKind.Object) continue;
+                    if (!prop.Value.TryGetProperty("name", out var nameEl)
+                        || nameEl.ValueKind != JsonValueKind.String) continue;
+                    var name = nameEl.GetString();
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    name = name.Trim();
+
+                    first ??= name;
+                    if (prop.NameEquals("en")) english = name;
+                    if (!string.IsNullOrEmpty(language))
+                    {
+                        if (string.Equals(prop.Name, language, StringComparison.Ordinal))
+                            exact = name;
+                        else if (caseInsensitive == null
+                                 && string.Equals(prop.Name, language, StringComparison.OrdinalIgnoreCase))
+                            caseInsensitive = name;
+                    }
+                }
+                englishName = english;
+                localizedName = exact ?? caseInsensitive ?? english ?? first;
             }
             catch
             {
-                return null;
+                // Unreadable metadata - both names stay null, the asset id steps in.
             }
         }
 

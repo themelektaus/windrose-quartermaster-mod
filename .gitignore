@@ -8,6 +8,10 @@ obj/
 desktop.ini
 Thumbs.db
 
+# DataRoot state (dev checkout uses the repo root as DataRoot)
+/game-install.json
+/item-language.json
+
 /.build-tmp/
 /.minimax/
 /Archive/
