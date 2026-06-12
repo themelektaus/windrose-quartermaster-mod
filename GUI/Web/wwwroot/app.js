@@ -831,6 +831,9 @@ function applyProfileToUI() {
     const shanty = (p.globals && p.globals.shanty) || null;
     document.getElementById('shanty-enabled').checked =
         !!(shanty && shanty.enabled === true);
+    const itemSpawner = (p.globals && p.globals.itemSpawner) || null;
+    document.getElementById('itemspawner-enabled').checked =
+        !!(itemSpawner && itemSpawner.enabled === true);
     applyDepositVisualToUI(p);
     const lft = (p.globals && p.globals.landFastTravel) || null;
     document.getElementById('land-fast-travel-enabled').checked =
@@ -1165,7 +1168,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
-        'shipSpeed', 'xpReward', 'killXp', 'levelingRework', 'shanty',
+        'shipSpeed', 'xpReward', 'killXp', 'levelingRework', 'shanty', 'itemSpawner',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;

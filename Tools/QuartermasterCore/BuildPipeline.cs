@@ -478,8 +478,12 @@ namespace Windrose.Quartermaster.Core
                 // Keep Shanties Playing is DLL-only (no pak content): like XP for Kills it
                 // never contributes to the IoStore composite, only to the DLL + sentinel deploy.
                 bool shantyActive = ResolveShantyEnabled(profile);
+                // The Item Spawner is DLL-only too: it ships as the
+                // qm_modtab_layout_itemspawner.json user-layout extension, written by
+                // the sidecar regenerate inside WriteProfileJson below.
+                bool itemSpawnerActive = ResolveItemSpawnerEnabled(profile);
                 bool ioStoreActive = pickupActive || shipPickupActive || depositVisualActive || cropOverlapActive || playerStatsActive || stabilityActive || noSmokeActive || minimapActive || noFogActive || persistentLootActive || keepStatusActive || landFastTravelActive || bonfireActive || pickaxeActive || cannonDamageActive || shipBoardingActive || cooldownsActive || shipMusicActive || shipMusicDaActive || bonfireMusicActive || lightingActive || shipSpeedActive || iconsActive || buildingsActive || weatherControlsActive;
-                if (totalWritten == 0 && !ioStoreActive && !killXpActive && !shantyActive)
+                if (totalWritten == 0 && !ioStoreActive && !killXpActive && !shantyActive && !itemSpawnerActive)
                 {
                     // Surface which fields are missing when all buildings were
                     // skeleton-filtered, instead of a generic "no changes".
@@ -646,7 +650,7 @@ namespace Windrose.Quartermaster.Core
                     // A pak-only profile must still build when the game's Win64 can't
                     // be touched; DLL-backed features are dead without it, so surface
                     // that loudly instead.
-                    if (buildingsCount > 0 || weatherDeployActive || killXpActive || shantyActive) throw;
+                    if (buildingsCount > 0 || weatherDeployActive || killXpActive || shantyActive || itemSpawnerActive) throw;
                     LogLine("Warning: DLL/sidecar deploy skipped: " + ex.Message);
                 }
 
@@ -2520,6 +2524,11 @@ namespace Windrose.Quartermaster.Core
         static bool ResolveShantyEnabled(Profile profile)
         {
             return profile?.Globals?.Shanty?.Enabled == true;
+        }
+
+        static bool ResolveItemSpawnerEnabled(Profile profile)
+        {
+            return profile?.Globals?.ItemSpawner?.Enabled == true;
         }
 
         static int CountBuildableBuildings(Profile profile)

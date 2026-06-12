@@ -521,6 +521,18 @@ function setShantyFromUI() {
     markDirty();
 }
 
+function setItemSpawnerFromUI() {
+    if (!state.current) return;
+    const enabled = document.getElementById('itemspawner-enabled').checked;
+    state.current.globals = state.current.globals || {};
+    if (enabled) {
+        state.current.globals.itemSpawner = { enabled: true };
+    } else {
+        delete state.current.globals.itemSpawner;
+    }
+    markDirty();
+}
+
 function syncDepositVisualInputState() {
     document.getElementById('deposit-iron-texture').disabled =
         !document.getElementById('deposit-iron-enabled').checked;
@@ -962,6 +974,7 @@ function bindMiscHandlers() {
     document.getElementById('persistent-loot-enabled').addEventListener('change', setPersistentLootFromUI);
     document.getElementById('keep-status-enabled').addEventListener('change', setKeepStatusFromUI);
     document.getElementById('shanty-enabled').addEventListener('change', setShantyFromUI);
+    document.getElementById('itemspawner-enabled').addEventListener('change', setItemSpawnerFromUI);
     document.getElementById('deposit-iron-enabled').addEventListener('change', setDepositVisualFromUI);
     document.getElementById('deposit-iron-texture').addEventListener('change', setDepositVisualFromUI);
     document.getElementById('deposit-sulfur-enabled').addEventListener('change', setDepositVisualFromUI);

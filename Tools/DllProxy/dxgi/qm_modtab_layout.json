@@ -31,26 +31,6 @@
     "align": "left"
   },
   {
-    "type": "header",
-    "text": "Item Spawner",
-    "size": 20,
-    "color": "#FFCC59",
-    "gap": 24
-  },
-  {
-    "type": "itemDropdown",
-    "gap": 8
-  },
-  {
-    "type": "button",
-    "text": "Add Item",
-    "command": "add_selected_item",
-    "arguments": ["1"],
-    "align": "left",
-    "gap": 8,
-    "sameRow": true
-  },
-  {
     "type": "userLayout"
   },
   {

@@ -46,6 +46,7 @@ namespace Windrose.Quartermaster.Core
         public ShipMusicGlobal ShipMusic;
         public ShipMusicAddGlobal ShipMusicAdd;
         public ShantyGlobal Shanty;
+        public ItemSpawnerGlobal ItemSpawner;
         public LightingGlobal Lighting;
         public ShipSpeedGlobal ShipSpeed;
         public XpRewardGlobal XpReward;
@@ -229,6 +230,17 @@ namespace Windrose.Quartermaster.Core
     // helm-leave stop) - ships no pak content. enabled=true deploys the
     // qm_shanty_<profile>.txt sentinel next to the DLL; absent/false = vanilla.
     public sealed class ShantyGlobal
+    {
+        public bool? Enabled;
+    }
+
+    // "Item Spawner": the in-game mod tab's item-grant section (category dropdown +
+    // item dropdown + Add Item button). DLL-only (no pak content) - enabled=true makes
+    // the deployer write the qm_modtab_layout_itemspawner.json user-layout extension
+    // into Win64/Quartermaster, which the DLL splices into its base panel layout.
+    // The file is shared across profiles: present while ANY installed profile enables
+    // it, removed with the last one. Absent/false = no spawner section in the tab.
+    public sealed class ItemSpawnerGlobal
     {
         public bool? Enabled;
     }

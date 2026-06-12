@@ -219,8 +219,12 @@ public static class ModsEndpoint
                 recycled.Add(Path.GetFileName(path));
             }
             // The trash deletes above bypass RemoveProfileJson, so re-merge the
-            // mod tab's qm_modtab_mods.txt here.
+            // mod tab's qm_modtab_mods.txt here, plus the catalog and the Item
+            // Spawner user-layout (the removed profile may have been the last one
+            // enabling either).
             deployer.RegenerateModsManifest();
+            deployer.RegenerateItemCatalog();
+            deployer.RegenerateItemSpawnerLayout();
         }
         catch
         {

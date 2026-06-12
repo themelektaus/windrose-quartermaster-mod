@@ -432,6 +432,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.WriteAllText(path, profileJson, new UTF8Encoding(false));
             RegenerateModsManifest();
             RegenerateItemCatalog();
+            RegenerateItemSpawnerLayout();
         }
 
         public bool RemoveProfileJson(string profileSafeName)
@@ -442,6 +443,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.Delete(path);
             RegenerateModsManifest();
             RegenerateItemCatalog();
+            RegenerateItemSpawnerLayout();
             return true;
         }
 
@@ -554,6 +556,75 @@ namespace Windrose.Quartermaster.Core.Deploy
             LogLine("Writing qm_modtab_items.txt (" + entries.Count + " item(s)) -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        }
+
+        // The in-game Item Spawner section as a mod-tab user-layout extension: the DLL
+        // splices every qm_modtab_layout_*.json into its compiled-in base layout at the
+        // "userLayout" marker, so this file IS the spawner UI. Deployer-managed by name
+        // (regenerated whenever the profile set changes - hand edits do not survive a
+        // rebuild; use a differently named qm_modtab_layout_*.json for custom rows).
+        // Present while ANY installed profile enables globals.itemSpawner, removed with
+        // the last one.
+        public string TargetItemSpawnerLayoutPath()
+            => Path.Combine(_sidecarDir, "qm_modtab_layout_itemspawner.json");
+
+        public void RegenerateItemSpawnerLayout()
+        {
+            var path = TargetItemSpawnerLayoutPath();
+            bool wanted = false;
+            foreach (var file in EnumerateProfileJsonPaths())
+            {
+                try
+                {
+                    var profile = JsonSerializer.Deserialize<Profile>(File.ReadAllText(file), ProfileStore.JsonOpts);
+                    if (profile?.Globals?.ItemSpawner?.Enabled == true) { wanted = true; break; }
+                }
+                catch (Exception)
+                {
+                    // Unreadable profile JSON cannot vote for the spawner.
+                }
+            }
+
+            if (!wanted)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_modtab_layout_itemspawner.json (no installed profile enables the Item Spawner) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+
+            const string layout =
+                "[\n"
+                + "  {\n"
+                + "    \"type\": \"header\",\n"
+                + "    \"text\": \"Item Spawner\",\n"
+                + "    \"size\": 20,\n"
+                + "    \"color\": \"#FFCC59\",\n"
+                + "    \"gap\": 24\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"categoryDropdown\",\n"
+                + "    \"gap\": 8\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"itemDropdown\",\n"
+                + "    \"gap\": 8\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"button\",\n"
+                + "    \"text\": \"Add Item\",\n"
+                + "    \"command\": \"add_selected_item\",\n"
+                + "    \"arguments\": [\"1\"],\n"
+                + "    \"align\": \"left\",\n"
+                + "    \"gap\": 8,\n"
+                + "    \"sameRow\": true\n"
+                + "  }\n"
+                + "]\n";
+            LogLine("Writing qm_modtab_layout_itemspawner.json (Item Spawner on) -> " + path);
+            EnsureSidecarDir();
+            File.WriteAllText(path, layout, new UTF8Encoding(false));
         }
 
         public bool RemoveDllIfNoProfilesLeft(Action<string> deleter = null)

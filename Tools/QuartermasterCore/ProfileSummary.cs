@@ -84,6 +84,7 @@ namespace Windrose.Quartermaster.Core
                 if (g.PersistentLoot?.Enabled == true)  lines.Add("Persistent loot");
                 if (g.KeepStatus?.Enabled == true)      lines.Add("Keep status effects on death");
                 if (g.Shanty?.Enabled == true)          lines.Add("Keep shanties playing");
+                if (g.ItemSpawner?.Enabled == true)     lines.Add("Item spawner");
                 if (g.LandFastTravel?.Enabled == true)  lines.Add("Land fast travel");
                 if (Active(g.BonfireRadius?.Multiplier)) lines.Add("Bonfire radius " + X(g.BonfireRadius.Multiplier.Value));
                 if (!string.IsNullOrEmpty(g.BonfireMusic?.OriginalFilename)) lines.Add("Custom bonfire music");
