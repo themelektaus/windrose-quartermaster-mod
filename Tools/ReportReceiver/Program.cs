@@ -134,6 +134,7 @@ public static class Program
             txt.AppendLine(payload.Description.Trim());
             txt.AppendLine();
             txt.AppendLine("- - -");
+            txt.AppendLine($"Version      : {(string.IsNullOrWhiteSpace(payload.Version) ? "(unset)" : payload.Version.Trim())}");
             txt.AppendLine($"Received UTC : {DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ}");
             txt.AppendLine($"Attachment   : {payload.AttachmentName ?? "(unset)"}");
             txt.AppendLine($"Files in zip : {filesExtracted}");
@@ -196,6 +197,8 @@ public static class Program
         public string Description { get; set; }
         [JsonPropertyName("nickname")]
         public string Nickname { get; set; }
+        [JsonPropertyName("version")]
+        public string Version { get; set; }
         [JsonPropertyName("attachmentName")]
         public string AttachmentName { get; set; }
         [JsonPropertyName("attachment")]
