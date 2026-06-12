@@ -2001,8 +2001,8 @@ function openReportModal() {
     intro.className = 'modal-message';
     intro.textContent =
         'Sends a bug report with R5.log, Quartermaster_Inject.log, all '
-      + 'profiles and the current ~mods file listing. Nothing is uploaded '
-      + 'until you click "Send".';
+      + 'profiles, your savegames and the current ~mods file listing. '
+      + 'Nothing is uploaded until you click "Send".';
     card.appendChild(intro);
 
     const nickLabel = document.createElement('label');
@@ -2100,7 +2100,7 @@ function openReportModal() {
         send.disabled = true;
         cancel.disabled = true;
         setReportStatus(status, 'pending',
-            'Collecting logs, profiles and the mods listing, then uploading the report...');
+            'Collecting logs, profiles, savegames and the mods listing, then uploading the report...');
 
         let data = null;
         let networkError = null;

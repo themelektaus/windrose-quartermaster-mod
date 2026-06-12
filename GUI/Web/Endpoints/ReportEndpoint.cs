@@ -74,14 +74,51 @@ public static class ReportEndpoint
             {
                 using (var zip = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
                 {
-                    var logsDir = Path.Combine(
+                    var savedDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "R5", "Saved", "Logs");
+                        "R5", "Saved");
+                    var logsDir = Path.Combine(savedDir, "Logs");
 
                     TryAddFileToZip(zip, Path.Combine(logsDir, "R5.log"),
                         "logs/R5.log", collected, missing);
                     TryAddFileToZip(zip, Path.Combine(logsDir, "Quartermaster_Inject.log"),
                         "logs/Quartermaster_Inject.log", collected, missing);
+
+                    // Savegames: per numeric-Steam-ID profile only the live
+                    // RocksDB_v2 store (what the game and all save patchers
+                    // actually use). The non-numeric siblings ("... - Kopie",
+                    // "<id>_Backups") and RocksDB_v2_Backups are user/game
+                    // backup copies that multiply the payload without
+                    // diagnostic value. Config + SaveGames are tiny.
+                    TryAddDirectoryToZip(zip, Path.Combine(savedDir, "Config"),
+                        "saved/Config/", collected, missing);
+                    TryAddDirectoryToZip(zip, Path.Combine(savedDir, "SaveGames"),
+                        "saved/SaveGames/", collected, missing);
+                    var saveProfilesRoot = Path.Combine(savedDir, "SaveProfiles");
+                    if (Directory.Exists(saveProfilesRoot))
+                    {
+                        foreach (var steamDir in Directory.EnumerateDirectories(saveProfilesRoot))
+                        {
+                            var steamId = Path.GetFileName(steamDir);
+                            if (!ulong.TryParse(steamId, out _)) continue;
+                            TryAddDirectoryToZip(zip,
+                                Path.Combine(steamDir, "RocksDB_v2"),
+                                "saved/SaveProfiles/" + steamId + "/RocksDB_v2/",
+                                collected, missing);
+                            var acct = Path.Combine(steamDir, "RocksDB", "AccountDescription.json");
+                            if (File.Exists(acct))
+                            {
+                                TryAddFileToZip(zip, acct,
+                                    "saved/SaveProfiles/" + steamId + "/AccountDescription.json",
+                                    collected, missing);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        missing.Add("saved/SaveProfiles/ (directory not found: "
+                            + saveProfilesRoot + ")");
+                    }
 
                     if (Directory.Exists(paths.Profiles))
                     {
@@ -181,7 +218,7 @@ public static class ReportEndpoint
                     error = "Report payload exceeds the upload ceiling ("
                         + (zipBytes.LongLength / 1024 / 1024) + " MB > "
                         + (MaxBodyBytes / 1024 / 1024) + " MB). "
-                        + "This usually means R5.log is enormous - try restarting the game once to rotate it.",
+                        + "This usually means R5.log or the savegames are enormous - try restarting the game once to rotate the log.",
                 }, statusCode: 413);
             }
 
@@ -190,6 +227,7 @@ public static class ReportEndpoint
                 title = body.Title,
                 description = body.Description,
                 nickname = nickname,
+                version = AppVersion.Informational,
                 attachmentName = "quartermaster-report-" +
                     DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".zip",
                 attachment = Convert.ToBase64String(zipBytes),
@@ -265,6 +303,57 @@ public static class ReportEndpoint
         catch (Exception ex)
         {
             missing.Add(entryName + " (read error: " + ex.Message + ")");
+        }
+    }
+
+    // Recursive directory capture. One summary line in `collected` instead of
+    // one entry per file - a live RocksDB store holds hundreds of SSTs and
+    // would otherwise drown the metadata/response listings.
+    private static void TryAddDirectoryToZip(
+        ZipArchive zip, string sourceDir, string entryPrefix,
+        List<string> collected, List<string> missing)
+    {
+        try
+        {
+            if (!Directory.Exists(sourceDir))
+            {
+                missing.Add(entryPrefix + " (not found: " + sourceDir + ")");
+                return;
+            }
+            int files = 0, failed = 0;
+            long bytes = 0;
+            foreach (var path in Directory.EnumerateFiles(
+                sourceDir, "*", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(sourceDir, path)
+                    .Replace(Path.DirectorySeparatorChar, '/');
+                try
+                {
+                    // Open the source before creating the entry so a locked
+                    // file (e.g. the RocksDB LOCK while the game runs) does
+                    // not leave an empty zip entry behind.
+                    using var src = new FileStream(path,
+                        FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    var entry = zip.CreateEntry(entryPrefix + rel, CompressionLevel.Optimal);
+                    using var entryStream = entry.Open();
+                    bytes += src.Length;
+                    src.CopyTo(entryStream);
+                    files++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+            collected.Add(entryPrefix + " (" + files + " file(s), "
+                + (bytes / 1024) + " KB)");
+            if (failed > 0)
+                missing.Add(entryPrefix + " (" + failed + " file(s) unreadable)");
+        }
+        catch (Exception ex)
+        {
+            missing.Add(entryPrefix + " (error: " + ex.Message + ")");
         }
     }
 
