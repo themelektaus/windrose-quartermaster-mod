@@ -817,7 +817,7 @@ namespace
     // HorizontalBox where the row's gap means "left spacing" and children center vertically. This
     // re-styles a member's slot AFTER its Add*Row call (which set column-style top padding): left
     // padding for spacing, vertical-center, and a Fill/Auto size rule.
-    void StyleHSlot(QmUE::UObject* slot, float leftPad, bool fill)
+    void StyleHSlot(QmUE::UObject* slot, float leftPad, float fillWeight)
     {
         if (!slot || !slot->Class) return;
         if (QmUE::UFunction* fnPad = QmUE::FindFunctionOnClass(slot->Class, "SetPadding"))
@@ -832,8 +832,12 @@ namespace
         }
         if (QmUE::UFunction* fnSize = QmUE::FindFunctionOnClass(slot->Class, "SetSize"))
         {
-            struct { float Value; uint8_t SizeRule; uint8_t pad[3]; } sz = { 1.0f, (uint8_t)(fill ? 1 : 0), {} };
-            QmUE::CallProcessEvent(slot, fnSize, &sz);   // FSlateChildSize: Automatic=0, Fill=1
+            // FSlateChildSize: Automatic=0, Fill=1; the Fill Value is the weight relative to the
+            // sibling slots' weights (1 and 2 -> a 1:2 width split).
+            bool fill = fillWeight > 0.0f;
+            struct { float Value; uint8_t SizeRule; uint8_t pad[3]; } sz =
+                { fill ? fillWeight : 1.0f, (uint8_t)(fill ? 1 : 0), {} };
+            QmUE::CallProcessEvent(slot, fnSize, &sz);
         }
     }
 
@@ -1107,10 +1111,14 @@ namespace ModTab
                                 ++rows;
                                 // Lead has no left spacing; dropdown members fill the width
                                 // (pushing trailing buttons to the right), others auto-size.
-                                StyleHSlot(slot, k == i ? 0.0f : layout[k].gap,
-                                           layout[k].type == kRowItemDropdown ||
-                                           layout[k].type == kRowCategoryDropdown ||
-                                           layout[k].type == kRowItemSearch);
+                                // An explicit "fill" weight on the row overrides the type
+                                // default (weights are relative -> 1 and 2 = a 1:2 split).
+                                float w = layout[k].fill;
+                                if (w < 0.0f)
+                                    w = (layout[k].type == kRowItemDropdown ||
+                                         layout[k].type == kRowCategoryDropdown ||
+                                         layout[k].type == kRowItemSearch) ? 1.0f : 0.0f;
+                                StyleHSlot(slot, k == i ? 0.0f : layout[k].gap, w);
                             }
                         }
                     }

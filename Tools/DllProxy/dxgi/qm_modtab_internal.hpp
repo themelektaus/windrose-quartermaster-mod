@@ -123,6 +123,9 @@ namespace ModTab
         uint8_t        halign;     // EHorizontalAlignment; 255 = slot default (Fill)
         float          indent;     // left padding on the slot (mod detail rows)
         bool           sameRow;    // true -> this row shares a horizontal row with the one above it
+        float          fill;       // inline-group members: Fill weight of the slot (relative to the
+                                   // other members' weights); 0 = Auto (as wide as the content),
+                                   // < 0 = type default (dropdowns/search fill at 1.0, others Auto)
         const char*    command;    // buttons: action id (see DispatchButtonCommand); nullptr otherwise
         const char*    argument;   // buttons: first argument; nullptr otherwise
     };

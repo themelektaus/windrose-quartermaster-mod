@@ -24,6 +24,9 @@
 //             vertical space above the whole row, each follower's gap is its left spacing;
 //             itemDropdown / categoryDropdown / itemSearch members fill the width, others
 //             auto-size)
+//   fill      inline-group members: Fill weight of the slot, relative to the other members
+//             (e.g. 1 and 2 -> a 1:2 width split); 0 = auto-size to the content. Unset keeps
+//             the type default described under sameRow
 //   command   buttons: action id, dispatched by DispatchButtonCommand (qm_modtab.cpp)
 //   arguments buttons: argument array; only the first entry is used today
 //
@@ -83,6 +86,7 @@ namespace
         uint8_t      halign   = 255;
         float        indent   = 0.0f;
         bool         sameRow  = false;
+        float        fill     = -1.0f;   // -1 = unset -> type default
         std::string  command;
         std::string  argument;
 
@@ -237,6 +241,12 @@ namespace
                 double v = 0.0;
                 if (!jp.parseNumber(v)) return false;
                 if (key == "size") out.size = (float)v; else out.gap = (float)v;
+            }
+            else if (key == "fill")
+            {
+                double v = 0.0;
+                if (!jp.parseNumber(v)) return false;
+                out.fill = v < 0.0 ? -1.0f : (float)v;
             }
             else if (key == "wrap")
             {
@@ -596,6 +606,7 @@ namespace
             r.halign   = s.halign;
             r.indent   = s.indent;
             r.sameRow  = s.sameRow;
+            r.fill     = s.fill;
             r.command  = (s.type == kRowButton && !s.command.empty())  ? s.command.c_str()  : nullptr;
             r.argument = (s.type == kRowButton && !s.argument.empty()) ? s.argument.c_str() : nullptr;
             return r;
