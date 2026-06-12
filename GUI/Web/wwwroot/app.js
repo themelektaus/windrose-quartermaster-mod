@@ -19,6 +19,12 @@ const state = {
     activeTab: 'misc',
     uiScaleModified: false,
 
+    // Item display-name language: a language code from /api/item-languages
+    // (icon metadata keys). Persisted in localStorage, applied via the
+    // ?lang= query of /api/items.
+    language: 'en',
+    languages: [],
+
     mods: {
         loaded: false,
         modsDir: null,
@@ -103,19 +109,19 @@ function cloneTemplate(id) {
 }
 
 async function loadAppData() {
-    const [profiles, items, lootTables, npcSpawners] = await Promise.all([
+    const [profiles, items, lootTables, npcSpawners, languages] = await Promise.all([
         api('GET', '/api/profiles'),
-        api('GET', '/api/items'),
+        api('GET', '/api/items?lang=' + encodeURIComponent(state.language)),
         api('GET', '/api/loot-tables'),
         api('GET', '/api/npc-spawners'),
+        api('GET', '/api/item-languages'),
     ]);
     state.profiles = profiles;
     state.npcSpawners = npcSpawners || [];
     indexNpcCategories();
-    state.items = items
-        .filter(i => typeof i.maxCountInSlot === 'number')
-        .map(i => Object.assign({}, i, { vanillaStack: i.maxCountInSlot }));
-    state.itemsById = new Map(state.items.map(i => [i.id, i]));
+    applyItemsPayload(items);
+    state.languages = languages || [];
+    populateLanguageSelect();
 
     state.lootTables = lootTables || [];
     state.lootById = new Map(state.lootTables.map(lt => [lt.id, lt]));
@@ -134,6 +140,59 @@ async function loadAppData() {
     } else {
         updateButtons();
     }
+}
+
+function applyItemsPayload(items) {
+    state.items = items
+        .filter(i => typeof i.maxCountInSlot === 'number')
+        .map(i => Object.assign({}, i, { vanillaStack: i.maxCountInSlot }));
+    state.itemsById = new Map(state.items.map(i => [i.id, i]));
+}
+
+const LANGUAGE_LABELS = {
+    'de': 'Deutsch',
+    'en': 'English',
+    'es': 'Español',
+    'fr': 'Français',
+    'it': 'Italiano',
+    'ja': '日本語',
+    'ko': '한국어',
+    'pl': 'Polski',
+    'pt-BR': 'Português (BR)',
+    'ru': 'Русский',
+    'tr': 'Türkçe',
+    'zh-Hans': '中文 (简体)',
+};
+
+function populateLanguageSelect() {
+    const sel = document.getElementById('language-select');
+    const langs = state.languages.length ? state.languages : ['en'];
+    sel.replaceChildren();
+    for (const code of langs) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = LANGUAGE_LABELS[code] || code;
+        sel.appendChild(opt);
+    }
+    if (!langs.includes(state.language)) {
+        state.language = langs.includes('en') ? 'en' : langs[0];
+    }
+    sel.value = state.language;
+}
+
+// Re-fetches the item list in the selected language and re-renders every
+// view that shows item names. Profile state (overrides, custom items) is
+// untouched; custom items re-join the catalog via syncCustomItemsIntoCatalog.
+async function reloadItemsForLanguage() {
+    const items = await api('GET', '/api/items?lang=' + encodeURIComponent(state.language));
+    applyItemsPayload(items);
+    indexLootCrossReferences();
+    syncCustomItemsIntoCatalog();
+    if (state.current) {
+        renderItems();
+        renderStatus();
+    }
+    setActiveTab(state.activeTab);
 }
 
 function indexLootCrossReferences() {
@@ -309,6 +368,25 @@ async function loadTabHtml() {
     host.innerHTML = fragments.join('\n');
 }
 
+// The server-persisted choice is the source of truth (the catalog generation reads
+// the same file); localStorage only serves as a one-time migration source from
+// before server persistence and as a fallback when the fetch fails.
+async function loadPersistedLanguage() {
+    let local = null;
+    try { local = localStorage.getItem('qm-item-language'); } catch (e) { /* storage unavailable */ }
+    try {
+        const d = await api('GET', '/api/item-language');
+        if (d && d.language) return d.language;
+        if (local) {
+            api('POST', '/api/item-language', { language: local }).catch(() => {});
+            return local;
+        }
+    } catch (e) {
+        if (local) return local;
+    }
+    return 'en';
+}
+
 // Fire-and-forget: a failed fetch keeps the static title from index.html.
 async function applyVersionTitle() {
     try {
@@ -319,6 +397,7 @@ async function applyVersionTitle() {
 }
 
 async function boot() {
+    state.language = await loadPersistedLanguage();
     applyVersionTitle();
     await loadTabHtml();
     bindSetupHandlers();
@@ -2192,6 +2271,18 @@ function setFooterCollapsed(collapsed) {
 }
 
 function bindHandlers() {
+    document.getElementById('language-select').addEventListener('change', async e => {
+        state.language = e.target.value;
+        try {
+            localStorage.setItem('qm-item-language', state.language);
+        } catch (err) {
+            // Storage unavailable - the choice still applies for this session.
+        }
+        // Server-side persistence feeds the qm_modtab_items.txt generation on the
+        // next build; a failed save still leaves the session fully functional.
+        api('POST', '/api/item-language', { language: state.language }).catch(() => {});
+        await reloadItemsForLanguage();
+    });
     document.getElementById('profile-select').addEventListener('change', async e => {
         const nextId = e.target.value;
         if (state.isDirty) {

@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Windrose.Quartermaster.Core;
 
 namespace Windrose.Quartermaster.Web.Endpoints;
 
@@ -18,14 +19,77 @@ public static class ItemsEndpoint
         var sourcesDir = Path.Combine(repoRoot, "Sources", "Vanilla");
         var iconsDir = Path.Combine(repoRoot, "Icons");
 
-        app.MapGet("/api/items", async () =>
+        app.MapGet("/api/items", async (HttpRequest req) =>
         {
-            var items = await LoadItems(sourcesDir, iconsDir);
+            var lang = req.Query["lang"].ToString();
+            var items = await LoadItems(sourcesDir, iconsDir, lang);
             return Results.Json(items);
+        });
+
+        app.MapGet("/api/item-languages", () => Results.Json(ListLanguages(iconsDir)));
+
+        // The GUI's item display-name language, persisted in the data root so the
+        // catalog generation (qm_modtab_items.txt) uses the same choice the header
+        // dropdown shows. GET: { language: "de" } or { language: null } when unset.
+        app.MapGet("/api/item-language",
+            () => Results.Json(new { language = ItemLanguagePreference.Load(repoRoot) }));
+
+        app.MapPost("/api/item-language", async (HttpRequest req) =>
+        {
+            string lang;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(req.Body);
+                lang = doc.RootElement.ValueKind == JsonValueKind.Object
+                       && doc.RootElement.TryGetProperty("language", out var el)
+                       && el.ValueKind == JsonValueKind.String
+                    ? el.GetString() : null;
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new { error = "Invalid JSON body." });
+            }
+            // Codes come from the icon metadata keys - keep anything longer or
+            // path-unsafe out of the persisted file.
+            if (!string.IsNullOrEmpty(lang)
+                && (lang.Length > 16 || lang.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+            {
+                return Results.BadRequest(new { error = "Invalid language code." });
+            }
+            ItemLanguagePreference.Save(repoRoot, lang);
+            return Results.NoContent();
         });
     }
 
-    static async Task<List<ItemDto>> LoadItems(string sourcesDir, string iconsDir)
+    // Language codes offered by the icon metadata: the extractor writes the same
+    // language set into every Icons/*.json, so the keys of any one readable file
+    // are the full list. Empty until the icons are extracted.
+    static List<string> ListLanguages(string iconsDir)
+    {
+        var result = new List<string>();
+        if (!Directory.Exists(iconsDir)) return result;
+        foreach (var path in Directory.EnumerateFiles(iconsDir, "*.json", SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                using var stream = File.OpenRead(path);
+                var node = JsonNode.Parse(stream);
+                if (node is not JsonObject obj) continue;
+                foreach (var kv in obj)
+                {
+                    if (kv.Value is JsonObject) result.Add(kv.Key);
+                }
+                if (result.Count > 0) return result;
+            }
+            catch
+            {
+                // Unreadable metadata file - try the next one.
+            }
+        }
+        return result;
+    }
+
+    static async Task<List<ItemDto>> LoadItems(string sourcesDir, string iconsDir, string lang)
     {
         var result = new List<ItemDto>();
         if (!Directory.Exists(sourcesDir))
@@ -44,7 +108,7 @@ public static class ItemsEndpoint
 
         foreach (var path in Directory.EnumerateFiles(sourcesDir, "*.json", SearchOption.AllDirectories))
         {
-            var item = await TryParseItem(iconsDir, path, availableIcons);
+            var item = await TryParseItem(iconsDir, path, availableIcons, lang);
             if (item is not null)
             {
                 result.Add(item);
@@ -75,7 +139,7 @@ public static class ItemsEndpoint
         return null;
     }
 
-    static async Task<ItemDto> TryParseItem(string iconsDir, string jsonPath, HashSet<string> availableIcons)
+    static async Task<ItemDto> TryParseItem(string iconsDir, string jsonPath, HashSet<string> availableIcons, string lang)
     {
         try
         {
@@ -128,8 +192,7 @@ public static class ItemsEndpoint
                 {
                     using var iconJsonStream = File.OpenRead(iconJsonPath);
                     var meta = await JsonNode.ParseAsync(iconJsonStream);
-                    var metaObject = meta.AsObject();
-                    item.meta = metaObject.Count > 1 ? meta[1] : (metaObject.Count > 0 ? meta[0] : null);
+                    item.meta = SelectMeta(meta.AsObject(), lang);
                 }
             }
 
@@ -139,5 +202,25 @@ public static class ItemsEndpoint
         {
             return null;
         }
+    }
+
+    // Icon metadata is keyed by language code. Pick the requested language,
+    // fall back to English, then to the first language present.
+    static JsonNode SelectMeta(JsonObject meta, string lang)
+    {
+        if (!string.IsNullOrEmpty(lang))
+        {
+            if (meta.TryGetPropertyValue(lang, out var exact) && exact is JsonObject) return exact;
+            foreach (var kv in meta)
+            {
+                if (kv.Value is JsonObject && string.Equals(kv.Key, lang, StringComparison.OrdinalIgnoreCase)) return kv.Value;
+            }
+        }
+        if (meta.TryGetPropertyValue("en", out var en) && en is JsonObject) return en;
+        foreach (var kv in meta)
+        {
+            if (kv.Value is JsonObject) return kv.Value;
+        }
+        return null;
     }
 }
