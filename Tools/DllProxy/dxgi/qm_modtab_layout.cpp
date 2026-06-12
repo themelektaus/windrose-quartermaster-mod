@@ -10,9 +10,10 @@
 //
 // Row schema (unknown keys are skipped for forward-compat):
 //   type      "text" (default) | "header" | "button" | "modifications" | "itemDropdown"
-//             | "categoryDropdown" | "userLayout" (base layout only: splice marker, renders
-//             nothing itself; inside extension files it is inert - no recursion)
+//             | "categoryDropdown" | "itemSearch" | "userLayout" (base layout only: splice
+//             marker, renders nothing itself; inside extension files it is inert - no recursion)
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
+//             (itemSearch rows: the box's hint text; default "Search...")
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
 //   wrap      true -> auto-wrap (text rows)
@@ -21,7 +22,8 @@
 //   sameRow   true -> this row shares one horizontal row with the row above it (consecutive
 //             sameRow rows pack left-to-right in a HorizontalBox; the lead row's gap is the
 //             vertical space above the whole row, each follower's gap is its left spacing;
-//             an itemDropdown member fills the width, others auto-size)
+//             itemDropdown / categoryDropdown / itemSearch members fill the width, others
+//             auto-size)
 //   command   buttons: action id, dispatched by DispatchButtonCommand (qm_modtab.cpp)
 //   arguments buttons: argument array; only the first entry is used today
 //
@@ -44,14 +46,17 @@
 // render the cascading category filter over the same catalog: the GetItemOption*() accessors
 // are views over the ACTIVE category's slice ("All" at index 0 = whole catalog), so the item
 // combo, the category poll (qm_modtab_widgets.cpp) and the click dispatch all share one
-// filtered view. With no usable catalog the item row degrades to a fixed notice text row and
-// the category row renders nothing, so the spawner can never come up dead.
+// filtered view. "itemSearch" rows render an EditableTextBox whose text is a case-insensitive
+// substring filter over the item names, ANDed with the active category into the same view.
+// With no usable catalog the item row degrades to a fixed notice text row and the category /
+// search rows render nothing, so the spawner can never come up dead.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <wctype.h>
 #include <string>
 #include <vector>
 
@@ -152,6 +157,7 @@ namespace
                          : (v == "modifications")    ? kRowMods
                          : (v == "itemDropdown")     ? kRowItemDropdown
                          : (v == "categoryDropdown") ? kRowCategoryDropdown
+                         : (v == "itemSearch")       ? kRowItemSearch
                          : (v == "userLayout")       ? kRowUserLayout
                                                      : kRowText;
             }
@@ -449,6 +455,27 @@ namespace
     std::vector<int>          g_itemFilter;
     int                       g_activeCategory = 0;
 
+    // The search filter (kRowItemSearch): raw text re-seeds a fresh box across panel
+    // rebuilds, the lowercased copy drives the match. ANDed with the active category.
+    std::wstring g_itemSearchRaw;
+    std::wstring g_itemSearchLc;
+
+    bool NameMatchesSearch(const std::wstring& name)
+    {
+        if (g_itemSearchLc.empty()) return true;
+        if (name.size() < g_itemSearchLc.size()) return false;
+        // Case-insensitive substring (towlower per char; identity for CJK - exact match there).
+        const size_t last = name.size() - g_itemSearchLc.size();
+        for (size_t at = 0; at <= last; ++at)
+        {
+            size_t k = 0;
+            while (k < g_itemSearchLc.size()
+                   && (wchar_t)towlower(name[at + k]) == g_itemSearchLc[k]) ++k;
+            if (k == g_itemSearchLc.size()) return true;
+        }
+        return false;
+    }
+
     // Stable display order for the known Configurator groups; categories the file carries
     // beyond these (forward-compat) append behind in first-appearance order.
     const char* const kCategoryOrder[] = { "Weapons", "Armor", "Jewelry", "Tools", "Consumables",
@@ -465,7 +492,7 @@ namespace
             ? &g_itemCategories[(size_t)g_activeCategory].key : nullptr;
         g_itemFilter.reserve(g_itemOptions.size());
         for (size_t i = 0; i < g_itemOptions.size(); ++i)
-            if (!want || g_itemOptions[i].cat == *want)
+            if ((!want || g_itemOptions[i].cat == *want) && NameMatchesSearch(g_itemOptions[i].name))
                 g_itemFilter.push_back((int)i);
     }
 
@@ -594,7 +621,8 @@ namespace
                 g_view.push_back(r);
                 return;
             }
-            if (s.type == kRowCategoryDropdown && g_itemOptions.empty())
+            if ((s.type == kRowCategoryDropdown || s.type == kRowItemSearch)
+                && g_itemOptions.empty())
                 return;   // the item row's notice already covers the missing catalog
             g_view.push_back(viewOf(s));
         };
@@ -698,10 +726,12 @@ namespace ModTab
         bool haveDropdown = false;
         for (size_t i = 0; i < g_storage.size() && !haveDropdown; ++i)
             if (g_storage[i].type == kRowItemDropdown ||
-                g_storage[i].type == kRowCategoryDropdown) haveDropdown = true;
+                g_storage[i].type == kRowCategoryDropdown ||
+                g_storage[i].type == kRowItemSearch) haveDropdown = true;
         for (size_t i = 0; i < g_userRows.size() && !haveDropdown; ++i)
             if (g_userRows[i].type == kRowItemDropdown ||
-                g_userRows[i].type == kRowCategoryDropdown) haveDropdown = true;
+                g_userRows[i].type == kRowCategoryDropdown ||
+                g_userRows[i].type == kRowItemSearch) haveDropdown = true;
 
         bool itemsChanged = false;
         if (haveDropdown)
@@ -789,5 +819,29 @@ namespace ModTab
         if (idx == g_activeCategory) return;
         g_activeCategory = idx;
         RebuildItemFilter();
+    }
+
+    bool SetItemSearchText(const wchar_t* text)
+    {
+        // Whitespace-only input is the empty filter (a stray space must not hide everything
+        // the user can't see why).
+        std::wstring raw = text ? text : L"";
+        size_t b = raw.find_first_not_of(L" \t");
+        size_t e = raw.find_last_not_of(L" \t");
+        raw = (b == std::wstring::npos) ? std::wstring() : raw.substr(b, e - b + 1);
+
+        std::wstring lc(raw);
+        for (size_t i = 0; i < lc.size(); ++i) lc[i] = (wchar_t)towlower(lc[i]);
+        if (lc == g_itemSearchLc) { g_itemSearchRaw = raw; return false; }
+
+        g_itemSearchRaw = raw;
+        g_itemSearchLc  = lc;
+        RebuildItemFilter();
+        return true;
+    }
+
+    const wchar_t* GetItemSearchText()
+    {
+        return g_itemSearchRaw.c_str();
     }
 }

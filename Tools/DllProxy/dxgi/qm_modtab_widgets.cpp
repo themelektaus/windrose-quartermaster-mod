@@ -84,6 +84,21 @@ namespace
     constexpr uintptr_t kOff_Row_SelectedText        = 0x7C4;
     constexpr uintptr_t kOff_Row_ActiveHighlighted   = 0x9F0;
     constexpr uintptr_t kOff_Row_InactiveHighlighted = 0xAA0;
+    // Item-spawner search box (UEditableTextBox). Same pre-construct rule as the combo:
+    // WidgetStyle is raw-written before the mount, Slate reads it once at SEditableTextBox
+    // build. No SetFont UFunction exists either - the game font goes into TextStyle.Font.
+    constexpr uintptr_t kOff_Edit_WidgetStyle  = 0x190;   // UEditableTextBox::WidgetStyle (SDK)
+    constexpr uintptr_t kOff_ETB_BackNormal    = 0x010;   // FEditableTextBoxStyle brushes  (SDK)
+    constexpr uintptr_t kOff_ETB_BackHovered   = 0x0C0;
+    constexpr uintptr_t kOff_ETB_BackFocused   = 0x170;
+    constexpr uintptr_t kOff_ETB_BackReadOnly  = 0x220;
+    constexpr uintptr_t kOff_ETB_Padding       = 0x2D0;   // FEditableTextBoxStyle::Padding
+    constexpr uintptr_t kOff_ETB_TextStyle     = 0x2E0;   // ..::TextStyle (FTextBlockStyle)
+    constexpr uintptr_t kOff_ETB_Foreground    = 0x5C0;   // ..::ForegroundColor
+    constexpr uintptr_t kOff_ETB_FocusedFg     = 0x5FC;   // ..::FocusedForegroundColor
+    constexpr uintptr_t kOff_TBS_Font          = 0x008;   // FTextBlockStyle::Font
+    constexpr uintptr_t kOff_TBS_Color         = 0x068;   // FTextBlockStyle::ColorAndOpacity
+
     constexpr uintptr_t kOff_Brush_Tint         = 0x08;    // FSlateBrush internals (SDK)
     constexpr uintptr_t kOff_Brush_DrawAs       = 0x1C;    // 0=NoDraw 3=Image 4=RoundedBox
     constexpr uintptr_t kOff_Brush_Tiling       = 0x1D;
@@ -383,23 +398,45 @@ namespace
         return true;
     }
 
-    // Persist the dropdown selection across panel rebuilds: the combo dies with its panel,
-    // so the last live selection is read back right before the discard. Across a reopen the
-    // instance may already be GC'd - the SEH guard turns that into "keep the previous value".
+    // Persist the dropdown selection AND the search text across panel rebuilds: the widgets
+    // die with their panel, so the last live state is read back right before the discard
+    // (the search text additionally covers type-then-close faster than the 250ms poll).
+    // Across a reopen the instances may already be GC'd - the SEH guard turns that into
+    // "keep the previous value".
     void SnapshotItemSelection()
     {
         QmUE::UObject* combo = reinterpret_cast<QmUE::UObject*>(g_itemCombo);
-        if (!combo) return;
-        __try
+        if (combo)
         {
-            if (combo->Class)
-                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(combo->Class, "GetSelectedIndex"))
-                {
-                    int32_t p[2] = { -1, 0 };
-                    if (QmUE::CallProcessEvent(combo, fn, p) && p[0] >= 0) g_lastItemSel = p[0];
-                }
+            __try
+            {
+                if (combo->Class)
+                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(combo->Class, "GetSelectedIndex"))
+                    {
+                        int32_t p[2] = { -1, 0 };
+                        if (QmUE::CallProcessEvent(combo, fn, p) && p[0] >= 0) g_lastItemSel = p[0];
+                    }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {}
         }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+        QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(g_searchBox);
+        if (box)
+        {
+            __try
+            {
+                if (box->Class)
+                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(box->Class, "GetText"))
+                    {
+                        uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                        wchar_t buf[256];
+                        if (QmUE::CallProcessEvent(box, fn, ft) &&
+                            QmUE::StringFromText(ft, buf, 256))
+                            SetItemSearchText(buf);   // filter view rebuilds; panel is dying anyway
+                    }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {}
+        }
     }
 
     struct QmColor { float r, g, b, a; };
@@ -640,6 +677,86 @@ namespace
         return true;
     }
 
+    // Game-look the spawned search box pre-mount (Slate reads WidgetStyle once, at
+    // SEditableTextBox build): dark rounded solids matching the combo button, gold outline
+    // that brightens on focus, game font + parchment text. SEH-framed like the combo style -
+    // a fault leaves the engine default look, the filter still works.
+    void StyleSearchBox(QmUE::UObject* box, const uint8_t* font, float fontSize)
+    {
+        const QmColor back     = { 0.035f, 0.030f, 0.020f, 0.94f };
+        const QmColor backHi   = { 0.055f, 0.047f, 0.030f, 0.97f };
+        const QmColor goldLine = { 0.830f, 0.740f, 0.340f, 0.45f };
+        const QmColor goldHot  = { 0.830f, 0.740f, 0.340f, 0.85f };
+        const QmColor textCol  = { 0.920f, 0.900f, 0.820f, 1.00f };
+
+        __try
+        {
+            uint8_t* st = reinterpret_cast<uint8_t*>(box) + kOff_Edit_WidgetStyle;
+            MakeSolidBrush(st + kOff_ETB_BackNormal,   back,   3.0f, goldLine, 1.0f);
+            MakeSolidBrush(st + kOff_ETB_BackHovered,  backHi, 3.0f, goldLine, 1.0f);
+            MakeSolidBrush(st + kOff_ETB_BackFocused,  backHi, 3.0f, goldHot,  1.0f);
+            MakeSolidBrush(st + kOff_ETB_BackReadOnly, back,   3.0f, goldLine, 1.0f);
+            float pad[4] = { 10.0f, 6.0f, 10.0f, 6.0f };   // FMargin {L,T,R,B}
+            memcpy(st + kOff_ETB_Padding, pad, 0x10);
+            if (font)
+            {
+                memcpy(st + kOff_ETB_TextStyle + kOff_TBS_Font, font, kFontInfoSize);
+                *reinterpret_cast<float*>(st + kOff_ETB_TextStyle + kOff_TBS_Font + kOff_FontInfo_Size) = fontSize;
+            }
+            WriteSlateColor(st + kOff_ETB_TextStyle + kOff_TBS_Color, textCol);
+            WriteSlateColor(st + kOff_ETB_Foreground, textCol);
+            WriteSlateColor(st + kOff_ETB_FocusedFg,  textCol);
+            QM_LOG_DEBUG("[ModTab]   view: search box game-look applied");
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_WARN("[ModTab]   view: search box style FAULTED (default look stays)");
+        }
+    }
+
+    // The item-spawner search box: spawn an EditableTextBox, hint it, re-seed the persistent
+    // search text onto the fresh instance and latch it into g_searchBox for the PE-hook poll
+    // (PollSpawnerControls) - its text is a live substring filter over the item combo.
+    bool AddItemSearchRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                          const uint8_t* font, const PanelRow& row,
+                          QmUE::UObject** outSlot = nullptr)
+    {
+        if (!panel || !panel->Class) return false;
+        QmUE::UClass* boxClass = QmUE::FindClassByName("EditableTextBox");
+        if (!boxClass) return false;
+        QmUE::UObject* box = QmUE::SpawnObjectViaUFunction(boxClass, widgetTree);
+        if (!box || !box->Class) return false;
+
+        StyleSearchBox(box, font, row.size > 0.0f ? row.size : kDefFontSizeBody);
+
+        if (QmUE::UFunction* fnHint = QmUE::FindFunctionOnClass(box->Class, "SetHintText"))
+        {
+            uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+            const wchar_t* hint = (row.text && row.text[0]) ? row.text : L"Search...";
+            if (QmUE::TextFromString(hint, ft)) QmUE::CallProcessEvent(box, fnHint, ft);
+        }
+        const wchar_t* prev = GetItemSearchText();
+        if (prev && prev[0])
+            if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(box->Class, "SetText"))
+            {
+                uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                if (QmUE::TextFromString(prev, ft)) QmUE::CallProcessEvent(box, fnSet, ft);
+            }
+
+        QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
+        if (!fnAdd) return false;
+        P_AddChild ac; ac.Content = box; ac.ReturnValue = nullptr;
+        if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
+        if (ac.ReturnValue)
+            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
+        if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
+
+        g_searchBox = box;
+        QM_LOG_DEBUG("[ModTab]   view: item search box=0x%p seeded-len=%d",
+                     (void*)box, prev ? (int)wcslen(prev) : 0);
+        return true;
+    }
+
     // One native section-header row: CreateWidget the game's own settings header blueprint and
     // label it. The label setter is resolved at runtime (class not in the offline SDK dump);
     // a candidate is only called when its parms are exactly one FText, and the row is only
@@ -759,6 +876,8 @@ namespace
                 { ++combos; return true; }
             return false;
         }
+        if (r.type == kRowItemSearch)
+            return AddItemSearchRow(panel, widgetTree, font, r, outSlot);
         return AddTextRow(panel, widgetTree, r.text, r.color, font,
                           r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
                           r.indent, outSlot) != nullptr;
@@ -866,8 +985,9 @@ namespace ModTab
                          (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
             g_buttonActionCount = 0;        // actions die with their panel; re-latched by the build
-            g_itemCombo         = nullptr;  // so do the dropdown latches
+            g_itemCombo         = nullptr;  // so do the dropdown/search latches
             g_catCombo          = nullptr;
+            g_searchBox         = nullptr;
         }
 
         // Owning player (Create's 3rd arg).
@@ -989,7 +1109,8 @@ namespace ModTab
                                 // (pushing trailing buttons to the right), others auto-size.
                                 StyleHSlot(slot, k == i ? 0.0f : layout[k].gap,
                                            layout[k].type == kRowItemDropdown ||
-                                           layout[k].type == kRowCategoryDropdown);
+                                           layout[k].type == kRowCategoryDropdown ||
+                                           layout[k].type == kRowItemSearch);
                             }
                         }
                     }
@@ -1083,36 +1204,74 @@ namespace ModTab
         return found;
     }
 
-    // The category combo broadcasts no ProcessEvent without a bound delegate, so its pick is
-    // polled from the PE hook: gated on the live latches (both null while no panel exists -
-    // zero cost outside an open settings session), throttled to one reflected GetSelectedIndex
-    // per kCategoryPollMs, NO GObjects walk (the lag lesson). A change swaps the filtered
-    // catalog view and refills the item combo in place.
-    void PollCategoryDropdown()
+    // Neither the category combo nor the search box broadcasts a ProcessEvent without a
+    // bound delegate, so both are polled from the PE hook: gated on the live latches (all
+    // null while no panel exists - zero cost outside an open settings session), throttled
+    // to one reflected read per control per kSpawnerPollMs, NO GObjects walk (the lag
+    // lesson). The search read is two-stage: GetText's FText data POINTER is compared per
+    // tick, the string conversion only runs on an actual change (typing). Any change swaps
+    // the filtered catalog view and refills the item combo in place.
+    void PollSpawnerControls()
     {
-        constexpr ULONGLONG kCategoryPollMs = 250;
+        constexpr ULONGLONG kSpawnerPollMs = 250;
         static ULONGLONG s_lastPoll = 0;
+        static void*     s_lastTextData = nullptr;   // FText::TextData identity of the last read
 
-        if (!g_catCombo || !g_itemCombo) return;
+        if (!g_itemCombo || (!g_catCombo && !g_searchBox)) return;
         ULONGLONG now = GetTickCount64();
-        if (now - s_lastPoll < kCategoryPollMs) return;
+        if (now - s_lastPoll < kSpawnerPollMs) return;
         s_lastPoll = now;
 
-        QmUE::UObject* cat = reinterpret_cast<QmUE::UObject*>(g_catCombo);
-        int idx = -1;
-        __try
-        {
-            if (cat->Class)
-                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cat->Class, "GetSelectedIndex"))
-                {
-                    int32_t p[2] = { -1, 0 };
-                    if (QmUE::CallProcessEvent(cat, fn, p)) idx = p[0];
-                }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-        if (idx < 0 || idx == GetActiveItemCategory() || idx >= GetItemCategoryCount()) return;
+        bool refill = false;
 
-        SetActiveItemCategory(idx);
+        if (g_catCombo)
+        {
+            QmUE::UObject* cat = reinterpret_cast<QmUE::UObject*>(g_catCombo);
+            int idx = -1;
+            __try
+            {
+                if (cat->Class)
+                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cat->Class, "GetSelectedIndex"))
+                    {
+                        int32_t p[2] = { -1, 0 };
+                        if (QmUE::CallProcessEvent(cat, fn, p)) idx = p[0];
+                    }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { idx = -1; }
+            if (idx >= 0 && idx != GetActiveItemCategory() && idx < GetItemCategoryCount())
+            {
+                SetActiveItemCategory(idx);
+                refill = true;
+                QM_LOG_INFO("[ModTab] item category -> %d", idx);
+            }
+        }
+
+        if (g_searchBox)
+        {
+            QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(g_searchBox);
+            uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+            bool haveText = false;
+            __try
+            {
+                if (box->Class)
+                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(box->Class, "GetText"))
+                        haveText = QmUE::CallProcessEvent(box, fn, ft);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { haveText = false; }
+            if (haveText)
+            {
+                void* data = *reinterpret_cast<void**>(ft);
+                if (data != s_lastTextData)
+                {
+                    s_lastTextData = data;
+                    wchar_t buf[256];
+                    if (QmUE::StringFromText(ft, buf, 256) && SetItemSearchText(buf))
+                        refill = true;
+                }
+            }
+        }
+
+        if (!refill) return;
         g_lastItemSel = 0;   // the old selection indexes the previous slice - reset, don't carry
         int added = 0;
         __try
@@ -1120,6 +1279,7 @@ namespace ModTab
             added = FillItemCombo(reinterpret_cast<QmUE::UObject*>(g_itemCombo));
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {}
-        QM_LOG_INFO("[ModTab] item category -> %d: %d item(s)", idx, added);
+        QM_LOG_INFO("[ModTab] spawner filter: cat=%d search-len=%d -> %d item(s)",
+                    GetActiveItemCategory(), (int)wcslen(GetItemSearchText()), added);
     }
 }

@@ -74,9 +74,12 @@ namespace ModTab
     // state). The CATEGORY combo broadcasts nothing without a bound delegate, so its
     // selection is polled (throttled pointer-held reads, no GObjects walk) from the
     // ProcessEvent hook; a change refills the item combo with that category's slice.
+    // The SEARCH box (EditableTextBox) follows the same poll: its FText data pointer
+    // is compared per tick and only converted to a string on change.
     extern void* g_itemCombo;
     extern int   g_lastItemSel;     // index into the FILTERED item list (active category)
     extern void* g_catCombo;
+    extern void* g_searchBox;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateSidecarDir(char* out, size_t outSz);
@@ -94,8 +97,9 @@ namespace ModTab
     int     GetWidgetVisibility(QmUE::UObject* widget);   // -1 when unreadable
     void    ProbeViewPath(QmUE::UObject* screen);
     bool    OurPanelMounted();
-    // Throttled category-combo selection watch (PE-hook driven, see g_catCombo above).
-    void    PollCategoryDropdown();
+    // Throttled spawner-control watch: category-combo selection + search-box text
+    // (PE-hook driven, see g_catCombo / g_searchBox above).
+    void    PollSpawnerControls();
 
     // ---- qm_modtab_layout.cpp ----------------------------------------------------------------
     // kRowMods never reaches the build: GetPanelLayout expands it into text rows from
@@ -104,7 +108,7 @@ namespace ModTab
     // reaches the build either: it marks where the rows from the optional
     // qm_modtab_layout_*.json user-extension files splice into the base layout.
     enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4,
-                 kRowUserLayout = 5, kRowCategoryDropdown = 6 };
+                 kRowUserLayout = 5, kRowCategoryDropdown = 6, kRowItemSearch = 7 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).
@@ -128,7 +132,8 @@ namespace ModTab
     // empty layout.
     const PanelRow* GetPanelLayout(int* outCount);
 
-    // Item catalog backing kRowItemDropdown / kRowCategoryDropdown rows: qm_modtab_items.txt
+    // Item catalog backing kRowItemDropdown / kRowCategoryDropdown / kRowItemSearch rows:
+    // qm_modtab_items.txt
     // (the Configurator's pre-built "<AssetId>|<Display name>|<PackagePath>|<Category>" list),
     // loaded by GetPanelLayout alongside the rows. The item accessors are views over the
     // FILTERED list (the active category's slice; category 0 = "All" = whole catalog), so
@@ -142,6 +147,10 @@ namespace ModTab
     const wchar_t* GetItemCategoryName(int idx); // nullptr when out of range
     int            GetActiveItemCategory();      // survives panel rebuilds; kept by NAME across catalog reloads
     void           SetActiveItemCategory(int idx); // clamps; rebuilds the filtered view
+    // Search filter over the item names (kRowItemSearch row): case-insensitive substring,
+    // ANDed with the active category. Survives panel rebuilds like the category pick.
+    bool           SetItemSearchText(const wchar_t* text); // true when the filter CHANGED (view rebuilt)
+    const wchar_t* GetItemSearchText();                    // the raw text, for re-seeding a fresh box
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);

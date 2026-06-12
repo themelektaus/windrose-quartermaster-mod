@@ -7,6 +7,7 @@
 #include "qm_ue.hpp"
 #include "qm_scan.hpp"
 #include "qm_log.hpp"
+#include "qm_alloc.hpp"
 
 // External logger from main.cpp - we don't have access to its <cstdio>-free
 // LogF macros here, so we use a thin forwarder declared as extern "C".
@@ -591,6 +592,68 @@ namespace QmUE
 
         if (!ok) return false;
         memcpy(outText16, parms.ReturnValue, 16);
+        return true;
+    }
+
+    // ---- UKismetTextLibrary::Conv_TextToString UFunction wrapper ----
+    //
+    // Function:    Engine.KismetTextLibrary.Conv_TextToString
+    // Signature:   FString Conv_TextToString(FText InText)
+    // Param block: { FText InText (0x10); FString ReturnValue (0x10); } size 0x20
+    //              (verified via Engine_parameters.hpp KismetTextLibrary_Conv_TextToString).
+    //
+    // The returned FString's character buffer is engine-allocated; it is handed back
+    // to FMemory via QmAlloc::Realloc(ptr, 0) when the allocator is resolved. The raw
+    // FText copy in the parm block holds an un-released shared ref (same documented
+    // trade-off as TextFromString) - bounded, callers only convert on text CHANGE.
+    static UFunction* s_convTextToStringFunc = nullptr;
+
+    bool StringFromText(const void* text16, wchar_t* out, size_t outCap)
+    {
+        if (!out || outCap == 0) return false;
+        out[0] = L'\0';
+        if (!text16) return false;
+        if (!IsReady() || !g_processEvent) return false;
+
+        if (!s_kismetTextLibClass)
+            s_kismetTextLibClass = FindClassByName("KismetTextLibrary");
+        if (!s_kismetTextLibClass) return false;
+
+        if (!s_convTextToStringFunc)
+            s_convTextToStringFunc = FindFunctionOnClass(s_kismetTextLibClass, "Conv_TextToString");
+        if (!s_convTextToStringFunc) return false;
+
+        if (!s_kismetTextLibCDO)
+            s_kismetTextLibCDO = GetClassDefaultObject(s_kismetTextLibClass);
+        if (!s_kismetTextLibCDO) return false;
+
+        // Param block: 0x00 FText InText (16 bytes); 0x10 FString ReturnValue.
+        struct Params {
+            uint8   InText[16];
+            FString ReturnValue;
+        };
+
+        Params parms = {};
+        memcpy(parms.InText, text16, 16);
+
+        uint32 oldFlags = s_convTextToStringFunc->FunctionFlags;
+        s_convTextToStringFunc->FunctionFlags = oldFlags | 0x400;
+
+        bool ok = CallProcessEvent(s_kismetTextLibCDO, s_convTextToStringFunc, &parms);
+
+        s_convTextToStringFunc->FunctionFlags = oldFlags;
+
+        if (!ok) return false;
+
+        if (parms.ReturnValue.Data && parms.ReturnValue.Num > 0)
+        {
+            size_t n = (size_t)parms.ReturnValue.Num;   // includes the terminator
+            if (n > outCap) n = outCap;
+            memcpy(out, parms.ReturnValue.Data, (n - 1) * sizeof(wchar_t));
+            out[n - 1] = L'\0';
+            if (QmAlloc::IsResolved())
+                QmAlloc::Realloc(parms.ReturnValue.Data, 0, 0);
+        }
         return true;
     }
 

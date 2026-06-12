@@ -318,6 +318,14 @@ namespace QmUE
     // Returns true on success, false on any failure (UFunction missing, fault).
     bool TextFromString(const wchar_t* str, void* outText16);
 
+    // Read an FText back into a wide buffer via KismetTextLibrary::Conv_TextToString
+    // (the exact inverse of TextFromString). text16 points at the 16-byte FText; the
+    // returned FString's engine buffer is freed through QmAlloc when resolved (else a
+    // tiny bounded leak). Output is truncated to outCap-1 chars and always terminated.
+    //
+    // Returns true on success (empty text included), false on any failure.
+    bool StringFromText(const void* text16, wchar_t* out, size_t outCap);
+
     // Synchronously load an asset via UKismetSystemLibrary::LoadAsset_Blocking
     // UFunction. This is the equivalent of `FSoftObjectPath(...).TryLoad()` in
     // native UE code - on success the package containing the asset is hydrated
