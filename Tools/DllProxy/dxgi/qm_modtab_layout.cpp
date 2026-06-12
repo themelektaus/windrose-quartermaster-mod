@@ -10,8 +10,8 @@
 //
 // Row schema (unknown keys are skipped for forward-compat):
 //   type      "text" (default) | "header" | "button" | "modifications" | "itemDropdown"
-//             | "userLayout" (base layout only: splice marker, renders nothing itself;
-//             inside extension files it is inert - no recursion)
+//             | "categoryDropdown" | "userLayout" (base layout only: splice marker, renders
+//             nothing itself; inside extension files it is inert - no recursion)
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
 //   size      font size (text rows + header TextBlock fallback)
 //   color     "#RRGGBB" or "#RRGGBBAA", linear RGB / 255
@@ -38,10 +38,14 @@
 // the next settings open without a game restart.
 //
 // "itemDropdown" rows render as a ComboBoxString over qm_modtab_items.txt in the sidecar
-// folder - the Configurator's pre-built item catalog ("<AssetId>|<Display name>[|<PackagePath>]"
-// per line, pre-sorted; '#' lines are comments; the third field marks custom mod-pak items). Loaded mtime-watched like the mods file; the catalog
-// is exposed to the build + the click dispatch via GetItemOption*(). With no usable catalog
-// the row degrades to a fixed notice text row, so the dropdown can never come up dead.
+// folder - the Configurator's pre-built item catalog ("<AssetId>|<Display name>|<PackagePath>
+// |<Category>" per line, pre-sorted; '#' lines are comments; a non-empty third field marks
+// custom mod-pak items). Loaded mtime-watched like the mods file. "categoryDropdown" rows
+// render the cascading category filter over the same catalog: the GetItemOption*() accessors
+// are views over the ACTIVE category's slice ("All" at index 0 = whole catalog), so the item
+// combo, the category poll (qm_modtab_widgets.cpp) and the click dispatch all share one
+// filtered view. With no usable catalog the item row degrades to a fixed notice text row and
+// the category row renders nothing, so the spawner can never come up dead.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -143,12 +147,13 @@ namespace
             {
                 std::string v;
                 if (!jp.parseString(v)) return false;
-                out.type = (v == "header")        ? kRowHeader
-                         : (v == "button")        ? kRowButton
-                         : (v == "modifications") ? kRowMods
-                         : (v == "itemDropdown")  ? kRowItemDropdown
-                         : (v == "userLayout")    ? kRowUserLayout
-                                                  : kRowText;
+                out.type = (v == "header")           ? kRowHeader
+                         : (v == "button")           ? kRowButton
+                         : (v == "modifications")    ? kRowMods
+                         : (v == "itemDropdown")     ? kRowItemDropdown
+                         : (v == "categoryDropdown") ? kRowCategoryDropdown
+                         : (v == "userLayout")       ? kRowUserLayout
+                                                     : kRowText;
             }
             else if (key == "text")
             {
@@ -428,48 +433,126 @@ namespace
 
     // ---- "itemDropdown" row backing data -------------------------------------------------------
 
-    struct ItemOption { std::string key; std::wstring name; std::string pkg; };
+    struct ItemOption { std::string key; std::wstring name; std::string pkg; std::string cat; };
     std::vector<ItemOption> g_itemOptions;
     bool                    g_itemsLoadedOnce = false;
     bool                    g_itemsWasThere   = false;
     FILETIME                g_itemsLastWrite  = {};
 
-    // "<AssetId>|<Display name>[|<PackagePath>]" per line (the Configurator writes the file
-    // pre-sorted by display name); '#' and empty lines are skipped, a line without '|' is
-    // key-only. The third field marks a custom (mod-pak) item: its mounted package path,
-    // used by the grant as a sync-load fallback when the PDA is not in memory yet.
+    // The cascading category filter over g_itemOptions. g_itemCategories[0] is the synthetic
+    // "All"; g_itemFilter maps filtered (= item-combo option) indices to g_itemOptions
+    // indices. Rebuilt by RebuildItemFilter on every catalog load and category switch; the
+    // active category is remembered BY NAME so a catalog reload (Configurator rebuilt it
+    // while the game runs) keeps the user's pick even when indices shift.
+    struct ItemCategory { std::string key; std::wstring name; };
+    std::vector<ItemCategory> g_itemCategories;
+    std::vector<int>          g_itemFilter;
+    int                       g_activeCategory = 0;
+
+    // Stable display order for the known Configurator groups; categories the file carries
+    // beyond these (forward-compat) append behind in first-appearance order.
+    const char* const kCategoryOrder[] = { "Weapons", "Armor", "Jewelry", "Tools", "Consumables",
+                                           "Resources", "Trading", "Ship", "Recipes", "Misc",
+                                           "Custom" };
+
+    void RebuildItemFilter()
+    {
+        g_itemFilter.clear();
+        if (g_itemOptions.empty()) { g_activeCategory = 0; return; }
+        if (g_activeCategory < 0 || g_activeCategory >= (int)g_itemCategories.size())
+            g_activeCategory = 0;
+        const std::string* want = (g_activeCategory > 0)
+            ? &g_itemCategories[(size_t)g_activeCategory].key : nullptr;
+        g_itemFilter.reserve(g_itemOptions.size());
+        for (size_t i = 0; i < g_itemOptions.size(); ++i)
+            if (!want || g_itemOptions[i].cat == *want)
+                g_itemFilter.push_back((int)i);
+    }
+
+    void RebuildItemCategories()
+    {
+        std::string keep = (g_activeCategory > 0 && g_activeCategory < (int)g_itemCategories.size())
+            ? g_itemCategories[(size_t)g_activeCategory].key : std::string();
+
+        g_itemCategories.clear();
+        if (!g_itemOptions.empty())
+        {
+            g_itemCategories.push_back({ std::string(), L"All Items" });
+            auto have = [&](const std::string& k)
+            {
+                for (size_t i = 1; i < g_itemCategories.size(); ++i)
+                    if (g_itemCategories[i].key == k) return true;
+                return false;
+            };
+            auto present = [&](const char* k)
+            {
+                for (size_t i = 0; i < g_itemOptions.size(); ++i)
+                    if (g_itemOptions[i].cat == k) return true;
+                return false;
+            };
+            for (const char* k : kCategoryOrder)
+                if (present(k)) g_itemCategories.push_back({ k, QmJson::Utf8ToWide(k) });
+            for (size_t i = 0; i < g_itemOptions.size(); ++i)
+                if (!g_itemOptions[i].cat.empty() && !have(g_itemOptions[i].cat))
+                    g_itemCategories.push_back({ g_itemOptions[i].cat,
+                                                 QmJson::Utf8ToWide(g_itemOptions[i].cat) });
+        }
+
+        g_activeCategory = 0;
+        if (!keep.empty())
+            for (size_t i = 1; i < g_itemCategories.size(); ++i)
+                if (g_itemCategories[i].key == keep) { g_activeCategory = (int)i; break; }
+        RebuildItemFilter();
+    }
+
+    // "<AssetId>|<Display name>|<PackagePath>|<Category>" per line (the Configurator writes
+    // the file pre-sorted by display name); '#' and empty lines are skipped, a line without
+    // '|' is key-only. A non-empty third field marks a custom (mod-pak) item: its mounted
+    // package path, used by the grant as a sync-load fallback when the PDA is not in memory
+    // yet. A missing fourth field (pre-category catalog) degrades to "Misc".
     void LoadItemCatalog(const char* path)
     {
         g_itemOptions.clear();
         std::string body;
-        if (!path || !QmJson::ReadWholeFile(path, body)) return;
-        QmJson::StripUtf8Bom(body);
-        for (size_t pos = 0; pos < body.size();)
+        if (path && QmJson::ReadWholeFile(path, body))
         {
-            size_t eol = body.find('\n', pos);
-            size_t len = (eol == std::string::npos ? body.size() : eol) - pos;
-            std::string line = body.substr(pos, len);
-            pos += len + 1;
-
-            size_t b = line.find_first_not_of(" \t\r");
-            if (b == std::string::npos || line[b] == '#') continue;
-            size_t e = line.find_last_not_of(" \t\r");
-            line = line.substr(b, e - b + 1);
-
-            ItemOption opt;
-            size_t sep = line.find('|');
-            std::string rest = (sep == std::string::npos) ? line : line.substr(sep + 1);
-            size_t sep2 = rest.find('|');
-            if (sep2 != std::string::npos)
+            QmJson::StripUtf8Bom(body);
+            for (size_t pos = 0; pos < body.size();)
             {
-                opt.pkg = rest.substr(sep2 + 1);
-                rest    = rest.substr(0, sep2);
+                size_t eol = body.find('\n', pos);
+                size_t len = (eol == std::string::npos ? body.size() : eol) - pos;
+                std::string line = body.substr(pos, len);
+                pos += len + 1;
+
+                size_t b = line.find_first_not_of(" \t\r");
+                if (b == std::string::npos || line[b] == '#') continue;
+                size_t e = line.find_last_not_of(" \t\r");
+                line = line.substr(b, e - b + 1);
+
+                ItemOption opt;
+                size_t sep = line.find('|');
+                std::string rest = (sep == std::string::npos) ? line : line.substr(sep + 1);
+                size_t sep2 = rest.find('|');
+                if (sep2 != std::string::npos)
+                {
+                    std::string tail = rest.substr(sep2 + 1);   // "<PackagePath>[|<Category>]"
+                    rest = rest.substr(0, sep2);
+                    size_t sep3 = tail.find('|');
+                    if (sep3 != std::string::npos)
+                    {
+                        opt.cat = tail.substr(sep3 + 1);
+                        tail    = tail.substr(0, sep3);
+                    }
+                    opt.pkg = tail;
+                }
+                if (opt.cat.empty()) opt.cat = "Misc";
+                opt.key  = (sep == std::string::npos) ? line : line.substr(0, sep);
+                opt.name = QmJson::Utf8ToWide(rest);
+                if (!opt.key.empty() && !opt.name.empty())
+                    g_itemOptions.push_back(static_cast<ItemOption&&>(opt));
             }
-            opt.key  = (sep == std::string::npos) ? line : line.substr(0, sep);
-            opt.name = QmJson::Utf8ToWide(rest);
-            if (!opt.key.empty() && !opt.name.empty())
-                g_itemOptions.push_back(static_cast<ItemOption&&>(opt));
         }
+        RebuildItemCategories();
     }
 
     void RebuildView()
@@ -511,6 +594,8 @@ namespace
                 g_view.push_back(r);
                 return;
             }
+            if (s.type == kRowCategoryDropdown && g_itemOptions.empty())
+                return;   // the item row's notice already covers the missing catalog
             g_view.push_back(viewOf(s));
         };
 
@@ -612,9 +697,11 @@ namespace ModTab
         // Same per-build re-check for the item catalog (regenerated by Configurator builds).
         bool haveDropdown = false;
         for (size_t i = 0; i < g_storage.size() && !haveDropdown; ++i)
-            if (g_storage[i].type == kRowItemDropdown) haveDropdown = true;
+            if (g_storage[i].type == kRowItemDropdown ||
+                g_storage[i].type == kRowCategoryDropdown) haveDropdown = true;
         for (size_t i = 0; i < g_userRows.size() && !haveDropdown; ++i)
-            if (g_userRows[i].type == kRowItemDropdown) haveDropdown = true;
+            if (g_userRows[i].type == kRowItemDropdown ||
+                g_userRows[i].type == kRowCategoryDropdown) haveDropdown = true;
 
         bool itemsChanged = false;
         if (haveDropdown)
@@ -635,8 +722,10 @@ namespace ModTab
                 if (itemsThere) g_itemsLastWrite = ifad.ftLastWriteTime;
                 LoadItemCatalog(itemsThere ? itemsPath : nullptr);
                 itemsChanged = true;
-                QM_LOG_INFO("[ModTab] item catalog: %d item(s) from %s",
-                            (int)g_itemOptions.size(), itemsThere ? itemsPath : "(missing file)");
+                QM_LOG_INFO("[ModTab] item catalog: %d item(s) in %d categor(ies) from %s",
+                            (int)g_itemOptions.size(),
+                            (int)g_itemCategories.size() ? (int)g_itemCategories.size() - 1 : 0,
+                            itemsThere ? itemsPath : "(missing file)");
             }
         }
         else if (!g_itemOptions.empty()) { g_itemOptions.clear(); itemsChanged = true; }
@@ -656,25 +745,49 @@ namespace ModTab
 
     int GetItemOptionCount()
     {
-        return (int)g_itemOptions.size();
+        return (int)g_itemFilter.size();
     }
 
     const wchar_t* GetItemOptionName(int idx)
     {
-        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
-        return g_itemOptions[(size_t)idx].name.c_str();
+        if (idx < 0 || idx >= (int)g_itemFilter.size()) return nullptr;
+        return g_itemOptions[(size_t)g_itemFilter[(size_t)idx]].name.c_str();
     }
 
     const char* GetItemOptionKey(int idx)
     {
-        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
-        return g_itemOptions[(size_t)idx].key.c_str();
+        if (idx < 0 || idx >= (int)g_itemFilter.size()) return nullptr;
+        return g_itemOptions[(size_t)g_itemFilter[(size_t)idx]].key.c_str();
     }
 
     const char* GetItemOptionPkg(int idx)
     {
-        if (idx < 0 || idx >= (int)g_itemOptions.size()) return nullptr;
-        const std::string& pkg = g_itemOptions[(size_t)idx].pkg;
+        if (idx < 0 || idx >= (int)g_itemFilter.size()) return nullptr;
+        const std::string& pkg = g_itemOptions[(size_t)g_itemFilter[(size_t)idx]].pkg;
         return pkg.empty() ? nullptr : pkg.c_str();
+    }
+
+    int GetItemCategoryCount()
+    {
+        return (int)g_itemCategories.size();
+    }
+
+    const wchar_t* GetItemCategoryName(int idx)
+    {
+        if (idx < 0 || idx >= (int)g_itemCategories.size()) return nullptr;
+        return g_itemCategories[(size_t)idx].name.c_str();
+    }
+
+    int GetActiveItemCategory()
+    {
+        return g_activeCategory;
+    }
+
+    void SetActiveItemCategory(int idx)
+    {
+        if (idx < 0 || idx >= (int)g_itemCategories.size()) idx = 0;
+        if (idx == g_activeCategory) return;
+        g_activeCategory = idx;
+        RebuildItemFilter();
     }
 }

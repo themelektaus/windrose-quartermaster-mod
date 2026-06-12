@@ -502,19 +502,15 @@ namespace
         }
     }
 
-    // The item-spawner dropdown: spawn a ComboBoxString, fill it from the item catalog
-    // (AddOption per entry, BEFORE the mount - no Slate widget exists yet, so the fill is
-    // cheap), re-apply the last known selection, append it to the panel and latch it into
-    // g_itemCombo for the click-time "add_selected_item" dispatch (qm_modtab.cpp).
-    bool AddItemDropdownRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
-                            const uint8_t* font, const PanelRow& row, QmUE::UObject* barDonor,
-                            QmUE::UObject** outSlot = nullptr)
+    // Spawn one game-styled ComboBoxString (font + bounded open-list height + game-look),
+    // not yet filled or mounted. Shared by the item and the category dropdown rows.
+    QmUE::UObject* SpawnStyledCombo(QmUE::UObject* widgetTree, const uint8_t* font,
+                                    const PanelRow& row, QmUE::UObject* barDonor)
     {
-        if (!panel || !panel->Class) return false;
         QmUE::UClass* comboClass = QmUE::FindClassByName("ComboBoxString");
-        if (!comboClass) return false;
+        if (!comboClass) return nullptr;
         QmUE::UObject* combo = QmUE::SpawnObjectViaUFunction(comboClass, widgetTree);
-        if (!combo || !combo->Class) return false;
+        if (!combo || !combo->Class) return nullptr;
 
         // Pre-construct property writes (game font + a bounded open-list height for the
         // ~1000-entry catalog; the inner list view virtualizes its rows).
@@ -532,8 +528,23 @@ namespace
         __except (EXCEPTION_EXECUTE_HANDLER) {}
 
         StyleItemCombo(combo, barDonor);
+        return combo;
+    }
 
-        struct FStringParm { const wchar_t* data; int32_t num; int32_t max; };
+    struct FStringParm { const wchar_t* data; int32_t num; int32_t max; };
+
+    // Fill (or REFILL) the item combo from the filtered catalog view and re-apply the last
+    // known selection. Runs pre-mount at panel build (no Slate widget yet = cheap) and on a
+    // LIVE combo when the category poll switches the filter (the closed SComboBox only marks
+    // its virtualized list dirty, so a refill is bounded by the AddOption dispatch cost).
+    int FillItemCombo(QmUE::UObject* combo)
+    {
+        if (!combo || !combo->Class) return 0;
+        if (QmUE::UFunction* fnClr = QmUE::FindFunctionOnClass(combo->Class, "ClearOptions"))
+        {
+            uint8_t none[8] = { 0 };
+            QmUE::CallProcessEvent(combo, fnClr, none);
+        }
         int added = 0;
         if (QmUE::UFunction* fnOpt = QmUE::FindFunctionOnClass(combo->Class, "AddOption"))
         {
@@ -553,6 +564,21 @@ namespace
             if (idx[0] < 0 || idx[0] >= added) idx[0] = 0;
             QmUE::CallProcessEvent(combo, fnSel, idx);
         }
+        return added;
+    }
+
+    // The item-spawner dropdown: spawn a ComboBoxString, fill it with the ACTIVE category's
+    // slice of the item catalog, append it to the panel and latch it into g_itemCombo for
+    // the click-time "add_selected_item" dispatch (qm_modtab.cpp).
+    bool AddItemDropdownRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                            const uint8_t* font, const PanelRow& row, QmUE::UObject* barDonor,
+                            QmUE::UObject** outSlot = nullptr)
+    {
+        if (!panel || !panel->Class) return false;
+        QmUE::UObject* combo = SpawnStyledCombo(widgetTree, font, row, barDonor);
+        if (!combo) return false;
+
+        int added = FillItemCombo(combo);
 
         QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
         if (!fnAdd) return false;
@@ -563,8 +589,54 @@ namespace
         if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
 
         g_itemCombo = combo;
-        QM_LOG_DEBUG("[ModTab]   view: item dropdown combo=0x%p options=%d sel=%d",
-                     (void*)combo, added, g_lastItemSel);
+        QM_LOG_DEBUG("[ModTab]   view: item dropdown combo=0x%p options=%d sel=%d cat=%d",
+                     (void*)combo, added, g_lastItemSel, GetActiveItemCategory());
+        return true;
+    }
+
+    // The cascading category filter: a ComboBoxString over the catalog's category list
+    // ("All Items" + the groups the catalog carries). The selection is re-applied from the
+    // persistent active category and latched into g_catCombo for the PE-hook poll - a pick
+    // there refills the item combo with the new slice (PollCategoryDropdown below).
+    bool AddCategoryDropdownRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                                const uint8_t* font, const PanelRow& row, QmUE::UObject* barDonor,
+                                QmUE::UObject** outSlot = nullptr)
+    {
+        if (!panel || !panel->Class) return false;
+        QmUE::UObject* combo = SpawnStyledCombo(widgetTree, font, row, barDonor);
+        if (!combo) return false;
+
+        int added = 0;
+        if (QmUE::UFunction* fnOpt = QmUE::FindFunctionOnClass(combo->Class, "AddOption"))
+        {
+            const int n = GetItemCategoryCount();
+            for (int i = 0; i < n; ++i)
+            {
+                const wchar_t* name = GetItemCategoryName(i);
+                if (!name) continue;
+                int32_t len = (int32_t)wcslen(name) + 1;
+                FStringParm p = { name, len, len };
+                if (QmUE::CallProcessEvent(combo, fnOpt, &p)) ++added;
+            }
+        }
+        if (QmUE::UFunction* fnSel = QmUE::FindFunctionOnClass(combo->Class, "SetSelectedIndex"))
+        {
+            int32_t idx[2] = { GetActiveItemCategory(), 0 };
+            if (idx[0] < 0 || idx[0] >= added) idx[0] = 0;
+            QmUE::CallProcessEvent(combo, fnSel, idx);
+        }
+
+        QmUE::UFunction* fnAdd = QmUE::FindFunctionOnClass(panel->Class, "AddChild");
+        if (!fnAdd) return false;
+        P_AddChild ac; ac.Content = combo; ac.ReturnValue = nullptr;
+        if (!QmUE::CallProcessEvent(panel, fnAdd, &ac)) return false;
+        if (ac.ReturnValue)
+            StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
+        if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
+
+        g_catCombo = combo;
+        QM_LOG_DEBUG("[ModTab]   view: category dropdown combo=0x%p options=%d active=%d",
+                     (void*)combo, added, GetActiveItemCategory());
         return true;
     }
 
@@ -681,6 +753,12 @@ namespace
                 { ++combos; return true; }
             return false;
         }
+        if (r.type == kRowCategoryDropdown)
+        {
+            if (AddCategoryDropdownRow(panel, widgetTree, font, r, barDonor, outSlot))
+                { ++combos; return true; }
+            return false;
+        }
         return AddTextRow(panel, widgetTree, r.text, r.color, font,
                           r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
                           r.indent, outSlot) != nullptr;
@@ -788,7 +866,8 @@ namespace ModTab
                          (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
             g_buttonActionCount = 0;        // actions die with their panel; re-latched by the build
-            g_itemCombo         = nullptr;  // so does the dropdown latch
+            g_itemCombo         = nullptr;  // so do the dropdown latches
+            g_catCombo          = nullptr;
         }
 
         // Owning player (Create's 3rd arg).
@@ -865,6 +944,7 @@ namespace ModTab
                 int rows = 0, headers = 0, buttons = 0, wiredCount = 0, combos = 0;
                 g_buttonActionCount = 0;
                 g_itemCombo         = nullptr;
+                g_catCombo          = nullptr;
                 int hboxes = 0;
                 for (int i = 0; layout && i < rowCount; )
                 {
@@ -905,10 +985,11 @@ namespace ModTab
                                               headers, buttons, combos, wiredCount, &slot))
                             {
                                 ++rows;
-                                // Lead has no left spacing; an itemDropdown member fills the width
+                                // Lead has no left spacing; dropdown members fill the width
                                 // (pushing trailing buttons to the right), others auto-size.
                                 StyleHSlot(slot, k == i ? 0.0f : layout[k].gap,
-                                           layout[k].type == kRowItemDropdown);
+                                           layout[k].type == kRowItemDropdown ||
+                                           layout[k].type == kRowCategoryDropdown);
                             }
                         }
                     }
@@ -1000,5 +1081,45 @@ namespace ModTab
         }
         __except (EXCEPTION_EXECUTE_HANDLER) { found = false; }
         return found;
+    }
+
+    // The category combo broadcasts no ProcessEvent without a bound delegate, so its pick is
+    // polled from the PE hook: gated on the live latches (both null while no panel exists -
+    // zero cost outside an open settings session), throttled to one reflected GetSelectedIndex
+    // per kCategoryPollMs, NO GObjects walk (the lag lesson). A change swaps the filtered
+    // catalog view and refills the item combo in place.
+    void PollCategoryDropdown()
+    {
+        constexpr ULONGLONG kCategoryPollMs = 250;
+        static ULONGLONG s_lastPoll = 0;
+
+        if (!g_catCombo || !g_itemCombo) return;
+        ULONGLONG now = GetTickCount64();
+        if (now - s_lastPoll < kCategoryPollMs) return;
+        s_lastPoll = now;
+
+        QmUE::UObject* cat = reinterpret_cast<QmUE::UObject*>(g_catCombo);
+        int idx = -1;
+        __try
+        {
+            if (cat->Class)
+                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cat->Class, "GetSelectedIndex"))
+                {
+                    int32_t p[2] = { -1, 0 };
+                    if (QmUE::CallProcessEvent(cat, fn, p)) idx = p[0];
+                }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+        if (idx < 0 || idx == GetActiveItemCategory() || idx >= GetItemCategoryCount()) return;
+
+        SetActiveItemCategory(idx);
+        g_lastItemSel = 0;   // the old selection indexes the previous slice - reset, don't carry
+        int added = 0;
+        __try
+        {
+            added = FillItemCombo(reinterpret_cast<QmUE::UObject*>(g_itemCombo));
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+        QM_LOG_INFO("[ModTab] item category -> %d: %d item(s)", idx, added);
     }
 }

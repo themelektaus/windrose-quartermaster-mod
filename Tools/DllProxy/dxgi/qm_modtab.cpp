@@ -44,6 +44,7 @@ namespace ModTab
     int          g_buttonActionCount = 0;
     void*        g_itemCombo   = nullptr;
     int          g_lastItemSel = 0;
+    void*        g_catCombo    = nullptr;
 }
 
 namespace
@@ -684,6 +685,10 @@ void QmModTab_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
 {
     (void)parms;
     if (!g_armed) return;
+
+    // Category-combo selection watch: two pointer null-checks while no panel is alive,
+    // throttled reflected reads while one is (see PollCategoryDropdown).
+    PollCategoryDropdown();
 
     // The themed art buttons re-dispatch their inner button's click as a BndEvt__*_OnClick
     // ProcessEvent on THEMSELVES - the only layer where our reflected build sees the click.
