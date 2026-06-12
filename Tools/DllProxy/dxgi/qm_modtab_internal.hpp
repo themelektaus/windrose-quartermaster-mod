@@ -75,14 +75,17 @@ namespace ModTab
     // selection is polled (throttled pointer-held reads, no GObjects walk) from the
     // ProcessEvent hook; a change refills the item combo with that category's slice.
     // The SEARCH box (EditableTextBox) follows the same poll: its FText data pointer
-    // is compared per tick and only converted to a string on change. The COUNT box
-    // (EditableTextBox) is never polled - like the item combo it is only read at
-    // dispatch time ("add_selected_item" click).
+    // is compared per tick and only converted to a string on change. The COUNT and XP
+    // boxes (EditableTextBox) are never polled - like the item combo they are only read
+    // at dispatch time ("add_selected_item" / "add_xp" click).
     extern void* g_itemCombo;
     extern int   g_lastItemSel;     // index into the FILTERED item list (active category)
     extern void* g_catCombo;
     extern void* g_searchBox;
     extern void* g_countBox;
+    extern void* g_xpBox;
+    extern void* g_attrBox;
+    extern void* g_talentBox;
 
     // ---- qm_modtab_util.cpp ------------------------------------------------------------------
     bool    LocateSidecarDir(char* out, size_t outSz);
@@ -117,7 +120,7 @@ namespace ModTab
     // qm_modtab_layout_*.json user-extension files splice into the base layout.
     enum : int { kRowText = 0, kRowHeader = 1, kRowButton = 2, kRowMods = 3, kRowItemDropdown = 4,
                  kRowUserLayout = 5, kRowCategoryDropdown = 6, kRowItemSearch = 7,
-                 kRowItemCount = 8 };
+                 kRowItemCount = 8, kRowXpCount = 9, kRowAttrCount = 10, kRowTalentCount = 11 };
     // One content row, as a plain-pointer view over storage owned by qm_modtab_layout.cpp.
     // Pointers stay valid until the next GetPanelLayout call (the build consumes them within
     // one cook frame; the button actions latch them - see ButtonAction above).
@@ -167,6 +170,18 @@ namespace ModTab
     // string means "never touched" - the fresh box then seeds from its row default ("1").
     void           SetItemCountText(const wchar_t* text);
     const wchar_t* GetItemCountText();
+    // XP amount (kRowXpCount row): same lifecycle as the grant count (persisted text only,
+    // read at "add_xp" dispatch time; empty = box seeds its row default).
+    void           SetXpCountText(const wchar_t* text);
+    const wchar_t* GetXpCountText();
+    // Attribute/talent point amounts (kRowAttrCount / kRowTalentCount rows): same persisted-
+    // text lifecycle as the XP amount, read at "add_attr_points" / "add_talent_points"
+    // dispatch time. The text may be negative (e.g. "-2") - the grant lowers the pool, the
+    // engine asserts the result stays >= 0.
+    void           SetAttrCountText(const wchar_t* text);
+    const wchar_t* GetAttrCountText();
+    void           SetTalentCountText(const wchar_t* text);
+    const wchar_t* GetTalentCountText();
 
     // ---- qm_modtab_inject.cpp ----------------------------------------------------------------
     bool    OurCollectionPresentInTabs(QmUE::UObject* screen);

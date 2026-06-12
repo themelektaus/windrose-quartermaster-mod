@@ -36,6 +36,10 @@
 //                                    A bare number is read as default=N (legacy). Any
 //                                    such file present also arms the module on its own.
 //   qm_killxp_construct_grant.txt  : one-shot manual test grant (rising-edge).
+//   qm_killxp_buscap.txt           : RE recon - hook the BL command-bus dispatcher and
+//                                    log every published command (cmdType + payload), plus
+//                                    log progression-ish PE dispatches (level-up / point
+//                                    spend breadcrumbs) with a param hexdump.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -47,6 +51,7 @@
 #include "qm_killxp.hpp"
 #include "qm_ue.hpp"
 #include "qm_log.hpp"
+#include "minhook/include/MinHook.h"
 
 namespace
 {
@@ -124,6 +129,7 @@ namespace
     constexpr uint8_t KX_KILLISH   = 0x01;   // name matches a kill/death/defeat keyword
     constexpr uint8_t KX_DMGDEALT  = 0x02;   // name == OnDamageDealt_Event (has kill flag)
     constexpr uint8_t KX_ENEMYDEAD = 0x04;   // name == OnPawnEnemyDead (rich param extraction)
+    constexpr uint8_t KX_PROGCAP   = 0x08;   // buscap recon only: progression-ish PE dispatch
 
     struct KxFuncMemo { void* fn; volatile uint8_t verdict; volatile ULONGLONG logTick; };
     constexpr uint32_t kMemoMask = (1u << 13) - 1;   // 8192 slots
@@ -224,6 +230,202 @@ namespace
         return false;
     }
 
+    // ---- BL command-bus capture (RE recon, sentinel qm_killxp_buscap.txt) --------------
+    // MinHook on the command-bus dispatcher (the publish call AddExp::Execute uses - see
+    // the RE notes at the top). Logs every published command: cmdType (raw + an FName
+    // resolve attempt) plus a payload hexdump for the first few hits per distinct cmdType.
+    // Goal: capture the AddProgressionPoints publish a level-up fires (cmdType value +
+    // payload layout) so the mod tab can grant attribute/talent points task-free. Dev
+    // tool: zero cost without the sentinel; the sentinel also arms the module on its own.
+    bool SafeReadPtr(const void* addr, void** out);   // defined below (per-read SEH)
+
+    constexpr uintptr_t RVA_BusDispatch = 0x8807B80;
+
+    typedef uintptr_t(__fastcall* BusDispatchFn)(void* bus, uint64_t cmdType,
+                                                 void* executor, void* payload, int32_t count);
+    BusDispatchFn g_origBusDispatch = nullptr;
+    bool          g_buscapWanted    = false;
+    bool          g_buscapTried     = false;
+
+    struct BusTypeSlot { uint64_t type; volatile LONG hits; };
+    constexpr int  kBusTypeSlots       = 64;
+    BusTypeSlot    g_busTypes[kBusTypeSlots] = {};
+    constexpr LONG kBusDumpHitsPerType = 6;
+
+    // Hexdump up to `max` bytes at `p` into `out` (SEH-guarded 8-byte steps, so a
+    // short/unmapped buffer truncates instead of faulting). Returns bytes dumped.
+    int HexDumpSafe(const void* p, int max, char* out, size_t outSz)
+    {
+        uint8_t bytes[0x40];
+        if (max > (int)sizeof(bytes)) max = (int)sizeof(bytes);
+        int got = 0;
+        for (int b = 0; b < max; b += 8)
+        {
+            void* q = nullptr;
+            if (!p || !SafeReadPtr(reinterpret_cast<const uint8_t*>(p) + b, &q)) break;
+            memcpy(bytes + b, &q, 8);
+            got = b + 8;
+        }
+        int off = 0; out[0] = '\0';
+        for (int b = 0; b < got && off < (int)outSz - 4; ++b)
+            off += snprintf(out + off, outSz - off, "%02X%s", bytes[b], ((b & 7) == 7) ? "  " : " ");
+        return got;
+    }
+
+    void LogBusPublish(void* bus, uint64_t cmdType, void* executor, void* payload, int32_t count)
+    {
+        // Per-cmdType slot (linear claim; races benign - worst case one extra dump line).
+        int slot = -1;
+        for (int i = 0; i < kBusTypeSlots; ++i)
+        {
+            if (g_busTypes[i].hits != 0 && g_busTypes[i].type == cmdType) { slot = i; break; }
+            if (g_busTypes[i].hits == 0) { g_busTypes[i].type = cmdType; slot = i; break; }
+        }
+        LONG n = (slot >= 0) ? InterlockedIncrement(&g_busTypes[slot].hits) : 999;
+        if (n > kBusDumpHitsPerType)
+        {
+            if ((n & (n - 1)) == 0)   // power-of-two heartbeat so hot types stay visible
+                QM_LOG_INFO("[BusCap] cmdType=0x%016llX seen %ldx (dumps suppressed)",
+                            (unsigned long long)cmdType, n);
+            return;
+        }
+
+        // cmdType as FName attempt (the GameplayMessageSubsystem keys channels by tag/name;
+        // garbage just resolves to an empty string).
+        char tn[192] = { 0 };
+        __try
+        {
+            QmUE::FName nm;
+            memcpy(&nm, &cmdType, sizeof(nm));
+            QmUE::ResolveFNameNarrow(nm, tn, sizeof(tn));
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) { tn[0] = '\0'; }
+
+        // Payload hexdump: first 0x40 bytes, read in SEH-guarded 8-byte steps.
+        char hex[3 * 0x40 + 12];
+        int got = HexDumpSafe(payload, 0x40, hex, sizeof(hex));
+
+        QM_LOG_INFO("[BusCap] PUBLISH #%ld cmdType=0x%016llX name?='%s' bus=0x%p exec=0x%p n=%d payload=%s",
+                    n, (unsigned long long)cmdType, tn[0] ? tn : "<unresolved>",
+                    bus, executor, count, got ? hex : "<unreadable>");
+    }
+
+    uintptr_t __fastcall Hook_BusDispatch(void* bus, uint64_t cmdType,
+                                          void* executor, void* payload, int32_t count)
+    {
+        LogBusPublish(bus, cmdType, executor, payload, count);
+        return g_origBusDispatch ? g_origBusDispatch(bus, cmdType, executor, payload, count) : 0;
+    }
+
+    // ---- Native progression-rule capture (the bus is the WRONG layer) -------------------
+    // The 2026-06-12 capture round proved AddProgressionPoints never touches the command bus
+    // (the bus only carries Notifications; the AddExp we saw is Inventory.Notification.AddExp,
+    // not the rule) and never dispatches a reflected UFunction (no [ProgCap] hit). The point
+    // grant is a pure native business rule. So we hook the two native entry points directly,
+    // resolved by RTTI-string xref -> .pdata function bounds (see the RE notes below):
+    //
+    //   RVA 0x6F707B0  R5BLProgression_AddProgressionPointsRule::Do_Impl
+    //   RVA 0x6F4BF70  R5BLEntityProgressionCntr::AddProgressionPoints   (likely call target)
+    //
+    // Both start at byte 0 with the args still in rcx/rdx/r8/r9 (the prologue clobbers them a
+    // few instructions in for a profiler frame, but a detour at the entry sees the genuine
+    // incoming registers). Both take <=4 register args and no stack args, so a typed 4-arg
+    // thunk passes them through verbatim. Goal of this round: read the real FR5BLRecordPath
+    // (ProgressionTreePath, 0x18 bytes) + which arg carries the int32 count, so the mod tab can
+    // grant attribute/talent points by calling EntityCntr::AddProgressionPoints task-free.
+    // Dev tool: same sentinel as the bus capture (qm_killxp_buscap.txt), zero cost without it.
+    constexpr uintptr_t RVA_RuleAddPPDo = 0x6F707B0;
+    constexpr uintptr_t RVA_EntityAddPP = 0x6F4BF70;
+
+    typedef uintptr_t(__fastcall* RuleCallFn)(void* a1, void* a2, void* a3, void* a4);
+    RuleCallFn g_origRuleAddPPDo = nullptr;
+    RuleCallFn g_origEntityAddPP = nullptr;
+
+    struct RuleCapSlot { volatile LONG hits; };
+    RuleCapSlot g_capDo  = {};
+    RuleCapSlot g_capEnt = {};
+    constexpr LONG kRuleDumpHits = 6;
+
+    // Log one native rule call: the 4 register args as raw values, plus a 0x40 hexdump of any
+    // that look like a live heap pointer (the FR5BLRecordPath and the rule/controller `this`).
+    void LogRuleCall(const char* label, RuleCapSlot& s, void* a1, void* a2, void* a3, void* a4)
+    {
+        LONG n = InterlockedIncrement(&s.hits);
+        if (n > kRuleDumpHits) return;
+        void* args[4] = { a1, a2, a3, a4 };
+        char line[1024];
+        int off = snprintf(line, sizeof(line),
+                           "[ProgRule] %s #%ld rcx=0x%p rdx=0x%p r8=0x%p r9=0x%p",
+                           label, n, a1, a2, a3, a4);
+        QM_LOG_INFO("%s", line);
+        for (int i = 0; i < 4; ++i)
+        {
+            uintptr_t v = reinterpret_cast<uintptr_t>(args[i]);
+            bool ptr = v >= 0x100000000ULL && v < 0x7FFFFFFFFFFFULL && (v & 0x7) == 0;
+            if (!ptr) continue;
+            char hex[3 * 0x40 + 12];
+            int got = HexDumpSafe(args[i], 0x40, hex, sizeof(hex));
+            if (got)
+                QM_LOG_INFO("[ProgRule]   arg%d@0x%p = %s", i, args[i], hex);
+        }
+    }
+
+    uintptr_t __fastcall Hook_RuleAddPPDo(void* a1, void* a2, void* a3, void* a4)
+    {
+        LogRuleCall("Rule::Do_Impl", g_capDo, a1, a2, a3, a4);
+        return g_origRuleAddPPDo ? g_origRuleAddPPDo(a1, a2, a3, a4) : 0;
+    }
+    uintptr_t __fastcall Hook_EntityAddPP(void* a1, void* a2, void* a3, void* a4)
+    {
+        LogRuleCall("EntityCntr::AddProgressionPoints", g_capEnt, a1, a2, a3, a4);
+        return g_origEntityAddPP ? g_origEntityAddPP(a1, a2, a3, a4) : 0;
+    }
+
+    // Install one MinHook by RVA, logging success/failure. Returns true on MH_OK.
+    bool InstallRuleHook(uintptr_t base, uintptr_t rva, const char* label,
+                         LPVOID detour, LPVOID* origOut)
+    {
+        LPVOID target = reinterpret_cast<LPVOID>(base + rva);
+        MH_STATUS st = MH_CreateHook(target, detour, origOut);
+        if (st == MH_OK) st = MH_EnableHook(target);
+        if (st == MH_OK)
+        {
+            QM_LOG_INFO("[ProgRule] *** INSTALLED *** %s @ 0x%p (rva 0x%llX)",
+                        label, target, (unsigned long long)rva);
+            return true;
+        }
+        QM_LOG_ERROR("[ProgRule] hook install FAILED for %s: %s", label, MH_StatusToString(st));
+        return false;
+    }
+
+    // One-shot install off the PE net-hook (MinHook is initialized by then; Init runs
+    // earlier). Retries while the image base is not resolved yet. Installs the command-bus
+    // capture AND the native progression-rule capture under the same sentinel.
+    void TryInstallBusCapture()
+    {
+        if (!g_buscapWanted || g_buscapTried) return;
+        uintptr_t base = QmUE::GetImageBase();
+        if (!base) return;   // not resolved yet - retry next dispatch
+        g_buscapTried = true;
+        LPVOID target = reinterpret_cast<LPVOID>(base + RVA_BusDispatch);
+        MH_STATUS st = MH_CreateHook(target, reinterpret_cast<LPVOID>(&Hook_BusDispatch),
+                                     reinterpret_cast<LPVOID*>(&g_origBusDispatch));
+        if (st == MH_OK) st = MH_EnableHook(target);
+        if (st == MH_OK)
+            QM_LOG_INFO("[BusCap] *** INSTALLED *** command-bus dispatcher hook @ 0x%p "
+                        "(rva 0x%llX) - level up / spend a point now to capture the "
+                        "progression commands", target, (unsigned long long)RVA_BusDispatch);
+        else
+            QM_LOG_ERROR("[BusCap] hook install FAILED: %s", MH_StatusToString(st));
+
+        InstallRuleHook(base, RVA_RuleAddPPDo, "Rule::Do_Impl",
+                        reinterpret_cast<LPVOID>(&Hook_RuleAddPPDo),
+                        reinterpret_cast<LPVOID*>(&g_origRuleAddPPDo));
+        InstallRuleHook(base, RVA_EntityAddPP, "EntityCntr::AddProgressionPoints",
+                        reinterpret_cast<LPVOID>(&Hook_EntityAddPP),
+                        reinterpret_cast<LPVOID*>(&g_origEntityAddPP));
+    }
+
     // Lowercase-copy + substring scan. UE names are PascalCase; we match
     // case-insensitively but pick keywords that avoid common false hits (e.g.
     // "killed"/"onkill" instead of bare "kill", so "Skill*" never matches).
@@ -248,6 +450,34 @@ namespace
         return false;
     }
 
+    // BusCap recon companion (sentinel-gated, see KX_PROGCAP): match BP events around
+    // level-up / point spend so the capture round also yields the PE-side breadcrumbs
+    // (event names + param layouts) in case a progression command bypasses the bus.
+    // Keywords are compounds ("...point", "levelup") to keep false hits low; capture
+    // mode is dev-only, so residual noise is acceptable.
+    bool NameIsProgressionish(const char* name)
+    {
+        if (!name || !name[0]) return false;
+        char lc[192];
+        size_t i = 0;
+        for (; name[i] && i < sizeof(lc) - 1; ++i)
+        {
+            char c = name[i];
+            lc[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        }
+        lc[i] = '\0';
+
+        static const char* const kKeywords[] = {
+            "progression", "levelup", "level_up", "newlevel", "experienceadded",
+            "expadded", "addexp", "talentpoint", "attributepoint", "statpoint",
+            "perkpoint", "skillpoint", "spendpoint", "pointspent", "applypoint",
+            "addpoint", "resetpoint", "pointscount", "respec"
+        };
+        for (const char* k : kKeywords)
+            if (strstr(lc, k)) return true;
+        return false;
+    }
+
     // Compute the verdict bits for a UFunction (resolves its name, SEH-guarded).
     uint8_t ComputeVerdict(QmUE::UFunction* func)
     {
@@ -259,6 +489,7 @@ namespace
         if (strcmp(fnNm, kDmgDealtFuncName) == 0)  v |= KX_DMGDEALT;
         if (strcmp(fnNm, kEnemyDeadFuncName) == 0) v |= KX_ENEMYDEAD;
         if (NameIsKillish(fnNm))                   v |= KX_KILLISH;
+        if (g_buscapWanted && NameIsProgressionish(fnNm)) v |= KX_PROGCAP;
         return v;
     }
 
@@ -702,6 +933,88 @@ QmUE::UObject* QmKillXp_PinGrantableOwner(void* taskBuf, bool verbose)
     return ps;
 }
 
+bool QmKillXp_GrantXp(int32_t amount)
+{
+    if (amount <= 0) return false;
+    return FireConstructGrant(amount, "modtab", true);
+}
+
+// Free progression-point pools inside a live UR5BLPlayer record (Dumper-7 SDK,
+// R5BusinessRules 5.6.1). UR5BLPlayer + 0x210 PlayerMetadata -> + 0xE8 PlayerProgression
+// (FR5BLEntityProgression) -> + 0x30 TalentTree / + 0x70 StatTree (FR5BLProgressionTree)
+// -> + 0x28 ProgressionPoints (int32, the FREE pool). These are the same authoritative
+// pools the Characters-tab save patcher writes and the in-game reset refunds into - not a
+// derived/UI value - so a runtime write here persists on the next save. The native
+// AddProgressionPoints rule fires no bus command and no reflected UFunction (proven by the
+// 2026-06-12 capture rounds), so a direct record write is the clean path; negative deltas
+// just lower the pool, clamped to >= 0 (the engine asserts FreeProgressionPoints >= 0).
+static constexpr uintptr_t OFF_BLPlayer_StatPoints   = 0x210 + 0xE8 + 0x70 + 0x28;  // 0x390
+static constexpr uintptr_t OFF_BLPlayer_TalentPoints = 0x210 + 0xE8 + 0x30 + 0x28;  // 0x350
+
+bool QmKillXp_GrantProgressionPoints(bool talent, int32_t delta)
+{
+    QmUE::TUObjectArray* g = QmUE::GetGObjects();
+    QmUE::UClass* plCls = g ? QmUE::FindClassByName("R5BLPlayer") : nullptr;
+    if (!g || !plCls)
+    {
+        QM_LOG_WARN("[Prog] R5BLPlayer class/GObjects not ready - load fully into the world");
+        return false;
+    }
+    const uintptr_t off  = talent ? OFF_BLPlayer_TalentPoints : OFF_BLPlayer_StatPoints;
+    const char*     what = talent ? "talent" : "attribute";
+
+    // Enumerate every live (non-CDO/archetype) R5BLPlayer record. Single-player has exactly
+    // one; we log each candidate with BOTH pools so the right record is obvious if ever >1
+    // (and so the first test click self-verifies the offsets against the visible free points).
+    QmUE::UObject* target = nullptr;
+    int found = 0;
+    const int n = g->Num();
+    for (int i = 0; i < n; ++i)
+    {
+        QmUE::UObject* o = g->GetByIndex(i);
+        if (!o || o->Class != plCls) continue;
+        if (o->Flags & 0x30) continue;   // RF_ClassDefaultObject | RF_ArchetypeObject
+        ++found;
+        int32_t stat = -1, tal = -1;
+        SafeReadInt(reinterpret_cast<uint8_t*>(o) + OFF_BLPlayer_StatPoints,   &stat);
+        SafeReadInt(reinterpret_cast<uint8_t*>(o) + OFF_BLPlayer_TalentPoints, &tal);
+        QM_LOG_INFO("[Prog] R5BLPlayer cand#%d ptr=0x%p stat-free=%d talent-free=%d",
+                    found, (void*)o, stat, tal);
+        if (!target) target = o;
+    }
+    if (!target)
+    {
+        QM_LOG_WARN("[Prog] no live R5BLPlayer record yet - load fully into the world");
+        return false;
+    }
+    if (found > 1)
+        QM_LOG_WARN("[Prog] %d R5BLPlayer records live - writing the first; verify in log", found);
+
+    uint8_t* addr = reinterpret_cast<uint8_t*>(target) + off;
+    int32_t before = 0;
+    if (!SafeReadInt(addr, &before))
+    {
+        QM_LOG_WARN("[Prog] %s pool read faulted @0x%p - record layout changed?", what, (void*)addr);
+        return false;
+    }
+    int64_t want = (int64_t)before + (int64_t)delta;
+    if (want < 0)       want = 0;            // engine asserts FreeProgressionPoints >= 0
+    if (want > 1000000) want = 1000000;      // sane ceiling
+    int32_t after = (int32_t)want;
+
+    bool ok = false;
+    __try { *reinterpret_cast<int32_t*>(addr) = after; ok = true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
+    if (!ok)
+    {
+        QM_LOG_WARN("[Prog] %s pool write faulted @0x%p", what, (void*)addr);
+        return false;
+    }
+    QM_LOG_INFO("[Prog] *** %s points: %d %+d -> %d *** (R5BLPlayer 0x%p +0x%llX) - persists on next save",
+                what, before, (int)delta, after, (void*)target, (unsigned long long)off);
+    return true;
+}
+
 bool QmKillXp_Init()
 {
     if (g_initDone) return g_armed;
@@ -722,12 +1035,21 @@ bool QmKillXp_Init()
     DWORD attr = GetFileAttributesA(path);
     bool sentinel = (attr != INVALID_FILE_ATTRIBUTES) && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 
+    // Command-bus capture sentinel (RE recon - see the BusCap block above).
+    snprintf(path, sizeof(path), "%s\\qm_killxp_buscap.txt", dir);
+    attr = GetFileAttributesA(path);
+    g_buscapWanted = (attr != INVALID_FILE_ATTRIBUTES) && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+    if (g_buscapWanted)
+        QM_LOG_INFO("[BusCap] qm_killxp_buscap.txt present - command-bus capture will install "
+                    "on the first ProcessEvent dispatch");
+
     // Per-kill reward config is read ONCE here (profile-bound qm_killxp_onkill*.txt).
     LoadOnKillConfig(dir);
 
     // Arm the module if the master sentinel OR any on-kill profile file is present,
-    // so a profile deploy needs only its qm_killxp_onkill_<profile>.txt.
-    g_armed = sentinel || g_onKillArmed;
+    // so a profile deploy needs only its qm_killxp_onkill_<profile>.txt. The buscap
+    // sentinel arms too (its install rides this module's PE probe).
+    g_armed = sentinel || g_onKillArmed || g_buscapWanted;
 
     if (g_armed)
         QM_LOG_INFO("[KillXP] *** ARMED *** (%s%s%s) - kill detection + seed-free XP grant active "
@@ -752,15 +1074,41 @@ void QmKillXp_OnProcessEvent(QmUE::UObject* self, QmUE::UFunction* func, void* p
 
     __try
     {
+        // One-shot command-bus capture install (two bools when idle/done).
+        TryInstallBusCapture();
+
         // The one-shot manual test grant (qm_killxp_construct_grant.txt); cheap when idle.
         // (On-kill reward config is read once at startup, not per dispatch.)
         TryConstructGrant();
 
         KxFuncMemo* slot = nullptr;
         uint8_t v = GetVerdict(func, slot);
-        if (!(v & (KX_KILLISH | KX_DMGDEALT | KX_ENEMYDEAD)) || !slot) return;
+        if (!(v & (KX_KILLISH | KX_DMGDEALT | KX_ENEMYDEAD | KX_PROGCAP)) || !slot) return;
 
         ULONGLONG now = GetTickCount64();
+
+        // --- BusCap recon companion: progression-ish PE dispatch ---------------
+        // Sentinel-gated (KX_PROGCAP is only ever set in capture mode). Logs the
+        // event name + dispatch object + a param hexdump, throttled per UFunction,
+        // so a level-up / point-spend round also yields its PE-side breadcrumbs.
+        if (v & KX_PROGCAP)
+        {
+            constexpr DWORD kProgCapThrottleMs = 500;
+            if (slot->logTick == 0 || (now - slot->logTick) >= kProgCapThrottleMs)
+            {
+                slot->logTick = now;
+                char fnNm[192] = { 0 };
+                QmUE::ResolveFNameNarrow(func->Name, fnNm, sizeof(fnNm));
+                char slf[352];
+                DescribeObject(self, slf, sizeof(slf));
+                char hex[3 * 0x40 + 12];
+                int got = HexDumpSafe(parms, 0x40, hex, sizeof(hex));
+                QM_LOG_INFO("[ProgCap] PE %s on %s parms=%s",
+                            fnNm[0] ? fnNm : "<unresolved>", slf,
+                            got ? hex : "<none>");
+            }
+            if (!(v & (KX_KILLISH | KX_DMGDEALT | KX_ENEMYDEAD))) return;
+        }
 
         // --- OnDamageDealt_Event with kill flag: observability only -----------
         // This was the original grant trigger ("fires on the player's kill ability, so

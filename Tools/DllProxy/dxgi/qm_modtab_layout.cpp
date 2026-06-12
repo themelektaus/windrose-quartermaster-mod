@@ -10,9 +10,9 @@
 //
 // Row schema (unknown keys are skipped for forward-compat):
 //   type      "text" (default) | "header" | "button" | "modifications" | "itemDropdown"
-//             | "categoryDropdown" | "itemSearch" | "itemCount" | "userLayout" (base layout
-//             only: splice marker, renders nothing itself; inside extension files it is
-//             inert - no recursion)
+//             | "categoryDropdown" | "itemSearch" | "itemCount" | "xpCount" | "attrCount"
+//             | "talentCount" | "userLayout" (base layout only: splice marker, renders
+//             nothing itself; inside extension files it is inert - no recursion)
 //   text      row label (UTF-8); "{version}" expands to the Quartermaster version
 //             (itemSearch rows: the box's hint text, default "Search...";
 //             itemCount rows: the box's initial value, default "1")
@@ -167,6 +167,9 @@ namespace
                          : (v == "categoryDropdown") ? kRowCategoryDropdown
                          : (v == "itemSearch")       ? kRowItemSearch
                          : (v == "itemCount")        ? kRowItemCount
+                         : (v == "xpCount")          ? kRowXpCount
+                         : (v == "attrCount")        ? kRowAttrCount
+                         : (v == "talentCount")      ? kRowTalentCount
                          : (v == "userLayout")       ? kRowUserLayout
                                                      : kRowText;
             }
@@ -478,6 +481,14 @@ namespace
     // The grant count (kRowItemCount): persisted text only - parsed at click time by the
     // dispatch, never touches the filter. Empty = never touched (box seeds its row default).
     std::wstring g_itemCountRaw;
+
+    // The XP amount (kRowXpCount): same lifecycle as the grant count.
+    std::wstring g_xpCountRaw;
+
+    // The attribute/talent point amounts (kRowAttrCount / kRowTalentCount): same lifecycle;
+    // the text may be negative (the grant lowers the free pool, clamped to >= 0).
+    std::wstring g_attrCountRaw;
+    std::wstring g_talentCountRaw;
 
     bool NameMatchesSearch(const std::wstring& name)
     {
@@ -874,5 +885,35 @@ namespace ModTab
     const wchar_t* GetItemCountText()
     {
         return g_itemCountRaw.c_str();
+    }
+
+    void SetXpCountText(const wchar_t* text)
+    {
+        g_xpCountRaw = text ? text : L"";
+    }
+
+    const wchar_t* GetXpCountText()
+    {
+        return g_xpCountRaw.c_str();
+    }
+
+    void SetAttrCountText(const wchar_t* text)
+    {
+        g_attrCountRaw = text ? text : L"";
+    }
+
+    const wchar_t* GetAttrCountText()
+    {
+        return g_attrCountRaw.c_str();
+    }
+
+    void SetTalentCountText(const wchar_t* text)
+    {
+        g_talentCountRaw = text ? text : L"";
+    }
+
+    const wchar_t* GetTalentCountText()
+    {
+        return g_talentCountRaw.c_str();
     }
 }

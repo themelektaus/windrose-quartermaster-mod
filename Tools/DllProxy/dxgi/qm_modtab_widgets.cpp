@@ -398,6 +398,27 @@ namespace
         return true;
     }
 
+    // Read a numeric box's text back into its persistence setter (no-op when the latch is
+    // null; SEH turns a dead widget into "keep the previous value").
+    void SnapshotBoxText(void* boxPtr, void (*setter)(const wchar_t*))
+    {
+        QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(boxPtr);
+        if (!box) return;
+        __try
+        {
+            if (box->Class)
+                if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(box->Class, "GetText"))
+                {
+                    uint8_t ft[16]; memset(ft, 0, sizeof(ft));
+                    wchar_t buf[64];
+                    if (QmUE::CallProcessEvent(box, fn, ft) &&
+                        QmUE::StringFromText(ft, buf, 64))
+                        setter(buf);
+                }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+
     // Persist the dropdown selection AND the search text across panel rebuilds: the widgets
     // die with their panel, so the last live state is read back right before the discard
     // (the search text additionally covers type-then-close faster than the 250ms poll).
@@ -438,23 +459,10 @@ namespace
             __except (EXCEPTION_EXECUTE_HANDLER) {}
         }
 
-        QmUE::UObject* cnt = reinterpret_cast<QmUE::UObject*>(g_countBox);
-        if (cnt)
-        {
-            __try
-            {
-                if (cnt->Class)
-                    if (QmUE::UFunction* fn = QmUE::FindFunctionOnClass(cnt->Class, "GetText"))
-                    {
-                        uint8_t ft[16]; memset(ft, 0, sizeof(ft));
-                        wchar_t buf[64];
-                        if (QmUE::CallProcessEvent(cnt, fn, ft) &&
-                            QmUE::StringFromText(ft, buf, 64))
-                            SetItemCountText(buf);
-                    }
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {}
-        }
+        SnapshotBoxText(g_countBox,  SetItemCountText);
+        SnapshotBoxText(g_xpBox,     SetXpCountText);
+        SnapshotBoxText(g_attrBox,   SetAttrCountText);
+        SnapshotBoxText(g_talentBox, SetTalentCountText);
     }
 
     struct QmColor { float r, g, b, a; };
@@ -775,15 +783,16 @@ namespace
         return true;
     }
 
-    // The item-spawner count box: an EditableTextBox holding the grant count, seeded with
-    // the persisted value (the row's "text" as the first-run default, "1" when unset) and
-    // latched into g_countBox. Never polled - the "add_selected_item" dispatch reads it at
-    // click time (qm_modtab.cpp), like the item combo's selection.
-    bool AddItemCountRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
-                         const uint8_t* font, const PanelRow& row,
-                         QmUE::UObject** outSlot = nullptr)
+    // A numeric EditableTextBox row (kRowItemCount / kRowXpCount): seeded with the persisted
+    // value (the row's "text" as the first-run default, defSeed when both are unset) and
+    // latched into `latch`. Never polled - the dispatch reads it at click time
+    // (qm_modtab.cpp), like the item combo's selection.
+    bool AddCountBoxRow(QmUE::UObject* panel, QmUE::UObject* widgetTree,
+                        const uint8_t* font, const PanelRow& row,
+                        void** latch, const wchar_t* prev, const wchar_t* defSeed,
+                        const char* logTag, QmUE::UObject** outSlot = nullptr)
     {
-        if (!panel || !panel->Class) return false;
+        if (!panel || !panel->Class || !latch) return false;
         QmUE::UClass* boxClass = QmUE::FindClassByName("EditableTextBox");
         if (!boxClass) return false;
         QmUE::UObject* box = QmUE::SpawnObjectViaUFunction(boxClass, widgetTree);
@@ -791,9 +800,8 @@ namespace
 
         StyleSearchBox(box, font, row.size > 0.0f ? row.size : kDefFontSizeBody);
 
-        const wchar_t* prev = GetItemCountText();
         const wchar_t* seed = (prev && prev[0]) ? prev
-                            : (row.text && row.text[0]) ? row.text : L"1";
+                            : (row.text && row.text[0]) ? row.text : defSeed;
         if (QmUE::UFunction* fnSet = QmUE::FindFunctionOnClass(box->Class, "SetText"))
         {
             uint8_t ft[16]; memset(ft, 0, sizeof(ft));
@@ -808,8 +816,8 @@ namespace
             StyleSlot(reinterpret_cast<QmUE::UObject*>(ac.ReturnValue), row.gap, row.halign, row.indent);
         if (outSlot) *outSlot = reinterpret_cast<QmUE::UObject*>(ac.ReturnValue);
 
-        g_countBox = box;
-        QM_LOG_DEBUG("[ModTab]   view: item count box=0x%p seed='%ls'", (void*)box, seed);
+        *latch = box;
+        QM_LOG_DEBUG("[ModTab]   view: %s box=0x%p seed='%ls'", logTag, (void*)box, seed);
         return true;
     }
 
@@ -939,7 +947,17 @@ namespace
         if (r.type == kRowItemSearch)
             return AddItemSearchRow(panel, widgetTree, font, r, outSlot);
         if (r.type == kRowItemCount)
-            return AddItemCountRow(panel, widgetTree, font, r, outSlot);
+            return AddCountBoxRow(panel, widgetTree, font, r,
+                                  &g_countBox, GetItemCountText(), L"1", "item count", outSlot);
+        if (r.type == kRowXpCount)
+            return AddCountBoxRow(panel, widgetTree, font, r,
+                                  &g_xpBox, GetXpCountText(), L"100", "xp amount", outSlot);
+        if (r.type == kRowAttrCount)
+            return AddCountBoxRow(panel, widgetTree, font, r,
+                                  &g_attrBox, GetAttrCountText(), L"1", "attr points", outSlot);
+        if (r.type == kRowTalentCount)
+            return AddCountBoxRow(panel, widgetTree, font, r,
+                                  &g_talentBox, GetTalentCountText(), L"1", "talent points", outSlot);
         return AddTextRow(panel, widgetTree, r.text, r.color, font,
                           r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
                           r.indent, outSlot) != nullptr;
@@ -1047,10 +1065,13 @@ namespace ModTab
                          (void*)g_ourPanel, (void*)mountTarget);
             g_ourPanel          = nullptr;
             g_buttonActionCount = 0;        // actions die with their panel; re-latched by the build
-            g_itemCombo         = nullptr;  // so do the dropdown/search/count latches
+            g_itemCombo         = nullptr;  // so do the dropdown/search/count/xp latches
             g_catCombo          = nullptr;
             g_searchBox         = nullptr;
             g_countBox          = nullptr;
+            g_xpBox             = nullptr;
+            g_attrBox           = nullptr;
+            g_talentBox         = nullptr;
         }
 
         // Owning player (Create's 3rd arg).
@@ -1302,6 +1323,9 @@ namespace ModTab
         g_catCombo          = nullptr;
         g_searchBox         = nullptr;
         g_countBox          = nullptr;
+        g_xpBox             = nullptr;
+        g_attrBox           = nullptr;
+        g_talentBox         = nullptr;
         QM_LOG_DEBUG("[ModTab] settings closed - spawner state snapshotted, panel unparented, "
                      "all widget latches dropped");
     }

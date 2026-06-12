@@ -26,10 +26,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "qm_modtab.hpp"
 #include "qm_modtab_internal.hpp"
 #include "qm_itemgrant.hpp"
+#include "qm_killxp.hpp"
 #include "qm_log.hpp"
 
 using namespace ModTab;
@@ -47,6 +49,9 @@ namespace ModTab
     void*        g_catCombo    = nullptr;
     void*        g_searchBox   = nullptr;
     void*        g_countBox    = nullptr;
+    void*        g_xpBox       = nullptr;
+    void*        g_attrBox     = nullptr;
+    void*        g_talentBox   = nullptr;
 }
 
 namespace
@@ -482,14 +487,16 @@ namespace
         return idx;
     }
 
-    // Click-time read of the item-spawner count box (kRowItemCount; latched like the combo,
-    // never polled). Returns -1 when no box is live/readable - the caller then falls back to
-    // the button's JSON argument. Garbage/empty text parses to 0 and clamps to 1 downstream.
-    long ReadItemCountBox()
+    // Click-time read of a numeric spawner box (kRowItemCount / kRowXpCount / kRowAttrCount /
+    // kRowTalentCount; latched like the combo, never polled). Returns LONG_MIN when no box is
+    // live/readable - the caller then falls back to the button's JSON argument. A distinct
+    // sentinel (not -1) so a genuine negative the user typed (e.g. "-1" to remove a point) is
+    // never mistaken for "unreadable". Garbage/empty text parses to 0 and clamps downstream.
+    long ReadCountBox(void* boxPtr)
     {
-        QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(g_countBox);
-        if (!box) return -1;
-        long count = -1;
+        QmUE::UObject* box = reinterpret_cast<QmUE::UObject*>(boxPtr);
+        if (!box) return LONG_MIN;
+        long count = LONG_MIN;
         __try
         {
             if (box->Class)
@@ -502,7 +509,7 @@ namespace
                         count = wcstol(buf, nullptr, 10);
                 }
         }
-        __except (EXCEPTION_EXECUTE_HANDLER) { count = -1; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { count = LONG_MIN; }
         return count;
     }
 
@@ -541,7 +548,7 @@ namespace
             }
             g_lastItemSel = idx;
             // Count precedence: live count box (kRowItemCount, read now) > button argument > 1.
-            long count = ReadItemCountBox();
+            long count = ReadCountBox(g_countBox);
             if (count < 0)
                 count = (argument && *argument) ? strtol(argument, nullptr, 10) : 1;
             if (count < 1) count = 1; else if (count > 999) count = 999;
@@ -551,6 +558,40 @@ namespace
             QM_LOG_INFO("[ModTab] add_selected_item: idx=%d -> %s%s%s", idx, spec,
                         pkg ? " pkg=" : "", pkg ? pkg : "");
             QmItemGrant_Fire(spec, pkg);
+        }
+        else if (strcmp(command, "add_xp") == 0)
+        {
+            // Grant XP via the proven seed-free AddExp path (qm_killxp). The engine gate is
+            // exp > 0, so this command is add-only. Amount precedence: live XP box
+            // (kRowXpCount, read now) > button argument > 100.
+            long amount = ReadCountBox(g_xpBox);
+            if (amount < 0)
+                amount = (argument && *argument) ? strtol(argument, nullptr, 10) : 100;
+            if (amount < 1) amount = 1; else if (amount > 1000000) amount = 1000000;
+            bool fired = QmKillXp_GrantXp((int32_t)amount);
+            QM_LOG_INFO("[ModTab] add_xp: +%ld XP -> %s", amount,
+                        fired ? "fired" : "NOT fired (not in-world yet, or grant busy)");
+        }
+        else if (strcmp(command, "add_attr_points") == 0 ||
+                 strcmp(command, "add_talent_points") == 0)
+        {
+            // Grant (or remove, with a negative amount) free attribute/talent points by
+            // writing the live R5BLPlayer free pool directly (qm_killxp). Amount precedence:
+            // live box (kRowAttrCount / kRowTalentCount, read now) > button argument > 1.
+            // Negatives pass through (the grant clamps the result to >= 0); 0 is a no-op.
+            const bool talent = (command[4] == 't');   // "add_talent_points" vs "add_attr_points"
+            long amount = ReadCountBox(talent ? g_talentBox : g_attrBox);
+            if (amount == LONG_MIN)   // no live box - fall back to the button argument, then 1
+                amount = (argument && *argument) ? strtol(argument, nullptr, 10) : 1;
+            if (amount < -1000000) amount = -1000000; else if (amount > 1000000) amount = 1000000;
+            if (amount == 0)
+            {
+                QM_LOG_INFO("[ModTab] %s: amount 0 - no-op", command);
+                return;
+            }
+            bool fired = QmKillXp_GrantProgressionPoints(talent, (int32_t)amount);
+            QM_LOG_INFO("[ModTab] %s: %+ld -> %s", command, amount,
+                        fired ? "written" : "NOT written (not in-world yet, or no record)");
         }
         else QM_LOG_WARN("[ModTab] button command '%s' not implemented - ignored", command);
     }
