@@ -560,13 +560,14 @@ namespace Windrose.Quartermaster.Core.Deploy
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
-        // The in-game Item Spawner section as a mod-tab user-layout extension: the DLL
-        // splices every qm_modtab_layout_*.json into its compiled-in base layout at the
-        // "userLayout" marker, so this file IS the spawner UI. Deployer-managed by name
-        // (regenerated whenever the profile set changes - hand edits do not survive a
-        // rebuild; use a differently named qm_modtab_layout_*.json for custom rows).
-        // Present while ANY installed profile enables globals.itemSpawner, removed with
-        // the last one.
+        // The in-game Reward Spawner section (items + XP) as a mod-tab user-layout
+        // extension: the DLL splices every qm_modtab_layout_*.json into its compiled-in
+        // base layout at the "userLayout" marker, so this file IS the spawner UI.
+        // Deployer-managed by name (regenerated whenever the profile set changes - hand
+        // edits do not survive a rebuild; use a differently named qm_modtab_layout_*.json
+        // for custom rows). Present while ANY installed profile enables
+        // globals.itemSpawner (the key keeps its historic name for profile compat),
+        // removed with the last one.
         public string TargetItemSpawnerLayoutPath()
             => Path.Combine(_sidecarDir, "qm_modtab_layout_itemspawner.json");
 
@@ -591,7 +592,7 @@ namespace Windrose.Quartermaster.Core.Deploy
             {
                 if (File.Exists(path))
                 {
-                    LogLine("Removing qm_modtab_layout_itemspawner.json (no installed profile enables the Item Spawner) -> " + path);
+                    LogLine("Removing qm_modtab_layout_itemspawner.json (no installed profile enables the Reward Spawner) -> " + path);
                     File.Delete(path);
                 }
                 return;
@@ -601,7 +602,7 @@ namespace Windrose.Quartermaster.Core.Deploy
                 "[\n"
                 + "  {\n"
                 + "    \"type\": \"header\",\n"
-                + "    \"text\": \"Item Spawner\",\n"
+                + "    \"text\": \"Reward Spawner\",\n"
                 + "    \"size\": 20,\n"
                 + "    \"color\": \"#FFCC59\",\n"
                 + "    \"gap\": 24\n"
@@ -637,9 +638,72 @@ namespace Windrose.Quartermaster.Core.Deploy
                 + "    \"align\": \"left\",\n"
                 + "    \"gap\": 8,\n"
                 + "    \"sameRow\": true\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"text\",\n"
+                + "    \"text\": \"Experience\",\n"
+                + "    \"color\": \"#FFCC59\",\n"
+                + "    \"gap\": 16\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"xpCount\",\n"
+                + "    \"text\": \"100\",\n"
+                + "    \"gap\": 6,\n"
+                + "    \"fill\": 1\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"button\",\n"
+                + "    \"text\": \"Add XP\",\n"
+                + "    \"command\": \"add_xp\",\n"
+                + "    \"arguments\": [\"100\"],\n"
+                + "    \"align\": \"left\",\n"
+                + "    \"gap\": 8,\n"
+                + "    \"sameRow\": true\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"text\",\n"
+                + "    \"text\": \"Attribute Points\",\n"
+                + "    \"color\": \"#FFCC59\",\n"
+                + "    \"gap\": 16\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"attrCount\",\n"
+                + "    \"text\": \"1\",\n"
+                + "    \"gap\": 6,\n"
+                + "    \"fill\": 1\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"button\",\n"
+                + "    \"text\": \"Add Attribute Points\",\n"
+                + "    \"command\": \"add_attr_points\",\n"
+                + "    \"arguments\": [\"1\"],\n"
+                + "    \"align\": \"left\",\n"
+                + "    \"gap\": 8,\n"
+                + "    \"sameRow\": true\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"text\",\n"
+                + "    \"text\": \"Talent Points\",\n"
+                + "    \"color\": \"#FFCC59\",\n"
+                + "    \"gap\": 16\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"talentCount\",\n"
+                + "    \"text\": \"1\",\n"
+                + "    \"gap\": 6,\n"
+                + "    \"fill\": 1\n"
+                + "  },\n"
+                + "  {\n"
+                + "    \"type\": \"button\",\n"
+                + "    \"text\": \"Add Talent Points\",\n"
+                + "    \"command\": \"add_talent_points\",\n"
+                + "    \"arguments\": [\"1\"],\n"
+                + "    \"align\": \"left\",\n"
+                + "    \"gap\": 8,\n"
+                + "    \"sameRow\": true\n"
                 + "  }\n"
                 + "]\n";
-            LogLine("Writing qm_modtab_layout_itemspawner.json (Item Spawner on) -> " + path);
+            LogLine("Writing qm_modtab_layout_itemspawner.json (Reward Spawner on) -> " + path);
             EnsureSidecarDir();
             File.WriteAllText(path, layout, new UTF8Encoding(false));
         }

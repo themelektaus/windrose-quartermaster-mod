@@ -234,10 +234,11 @@ namespace Windrose.Quartermaster.Core
         public bool? Enabled;
     }
 
-    // "Item Spawner": the in-game mod tab's item-grant section (category dropdown +
-    // item dropdown + Add Item button). DLL-only (no pak content) - enabled=true makes
+    // "Reward Spawner": the in-game mod tab's grant section (category/item dropdowns +
+    // Add Item button + XP field). DLL-only (no pak content) - enabled=true makes
     // the deployer write the qm_modtab_layout_itemspawner.json user-layout extension
     // into Win64/Quartermaster, which the DLL splices into its base panel layout.
+    // The JSON key keeps its historic "itemSpawner" name for profile compat.
     // The file is shared across profiles: present while ANY installed profile enables
     // it, removed with the last one. Absent/false = no spawner section in the tab.
     public sealed class ItemSpawnerGlobal

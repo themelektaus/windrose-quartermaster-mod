@@ -478,7 +478,7 @@ namespace Windrose.Quartermaster.Core
                 // Keep Shanties Playing is DLL-only (no pak content): like XP for Kills it
                 // never contributes to the IoStore composite, only to the DLL + sentinel deploy.
                 bool shantyActive = ResolveShantyEnabled(profile);
-                // The Item Spawner is DLL-only too: it ships as the
+                // The Reward Spawner is DLL-only too: it ships as the
                 // qm_modtab_layout_itemspawner.json user-layout extension, written by
                 // the sidecar regenerate inside WriteProfileJson below.
                 bool itemSpawnerActive = ResolveItemSpawnerEnabled(profile);
