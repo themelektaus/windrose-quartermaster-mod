@@ -14,7 +14,6 @@
 //                                    Profile-bound (key=value: default=N, <ClassName>=N),
 //                                    read once at startup; also arms the module on its own.
 //   qm_killxp_construct_grant.txt  : one-shot manual test grant (rising-edge)
-//   qm_killxp_buscap.txt           : RE recon - log every BL command-bus publish
 
 #pragma once
 
@@ -52,12 +51,3 @@ QmUE::UObject* QmKillXp_PinGrantableOwner(void* taskBuf, bool verbose);
 // Returns true iff Execute fired on a fully-gated task (false while not fully
 // in-world, or while another grant is mid-flight). Game-thread only.
 bool QmKillXp_GrantXp(int32_t amount);
-
-// Add (or, with a negative delta, remove) FREE progression points directly in the live
-// R5BLPlayer BL record - the mod tab's "Add Attribute/Talent Points" buttons. talent=false
-// targets the StatTree (attributes), talent=true the TalentTree. The result is clamped to
-// >= 0 (the engine asserts non-negative free points). Persists on the next game save;
-// re-open the character screen to see the new count. Logs every candidate's pools + the
-// before/after write. Returns true iff a live record was written (false while not in-world).
-// Game-thread only, SEH-guarded.
-bool QmKillXp_GrantProgressionPoints(bool talent, int32_t delta);

@@ -461,8 +461,6 @@ namespace
 
         SnapshotBoxText(g_countBox,  SetItemCountText);
         SnapshotBoxText(g_xpBox,     SetXpCountText);
-        SnapshotBoxText(g_attrBox,   SetAttrCountText);
-        SnapshotBoxText(g_talentBox, SetTalentCountText);
     }
 
     struct QmColor { float r, g, b, a; };
@@ -952,12 +950,6 @@ namespace
         if (r.type == kRowXpCount)
             return AddCountBoxRow(panel, widgetTree, font, r,
                                   &g_xpBox, GetXpCountText(), L"100", "xp amount", outSlot);
-        if (r.type == kRowAttrCount)
-            return AddCountBoxRow(panel, widgetTree, font, r,
-                                  &g_attrBox, GetAttrCountText(), L"1", "attr points", outSlot);
-        if (r.type == kRowTalentCount)
-            return AddCountBoxRow(panel, widgetTree, font, r,
-                                  &g_talentBox, GetTalentCountText(), L"1", "talent points", outSlot);
         return AddTextRow(panel, widgetTree, r.text, r.color, font,
                           r.size > 0.0f ? r.size : kDefFontSizeBody, r.wrap, r.gap, r.halign,
                           r.indent, outSlot) != nullptr;
@@ -1070,8 +1062,6 @@ namespace ModTab
             g_searchBox         = nullptr;
             g_countBox          = nullptr;
             g_xpBox             = nullptr;
-            g_attrBox           = nullptr;
-            g_talentBox         = nullptr;
         }
 
         // Owning player (Create's 3rd arg).
@@ -1324,8 +1314,6 @@ namespace ModTab
         g_searchBox         = nullptr;
         g_countBox          = nullptr;
         g_xpBox             = nullptr;
-        g_attrBox           = nullptr;
-        g_talentBox         = nullptr;
         QM_LOG_DEBUG("[ModTab] settings closed - spawner state snapshotted, panel unparented, "
                      "all widget latches dropped");
     }
