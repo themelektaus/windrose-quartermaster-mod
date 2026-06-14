@@ -14,7 +14,7 @@ bignoob77:
 lFUSEl:
 - Bag Size Edits I see ship size edit but it would be nice to also do bags ( another mod gone)
 - Storage Size Edits (Boom another mod gone)
-- Adding a mass Quick depost function (BOOM BOOM BANG another mod gone)
+- Adding a mass Quick depost function (BOOM BOOM BANG another mod gone) => PLAN-CampWideDeposit-WIP.md
 - Caracter inventory Slots (yep you guessed it ... SIKE dont use this but still in the same scope as the others)
 
 lFUSEl (optional features, out of scope):
