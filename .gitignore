@@ -56,6 +56,7 @@ GUI/*/Properties/launchSettings.json
 /Tools/DllProxy/dxgi/_bld.log
 
 /Tools/ghidra_*/
+/Tools/re_ghidra/
 
 # Python caches
 __pycache__/
