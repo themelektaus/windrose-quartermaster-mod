@@ -1,6 +1,7 @@
 using System.IO;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider;
+using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
