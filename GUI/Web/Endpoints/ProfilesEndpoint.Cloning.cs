@@ -27,6 +27,8 @@ public static partial class ProfilesEndpoint
                     ByCategory = g.Loot.ByCategory == null
                         ? null
                         : new Dictionary<string, double>(g.Loot.ByCategory),
+                    TreeMultiplier = g.Loot.TreeMultiplier,
+                    DigVolumeMultiplier = g.Loot.DigVolumeMultiplier,
                 },
             PickupRadius = g.PickupRadius == null
                 ? null

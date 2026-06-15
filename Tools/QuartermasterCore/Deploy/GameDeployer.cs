@@ -405,6 +405,82 @@ namespace Windrose.Quartermaster.Core.Deploy
                 new UTF8Encoding(false));
         }
 
+        // Runtime loot-table overrides for the DLL. The DLL patches loaded
+        // UR5BLLootParams UObjects in memory (belt-and-suspenders with the pak
+        // JSON overrides). Format: { "AssetName": { "entryIdx": { "min": N, "max": N } } }
+        public string TargetProfileLootConfigPath(string profileSafeName)
+        {
+            if (string.IsNullOrEmpty(profileSafeName))
+                throw new ArgumentNullException(nameof(profileSafeName));
+            return Path.Combine(_sidecarDir, "qm_loot_" + profileSafeName + ".json");
+        }
+
+        public void WriteLootConfig(string profileSafeName,
+            Dictionary<string, Dictionary<int, int[]>> overrides,
+            double treeMult = 1.0,
+            double digVolumeMult = 1.0)
+        {
+            var path = TargetProfileLootConfigPath(profileSafeName);
+            bool hasOverrides = overrides != null && overrides.Count > 0;
+            bool hasMults = treeMult != 1.0 || digVolumeMult != 1.0;
+            if (!hasOverrides && !hasMults)
+            {
+                if (File.Exists(path))
+                {
+                    LogLine("Removing qm_loot_" + profileSafeName + ".json (no loot overrides) -> " + path);
+                    File.Delete(path);
+                }
+                return;
+            }
+            LogLine("Writing qm_loot_" + profileSafeName + ".json (" +
+                (hasOverrides ? overrides.Count + " table(s)" : "0 tables") +
+                (hasMults ? ", tree x" + treeMult.ToString("F2") + ", digvol x" + digVolumeMult.ToString("F2") : "") +
+                ") -> " + path);
+            EnsureSidecarDir();
+
+            // Hand-build compact JSON
+            var sb = new StringBuilder();
+            sb.Append("{\n");
+            bool first = true;
+
+            // Tree/DigVolume multipliers (DLL reads __tree_mult / __digvolume_mult)
+            if (treeMult != 1.0)
+            {
+                if (!first) sb.Append(",\n");
+                first = false;
+                sb.Append("\t\"__tree_mult\": ").Append(treeMult.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (digVolumeMult != 1.0)
+            {
+                if (!first) sb.Append(",\n");
+                first = false;
+                sb.Append("\t\"__digvolume_mult\": ").Append(digVolumeMult.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            // Per-table overrides: { "AssetName": { "idx": { "min": N, "max": N } }, ... }
+            if (hasOverrides)
+            {
+                foreach (var kv in overrides.OrderBy(x => x.Key, StringComparer.Ordinal))
+                {
+                    if (!first) sb.Append(",\n");
+                    first = false;
+                    sb.Append("\t\"").Append(kv.Key).Append("\": {");
+                    bool firstEntry = true;
+                    foreach (var ev in kv.Value.OrderBy(x => x.Key))
+                    {
+                        if (!firstEntry) sb.Append(", ");
+                        firstEntry = false;
+                        sb.Append("\"").Append(ev.Key).Append("\": {\"min\": ")
+                          .Append(ev.Value[0]).Append(", \"max\": ")
+                          .Append(ev.Value[1]).Append("}");
+                    }
+                    sb.Append("}");
+                }
+            }
+            sb.Append("\n}\n");
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        }
+
         // The deployed pak's source of truth: the full profile JSON ships next to
         // the feature sidecars, one qm_profile_<profile>.json per installed
         // Quartermaster_<profile>_P.pak. Its presence keeps the DLL alive (see

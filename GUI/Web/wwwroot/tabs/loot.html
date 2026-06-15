@@ -1,5 +1,19 @@
 <div class="tab-page" data-tab="loot" hidden>
   <aside class="pane left">
+
+    <section class="card">
+      <h2>Resource Multipliers</h2>
+      <p class="hint">DLL-based multipliers for resources whose drops live in binary assets (not JSON loot tables).</p>
+      <div id="loot-resource-mults" class="loot-globals">
+        <span class="cat">Tree Harvesting<span class="cat-count">(Hardwood, Palm Wood...)</span></span>
+        <input type="number" id="loot-tree-mult" min="0" step="0.5" placeholder="1.0">
+        <button type="button" class="reset" id="loot-tree-mult-reset">x</button>
+        <span class="cat">Mining<span class="cat-count">(Iron Ore, Copper Ore...)</span></span>
+        <input type="number" id="loot-digvol-mult" min="0" step="0.5" placeholder="1.0">
+        <button type="button" class="reset" id="loot-digvol-mult-reset">x</button>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Loot Multipliers</h2>
       <p class="hint">Per-category factor applied to Min and Max of every entry. Leave blank for vanilla.</p>

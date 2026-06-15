@@ -18,6 +18,7 @@
 #include "qm_killxp.hpp"
 #include "qm_shanty.hpp"
 #include "qm_modtab.hpp"
+#include "qm_loot.hpp"
 
 // ============================================================================
 // Detour.
@@ -629,6 +630,7 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
         {
             QM_LOG_INFO("[PreWarm] world changed since last fire (prev=0x%p new=0x%p map='%s')",
                 prev, world, gotMap ? mapPkg : "<unknown>");
+            QmLoot_OnWorldChanged();
         }
     }
 
@@ -676,6 +678,14 @@ static void __fastcall Hook_LifecyclePreWarm(void* Context, void* Stack, void* R
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
             QM_LOG_ERROR("[Weather] *** EXCEPTION inside weather heartbeat - lifecycle hook caught fault");
+        }
+
+        // Runtime loot-table patcher. Scans GObjects for UR5BLLootParams, patches
+        // min/max in memory. One-shot: goes dormant once all tables are patched.
+        __try { QmLoot_Heartbeat(); }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            QM_LOG_ERROR("[Loot] *** EXCEPTION inside loot heartbeat - lifecycle hook caught fault");
         }
     }
 
@@ -1222,6 +1232,10 @@ static void __fastcall Hook_ProcessEvent(QmUE::UObject* self, QmUE::UFunction* f
         // contain the first cook. Throttled + latched internally (the click watch stays live:
         // one pointer compare); no-op when modtab is not armed; SEH-guarded inside.
         QmModTab_OnProcessEvent(self, func, parms);
+
+        // Loot early-scan: patches tree/digvolume DataAssets during map loading,
+        // before actors spawn and cache their LootData. No-op once converged.
+        QmLoot_OnProcessEvent(self, func, parms);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 

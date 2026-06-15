@@ -212,6 +212,7 @@ public static class ModsEndpoint
                 deployer.TargetProfileWeatherTriggerPath(displayName),
                 deployer.TargetProfileKillXpPath(displayName),
                 deployer.TargetProfileShantyPath(displayName),
+                deployer.TargetProfileLootConfigPath(displayName),
             })
             {
                 if (!File.Exists(path)) continue;

@@ -91,6 +91,12 @@ namespace Windrose.Quartermaster.Core
                 if (ovr != null && ovr.Removed != null && ovr.Removed.Count > 0) result.Removed++;
                 if (ovr != null && ovr.Added != null && ovr.Added.Count > 0)     result.Added++;
 
+                // Collect DLL runtime overrides: compare each VANILLA entry's min/max
+                // with the computed value. The DLL patches the loaded UObject at the
+                // original vanilla index, so we compare against vanilla, not the
+                // post-removal array.
+                CollectDllOverrides(vanillaData, multiplier, ovr, ltId, result);
+
                 var outPath = Path.Combine(outDir, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(outPath));
                 File.WriteAllBytes(outPath, SerializeWithTabsAndCrlf(root));
@@ -98,6 +104,16 @@ namespace Windrose.Quartermaster.Core
                 result.Written++;
                 result.WrittenLootTables.Add(ltId);
             }
+
+            // Collect tree/digvolume multipliers for the DLL.
+            // Trees (SegmentTree) and mine walls (DigVolume) have drops baked
+            // into binary DataAssets - not in DA_LT_* JSON loot tables - so the
+            // DLL patches their UObjects directly. These are independent user-
+            // facing multipliers on their own card in the Loot Tables tab.
+            if (lootGlobal?.TreeMultiplier is double tm && tm != 1.0)
+                result.TreeMultiplier = tm;
+            if (lootGlobal?.DigVolumeMultiplier is double dvm && dvm != 1.0)
+                result.DigVolumeMultiplier = dvm;
 
             return result;
         }
@@ -243,6 +259,69 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
+        /// <summary>
+        /// Extract asset name from ltId: "Foliage/DA_LT_Mineral_Iron_01" -> "DA_LT_Mineral_Iron_01".
+        /// This is the UObject FName in GObjects that the DLL matches against.
+        /// </summary>
+        static string ExtractAssetName(string ltId)
+        {
+            var slash = ltId.LastIndexOf('/');
+            return slash < 0 ? ltId : ltId.Substring(slash + 1);
+        }
+
+        /// <summary>
+        /// Compare each vanilla entry's min/max with the computed override value and
+        /// record deltas in result.DllOverrides. Uses vanilla indices (not post-removal)
+        /// because the DLL patches the loaded UObject which has the original layout.
+        /// </summary>
+        static void CollectDllOverrides(JsonArray vanillaData, double multiplier,
+            LootTableOverride ovr, string ltId, LootPatchResult result)
+        {
+            var assetName = ExtractAssetName(ltId);
+            Dictionary<int, int[]> entryMap = null;
+
+            for (int i = 0; i < vanillaData.Count; i++)
+            {
+                var src = (JsonObject)vanillaData[i];
+                var vMin = src["Min"]?.GetValue<int>() ?? 0;
+                var vMax = src["Max"]?.GetValue<int>() ?? 0;
+                var vItem = src["LootItem"]?.GetValue<string>() ?? "None";
+                var vTable = src["LootTable"]?.GetValue<string>() ?? "None";
+
+                bool isOrchestrator =
+                    string.Equals(vItem, "None", StringComparison.Ordinal)
+                    && !string.Equals(vTable, "None", StringComparison.Ordinal);
+
+                LootEntryEdit edit = null;
+                if (ovr != null && ovr.Entries != null) ovr.Entries.TryGetValue(i, out edit);
+
+                int newMin;
+                if (edit != null && edit.Min.HasValue)
+                    newMin = edit.Min.Value;
+                else if (isOrchestrator)
+                    newMin = vMin;
+                else
+                    newMin = (int)Math.Round(vMin * multiplier, MidpointRounding.AwayFromZero);
+
+                int newMax;
+                if (edit != null && edit.Max.HasValue)
+                    newMax = edit.Max.Value;
+                else if (isOrchestrator)
+                    newMax = vMax;
+                else
+                    newMax = (int)Math.Round(vMax * multiplier, MidpointRounding.AwayFromZero);
+
+                if (newMin != vMin || newMax != vMax)
+                {
+                    if (entryMap == null) entryMap = new Dictionary<int, int[]>();
+                    entryMap[i] = new int[] { newMin, newMax };
+                }
+            }
+
+            if (entryMap != null)
+                result.DllOverrides[assetName] = entryMap;
+        }
+
         static void ValidateProfile(Profile profile)
         {
             if (profile.Globals == null || profile.Globals.Loot == null) return;
@@ -271,5 +350,26 @@ namespace Windrose.Quartermaster.Core
 
         public List<string> WrittenLootTables = new List<string>();
         public List<string> Warnings = new List<string>();
+
+        /// <summary>
+        /// Runtime overrides for the DLL sidecar (qm_loot_*.json).
+        /// Key: asset name (e.g. "DA_LT_Mineral_Iron_01"),
+        /// Value: vanilla entry index -> [min, max].
+        /// Only entries where min or max changed from vanilla are included.
+        /// The DLL patches these into loaded UR5BLLootParams UObjects in memory.
+        /// </summary>
+        public Dictionary<string, Dictionary<int, int[]>> DllOverrides = new Dictionary<string, Dictionary<int, int[]>>();
+
+        /// <summary>
+        /// Multiplier for UR5SegmentTreeData drops (Divi, Palms, Ficus).
+        /// Trees have their loot in binary DataAssets, not in DA_LT_* JSONs.
+        /// </summary>
+        public double TreeMultiplier = 1.0;
+
+        /// <summary>
+        /// Multiplier for UR5DigVolumeConfig drops (Iron ore mines, Copper).
+        /// Mine walls have their loot in binary DataAssets, not in DA_LT_* JSONs.
+        /// </summary>
+        public double DigVolumeMultiplier = 1.0;
     }
 }

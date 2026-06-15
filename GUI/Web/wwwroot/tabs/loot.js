@@ -59,6 +59,21 @@ function renderLootStatus() {
     if (mod)   mod.textContent   = modified;
 }
 
+function isLootGlobalEmpty() {
+    const g = state.current && state.current.globals && state.current.globals.loot;
+    if (!g) return true;
+    if (g.byCategory && Object.keys(g.byCategory).length > 0) return false;
+    if (g.treeMultiplier != null) return false;
+    if (g.digVolumeMultiplier != null) return false;
+    return true;
+}
+
+function pruneLootGlobal() {
+    if (state.current && state.current.globals && isLootGlobalEmpty()) {
+        delete state.current.globals.loot;
+    }
+}
+
 function setLootGlobalFromInput(cat, rawValue) {
     if (!state.current) return;
     state.current.globals = state.current.globals || {};
@@ -73,9 +88,7 @@ function setLootGlobalFromInput(cat, rawValue) {
         if (!isFinite(n) || n < 0) return;
         state.current.globals.loot.byCategory[cat] = n;
     }
-    if (Object.keys(state.current.globals.loot.byCategory).length === 0) {
-        delete state.current.globals.loot;
-    }
+    pruneLootGlobal();
     markDirty();
     renderLootStatus();
     renderLootTables();
@@ -87,14 +100,47 @@ function resetLootGlobalCategory(cat) {
         && state.current.globals.loot.byCategory) {
         if (!(cat in state.current.globals.loot.byCategory)) return;
         delete state.current.globals.loot.byCategory[cat];
-        if (Object.keys(state.current.globals.loot.byCategory).length === 0) {
-            delete state.current.globals.loot;
-        }
+        pruneLootGlobal();
     }
     markDirty();
     renderLootGlobals();
     renderLootStatus();
     renderLootTables();
+}
+
+function renderResourceMults() {
+    const g = state.current && state.current.globals && state.current.globals.loot;
+    const treeInput = document.getElementById('loot-tree-mult');
+    const digInput  = document.getElementById('loot-digvol-mult');
+    if (treeInput) treeInput.value = (g && g.treeMultiplier != null) ? g.treeMultiplier : '';
+    if (digInput)  digInput.value  = (g && g.digVolumeMultiplier != null) ? g.digVolumeMultiplier : '';
+}
+
+function setResourceMult(field, rawValue) {
+    if (!state.current) return;
+    state.current.globals = state.current.globals || {};
+    state.current.globals.loot = state.current.globals.loot || {};
+
+    const trimmed = (rawValue || '').trim();
+    if (trimmed === '') {
+        delete state.current.globals.loot[field];
+    } else {
+        const n = parseFloat(trimmed);
+        if (!isFinite(n) || n < 0) return;
+        state.current.globals.loot[field] = n;
+    }
+    pruneLootGlobal();
+    markDirty();
+}
+
+function resetResourceMult(field) {
+    if (!state.current) return;
+    const g = state.current.globals && state.current.globals.loot;
+    if (!g || g[field] == null) return;
+    delete g[field];
+    pruneLootGlobal();
+    markDirty();
+    renderResourceMults();
 }
 
 function resolveLootEntry(lt, vanillaEntry) {
@@ -680,6 +726,19 @@ function bindLootHandlers() {
     document.getElementById('loot-globals').addEventListener('click', e => {
         const cat = e.target.dataset && e.target.dataset.resetCat;
         if (cat) resetLootGlobalCategory(cat);
+    });
+
+    document.getElementById('loot-tree-mult').addEventListener('input', e => {
+        setResourceMult('treeMultiplier', e.target.value);
+    });
+    document.getElementById('loot-digvol-mult').addEventListener('input', e => {
+        setResourceMult('digVolumeMultiplier', e.target.value);
+    });
+    document.getElementById('loot-tree-mult-reset').addEventListener('click', () => {
+        resetResourceMult('treeMultiplier');
+    });
+    document.getElementById('loot-digvol-mult-reset').addEventListener('click', () => {
+        resetResourceMult('digVolumeMultiplier');
     });
 
     document.getElementById('lt-filter').addEventListener('input',           renderLootTables);

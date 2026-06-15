@@ -643,6 +643,10 @@ namespace Windrose.Quartermaster.Core
                         deployer.WriteWeatherTriggerConfig(safeName, weatherClones);
                         deployer.WriteKillXpConfig(safeName, killXpCfg.DefaultXp, killXpCfg.Keywords);
                         deployer.WriteShantyConfig(safeName, shantyActive);
+                        deployer.WriteLootConfig(safeName,
+                            lootResult != null ? lootResult.DllOverrides : null,
+                            lootResult != null ? lootResult.TreeMultiplier : 1.0,
+                            lootResult != null ? lootResult.DigVolumeMultiplier : 1.0);
                     }
                 }
                 catch (Exception ex)

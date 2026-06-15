@@ -118,6 +118,8 @@ namespace Windrose.Quartermaster.Core
     public sealed class LootGlobal
     {
         public Dictionary<string, double> ByCategory;
+        public double? TreeMultiplier;
+        public double? DigVolumeMultiplier;
     }
 
     // Global NPC-spawn tuning. Respawn is a MULTIPLIER on each spawner's vanilla

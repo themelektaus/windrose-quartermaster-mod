@@ -714,6 +714,7 @@ function setActiveTab(tab) {
     }
     if (tab === 'loot') {
         renderLootGlobals();
+        renderResourceMults();
         renderLootTables();
         renderLootStatus();
     }
@@ -794,6 +795,7 @@ async function loadProfile(id) {
     renderStatus();
     if (state.activeTab === 'loot') {
         renderLootGlobals();
+        renderResourceMults();
         renderLootTables();
         renderLootStatus();
     }
@@ -1573,6 +1575,7 @@ async function onDelete() {
         renderStatus();
         if (state.activeTab === 'loot') {
             renderLootGlobals();
+            renderResourceMults();
             renderLootTables();
             renderLootStatus();
         }
