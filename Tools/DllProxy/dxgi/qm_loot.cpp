@@ -136,9 +136,8 @@ namespace
 
     // Early-scan: patch DataAssets DURING loading (via ProcessEvent rider)
     // so tree actors read our multiplied values when they spawn.
-    bool      g_earlyScanDone    = false;
-    ULONGLONG g_earlyScanLastMs  = 0;
-    int       g_earlyScanPasses  = 0;
+    // No convergence - scans whenever GObjects grows (new objects loaded).
+    int g_earlyScanHWM = 0; // high-water mark: last scanned GObjects index
 
     constexpr DWORD kBeatIntervalMs = 3000;
 
@@ -460,7 +459,8 @@ namespace
 
     // (2) Scan UR5SegmentTreeData UObjects and multiply drop amounts.
     // Uses per-object tracking: DataAssets persist across world changes.
-    void ScanAndPatchTrees()
+    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
+    void ScanAndPatchTrees(int scanFrom = 0)
     {
         if (g_treeMult == 1.0f) return;
         if (!QmUE::IsReady()) return;
@@ -471,7 +471,7 @@ namespace
         int found = 0, patched = 0;
         char clsBuf[128], nameBuf[128];
 
-        for (QmUE::int32 i = 0; i < total; ++i)
+        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
         {
             QmUE::UObject* obj = arr->GetByIndex(i);
             if (!obj || !obj->Class) continue;
@@ -541,7 +541,8 @@ namespace
 
     // (3) Scan UR5DigVolumeConfig UObjects and multiply drop amounts.
     // Uses per-object tracking: DataAssets persist across world changes.
-    void ScanAndPatchDigVolumes()
+    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
+    void ScanAndPatchDigVolumes(int scanFrom = 0)
     {
         if (g_digVolumeMult == 1.0f) return;
         if (!QmUE::IsReady()) return;
@@ -552,7 +553,7 @@ namespace
         int found = 0, patched = 0;
         char clsBuf[128], nameBuf[128];
 
-        for (QmUE::int32 i = 0; i < total; ++i)
+        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
         {
             QmUE::UObject* obj = arr->GetByIndex(i);
             if (!obj || !obj->Class) continue;
@@ -635,9 +636,7 @@ bool QmLoot_Init()
     g_patchedDigCount  = 0;
     memset(g_patchedTreePtrs, 0, sizeof(g_patchedTreePtrs));
     memset(g_patchedDigPtrs, 0, sizeof(g_patchedDigPtrs));
-    g_earlyScanDone    = false;
-    g_earlyScanLastMs  = 0;
-    g_earlyScanPasses  = 0;
+    g_earlyScanHWM = 0;
 
     char dir[MAX_PATH];
     if (!LocateSidecarDir(dir, sizeof(dir)))
@@ -717,57 +716,55 @@ void QmLoot_OnWorldChanged()
     for (int t = 0; t < g_tableCount; ++t)
         g_tables[t].applied = false;
 
-    // Re-enable early scanning: new map may load new DataAssets with
-    // different UObject pointers. Per-object tracking prevents re-multiplication
-    // of already-patched assets; the early scan catches NEW assets during loading.
-    g_earlyScanDone   = false;
-    g_earlyScanPasses = 0;
+    // Force early-scan on next PE call by resetting the high-water mark.
+    // Per-object tracking prevents re-multiplication of already-patched assets.
+    g_earlyScanHWM = 0;
 
     QM_LOG_INFO("[Loot] world changed - re-scanning (tree %d, digvol %d tracked)",
         g_patchedTreeCount, g_patchedDigCount);
 }
 
-// ProcessEvent rider: aggressive early-scan during map loading.
+// ProcessEvent rider: incremental DataAsset scan.
 // Tree actors cache their LootData at spawn time; the regular heartbeat
 // (gameplay-map gated) fires too late. ProcessEvent runs during loading
-// screens (UI, input), so we piggyback a DataAsset scan every 200ms.
+// screens (UI, input), so we piggyback a DataAsset scan here.
+//
+// Incremental: we track a high-water mark (HWM) of the last scanned
+// GObjects index. Each PE call only scans objects [HWM, current_count) -
+// the NEW objects since the last scan. During gameplay this is typically
+// 0-10 objects (particles, FX), so the cost is negligible. During loading
+// we catch DataAssets within microseconds of them appearing in GObjects.
+// No throttle needed because work is proportional to new objects only.
 void QmLoot_OnProcessEvent(void* /*self*/, void* /*func*/, void* /*parms*/)
 {
-    if (!g_armed || g_earlyScanDone || !QmUE::IsReady()) return;
+    if (!g_armed || !QmUE::IsReady()) return;
 
-    ULONGLONG now = GetTickCount64();
-    if (now - g_earlyScanLastMs < 200) return;
-    g_earlyScanLastMs = now;
-    ++g_earlyScanPasses;
+    // Fast path: single int read + comparison.
+    QmUE::TUObjectArray* arr = QmUE::GetGObjects();
+    int currentNum = arr->Num();
+    if (currentNum <= g_earlyScanHWM) return;
+
+    int scanFrom = g_earlyScanHWM;
+    g_earlyScanHWM = currentNum;
 
     __try
     {
         int prevT = g_patchedTreeCount;
         int prevD = g_patchedDigCount;
-        ScanAndPatchTrees();
-        ScanAndPatchDigVolumes();
+        ScanAndPatchTrees(scanFrom);
+        ScanAndPatchDigVolumes(scanFrom);
         int newT = g_patchedTreeCount - prevT;
         int newD = g_patchedDigCount  - prevD;
 
         if (newT > 0 || newD > 0)
         {
-            QM_LOG_INFO("[Loot] early-scan #%d: %d tree(s), %d digvol(s) patched during loading",
-                g_earlyScanPasses, newT, newD);
-        }
-
-        // Terminate after 25 passes (5s) or when assets found and stable
-        bool stable = (g_patchedTreeCount > 0 && newT == 0 && newD == 0);
-        if (g_earlyScanPasses >= 25 || stable)
-        {
-            g_earlyScanDone = true;
-            QM_LOG_INFO("[Loot] early-scan %s after %d passes: %d trees, %d digvols patched",
-                stable ? "converged" : "timeout",
-                g_earlyScanPasses, g_patchedTreeCount, g_patchedDigCount);
+            QM_LOG_INFO("[Loot] early-scan: %d tree(s), %d digvol(s) patched (range %d..%d)",
+                newT, newD, scanFrom, currentNum);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
-        QM_LOG_WARN("[Loot] early-scan SEH fault (pass #%d)", g_earlyScanPasses);
+        QM_LOG_WARN("[Loot] early-scan SEH fault (range %d..%d)", scanFrom, currentNum);
     }
 }
 

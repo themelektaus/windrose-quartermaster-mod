@@ -195,12 +195,25 @@ namespace
         return o;
     }
 
+    // Is the PDA's outermost UPackage from a mod-pak mount?
+    bool IsModPakPda(QmUE::UObject* pda)
+    {
+        QmUE::UObject* pkg = OutermostOf(pda);
+        if (!pkg) return false;
+        char pkgStr[512];
+        if (!SafeResolveName(&pkg->Name, pkgStr, sizeof(pkgStr)) || !pkgStr[0]) return false;
+        return strstr(pkgStr, "/Paks/~mods/") != nullptr;
+    }
+
     // Case-insensitive match of a LOADED R5BLInventoryItem PDA by asset name
-    // (CDO/archetypes excluded). Name resolves run only on class hits.
+    // (CDO/archetypes excluded). Prefers the vanilla version (package without
+    // /Paks/~mods/ prefix) because the FSoftObjectPath must use the engine's
+    // canonical mount-point path for the business-rule validator to accept it.
     QmUE::UObject* FindItemPdaByName(QmUE::UClass* itemCls, const char* assetName)
     {
         QmUE::TUObjectArray* g = QmUE::GetGObjects();
         if (!g || !itemCls || !assetName || !*assetName) return nullptr;
+        QmUE::UObject* modPakHit = nullptr;   // fallback if only mod-pak versions exist
         int n = g->Num();
         for (int i = 0; i < n; ++i)
         {
@@ -209,9 +222,11 @@ namespace
             if (o->Flags & 0x30) continue;   // RF_ClassDefaultObject | RF_ArchetypeObject
             char nm[160];
             if (!SafeResolveName(&o->Name, nm, sizeof(nm)) || !nm[0]) continue;
-            if (_stricmp(nm, assetName) == 0) return o;
+            if (_stricmp(nm, assetName) != 0) continue;
+            if (!IsModPakPda(o)) return o;    // vanilla - best match
+            if (!modPakHit) modPakHit = o;    // remember first mod-pak hit
         }
-        return nullptr;
+        return modPakHit;                     // only mod-pak versions exist
     }
 }
 
@@ -385,6 +400,39 @@ void QmItemGrant_Fire(const char* argument, const char* packagePath)
         QmUE::UObject* pkg = OutermostOf(pda);
         char pdaPath[256]; PathOf(pda, pdaPath, sizeof(pdaPath));
 
+        // The FSoftObjectPath must use the engine's canonical mount-point path
+        // (e.g. "/R5BusinessRules/InventoryItems/Ammo/DA_AID_..."), NOT the
+        // filesystem-style path. FindItemPdaByName prefers vanilla PDAs whose
+        // UPackage FName already IS the canonical path. For mod-pak PDAs (fallback),
+        // strip the "/Game/Paks/~mods/<ModName>/" prefix.
+        QmUE::FName softPkgName = pkg->Name;
+        {
+            char pkgStr[512];
+            if (SafeResolveName(&pkg->Name, pkgStr, sizeof(pkgStr)) && pkgStr[0])
+            {
+                QM_LOG_INFO("[ItemGrant] grant: UPackage FName = '%s'", pkgStr);
+                const char* modsTag = "/Paks/~mods/";
+                const char* hit = strstr(pkgStr, modsTag);
+                if (hit)
+                {
+                    const char* afterModName = strchr(hit + 12, '/');
+                    if (afterModName)
+                    {
+                        wchar_t canonW[512] = {};
+                        for (int ci = 0; afterModName[ci] && ci < 511; ++ci)
+                            canonW[ci] = (wchar_t)(unsigned char)afterModName[ci];
+                        QmUE::FName canonName;
+                        if (QmUE::FNameFromString(canonW, &canonName))
+                        {
+                            QM_LOG_WARN("[ItemGrant] grant: FALLBACK mod-pak PDA - stripped to '%s' "
+                                        "(vanilla PDA not found, may fail)", afterModName);
+                            softPkgName = canonName;
+                        }
+                    }
+                }
+            }
+        }
+
         int32_t ss = rwdCls->StructSize;
         size_t  sz = (ss >= 0x140 && ss <= (int)kTaskCloneCap) ? (size_t)ss : 0x140;
         if (!SafeCopy(g_fireTaskBuf, rwdCdo, sz))
@@ -398,7 +446,7 @@ void QmItemGrant_Fire(const char* argument, const char* packagePath)
         // FTopLevelAssetPath names go in (both FNames already exist - the PDA is live).
         memset(g_fireEntryBuf, 0, sizeof(g_fireEntryBuf));
         *reinterpret_cast<int32_t*>(g_fireEntryBuf + OFF_SoftWeakIdx)  = -1;          // FWeakObjectPtr: invalid (uncached)
-        *reinterpret_cast<QmUE::FName*>(g_fireEntryBuf + OFF_SoftPkgName) = pkg->Name;
+        *reinterpret_cast<QmUE::FName*>(g_fireEntryBuf + OFF_SoftPkgName) = softPkgName;
         *reinterpret_cast<QmUE::FName*>(g_fireEntryBuf + OFF_SoftAssetNm) = pda->Name;
         *reinterpret_cast<int32_t*>(g_fireEntryBuf + OFF_StackCount)   = count;
 
