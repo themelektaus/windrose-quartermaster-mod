@@ -114,6 +114,8 @@ namespace Windrose.Quartermaster.Core
                 result.TreeMultiplier = tm;
             if (lootGlobal?.DigVolumeMultiplier is double dvm && dvm != 1.0)
                 result.DigVolumeMultiplier = dvm;
+            if (lootGlobal?.RespawnSpeed is double rs && rs != 1.0)
+                result.RespawnSpeed = rs;
 
             return result;
         }
@@ -371,5 +373,11 @@ namespace Windrose.Quartermaster.Core
         /// Mine walls have their loot in binary DataAssets, not in DA_LT_* JSONs.
         /// </summary>
         public double DigVolumeMultiplier = 1.0;
+
+        /// <summary>
+        /// Speed multiplier for UR5GameplaySpawnerParams respawn intervals.
+        /// 2.0 = resources respawn twice as fast (interval halved).
+        /// </summary>
+        public double RespawnSpeed = 1.0;
     }
 }

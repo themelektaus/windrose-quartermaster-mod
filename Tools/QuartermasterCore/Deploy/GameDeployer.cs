@@ -418,11 +418,12 @@ namespace Windrose.Quartermaster.Core.Deploy
         public void WriteLootConfig(string profileSafeName,
             Dictionary<string, Dictionary<int, int[]>> overrides,
             double treeMult = 1.0,
-            double digVolumeMult = 1.0)
+            double digVolumeMult = 1.0,
+            double respawnSpeed = 1.0)
         {
             var path = TargetProfileLootConfigPath(profileSafeName);
             bool hasOverrides = overrides != null && overrides.Count > 0;
-            bool hasMults = treeMult != 1.0 || digVolumeMult != 1.0;
+            bool hasMults = treeMult != 1.0 || digVolumeMult != 1.0 || respawnSpeed != 1.0;
             if (!hasOverrides && !hasMults)
             {
                 if (File.Exists(path))
@@ -434,7 +435,8 @@ namespace Windrose.Quartermaster.Core.Deploy
             }
             LogLine("Writing qm_loot_" + profileSafeName + ".json (" +
                 (hasOverrides ? overrides.Count + " table(s)" : "0 tables") +
-                (hasMults ? ", tree x" + treeMult.ToString("F2") + ", digvol x" + digVolumeMult.ToString("F2") : "") +
+                (hasMults ? ", tree x" + treeMult.ToString("F2") + ", digvol x" + digVolumeMult.ToString("F2")
+                    + (respawnSpeed != 1.0 ? ", respawn x" + respawnSpeed.ToString("F2") : "") : "") +
                 ") -> " + path);
             EnsureSidecarDir();
 
@@ -455,6 +457,12 @@ namespace Windrose.Quartermaster.Core.Deploy
                 if (!first) sb.Append(",\n");
                 first = false;
                 sb.Append("\t\"__digvolume_mult\": ").Append(digVolumeMult.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (respawnSpeed != 1.0)
+            {
+                if (!first) sb.Append(",\n");
+                first = false;
+                sb.Append("\t\"__respawn_speed\": ").Append(respawnSpeed.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
             }
 
             // Per-table overrides: { "AssetName": { "idx": { "min": N, "max": N } }, ... }

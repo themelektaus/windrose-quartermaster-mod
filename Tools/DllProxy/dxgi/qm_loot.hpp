@@ -1,8 +1,9 @@
-// Runtime loot patcher. Three mechanisms, belt-and-suspenders:
+// Runtime loot patcher. Four mechanisms, belt-and-suspenders:
 //
 // 1. UR5BLLootParams  - per-entry min/max overrides (MineralNodes, Mobs, etc.)
 // 2. UR5SegmentTreeData - multiplier on FR5DropLootData.Amount (Divi, Palms)
 // 3. UR5DigVolumeConfig - multiplier on FR5DigVolumeLootData.Amount (Iron mines)
+// 4. UR5GameplaySpawnerParams - respawn speed (divides RespawnInterval)
 //
 // Trees (2) and DigVolumes (3) have their drops baked into binary DataAssets,
 // NOT in the DA_LT_* JSON loot tables. JSON pak overrides only reach (1).

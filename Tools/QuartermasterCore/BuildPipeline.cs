@@ -646,7 +646,8 @@ namespace Windrose.Quartermaster.Core
                         deployer.WriteLootConfig(safeName,
                             lootResult != null ? lootResult.DllOverrides : null,
                             lootResult != null ? lootResult.TreeMultiplier : 1.0,
-                            lootResult != null ? lootResult.DigVolumeMultiplier : 1.0);
+                            lootResult != null ? lootResult.DigVolumeMultiplier : 1.0,
+                            lootResult != null ? lootResult.RespawnSpeed : 1.0);
                     }
                 }
                 catch (Exception ex)

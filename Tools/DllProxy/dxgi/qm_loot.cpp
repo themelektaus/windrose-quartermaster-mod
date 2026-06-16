@@ -83,6 +83,11 @@ namespace
     constexpr size_t kSizeDigWholeEntry   = 0x30;
     constexpr size_t kOff_DigWholeAmount  = 0x00;
 
+    // --- (4) UR5GameplaySpawnerParams : UR5JsonRuntimeDA (0x0088 total) ------
+    //   +0x0060  FFloatInterval RespawnInterval (float Min, float Max - seconds)
+    constexpr size_t kOff_SpawnerRespawnMin = 0x0060;
+    constexpr size_t kOff_SpawnerRespawnMax = 0x0064;
+
     // EObjectFlags used to reject CDOs/archetypes.
     constexpr uint32_t RF_ClassDefaultObject = 0x00000010;
     constexpr uint32_t RF_ArchetypeObject    = 0x00000020;
@@ -112,9 +117,10 @@ namespace
     long g_beatCount     = 0;
     DWORD g_lastBeatTick = 0;
 
-    // Multipliers for non-LootParams systems (read from __tree_mult / __digvolume_mult)
+    // Multipliers for non-LootParams systems (read from __tree_mult / __digvolume_mult / __respawn_speed)
     float g_treeMult      = 1.0f;
     float g_digVolumeMult = 1.0f;
+    float g_respawnSpeed  = 1.0f;
 
     // Per-UObject tracking: DataAssets persist across world changes, so we
     // track patched pointers to avoid cascading re-multiplication (3->9->27).
@@ -123,6 +129,8 @@ namespace
     int   g_patchedTreeCount = 0;
     void* g_patchedDigPtrs[kMaxTracked]  = {};
     int   g_patchedDigCount  = 0;
+    void* g_patchedSpawnerPtrs[kMaxTracked] = {};
+    int   g_patchedSpawnerCount = 0;
 
     bool IsObjTracked(void* const* arr, int count, void* p)
     {
@@ -170,8 +178,9 @@ namespace
                 double v = 0;
                 if (jp.parseNumber(v))
                 {
-                    if (assetName == "__tree_mult")       g_treeMult      = (float)v;
+                    if (assetName == "__tree_mult")            g_treeMult      = (float)v;
                     else if (assetName == "__digvolume_mult") g_digVolumeMult = (float)v;
+                    else if (assetName == "__respawn_speed")  g_respawnSpeed  = (float)v;
                     else QM_LOG_WARN("[Loot] unknown special key '%s' in %s", assetName.c_str(), path);
                 }
                 if (jp.peek(',')) ++jp.p;
@@ -621,6 +630,70 @@ namespace
                 found, patched, (double)g_digVolumeMult, g_patchedDigCount);
         }
     }
+
+    // (4) Scan UR5GameplaySpawnerParams UObjects and divide RespawnInterval.
+    // Speed > 1 = faster respawn = interval divided by speed.
+    // Uses per-object tracking: DataAssets persist across world changes.
+    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
+    void ScanAndPatchSpawnerParams(int scanFrom = 0)
+    {
+        if (g_respawnSpeed == 1.0f) return;
+        if (!QmUE::IsReady()) return;
+
+        QmUE::TUObjectArray* arr = QmUE::GetGObjects();
+        const QmUE::int32 total = arr->Num();
+
+        int found = 0, patched = 0;
+        char clsBuf[128], nameBuf[128];
+
+        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
+        {
+            QmUE::UObject* obj = arr->GetByIndex(i);
+            if (!obj || !obj->Class) continue;
+            if (!QmUE::ResolveFNameNarrow(obj->Class->Name, clsBuf, sizeof(clsBuf))) continue;
+            if (strcmp(clsBuf, "R5GameplaySpawnerParams") != 0) continue;
+            if (IsCdoOrArchetype(obj)) continue;
+            if (IsObjTracked(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj)) continue;
+
+            QmUE::ResolveFNameNarrow(obj->Name, nameBuf, sizeof(nameBuf));
+            ++found;
+
+            __try
+            {
+                uint8_t* base = reinterpret_cast<uint8_t*>(obj);
+                float* pMin = reinterpret_cast<float*>(base + kOff_SpawnerRespawnMin);
+                float* pMax = reinterpret_cast<float*>(base + kOff_SpawnerRespawnMax);
+                float oldMin = *pMin, oldMax = *pMax;
+
+                // Divide interval by speed (speed 2.0 = half the wait time)
+                float newMin = oldMin / g_respawnSpeed;
+                float newMax = oldMax / g_respawnSpeed;
+                if (newMin < 1.0f && oldMin >= 1.0f) newMin = 1.0f;
+                if (newMax < 1.0f && oldMax >= 1.0f) newMax = 1.0f;
+
+                if (newMin != oldMin || newMax != oldMax)
+                {
+                    *pMin = newMin;
+                    *pMax = newMax;
+                    QM_LOG_INFO("[Loot] spawner %s: RespawnInterval %.0f-%.0f -> %.0f-%.0f sec (speed x%.2f)",
+                        nameBuf, oldMin, oldMax, newMin, newMax, (double)g_respawnSpeed);
+                    ++patched;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                QM_LOG_WARN("[Loot] spawner %s: SEH fault - skip", nameBuf);
+            }
+
+            TrackObj(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj);
+        }
+
+        if (found > 0)
+        {
+            QM_LOG_INFO("[Loot] spawner scan: %d new param(s), %d patched (speed x%.2f), %d tracked total",
+                found, patched, (double)g_respawnSpeed, g_patchedSpawnerCount);
+        }
+    }
 }
 
 bool QmLoot_Init()
@@ -632,10 +705,13 @@ bool QmLoot_Init()
     g_lastBeatTick = 0;
     g_treeMult      = 1.0f;
     g_digVolumeMult = 1.0f;
-    g_patchedTreeCount = 0;
-    g_patchedDigCount  = 0;
+    g_respawnSpeed  = 1.0f;
+    g_patchedTreeCount    = 0;
+    g_patchedDigCount     = 0;
+    g_patchedSpawnerCount = 0;
     memset(g_patchedTreePtrs, 0, sizeof(g_patchedTreePtrs));
     memset(g_patchedDigPtrs, 0, sizeof(g_patchedDigPtrs));
+    memset(g_patchedSpawnerPtrs, 0, sizeof(g_patchedSpawnerPtrs));
     g_earlyScanHWM = 0;
 
     char dir[MAX_PATH];
@@ -667,11 +743,11 @@ bool QmLoot_Init()
         FindClose(h);
     }
 
-    g_armed = (g_tableCount > 0 || g_treeMult != 1.0f || g_digVolumeMult != 1.0f);
+    g_armed = (g_tableCount > 0 || g_treeMult != 1.0f || g_digVolumeMult != 1.0f || g_respawnSpeed != 1.0f);
     if (g_armed)
     {
-        QM_LOG_INFO("[Loot] *** ARMED *** %d table(s), tree x%.2f, digvol x%.2f from %d file(s)",
-            g_tableCount, (double)g_treeMult, (double)g_digVolumeMult, files);
+        QM_LOG_INFO("[Loot] *** ARMED *** %d table(s), tree x%.2f, digvol x%.2f, respawn speed x%.2f from %d file(s)",
+            g_tableCount, (double)g_treeMult, (double)g_digVolumeMult, (double)g_respawnSpeed, files);
         for (int t = 0; t < g_tableCount; ++t)
         {
             QM_LOG_INFO("[Loot]   [%d] '%s' (%d entries)", t, g_tables[t].assetName, g_tables[t].entryCount);
@@ -698,11 +774,12 @@ void QmLoot_Heartbeat()
     if (g_tableCount > 0 && !g_allApplied)
         ScanAndPatch();
 
-    // Always scan for new tree/digvolume DataAssets (backup for early-scan).
+    // Always scan for new tree/digvolume/spawner DataAssets (backup for early-scan).
     // Per-object tracking prevents cascading re-multiplication;
     // already-patched objects are skipped in O(tracked_count).
     ScanAndPatchTrees();
     ScanAndPatchDigVolumes();
+    ScanAndPatchSpawnerParams();
 }
 
 void QmLoot_OnWorldChanged()
@@ -720,8 +797,8 @@ void QmLoot_OnWorldChanged()
     // Per-object tracking prevents re-multiplication of already-patched assets.
     g_earlyScanHWM = 0;
 
-    QM_LOG_INFO("[Loot] world changed - re-scanning (tree %d, digvol %d tracked)",
-        g_patchedTreeCount, g_patchedDigCount);
+    QM_LOG_INFO("[Loot] world changed - re-scanning (tree %d, digvol %d, spawner %d tracked)",
+        g_patchedTreeCount, g_patchedDigCount, g_patchedSpawnerCount);
 }
 
 // ProcessEvent rider: incremental DataAsset scan.
@@ -751,15 +828,18 @@ void QmLoot_OnProcessEvent(void* /*self*/, void* /*func*/, void* /*parms*/)
     {
         int prevT = g_patchedTreeCount;
         int prevD = g_patchedDigCount;
+        int prevS = g_patchedSpawnerCount;
         ScanAndPatchTrees(scanFrom);
         ScanAndPatchDigVolumes(scanFrom);
-        int newT = g_patchedTreeCount - prevT;
-        int newD = g_patchedDigCount  - prevD;
+        ScanAndPatchSpawnerParams(scanFrom);
+        int newT = g_patchedTreeCount    - prevT;
+        int newD = g_patchedDigCount     - prevD;
+        int newS = g_patchedSpawnerCount - prevS;
 
-        if (newT > 0 || newD > 0)
+        if (newT > 0 || newD > 0 || newS > 0)
         {
-            QM_LOG_INFO("[Loot] early-scan: %d tree(s), %d digvol(s) patched (range %d..%d)",
-                newT, newD, scanFrom, currentNum);
+            QM_LOG_INFO("[Loot] early-scan: %d tree(s), %d digvol(s), %d spawner(s) patched (range %d..%d)",
+                newT, newD, newS, scanFrom, currentNum);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
