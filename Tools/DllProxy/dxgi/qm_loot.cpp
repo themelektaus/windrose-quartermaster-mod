@@ -114,8 +114,6 @@ namespace
     int  g_tableCount    = 0;
     bool g_armed         = false;
     bool g_allApplied    = false;
-    long g_beatCount     = 0;
-    DWORD g_lastBeatTick = 0;
 
     // Multipliers for non-LootParams systems (read from __tree_mult / __digvolume_mult / __respawn_speed)
     float g_treeMult      = 1.0f;
@@ -146,8 +144,6 @@ namespace
     // so tree actors read our multiplied values when they spawn.
     // No convergence - scans whenever GObjects grows (new objects loaded).
     int g_earlyScanHWM = 0; // high-water mark: last scanned GObjects index
-
-    constexpr DWORD kBeatIntervalMs = 3000;
 
     // ---- JSON parsing -------------------------------------------------------
     // Format: { "AssetName": { "entryIdx": { "min": N, "max": N } }, ... }
@@ -322,7 +318,8 @@ namespace
     }
 
     // Scan GObjects for UR5BLLootParams instances and try to match+patch.
-    void ScanAndPatch()
+    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
+    void ScanAndPatch(int scanFrom = 0)
     {
         if (!QmUE::IsReady()) return;
         QmUE::TUObjectArray* arr = QmUE::GetGObjects();
@@ -331,7 +328,7 @@ namespace
         int matched = 0, patched = 0;
         char clsBuf[128], nameBuf[128];
 
-        for (QmUE::int32 i = 0; i < total; ++i)
+        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
         {
             QmUE::UObject* obj = arr->GetByIndex(i);
             if (!obj || !obj->Class) continue;
@@ -656,6 +653,15 @@ namespace
             if (IsObjTracked(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj)) continue;
 
             QmUE::ResolveFNameNarrow(obj->Name, nameBuf, sizeof(nameBuf));
+
+            // Only patch resource spawners (DA_ResSpawner_*).
+            // NPC/enemy/chest/garrison spawners are handled by the pak-based NPC Spawn Patcher.
+            if (strncmp(nameBuf, "DA_ResSpawner_", 14) != 0)
+            {
+                TrackObj(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj);
+                continue;
+            }
+
             ++found;
 
             __try
@@ -701,8 +707,6 @@ bool QmLoot_Init()
     g_tableCount   = 0;
     g_armed        = false;
     g_allApplied   = false;
-    g_beatCount    = 0;
-    g_lastBeatTick = 0;
     g_treeMult      = 1.0f;
     g_digVolumeMult = 1.0f;
     g_respawnSpeed  = 1.0f;
@@ -763,23 +767,10 @@ bool QmLoot_Init()
 
 void QmLoot_Heartbeat()
 {
-    if (!g_armed || !QmUE::IsReady()) return;
-
-    const DWORD now = GetTickCount();
-    if (g_lastBeatTick != 0 && (now - g_lastBeatTick) < kBeatIntervalMs) return;
-    g_lastBeatTick = now;
-    ++g_beatCount;
-
-    // Always scan for LootParams tables (absolute values, no cascading risk)
-    if (g_tableCount > 0 && !g_allApplied)
-        ScanAndPatch();
-
-    // Always scan for new tree/digvolume/spawner DataAssets (backup for early-scan).
-    // Per-object tracking prevents cascading re-multiplication;
-    // already-patched objects are skipped in O(tracked_count).
-    ScanAndPatchTrees();
-    ScanAndPatchDigVolumes();
-    ScanAndPatchSpawnerParams();
+    // Intentionally empty. All scanning is now handled by the incremental
+    // early-scan in QmLoot_OnProcessEvent (O(delta) per call, no full scans).
+    // The old heartbeat ran 4 full GObjects iterations (~2.4M string compares)
+    // every 5 seconds on the game thread, causing visible frame stutters.
 }
 
 void QmLoot_OnWorldChanged()
@@ -826,6 +817,10 @@ void QmLoot_OnProcessEvent(void* /*self*/, void* /*func*/, void* /*parms*/)
 
     __try
     {
+        // LootParams tables (absolute values, one-shot)
+        if (g_tableCount > 0 && !g_allApplied)
+            ScanAndPatch(scanFrom);
+
         int prevT = g_patchedTreeCount;
         int prevD = g_patchedDigCount;
         int prevS = g_patchedSpawnerCount;
