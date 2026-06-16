@@ -65,7 +65,6 @@ function isLootGlobalEmpty() {
     if (g.byCategory && Object.keys(g.byCategory).length > 0) return false;
     if (g.treeMultiplier != null) return false;
     if (g.digVolumeMultiplier != null) return false;
-    if (g.respawnSpeed != null) return false;
     return true;
 }
 
@@ -113,10 +112,8 @@ function renderResourceMults() {
     const g = state.current && state.current.globals && state.current.globals.loot;
     const treeInput    = document.getElementById('loot-tree-mult');
     const digInput     = document.getElementById('loot-digvol-mult');
-    const respawnInput = document.getElementById('loot-respawn-speed');
     if (treeInput)    treeInput.value    = (g && g.treeMultiplier != null) ? g.treeMultiplier : '';
     if (digInput)     digInput.value     = (g && g.digVolumeMultiplier != null) ? g.digVolumeMultiplier : '';
-    if (respawnInput) respawnInput.value = (g && g.respawnSpeed != null) ? g.respawnSpeed : '';
 }
 
 function setResourceMult(field, rawValue) {
@@ -743,13 +740,6 @@ function bindLootHandlers() {
     document.getElementById('loot-digvol-mult-reset').addEventListener('click', () => {
         resetResourceMult('digVolumeMultiplier');
     });
-    document.getElementById('loot-respawn-speed').addEventListener('input', e => {
-        setResourceMult('respawnSpeed', e.target.value);
-    });
-    document.getElementById('loot-respawn-speed-reset').addEventListener('click', () => {
-        resetResourceMult('respawnSpeed');
-    });
-
     document.getElementById('lt-filter').addEventListener('input',           renderLootTables);
     document.getElementById('lt-filter-category').addEventListener('change', renderLootTables);
     document.getElementById('lt-filter-type').addEventListener('change',     renderLootTables);

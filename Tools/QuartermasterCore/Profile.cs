@@ -120,7 +120,6 @@ namespace Windrose.Quartermaster.Core
         public Dictionary<string, double> ByCategory;
         public double? TreeMultiplier;
         public double? DigVolumeMultiplier;
-        public double? RespawnSpeed;
     }
 
     // Global NPC-spawn tuning. Respawn is a MULTIPLIER on each spawner's vanilla

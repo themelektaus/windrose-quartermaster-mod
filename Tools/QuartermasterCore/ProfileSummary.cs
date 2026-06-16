@@ -41,8 +41,6 @@ namespace Windrose.Quartermaster.Core
                         ? string.Join(", ", entries)
                         : string.Join(", ", entries.Take(4)) + " +" + (entries.Count - 4) + " more"));
                 }
-                if (Active(g.Loot?.RespawnSpeed)) lines.Add("Resource respawn speed " + X(g.Loot.RespawnSpeed.Value));
-
                 if (Active(g.PickupRadius?.Multiplier)) lines.Add("Pickup radius " + X(g.PickupRadius.Multiplier.Value));
                 if (Active(g.ShipPickup?.Multiplier))   lines.Add("Ship pickup radius " + X(g.ShipPickup.Multiplier.Value));
 

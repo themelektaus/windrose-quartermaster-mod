@@ -1,16 +1,14 @@
-// Runtime loot patcher. Four mechanisms, belt-and-suspenders:
+// Runtime loot patcher for binary-only DataAssets:
 //
-// 1. UR5BLLootParams  - per-entry min/max overrides (MineralNodes, Mobs, etc.)
-// 2. UR5SegmentTreeData - multiplier on FR5DropLootData.Amount (Divi, Palms)
-// 3. UR5DigVolumeConfig - multiplier on FR5DigVolumeLootData.Amount (Iron mines)
-// 4. UR5GameplaySpawnerParams - respawn speed (divides RespawnInterval)
+// 1. UR5SegmentTreeData - multiplier on FR5DropLootData.Amount (Divi, Palms)
+// 2. UR5DigVolumeConfig - multiplier on FR5DigVolumeLootData.Amount (Iron mines)
 //
-// Trees (2) and DigVolumes (3) have their drops baked into binary DataAssets,
-// NOT in the DA_LT_* JSON loot tables. JSON pak overrides only reach (1).
+// These have their drops baked into binary DataAssets, NOT in the DA_LT_*
+// JSON loot tables. JSON pak overrides cannot reach them.
+// Loot-table min/max (UR5BLLootParams) is handled entirely by the pak.
 //
 // Lifecycle: QmLoot_Init() reads sidecars, QmLoot_OnProcessEvent() patches
-// DataAssets during loading (before tree actors cache values),
-// QmLoot_Heartbeat() patches on gameplay-map as backup.
+// DataAssets during loading (before tree actors cache values).
 #pragma once
 
 bool QmLoot_Init();

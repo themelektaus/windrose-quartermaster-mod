@@ -1,4 +1,4 @@
-// Quartermaster runtime loot-table patcher. See qm_loot.hpp.
+// Quartermaster runtime loot patcher (binary DataAssets). See qm_loot.hpp.
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
@@ -37,17 +37,7 @@ namespace
     constexpr size_t kOff_TArrayData    = 0x00;
     constexpr size_t kOff_TArrayCount   = 0x08;
 
-    // --- (1) UR5BLLootParams : UR5JsonRuntimePDA (0x50 total) ----------------
-    //   +0x40  TArray<FR5BLLootData> LootData
-    constexpr size_t kOff_LootData      = 0x40;
-    // FR5BLLootData (0x70 per element)
-    //   +0x00  int32 min_0
-    //   +0x04  int32 max_0
-    constexpr size_t kSizeLootEntry     = 0x70;
-    constexpr size_t kOff_EntryMin      = 0x00;
-    constexpr size_t kOff_EntryMax      = 0x04;
-
-    // --- (2) UR5SegmentTreeData : UDataAsset (0x04B0 total) ------------------
+    // --- (1) UR5SegmentTreeData : UDataAsset (0x04B0 total) ------------------
     //   +0x0118 TArray<FR5DropLootData> LootData (segment loot)
     //   +0x0130 TArray<FR5DropLootData> CollectLootSets (stump/collect loot)
     constexpr size_t kOff_TreeLootData    = 0x0118;
@@ -83,61 +73,34 @@ namespace
     constexpr size_t kSizeDigWholeEntry   = 0x30;
     constexpr size_t kOff_DigWholeAmount  = 0x00;
 
-    // --- (4) UR5GameplaySpawnerParams : UR5JsonRuntimeDA (0x0088 total) ------
-    //   +0x0060  FFloatInterval RespawnInterval (float Min, float Max - seconds)
-    constexpr size_t kOff_SpawnerRespawnMin = 0x0060;
-    constexpr size_t kOff_SpawnerRespawnMax = 0x0064;
-
     // EObjectFlags used to reject CDOs/archetypes.
     constexpr uint32_t RF_ClassDefaultObject = 0x00000010;
     constexpr uint32_t RF_ArchetypeObject    = 0x00000020;
 
-    // ---- Per-entry override -------------------------------------------------
-    struct EntryOverride {
-        int idx;
-        int minVal;
-        int maxVal;
-    };
-
-    // ---- Per-loot-table config ----------------------------------------------
-    constexpr int kMaxTables  = 512;
-    constexpr int kMaxEntries = 32;
-
-    struct LootTableConfig {
-        char assetName[128];
-        EntryOverride entries[kMaxEntries];
-        int entryCount;
-        bool applied;
-    };
-
-    LootTableConfig g_tables[kMaxTables] = {};
-    int  g_tableCount    = 0;
     bool g_armed         = false;
-    bool g_allApplied    = false;
 
-    // Multipliers for non-LootParams systems (read from __tree_mult / __digvolume_mult / __respawn_speed)
+    // Multipliers read from sidecar JSON (__tree_mult / __digvolume_mult)
     float g_treeMult      = 1.0f;
     float g_digVolumeMult = 1.0f;
-    float g_respawnSpeed  = 1.0f;
 
     // Per-UObject tracking: DataAssets persist across world changes, so we
     // track patched pointers to avoid cascading re-multiplication (3->9->27).
-    constexpr int kMaxTracked = 256;
+    constexpr int kMaxTracked = 1024;
     void* g_patchedTreePtrs[kMaxTracked] = {};
     int   g_patchedTreeCount = 0;
     void* g_patchedDigPtrs[kMaxTracked]  = {};
     int   g_patchedDigCount  = 0;
-    void* g_patchedSpawnerPtrs[kMaxTracked] = {};
-    int   g_patchedSpawnerCount = 0;
 
     bool IsObjTracked(void* const* arr, int count, void* p)
     {
         for (int i = 0; i < count; ++i) if (arr[i] == p) return true;
         return false;
     }
-    void TrackObj(void** arr, int& count, void* p)
+    bool TrackObj(void** arr, int& count, void* p)
     {
-        if (count < kMaxTracked) arr[count++] = p;
+        if (count < kMaxTracked) { arr[count++] = p; return true; }
+        QM_LOG_WARN("[Loot] tracking overflow (%d) - cascading risk!", kMaxTracked);
+        return false;
     }
 
     // Early-scan: patch DataAssets DURING loading (via ProcessEvent rider)
@@ -146,7 +109,7 @@ namespace
     int g_earlyScanHWM = 0; // high-water mark: last scanned GObjects index
 
     // ---- JSON parsing -------------------------------------------------------
-    // Format: { "AssetName": { "entryIdx": { "min": N, "max": N } }, ... }
+    // Format: { "__tree_mult": 2.0, "__digvolume_mult": 2.0 }
     bool ParseSidecarFile(const char* path)
     {
         std::string raw;
@@ -163,95 +126,20 @@ namespace
 
         while (jp.ok && !jp.peek('}'))
         {
-            // Key: asset name
-            std::string assetName;
-            if (!jp.parseString(assetName)) break;
+            std::string key;
+            if (!jp.parseString(key)) break;
             if (!jp.expect(':')) break;
 
-            // Special keys: __tree_mult, __digvolume_mult -> float multiplier
-            if (assetName.size() > 2 && assetName[0] == '_' && assetName[1] == '_')
-            {
-                double v = 0;
-                if (jp.parseNumber(v))
-                {
-                    if (assetName == "__tree_mult")            g_treeMult      = (float)v;
-                    else if (assetName == "__digvolume_mult") g_digVolumeMult = (float)v;
-                    else if (assetName == "__respawn_speed")  g_respawnSpeed  = (float)v;
-                    else QM_LOG_WARN("[Loot] unknown special key '%s' in %s", assetName.c_str(), path);
-                }
-                if (jp.peek(',')) ++jp.p;
-                continue;
-            }
-
-            if (g_tableCount >= kMaxTables)
-            {
-                QM_LOG_WARN("[Loot] table limit (%d) reached, skipping rest of %s", kMaxTables, path);
+            double v = 0;
+            if (key == "__tree_mult" && jp.parseNumber(v))
+                g_treeMult = (float)v;
+            else if (key == "__digvolume_mult" && jp.parseNumber(v))
+                g_digVolumeMult = (float)v;
+            else
                 jp.skipValue();
-                if (jp.peek(',')) { ++jp.p; continue; }
-                break;
-            }
-
-            // Merge into existing table or create new
-            LootTableConfig* tbl = nullptr;
-            for (int t = 0; t < g_tableCount; ++t)
-            {
-                if (strcmp(g_tables[t].assetName, assetName.c_str()) == 0)
-                {
-                    tbl = &g_tables[t];
-                    break;
-                }
-            }
-            if (!tbl)
-            {
-                tbl = &g_tables[g_tableCount++];
-                memset(tbl, 0, sizeof(*tbl));
-                strncpy(tbl->assetName, assetName.c_str(), sizeof(tbl->assetName) - 1);
-            }
-
-            // Value: { "entryIdx": { "min": N, "max": N }, ... }
-            if (!jp.expect('{')) break;
-
-            while (jp.ok && !jp.peek('}'))
-            {
-                std::string idxStr;
-                if (!jp.parseString(idxStr)) break;
-                int idx = atoi(idxStr.c_str());
-
-                if (!jp.expect(':')) break;
-                if (!jp.expect('{')) break;
-
-                int minVal = -1, maxVal = -1;
-                while (jp.ok && !jp.peek('}'))
-                {
-                    std::string field;
-                    if (!jp.parseString(field)) break;
-                    if (!jp.expect(':')) break;
-                    double v = 0;
-                    if (!jp.parseNumber(v)) break;
-                    if (field == "min") minVal = (int)v;
-                    else if (field == "max") maxVal = (int)v;
-                    if (jp.peek(',')) ++jp.p;
-                }
-                if (!jp.expect('}')) break;
-
-                if (minVal >= 0 || maxVal >= 0)
-                {
-                    if (tbl->entryCount < kMaxEntries)
-                    {
-                        EntryOverride& e = tbl->entries[tbl->entryCount++];
-                        e.idx    = idx;
-                        e.minVal = minVal;
-                        e.maxVal = maxVal;
-                    }
-                }
-
-                if (jp.peek(',')) ++jp.p;
-            }
-            if (!jp.expect('}')) break;
 
             if (jp.peek(',')) ++jp.p;
         }
-        // Tolerate missing closing '}' for robustness
 
         return true;
     }
@@ -260,126 +148,6 @@ namespace
     bool IsCdoOrArchetype(const QmUE::UObject* o)
     {
         return o && (o->Flags & (RF_ClassDefaultObject | RF_ArchetypeObject)) != 0;
-    }
-
-    // Try to patch one LootTableConfig against a matched UObject.
-    // Returns true if all entries were written successfully.
-    bool PatchLootTable(LootTableConfig& tbl, QmUE::UObject* obj)
-    {
-        __try
-        {
-            uint8_t* base = reinterpret_cast<uint8_t*>(obj);
-
-            // Read TArray<FR5BLLootData> at kOff_LootData
-            uint8_t* dataPtr = *reinterpret_cast<uint8_t**>(base + kOff_LootData + kOff_TArrayData);
-            int32_t  count   = *reinterpret_cast<int32_t*>(base + kOff_LootData + kOff_TArrayCount);
-
-            if (!dataPtr || count <= 0 || count > 256)
-            {
-                QM_LOG_WARN("[Loot] %s: TArray invalid (data=0x%p count=%d) - skip",
-                    tbl.assetName, dataPtr, count);
-                return false;
-            }
-
-            int written = 0;
-            for (int e = 0; e < tbl.entryCount; ++e)
-            {
-                const EntryOverride& ovr = tbl.entries[e];
-                if (ovr.idx < 0 || ovr.idx >= count)
-                {
-                    QM_LOG_WARN("[Loot] %s: entry idx %d out of range (count=%d) - skip entry",
-                        tbl.assetName, ovr.idx, count);
-                    continue;
-                }
-
-                uint8_t* entry = dataPtr + (size_t)ovr.idx * kSizeLootEntry;
-
-                int32_t oldMin = *reinterpret_cast<int32_t*>(entry + kOff_EntryMin);
-                int32_t oldMax = *reinterpret_cast<int32_t*>(entry + kOff_EntryMax);
-
-                if (ovr.minVal >= 0) *reinterpret_cast<int32_t*>(entry + kOff_EntryMin) = ovr.minVal;
-                if (ovr.maxVal >= 0) *reinterpret_cast<int32_t*>(entry + kOff_EntryMax) = ovr.maxVal;
-
-                int32_t newMin = *reinterpret_cast<int32_t*>(entry + kOff_EntryMin);
-                int32_t newMax = *reinterpret_cast<int32_t*>(entry + kOff_EntryMax);
-
-                QM_LOG_INFO("[Loot] %s[%d]: min %d->%d, max %d->%d",
-                    tbl.assetName, ovr.idx, oldMin, newMin, oldMax, newMax);
-                ++written;
-            }
-
-            return written > 0;
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER)
-        {
-            QM_LOG_WARN("[Loot] %s: SEH fault during patch - skip", tbl.assetName);
-            return false;
-        }
-    }
-
-    // Scan GObjects for UR5BLLootParams instances and try to match+patch.
-    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
-    void ScanAndPatch(int scanFrom = 0)
-    {
-        if (!QmUE::IsReady()) return;
-        QmUE::TUObjectArray* arr = QmUE::GetGObjects();
-        const QmUE::int32 total = arr->Num();
-
-        int matched = 0, patched = 0;
-        char clsBuf[128], nameBuf[128];
-
-        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
-        {
-            QmUE::UObject* obj = arr->GetByIndex(i);
-            if (!obj || !obj->Class) continue;
-
-            // Match class: UR5BLLootParams -> FName "R5BLLootParams"
-            if (!QmUE::ResolveFNameNarrow(obj->Class->Name, clsBuf, sizeof(clsBuf))) continue;
-            if (strcmp(clsBuf, "R5BLLootParams") != 0) continue;
-
-            // Skip CDO/archetype
-            if (IsCdoOrArchetype(obj)) continue;
-
-            // Resolve object name (e.g. "DA_LT_Mineral_Iron_01")
-            if (!QmUE::ResolveFNameNarrow(obj->Name, nameBuf, sizeof(nameBuf))) continue;
-
-            // Match against our override list
-            for (int t = 0; t < g_tableCount; ++t)
-            {
-                LootTableConfig& tbl = g_tables[t];
-                if (tbl.applied) continue;
-                if (strcmp(tbl.assetName, nameBuf) != 0) continue;
-
-                ++matched;
-                if (PatchLootTable(tbl, obj))
-                {
-                    tbl.applied = true;
-                    ++patched;
-                }
-            }
-        }
-
-        // Check if all tables are applied
-        bool allDone = true;
-        for (int t = 0; t < g_tableCount; ++t)
-        {
-            if (!g_tables[t].applied) { allDone = false; break; }
-        }
-
-        if (matched > 0 || patched > 0)
-        {
-            int pending = 0;
-            for (int t = 0; t < g_tableCount; ++t)
-                if (!g_tables[t].applied) ++pending;
-            QM_LOG_INFO("[Loot] scan: %d matched, %d patched, %d pending",
-                matched, patched, pending);
-        }
-
-        if (allDone && !g_allApplied)
-        {
-            g_allApplied = true;
-            QM_LOG_INFO("[Loot] *** ALL %d table(s) patched ***", g_tableCount);
-        }
     }
 
     // Helper: multiply all entries in a TArray<FR5DropLootData> by mult.
@@ -463,7 +231,7 @@ namespace
         return changed;
     }
 
-    // (2) Scan UR5SegmentTreeData UObjects and multiply drop amounts.
+    // (1) Scan UR5SegmentTreeData UObjects and multiply drop amounts.
     // Uses per-object tracking: DataAssets persist across world changes.
     // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
     void ScanAndPatchTrees(int scanFrom = 0)
@@ -545,7 +313,7 @@ namespace
         return changed;
     }
 
-    // (3) Scan UR5DigVolumeConfig UObjects and multiply drop amounts.
+    // (2) Scan UR5DigVolumeConfig UObjects and multiply drop amounts.
     // Uses per-object tracking: DataAssets persist across world changes.
     // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
     void ScanAndPatchDigVolumes(int scanFrom = 0)
@@ -628,94 +396,17 @@ namespace
         }
     }
 
-    // (4) Scan UR5GameplaySpawnerParams UObjects and divide RespawnInterval.
-    // Speed > 1 = faster respawn = interval divided by speed.
-    // Uses per-object tracking: DataAssets persist across world changes.
-    // scanFrom: start index in GObjects (0 = full scan, >0 = incremental).
-    void ScanAndPatchSpawnerParams(int scanFrom = 0)
-    {
-        if (g_respawnSpeed == 1.0f) return;
-        if (!QmUE::IsReady()) return;
-
-        QmUE::TUObjectArray* arr = QmUE::GetGObjects();
-        const QmUE::int32 total = arr->Num();
-
-        int found = 0, patched = 0;
-        char clsBuf[128], nameBuf[128];
-
-        for (QmUE::int32 i = (QmUE::int32)scanFrom; i < total; ++i)
-        {
-            QmUE::UObject* obj = arr->GetByIndex(i);
-            if (!obj || !obj->Class) continue;
-            if (!QmUE::ResolveFNameNarrow(obj->Class->Name, clsBuf, sizeof(clsBuf))) continue;
-            if (strcmp(clsBuf, "R5GameplaySpawnerParams") != 0) continue;
-            if (IsCdoOrArchetype(obj)) continue;
-            if (IsObjTracked(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj)) continue;
-
-            QmUE::ResolveFNameNarrow(obj->Name, nameBuf, sizeof(nameBuf));
-
-            // Only patch resource spawners (DA_ResSpawner_*).
-            // NPC/enemy/chest/garrison spawners are handled by the pak-based NPC Spawn Patcher.
-            if (strncmp(nameBuf, "DA_ResSpawner_", 14) != 0)
-            {
-                TrackObj(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj);
-                continue;
-            }
-
-            ++found;
-
-            __try
-            {
-                uint8_t* base = reinterpret_cast<uint8_t*>(obj);
-                float* pMin = reinterpret_cast<float*>(base + kOff_SpawnerRespawnMin);
-                float* pMax = reinterpret_cast<float*>(base + kOff_SpawnerRespawnMax);
-                float oldMin = *pMin, oldMax = *pMax;
-
-                // Divide interval by speed (speed 2.0 = half the wait time)
-                float newMin = oldMin / g_respawnSpeed;
-                float newMax = oldMax / g_respawnSpeed;
-                if (newMin < 1.0f && oldMin >= 1.0f) newMin = 1.0f;
-                if (newMax < 1.0f && oldMax >= 1.0f) newMax = 1.0f;
-
-                if (newMin != oldMin || newMax != oldMax)
-                {
-                    *pMin = newMin;
-                    *pMax = newMax;
-                    QM_LOG_INFO("[Loot] spawner %s: RespawnInterval %.0f-%.0f -> %.0f-%.0f sec (speed x%.2f)",
-                        nameBuf, oldMin, oldMax, newMin, newMax, (double)g_respawnSpeed);
-                    ++patched;
-                }
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER)
-            {
-                QM_LOG_WARN("[Loot] spawner %s: SEH fault - skip", nameBuf);
-            }
-
-            TrackObj(g_patchedSpawnerPtrs, g_patchedSpawnerCount, obj);
-        }
-
-        if (found > 0)
-        {
-            QM_LOG_INFO("[Loot] spawner scan: %d new param(s), %d patched (speed x%.2f), %d tracked total",
-                found, patched, (double)g_respawnSpeed, g_patchedSpawnerCount);
-        }
-    }
 }
 
 bool QmLoot_Init()
 {
-    g_tableCount   = 0;
-    g_armed        = false;
-    g_allApplied   = false;
+    g_armed         = false;
     g_treeMult      = 1.0f;
     g_digVolumeMult = 1.0f;
-    g_respawnSpeed  = 1.0f;
     g_patchedTreeCount    = 0;
     g_patchedDigCount     = 0;
-    g_patchedSpawnerCount = 0;
     memset(g_patchedTreePtrs, 0, sizeof(g_patchedTreePtrs));
     memset(g_patchedDigPtrs, 0, sizeof(g_patchedDigPtrs));
-    memset(g_patchedSpawnerPtrs, 0, sizeof(g_patchedSpawnerPtrs));
     g_earlyScanHWM = 0;
 
     char dir[MAX_PATH];
@@ -747,19 +438,15 @@ bool QmLoot_Init()
         FindClose(h);
     }
 
-    g_armed = (g_tableCount > 0 || g_treeMult != 1.0f || g_digVolumeMult != 1.0f || g_respawnSpeed != 1.0f);
+    g_armed = (g_treeMult != 1.0f || g_digVolumeMult != 1.0f);
     if (g_armed)
     {
-        QM_LOG_INFO("[Loot] *** ARMED *** %d table(s), tree x%.2f, digvol x%.2f, respawn speed x%.2f from %d file(s)",
-            g_tableCount, (double)g_treeMult, (double)g_digVolumeMult, (double)g_respawnSpeed, files);
-        for (int t = 0; t < g_tableCount; ++t)
-        {
-            QM_LOG_INFO("[Loot]   [%d] '%s' (%d entries)", t, g_tables[t].assetName, g_tables[t].entryCount);
-        }
+        QM_LOG_INFO("[Loot] *** ARMED *** tree x%.2f, digvol x%.2f from %d file(s)",
+            (double)g_treeMult, (double)g_digVolumeMult, files);
     }
     else
     {
-        QM_LOG_INFO("[Loot] no qm_loot_*.json sidecars (or none with overrides) - loot module idle");
+        QM_LOG_INFO("[Loot] no qm_loot_*.json sidecars (or no multipliers) - loot module idle");
     }
 
     return g_armed;
@@ -779,17 +466,12 @@ void QmLoot_OnWorldChanged()
 
     // DataAssets (SegmentTreeData, DigVolumeConfig) persist across world changes.
     // Their tracking is NOT reset - they keep our multiplied values.
-    // Only reset LootParams tables (written with absolute values, no cascading risk).
-    g_allApplied = false;
-    for (int t = 0; t < g_tableCount; ++t)
-        g_tables[t].applied = false;
-
     // Force early-scan on next PE call by resetting the high-water mark.
     // Per-object tracking prevents re-multiplication of already-patched assets.
     g_earlyScanHWM = 0;
 
-    QM_LOG_INFO("[Loot] world changed - re-scanning (tree %d, digvol %d, spawner %d tracked)",
-        g_patchedTreeCount, g_patchedDigCount, g_patchedSpawnerCount);
+    QM_LOG_INFO("[Loot] world changed - re-scanning (tree %d, digvol %d tracked)",
+        g_patchedTreeCount, g_patchedDigCount);
 }
 
 // ProcessEvent rider: incremental DataAsset scan.
@@ -817,24 +499,17 @@ void QmLoot_OnProcessEvent(void* /*self*/, void* /*func*/, void* /*parms*/)
 
     __try
     {
-        // LootParams tables (absolute values, one-shot)
-        if (g_tableCount > 0 && !g_allApplied)
-            ScanAndPatch(scanFrom);
-
         int prevT = g_patchedTreeCount;
         int prevD = g_patchedDigCount;
-        int prevS = g_patchedSpawnerCount;
         ScanAndPatchTrees(scanFrom);
         ScanAndPatchDigVolumes(scanFrom);
-        ScanAndPatchSpawnerParams(scanFrom);
-        int newT = g_patchedTreeCount    - prevT;
-        int newD = g_patchedDigCount     - prevD;
-        int newS = g_patchedSpawnerCount - prevS;
+        int newT = g_patchedTreeCount - prevT;
+        int newD = g_patchedDigCount  - prevD;
 
-        if (newT > 0 || newD > 0 || newS > 0)
+        if (newT > 0 || newD > 0)
         {
-            QM_LOG_INFO("[Loot] early-scan: %d tree(s), %d digvol(s), %d spawner(s) patched (range %d..%d)",
-                newT, newD, newS, scanFrom, currentNum);
+            QM_LOG_INFO("[Loot] early-scan: %d tree(s), %d digvol(s) patched (range %d..%d)",
+                newT, newD, scanFrom, currentNum);
         }
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
