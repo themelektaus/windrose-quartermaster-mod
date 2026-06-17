@@ -355,7 +355,7 @@ function syncCustomItemsIntoCatalog() {
     }
 }
 
-const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'killxp', 'leveling', 'mods', 'characters'];
+const TAB_NAMES = ['misc', 'items', 'creator', 'buildings', 'loot', 'npcspawns', 'buyers', 'sellers', 'cooldowns', 'jewelry', 'shipmusic', 'lighting', 'shipspeed', 'xpreward', 'killxp', 'leveling', 'mods', 'characters'];
 
 async function loadTabHtml() {
     const host = document.getElementById('tab-pages');
@@ -935,6 +935,7 @@ function applyProfileToUI() {
     syncPickaxeReadout();
     applyCooldownsToUI();
     applyStationsToUI();
+    applyJewelryToUI();
     applyShipMusicToUI();
     applyLightingToUI();
     applyShipSpeedToUI();
@@ -1249,7 +1250,7 @@ function miscTabHasMods() {
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
         'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
-        'shipSpeed', 'xpReward', 'killXp', 'levelingRework', 'shanty', 'itemSpawner',
+        'shipSpeed', 'xpReward', 'killXp', 'levelingRework', 'shanty', 'itemSpawner', 'jewelry',
     ];
     for (const k of presenceKeys) {
         if (g[k] != null) return true;
@@ -1435,6 +1436,7 @@ const TAB_MOD_CHECKS = {
     buyers: buyersTabHasMods,
     sellers: sellersTabHasMods,
     cooldowns: cooldownsTabHasMods,
+    jewelry: jewelryTabHasMods,
     shipmusic: shipMusicTabHasMods,
     lighting: lightingTabHasMods,
     shipspeed: shipSpeedTabHasMods,
@@ -2338,6 +2340,7 @@ function bindHandlers() {
     bindBuildingsHandlers();
     bindCooldownsHandlers();
     bindStationsHandlers();
+    bindJewelryHandlers();
     bindShipMusicHandlers();
     bindLightingHandlers();
     bindShipSpeedHandlers();

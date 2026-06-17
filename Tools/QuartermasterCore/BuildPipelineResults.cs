@@ -259,6 +259,7 @@ namespace Windrose.Quartermaster.Core
         WeaponAbilityCurve,
         FoodDurationCurve,
         SoulHarvestRadius,
+        JewelryCurve,
     }
 
     public sealed class CooldownJob
@@ -270,6 +271,8 @@ namespace Windrose.Quartermaster.Core
         public CooldownJobShape Shape;
         // Only set for WeaponAbilityCurve: the CurveTable row to scale.
         public string RowName;
+        // Only set for JewelryCurve: per-row multiplier overrides.
+        public Dictionary<string, double> RowOverrides;
     }
 
     public sealed class CooldownJobResult

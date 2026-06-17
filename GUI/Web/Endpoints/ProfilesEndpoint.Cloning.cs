@@ -130,6 +130,15 @@ public static partial class ProfilesEndpoint
                 {
                     Multiplier = g.PickaxeRange.Multiplier,
                 },
+            Jewelry = g.Jewelry == null
+                ? null
+                : new JewelryGlobal
+                {
+                    OverallMultiplier = g.Jewelry.OverallMultiplier,
+                    Overrides = g.Jewelry.Overrides == null
+                        ? null
+                        : new Dictionary<string, double>(g.Jewelry.Overrides),
+                },
             Cooldowns = g.Cooldowns == null
                 ? null
                 : new CooldownsGlobal

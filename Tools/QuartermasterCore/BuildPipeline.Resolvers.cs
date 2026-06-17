@@ -404,6 +404,29 @@ namespace Windrose.Quartermaster.Core
             return m.HasValue && Math.Abs(m.Value - 1.0) > 1e-9;
         }
 
+        // Jewelry Stats: resolves a single CooldownJob for CT_JewelryGEValues
+        // if any multiplier (overall or per-stat) differs from 1.0. Per-row
+        // overrides ride in the RowOverrides dictionary; RunCooldownJob calls
+        // PatchRowsWithMap instead of PatchRowsBySuffix when overrides exist.
+        CooldownJob ResolveJewelryJob(Profile profile)
+        {
+            var jw = profile.Globals?.Jewelry;
+            if (jw == null) return null;
+            double overall = jw.OverallMultiplier.HasValue ? jw.OverallMultiplier.Value : 1.0;
+            bool hasOverrides = jw.Overrides != null && jw.Overrides.Count > 0;
+            bool overallActive = Math.Abs(overall - 1.0) > 1e-9;
+            if (!overallActive && !hasOverrides) return null;
+            return new CooldownJob
+            {
+                Family = "jewelry-stats",
+                AssetStem = "CT_JewelryGEValues",
+                VirtualPath = "R5/Content/Gameplay/ItemsLogic/Jewelry/CT_JewelryGEValues.uasset",
+                Multiplier = overall,
+                Shape = CooldownJobShape.JewelryCurve,
+                RowOverrides = hasOverrides ? jw.Overrides : null,
+            };
+        }
+
         List<ShipMusicJob> ResolveShipMusicJobs(Profile profile)
         {
             var jobs = new List<ShipMusicJob>();
@@ -704,6 +727,23 @@ namespace Windrose.Quartermaster.Core
                         legacyAssetPath, legacyAssetPath, usmapPath,
                         WeaponAbilityCooldownPatcher.DurationRowSuffix, job.Multiplier);
                     // Re-use Battery counters as "rows found / rows patched" for the readout.
+                    return new CooldownJobResult
+                    {
+                        Family = job.Family,
+                        AssetStem = r.AssetStem,
+                        Multiplier = job.Multiplier,
+                        VanillaValue = r.VanillaValue,
+                        EffectiveValue = r.EffectiveValue,
+                        BatteryCount = r.RowsPatched,
+                        PatchedBatteryCount = r.RowsPatched,
+                    };
+                }
+                case CooldownJobShape.JewelryCurve:
+                {
+                    var patcher = new WeaponAbilityCooldownPatcher { Log = Log };
+                    var r = patcher.PatchRowsWithMap(
+                        legacyAssetPath, legacyAssetPath, usmapPath,
+                        "Value", job.Multiplier, job.RowOverrides);
                     return new CooldownJobResult
                     {
                         Family = job.Family,

@@ -75,6 +75,11 @@ public static partial class ProfilesEndpoint
                                     && p.Globals.PickaxeRange != null
                                     && p.Globals.PickaxeRange.Multiplier.HasValue
                                     && Math.Abs(p.Globals.PickaxeRange.Multiplier.Value - 1.0) > 1e-9,
+            hasGlobalJewelry = p.Globals != null
+                               && p.Globals.Jewelry != null
+                               && (IsActive(p.Globals.Jewelry.OverallMultiplier)
+                                   || (p.Globals.Jewelry.Overrides != null
+                                       && p.Globals.Jewelry.Overrides.Count > 0)),
             hasGlobalCooldowns = p.Globals != null
                                  && p.Globals.Cooldowns != null
                                  && AnyCooldownActive(p.Globals.Cooldowns),

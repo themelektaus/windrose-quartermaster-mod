@@ -57,6 +57,7 @@ namespace Windrose.Quartermaster.Core
         public CropOverlapGlobal CropOverlap;
         public PlayerStatsGlobal PlayerStats;
         public BuildingRotationGlobal BuildingRotation;
+        public JewelryGlobal Jewelry;
     }
 
     // "Building Degrees of Freedom": adds finer rotation steps (1/5/10 deg) to the
@@ -70,6 +71,16 @@ namespace Windrose.Quartermaster.Core
         public bool? Add1;
         public bool? Add5;
         public bool? Add10;
+    }
+
+    // "Jewelry Stats": scales the stat magnitudes of rings and necklaces in
+    // CT_JewelryGEValues. OverallMultiplier applies to every row; per-row
+    // entries in Overrides take precedence. Key = CurveTable row name
+    // (e.g. "Ring_CritChance_StatValue"). Same precedence as Lighting.
+    public sealed class JewelryGlobal
+    {
+        public double? OverallMultiplier;
+        public Dictionary<string, double> Overrides;
     }
 
     // "Better Crop Overlap": MULTIPLIER on every plantable crop's CapsuleRadius

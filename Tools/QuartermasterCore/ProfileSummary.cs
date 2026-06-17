@@ -103,6 +103,15 @@ namespace Windrose.Quartermaster.Core
                     if (n > 0) lines.Add("Cooldowns and combat: " + Count(n, "value") + " tuned");
                 }
 
+                if (g.Jewelry != null)
+                {
+                    bool overallOn = Active(g.Jewelry.OverallMultiplier);
+                    int overrides = g.Jewelry.Overrides != null ? g.Jewelry.Overrides.Count : 0;
+                    if (overallOn || overrides > 0)
+                        lines.Add("Jewelry stats: overall " + (overallOn ? X(g.Jewelry.OverallMultiplier.Value) : "1x")
+                            + (overrides > 0 ? ", " + Count(overrides, "override") : ""));
+                }
+
                 if (g.ProductionTimes != null)
                 {
                     int n = CountActive(g.ProductionTimes.CropGrowthMultiplier, g.ProductionTimes.SmeltingMultiplier,

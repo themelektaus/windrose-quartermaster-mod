@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using UAssetAPI;
@@ -255,6 +256,135 @@ namespace Windrose.Quartermaster.Core
                 AssetStem = Path.GetFileNameWithoutExtension(inputAssetPath),
                 ExportIndex = exportIndex,
                 Multiplier = multiplier,
+                VanillaValue = sampleVanilla,
+                EffectiveValue = sampleEffective,
+                RowsPatched = rowsPatched,
+                Shape = CooldownPatchShape.FoodDurationCurve,
+            };
+        }
+
+        // Like PatchRowsBySuffix but accepts per-row overrides. For each matching
+        // row, if rowOverrides contains the row name the override multiplier is used;
+        // otherwise defaultMultiplier applies. Used by the Jewelry Stats feature
+        // where each stat can carry its own multiplier.
+        public CooldownPatchResult PatchRowsWithMap(
+            string inputAssetPath, string outputAssetPath,
+            string usmapPath, string suffix, double defaultMultiplier,
+            Dictionary<string, double> rowOverrides)
+        {
+            ValidateArgs(inputAssetPath, outputAssetPath, usmapPath, suffix, defaultMultiplier);
+            if (rowOverrides != null)
+            {
+                foreach (var kvp in rowOverrides)
+                    if (kvp.Value < MinMultiplier || kvp.Value > MaxMultiplier)
+                        throw new ArgumentOutOfRangeException("rowOverrides",
+                            "Override for '" + kvp.Key + "' = " + kvp.Value
+                            + " is outside [" + MinMultiplier + ", " + MaxMultiplier + "].");
+            }
+
+            LogLine("Loading usmap: " + usmapPath);
+            var mappings = new Usmap(usmapPath);
+            LogLine("Loading uasset: " + inputAssetPath);
+            var asset = new UAsset(inputAssetPath, UAssetIo.Ue, mappings);
+
+            var (exportIndex, extras) = FindCurveTableExtras(asset, inputAssetPath);
+            var names = asset.GetNameMapIndexList();
+
+            int rowsPatched = 0;
+            string sampleRow = null;
+            float sampleVanilla = 0f, sampleEffective = 0f;
+
+            const int RowSize = RowValueOffset + 4 + 4 + 2;
+            int pos = 0;
+            int numRows = ReadI32(extras, inputAssetPath, ref pos);
+            if (numRows < 0 || numRows > 1000000)
+                throw new InvalidOperationException(
+                    "CurveTable in " + inputAssetPath + " reports an implausible row count ("
+                    + numRows + ") - the table format changed; refusing to patch.");
+            NeedBytes(extras, pos, 1, inputAssetPath);
+            pos += 1;
+
+            for (int r = 0; r < numRows; r++)
+            {
+                int rowStart = pos;
+                NeedBytes(extras, rowStart, RowSize, inputAssetPath);
+
+                if (!(extras[rowStart + 8] == 0x00 && extras[rowStart + 9] == 0x0B
+                      && extras[rowStart + 10] == 0x01 && extras[rowStart + 11] == 0x01
+                      && extras[rowStart + 12] == 0x00 && extras[rowStart + 13] == 0x00
+                      && extras[rowStart + 14] == 0x00))
+                    throw new InvalidOperationException(
+                        "Row #" + r + " in " + inputAssetPath + " does not carry the expected "
+                        + "single-key curve header - the table format changed; refusing to patch.");
+
+                int nameIdx = BitConverter.ToInt32(extras, rowStart);
+                int nameNum = BitConverter.ToInt32(extras, rowStart + 4);
+                string baseName = (nameIdx >= 0 && nameIdx < names.Count) ? names[nameIdx]?.Value : null;
+                string rowName = baseName == null ? null
+                    : (nameNum > 0 ? baseName + "_" + (nameNum - 1) : baseName);
+
+                pos += RowSize;
+
+                if (rowName == null || !rowName.EndsWith(suffix, StringComparison.Ordinal)) continue;
+
+                double mul = defaultMultiplier;
+                if (rowOverrides != null && rowOverrides.TryGetValue(rowName, out double overrideMul))
+                    mul = overrideMul;
+                if (Math.Abs(mul - 1.0) < 1e-9) continue;
+
+                int valueOffset = rowStart + RowValueOffset;
+                float time = BitConverter.ToSingle(extras, rowStart + RowTimeOffset);
+                if (!IsFinite(time) || time < 0f || time > 100000f)
+                    throw new InvalidOperationException(
+                        "Row '" + rowName + "' Time=" + time.ToString(CultureInfo.InvariantCulture)
+                        + " is not the expected single-key curve layout in " + inputAssetPath
+                        + " - the curve format changed; refusing to patch.");
+
+                float vanillaValue = BitConverter.ToSingle(extras, valueOffset);
+                if (!IsFinite(vanillaValue) || vanillaValue <= 0f || vanillaValue > 1000000f)
+                    throw new InvalidOperationException(
+                        "Row '" + rowName + "' value "
+                        + vanillaValue.ToString(CultureInfo.InvariantCulture)
+                        + " is not a plausible magnitude in " + inputAssetPath
+                        + " - refusing to patch.");
+
+                float newValue = (float)(vanillaValue * mul);
+                BitConverter.GetBytes(newValue).CopyTo(extras, valueOffset);
+                rowsPatched++;
+                if (sampleRow == null)
+                {
+                    sampleRow = rowName;
+                    sampleVanilla = vanillaValue;
+                    sampleEffective = newValue;
+                }
+            }
+
+            if (pos != extras.Length)
+                throw new InvalidOperationException(
+                    "CurveTable walk in " + inputAssetPath + " ended at " + pos + " of "
+                    + extras.Length + " bytes - the table layout changed; refusing to patch.");
+
+            if (rowsPatched == 0)
+                LogLine("No rows modified (all multipliers at 1.0x) in " + inputAssetPath);
+            else
+            {
+                LogLine("Updated " + rowsPatched + " curve row"
+                    + (rowsPatched == 1 ? "" : "s") + " (default mul="
+                    + defaultMultiplier.ToString("0.##", CultureInfo.InvariantCulture)
+                    + ", " + (rowOverrides?.Count ?? 0) + " override(s)); sample "
+                    + sampleRow + " "
+                    + sampleVanilla.ToString("0.0000", CultureInfo.InvariantCulture) + " -> "
+                    + sampleEffective.ToString("0.0000", CultureInfo.InvariantCulture));
+            }
+
+            LogLine("Writing: " + outputAssetPath);
+            asset.Write(outputAssetPath);
+
+            return new CooldownPatchResult
+            {
+                AssetStem = Path.GetFileNameWithoutExtension(inputAssetPath),
+                ExportIndex = exportIndex,
+                Multiplier = defaultMultiplier,
                 VanillaValue = sampleVanilla,
                 EffectiveValue = sampleEffective,
                 RowsPatched = rowsPatched,

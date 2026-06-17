@@ -454,6 +454,8 @@ namespace Windrose.Quartermaster.Core
                     || (shipBoardingAngleMultiplier > 0.0 && Math.Abs(shipBoardingAngleMultiplier - 1.0) > 1e-9)
                     || (shipBoardingSpeedMultiplier > 0.0 && Math.Abs(shipBoardingSpeedMultiplier - 1.0) > 1e-9);
                 var cooldownJobs = ResolveCooldownJobs(profile);
+                var jewelryJob = ResolveJewelryJob(profile);
+                if (jewelryJob != null) cooldownJobs.Add(jewelryJob);
                 bool cooldownsActive = cooldownJobs.Count > 0;
                 var shipMusicJobs = ResolveShipMusicJobs(profile);
                 bool shipMusicActive = shipMusicJobs.Count > 0;
