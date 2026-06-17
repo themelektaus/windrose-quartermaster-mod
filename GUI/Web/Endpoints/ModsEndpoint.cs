@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Windrose.Quartermaster.Core;
@@ -312,5 +313,108 @@ public static class ModsEndpoint
         return filename.Substring(
             OwnedPrefix.Length,
             filename.Length - OwnedPrefix.Length - RawCompanionPakSuffix.Length);
+    }
+
+    // GET /api/mods/server-status - whether a dedicated server install exists.
+    public static void MapServerStatus(WebApplication app)
+    {
+        app.MapGet("/api/mods/server-status", () =>
+        {
+            var serverRoot = SteamLocator.FindServerRoot();
+            return Results.Json(new
+            {
+                detected = serverRoot != null,
+                serverRoot,
+            });
+        });
+    }
+
+    // GET /api/mods/export-zip - streams a ZIP containing all deployed
+    // Quartermaster files (paks + DLL + sidecars) with game-relative paths.
+    // Structure:   R5/Content/Paks/~mods/Quartermaster_*.*
+    //              R5/Binaries/Win64/dxgi.dll
+    //              R5/Binaries/Win64/Quartermaster/qm_*.*
+    public static void MapExportZip(WebApplication app, string repoRoot)
+    {
+        app.MapGet("/api/mods/export-zip", async (HttpContext ctx) =>
+        {
+            string modsDir;
+            string binDir;
+            try
+            {
+                modsDir = SteamLocator.FindModsDir();
+                binDir = SteamLocator.FindBinariesWin64Dir();
+            }
+            catch (Exception ex)
+            {
+                ctx.Response.StatusCode = 500;
+                await ctx.Response.WriteAsJsonAsync(new
+                {
+                    error = "Could not locate game paths: " + ex.Message,
+                });
+                return;
+            }
+
+            var entries = new List<(string DiskPath, string ZipPath)>();
+
+            // Paks: all Quartermaster_* files (.pak, .ucas, .utoc)
+            if (Directory.Exists(modsDir))
+            {
+                foreach (var ext in new[] { "*.pak", "*.ucas", "*.utoc" })
+                {
+                    foreach (var path in Directory.GetFiles(modsDir, ext, SearchOption.TopDirectoryOnly))
+                    {
+                        var name = Path.GetFileName(path);
+                        if (!name.StartsWith(OwnedPrefix, StringComparison.Ordinal)) continue;
+                        entries.Add((path, "R5/Content/Paks/~mods/" + name));
+                    }
+                }
+            }
+
+            // DLL (only if it is ours - leave foreign proxies alone)
+            var dllPath = Path.Combine(binDir, "dxgi.dll");
+            if (File.Exists(dllPath) && GameDeployer.IsQuartermasterDllStatic(dllPath))
+                entries.Add((dllPath, "R5/Binaries/Win64/dxgi.dll"));
+
+            // Sidecars
+            var sidecarDir = Path.Combine(binDir, "Quartermaster");
+            if (Directory.Exists(sidecarDir))
+            {
+                foreach (var path in Directory.GetFiles(sidecarDir, "qm_*", SearchOption.TopDirectoryOnly))
+                {
+                    var name = Path.GetFileName(path);
+                    entries.Add((path, "R5/Binaries/Win64/Quartermaster/" + name));
+                }
+            }
+
+            if (entries.Count == 0)
+            {
+                ctx.Response.StatusCode = 404;
+                await ctx.Response.WriteAsJsonAsync(new
+                {
+                    error = "No Quartermaster files deployed - build a profile first.",
+                });
+                return;
+            }
+
+            using var ms = new MemoryStream();
+            using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var (diskPath, zipPath) in entries)
+                {
+                    var entry = zip.CreateEntry(zipPath, CompressionLevel.Fastest);
+                    using var src = File.OpenRead(diskPath);
+                    using var dst = entry.Open();
+                    await src.CopyToAsync(dst);
+                }
+            }
+
+            ctx.Response.ContentType = "application/zip";
+            ctx.Response.Headers["Content-Disposition"] =
+                "attachment; filename=\"Quartermaster_Export.zip\"";
+            ctx.Response.ContentLength = ms.Length;
+            ms.Position = 0;
+            await ms.CopyToAsync(ctx.Response.Body);
+        });
     }
 }

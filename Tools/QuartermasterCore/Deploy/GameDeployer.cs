@@ -53,6 +53,8 @@ namespace Windrose.Quartermaster.Core.Deploy
         const string DllProductName = "Quartermaster";
         string LegacyDllMarkerPath() => Path.Combine(_gameWin64Dir, "dxgi.dll.qm");
 
+        public static bool IsQuartermasterDllStatic(string dllPath) => IsQuartermasterDll(dllPath);
+
         static bool IsQuartermasterDll(string dllPath)
         {
             try
@@ -852,6 +854,36 @@ namespace Windrose.Quartermaster.Core.Deploy
                 {
                     TryDelete(Path.Combine(modsDir, pakBasename + ext), result);
                 }
+            }
+            // Mirror cleanup to dedicated server if present.
+            try
+            {
+                var serverBinDir = SteamLocator.FindServerBinariesWin64Dir();
+                if (serverBinDir != null)
+                {
+                    var serverSidecarDir = Path.Combine(serverBinDir, "Quartermaster");
+                    foreach (var dir in new[] { serverSidecarDir, serverBinDir })
+                    {
+                        if (!Directory.Exists(dir)) continue;
+                        foreach (var pattern in new[] { "qm_*.txt", "qm_*.json" })
+                            foreach (var path in Directory.GetFiles(dir, pattern, SearchOption.TopDirectoryOnly))
+                                TryDelete(path, result);
+                    }
+                    TryDelete(Path.Combine(serverBinDir, "dxgi.dll"), result);
+                }
+                if (!string.IsNullOrEmpty(pakBasename))
+                {
+                    var serverModsDir = SteamLocator.FindServerModsDir();
+                    if (serverModsDir != null)
+                    {
+                        foreach (var ext in new[] { ".pak", ".ucas", ".utoc" })
+                            TryDelete(Path.Combine(serverModsDir, pakBasename + ext), result);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add("Server cleanup warning: " + ex.Message);
             }
             return result;
         }

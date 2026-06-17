@@ -1,38 +1,32 @@
 Arczikov:
-- Is it possible to add a mod that improves rings and necklaces?
+[ ] Is it possible to add a mod that improves rings and necklaces?
 
 RoyaleGaming:
-- Can you please add a mod for FOV when sailing. While sailing the frigate I hate how close the camera is to the wheel.
-- I tried the in game camera option and it did nothing. If this is at all possible I'd greatly appreciate it.
+[ ] Can you please add a mod for FOV when sailing. While sailing the frigate I hate how close the camera is to the wheel. I tried the in game camera option and it did nothing. If this is at all possible I'd greatly appreciate it.
 
 bignoob77:
-- add better dig so we can dig deep and raise the ground level much higher maybe ever a radius for the scroll wheel on the mouse for how big or small the terraform is
+[ ] add better dig so we can dig deep and raise the ground level much higher maybe ever a radius for the scroll wheel on the mouse for how big or small the terraform is
 
 bignoob77:
-- can you add reduce respawn times for resources like copper ore, iron ore, stone, sulfur, clay, salt, soil, trees and if this is already in the tool I just dont see it.
+[x] can you add reduce respawn times for resources like copper ore, iron ore, stone, sulfur, clay, salt, soil, trees and if this is already in the tool I just dont see it.
 
 lFUSEl:
-- Bag Size Edits I see ship size edit but it would be nice to also do bags ( another mod gone)
-- Storage Size Edits (Boom another mod gone)
-- Adding a mass Quick depost function (BOOM BOOM BANG another mod gone) => PLAN-CampWideDeposit-WIP.md
-- Caracter inventory Slots (yep you guessed it ... SIKE dont use this but still in the same scope as the others)
+[ ] Bag Size Edits I see ship size edit but it would be nice to also do bags ( another mod gone)
+[ ] Storage Size Edits (Boom another mod gone)
+[x] Adding a mass Quick depost function (BOOM BOOM BANG another mod gone) => PLAN-CampWideDeposit-WIP.md
+[ ] Caracter inventory Slots (yep you guessed it ... SIKE dont use this but still in the same scope as the others)
 
 lFUSEl (optional features, out of scope):
-- World edits (like amount of islands, Options like how big, How close and total world size.)
-- Undo/Redo Function for building. (Currently making this mod myself because It annoys me not existing)
-- possible weather options or storm intensity like the mod vilent storm or calm waters.
-- More hud controls more then just sizing but possibly the ability to move the hud around. Currently using HUDControl for this, But would be a nice option
-- adding keybinding modifiers (currently making this mod aswell because I wanna use modifires like ctrl+anything. The keybinding relistate is being consumed we need more options.)
+[ ] World edits (like amount of islands, Options like how big, How close and total world size.)
+[ ] Undo/Redo Function for building. (Currently making this mod myself because It annoys me not existing)
+[ ] possible weather options or storm intensity like the mod vilent storm or calm waters.
+[ ] More hud controls more then just sizing but possibly the ability to move the hud around. Currently using HUDControl for this, But would be a nice option
+[ ] adding keybinding modifiers (currently making this mod aswell because I wanna use modifires like ctrl+anything. The keybinding relistate is being consumed we need more options.)
 
 banditodude:
-- I did a bit of googling and using the AI mode it suggested trying to copy the mod files into the server directory as well, and that fixed the issue! Maybe this could be mentioned for others trying to use the coop multiplayer mode, since the standard install location is not enough.
-- To get this working, find windrose in your game list. Right click and select Manage > Browse Local Files.
-Now you will need to copy the mod files from the standard install location into the WindowsServer folder.
-Navigate to R5/Content/Paks/~mods and copy your Quartermaster_....pak/ucas/utoc files. Now go back to the base Windrose folder and navigate to R5/Builds/WindowsServer/R5/Content/Paks and create the ~mods folder if it does not exist yet. Open the ~mods folder then paste the mod files you copied from the first location.
-- This will allow the mods to function in self hosted multiplayer games. 
-- Another nice option would be a prepackaged zip with the folder structure defined from the Windrose root. So you can export the mod with both paths configured (R5/Builds/WindowsServer/R5/Content/Paks/~mods and R5/Content/Paks/~mods) this would make it easier to propagate the mod onto other machines.
+[x] I did a bit of googling and using the AI mode it suggested trying to copy the mod files into the server directory as well, and that fixed the issue! Maybe this could be mentioned for others trying to use the coop multiplayer mode, since the standard install location is not enough. To get this working, find windrose in your game list. Right click and select Manage > Browse Local Files.
+Now you will need to copy the mod files from the standard install location into the WindowsServer folder. This will allow the mods to function in self hosted multiplayer games. 
+[x] Another nice option would be a prepackaged zip with the folder structure defined from the Windrose root. So you can export the mod with both paths configured (R5/Builds/WindowsServer/R5/Content/Paks/~mods and R5/Content/Paks/~mods) this would make it easier to propagate the mod onto other machines.
 
 BachTreebane:
-- I dont have internet for my PC (thats not going to change anytime soon) and the Quartermaster mod tries downloading github files remotely.
-- I have the files (trumank repak) it tried downloading but i dont know where to install them to get the mod working.
-- Alternatively, could you create a mod folder on setup to dump the zip file if a user doesnt have internet?
+[ ] I dont have internet for my PC (thats not going to change anytime soon) and the Quartermaster mod tries downloading github files remotely. I have the files (trumank repak) it tried downloading but i dont know where to install them to get the mod working. Alternatively, could you create a mod folder on setup to dump the zip file if a user doesnt have internet?

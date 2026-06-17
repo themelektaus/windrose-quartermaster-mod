@@ -164,6 +164,7 @@ function bindModsHandlers() {
     document.getElementById('mods-refresh').addEventListener('click',         loadMods);
     document.getElementById('btn-open-setup').addEventListener('click',       openSetupManually);
     document.getElementById('btn-export-building').addEventListener('click',  runBuildingExport);
+    document.getElementById('btn-export-zip').addEventListener('click',       runExportZip);
     document.getElementById('btn-configure-game-install').addEventListener('click', () => openGameInstallModal());
     document.getElementById('mods-list').addEventListener('click', e => {
         const t = e.target;
@@ -173,6 +174,7 @@ function bindModsHandlers() {
     });
     loadExportStatus();
     loadGameInstallStatus();
+    loadServerStatus();
 }
 
 // Probes /api/game-install (no-throw) and paints the Mods-tab Game-install
@@ -282,6 +284,57 @@ async function loadExportStatus() {
         }
     } catch (e) {
         statusEl.textContent = 'Status check failed: ' + e.message;
+    }
+}
+
+async function loadServerStatus() {
+    const el = document.getElementById('server-status');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/mods/server-status');
+        const data = await r.json();
+        if (data.detected) {
+            el.className = 'game-install-status ok';
+            const span = document.createElement('span');
+            span.className = 'label';
+            span.textContent = 'Detected';
+            el.replaceChildren(span, document.createTextNode(data.serverRoot));
+        } else {
+            el.className = 'game-install-status steam';
+            el.textContent = 'No dedicated server found (builds deploy to client only)';
+        }
+    } catch (e) {
+        el.className = 'game-install-status bad';
+        el.textContent = 'Check failed: ' + e.message;
+    }
+}
+
+async function runExportZip() {
+    const btn = document.getElementById('btn-export-zip');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = 'Downloading...';
+    try {
+        const r = await fetch('/api/mods/export-zip');
+        if (!r.ok) {
+            const data = await r.json().catch(() => null);
+            await alert('Export failed: ' + (data && data.error ? data.error : 'HTTP ' + r.status));
+            return;
+        }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Quartermaster_Export.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        await alert('Export failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Download ZIP';
     }
 }
 

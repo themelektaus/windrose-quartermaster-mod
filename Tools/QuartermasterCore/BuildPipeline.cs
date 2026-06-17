@@ -657,6 +657,64 @@ namespace Windrose.Quartermaster.Core
                     LogLine("Warning: DLL/sidecar deploy skipped: " + ex.Message);
                 }
 
+                // Dedicated server mirror: if a WindowsServer install exists next
+                // to the client, copy all paks + DLL + sidecars there too.
+                try
+                {
+                    var serverModsDir = SteamLocator.FindServerModsDir();
+                    var serverBinDir = SteamLocator.FindServerBinariesWin64Dir();
+                    if (serverModsDir != null || serverBinDir != null)
+                    {
+                        LogLine("Dedicated server detected - mirroring deployment");
+                        if (serverModsDir != null)
+                        {
+                            foreach (var baseName in new[] { sharedBaseName, rawBaseName })
+                            {
+                                foreach (var ext in new[] { ".pak", ".ucas", ".utoc" })
+                                {
+                                    var src = Path.Combine(outDir, baseName + ext);
+                                    if (!File.Exists(src)) continue;
+                                    var dst = Path.Combine(serverModsDir, baseName + ext);
+                                    File.Copy(src, dst, overwrite: true);
+                                    LogLine("  Server: " + Path.GetFileName(src));
+                                }
+                            }
+                        }
+                        if (serverBinDir != null)
+                        {
+                            var clientDll = Path.Combine(
+                                SteamLocator.FindBinariesWin64Dir(), "dxgi.dll");
+                            if (File.Exists(clientDll))
+                            {
+                                File.Copy(clientDll,
+                                    Path.Combine(serverBinDir, "dxgi.dll"),
+                                    overwrite: true);
+                                LogLine("  Server: dxgi.dll");
+                            }
+                            var clientSidecarDir = Path.Combine(
+                                SteamLocator.FindBinariesWin64Dir(), "Quartermaster");
+                            if (Directory.Exists(clientSidecarDir))
+                            {
+                                var serverSidecarDir = Path.Combine(serverBinDir, "Quartermaster");
+                                Directory.CreateDirectory(serverSidecarDir);
+                                int sidecarCount = 0;
+                                foreach (var src in Directory.GetFiles(clientSidecarDir))
+                                {
+                                    File.Copy(src,
+                                        Path.Combine(serverSidecarDir, Path.GetFileName(src)),
+                                        overwrite: true);
+                                    sidecarCount++;
+                                }
+                                LogLine("  Server: " + sidecarCount + " sidecar(s) -> Quartermaster/");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogLine("Warning: dedicated server deploy failed: " + ex.Message);
+                }
+
                 return new BuildPipelineResult
                 {
                     Profile = profile,

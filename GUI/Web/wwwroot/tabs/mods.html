@@ -1,5 +1,6 @@
 <div class="tab-page" data-tab="mods" hidden>
   <aside class="pane left">
+
     <section class="card">
       <h2>Mods folder</h2>
       <p class="hint">Windrose loads every <code>.pak</code> placed here when the game starts.</p>
@@ -16,14 +17,6 @@
     </section>
 
     <section class="card">
-      <h2>Setup</h2>
-      <p class="hint">
-        Re-open the first-run setup dialog to re-dump vanilla item JSONs or re-extract icon textures - useful after a game update.
-      </p>
-      <button id="btn-open-setup" type="button">Open setup</button>
-    </section>
-
-    <section class="card">
       <h2>Game install</h2>
       <p class="hint">
         Steam installs are auto-detected. For Epic / GOG / dedicated server / portable copies, set the path to your Windrose folder (the one that contains <code>R5\Binaries\Win64\Windrose-Win64-Shipping.exe</code>, or <code>WindroseServer-Win64-Shipping.exe</code> on a dedicated server) - all build / deploy / play paths derive from it.
@@ -33,7 +26,31 @@
     </section>
 
     <section class="card">
-      <h2>Export</h2>
+      <h2>Export as ZIP</h2>
+      <p class="hint">
+        Download all deployed Quartermaster files (paks, DLL, sidecars) as a single ZIP. Extract into any Windrose install folder (client or dedicated server).
+      </p>
+      <button id="btn-export-zip" type="button">Download ZIP</button>
+    </section>
+
+    <section class="card">
+      <h2>Setup</h2>
+      <p class="hint">
+        Re-open the first-run setup dialog to re-dump vanilla item JSONs or re-extract icon textures - useful after a game update.
+      </p>
+      <button id="btn-open-setup" type="button">Open setup</button>
+    </section>
+
+    <section class="card">
+      <h2>Dedicated server</h2>
+      <p class="hint">
+        When a <code>R5\Builds\WindowsServer\</code> folder exists next to the game install, builds are automatically deployed to both client and server.
+      </p>
+      <div id="server-status" class="game-install-status">Checking...</div>
+    </section>
+
+    <section class="card">
+      <h2>Export building assets</h2>
       <p class="hint">
         Extracts every building asset (DataAssets, Blueprints, Static Meshes, Materials, Textures, audio cues) from the vanilla IoStore container to <code>Sources/Vanilla/R5/Content/</code> so you can clone them in the UE editor.
       </p>

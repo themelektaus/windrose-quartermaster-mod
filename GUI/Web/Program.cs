@@ -143,6 +143,8 @@ public static class Program
         SetupEndpoint.Map(app, resolvedRoot);
         GameInstallEndpoint.Map(app, resolvedRoot);
         ModsEndpoint.Map(app, resolvedRoot);
+        ModsEndpoint.MapServerStatus(app);
+        ModsEndpoint.MapExportZip(app, resolvedRoot);
         ExportEndpoint.Map(app, resolvedRoot);
         ReportEndpoint.Map(app, resolvedRoot);
         PlayEndpoint.Map(app, resolvedRoot);

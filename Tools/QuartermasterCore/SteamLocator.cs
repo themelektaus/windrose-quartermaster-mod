@@ -150,6 +150,56 @@ namespace Windrose.Quartermaster.Core
             return mods;
         }
 
+        // Derives the game root directory from the vanilla paks directory.
+        // E.g. .../Windrose/R5/Content/Paks -> .../Windrose
+        public static string FindGameRoot()
+        {
+            var paksDir = FindVanillaPaksDir();
+            // paksDir = <gameRoot>/R5/Content/Paks
+            var contentDir = Path.GetDirectoryName(paksDir);
+            var r5Dir = Path.GetDirectoryName(contentDir);
+            var gameRoot = Path.GetDirectoryName(r5Dir);
+            return gameRoot;
+        }
+
+        // Returns the dedicated server root, or null if no server is installed.
+        // Layout: <gameRoot>/R5/Builds/WindowsServer/
+        public static string FindServerRoot()
+        {
+            try
+            {
+                var gameRoot = FindGameRoot();
+                if (string.IsNullOrEmpty(gameRoot)) return null;
+                var serverRoot = Path.Combine(gameRoot, "R5", "Builds", "WindowsServer");
+                return Directory.Exists(serverRoot) ? serverRoot : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Server ~mods directory (creates it if the server root exists).
+        public static string FindServerModsDir()
+        {
+            var serverRoot = FindServerRoot();
+            if (serverRoot == null) return null;
+            var paks = Path.Combine(serverRoot, "R5", "Content", "Paks");
+            if (!Directory.Exists(paks)) return null;
+            var mods = Path.Combine(paks, "~mods");
+            Directory.CreateDirectory(mods);
+            return mods;
+        }
+
+        // Server Win64 binaries directory, or null.
+        public static string FindServerBinariesWin64Dir()
+        {
+            var serverRoot = FindServerRoot();
+            if (serverRoot == null) return null;
+            var bin = Path.Combine(serverRoot, "R5", "Binaries", "Win64");
+            return Directory.Exists(bin) ? bin : null;
+        }
+
         public static string FindBinariesWin64Dir()
         {
             var paksDir = FindVanillaPaksDir();
