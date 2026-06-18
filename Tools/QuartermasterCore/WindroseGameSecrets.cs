@@ -68,5 +68,12 @@ namespace Windrose.Quartermaster.Core
 
         public const string PlayerInventoryParamsRelPath =
             "R5/Plugins/R5BusinessRules/Content/Inventory/DA_PlayerInventoryParams.json";
+
+        // R5BLSlotCountModifierParams: per-backpack-tier slot count DataAssets read at
+        // runtime as raw .json (shipped in the legacy pakchunk0 .pak). Each tier (L00-
+        // L04 + L10) has a CountSlots value that expands the Default inventory module.
+        // Extracted on demand by the build pipeline (not a manifest entry).
+        public const string BackpackParamsPath =
+            "R5/Content/Gameplay/ItemsLogic/Backpack";
     }
 }

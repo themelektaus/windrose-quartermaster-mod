@@ -883,6 +883,8 @@ function applyProfileToUI() {
         sto && sto.playerInventoryMultiplier != null ? sto.playerInventoryMultiplier : 1.0;
     document.getElementById('chest-slots-mult').value =
         sto && sto.chestSlotsMultiplier != null ? sto.chestSlotsMultiplier : 1.0;
+    document.getElementById('backpack-slots-mult').value =
+        sto && sto.backpackSlotsMultiplier != null ? sto.backpackSlotsMultiplier : 1.0;
     syncStorageSlotsReadout();
     const sh = (p.globals && p.globals.shipSlots) || null;
     document.getElementById('ship-cargo-mult').value =

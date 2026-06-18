@@ -23,11 +23,13 @@ function charEquipTarget() {
     const eqs = state.current && state.current.globals && state.current.globals.equipmentSlots;
     const sto = state.current && state.current.globals && state.current.globals.storageSlots;
     const invMult = sto && sto.playerInventoryMultiplier != null ? sto.playerInventoryMultiplier : 1;
+    const bpSlotsMult = sto && sto.backpackSlotsMultiplier != null ? sto.backpackSlotsMultiplier : 1;
     return {
         ring: eqs && eqs.ringSlots != null ? eqs.ringSlots : 1,
         neck: eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1,
         back: eqs && eqs.backpackSlots != null ? eqs.backpackSlots : 1,
         defSlots: Math.max(16, Math.round(16 * invMult)),
+        bpSlotsMult: bpSlotsMult,
     };
 }
 
@@ -97,13 +99,35 @@ function progressionTargetFor(prog) {
 // the live count AND the blueprint must equal the target).
 // ---------------------------------------------------------------------------
 
+const BACKPACK_TIERS = [4, 8, 12, 16, 20, 1000];
+function snapToVanillaTier(extra) {
+    let best = BACKPACK_TIERS[0], bestDiff = Math.abs(extra - best);
+    for (const t of BACKPACK_TIERS) {
+        const d = Math.abs(extra - t);
+        if (d < bestDiff) { best = t; bestDiff = d; }
+    }
+    return best;
+}
+
 function equipNeedsPatch(eq, t) {
     if (!eq) return false;
-    return eq.ringSlots !== t.ring || eq.necklaceSlots !== t.neck
+    if (eq.ringSlots !== t.ring || eq.necklaceSlots !== t.neck
         || eq.backpackSlots !== t.back
         || eq.blueprintRing !== t.ring || eq.blueprintNeck !== t.neck
         || eq.blueprintBack !== t.back
-        || (eq.blueprintDefault != null && eq.blueprintDefault !== t.defSlots);
+        || (eq.blueprintDefault != null && eq.blueprintDefault !== t.defSlots))
+        return true;
+    // Backpack extra slots: compare actual vs what the multiplier would produce
+    const extra = eq.backpackExtraSlots || 0;
+    if (!eq.hasBackpackEquipped) {
+        // No backpack equipped - any extra slots are orphaned and need removal.
+        if (extra > 0) return true;
+    } else if (extra > 0) {
+        const mult = t.bpSlotsMult || 1;
+        const expected = Math.round(snapToVanillaTier(extra) * mult);
+        if (extra !== expected) return true;
+    }
+    return false;
 }
 
 function shipNeedsPatch(s, t) {
@@ -209,14 +233,22 @@ function buildCharacterCard(c) {
     areas.className = 'char-areas';
 
     if (c.equipment) {
+        const bpExtra = c.equipment.backpackExtraSlots || 0;
+        const bpExtraSuffix = bpExtra > 0 ? ' / bp slots +' + bpExtra : '';
+        const bpExtraTarget = (bpExtra > 0 && c.equipment.hasBackpackEquipped)
+            ? Math.round(snapToVanillaTier(bpExtra) * (eqT.bpSlotsMult || 1)) : 0;
+        const bpExtraTargetSuffix = bpExtraTarget > 0
+            ? ' / bp slots +' + bpExtraTarget : '';
         const eqNow = 'rings ' + c.equipment.ringSlots
             + ' / necklaces ' + c.equipment.necklaceSlots
             + ' / backpacks ' + c.equipment.backpackSlots
-            + ' / inventory ' + (c.equipment.blueprintDefault || 16);
+            + ' / inventory ' + (c.equipment.blueprintDefault || 16)
+            + bpExtraSuffix;
         const eqTarget = 'rings ' + eqT.ring
             + ' / necklaces ' + eqT.neck
             + ' / backpacks ' + eqT.back
-            + ' / inventory ' + eqT.defSlots;
+            + ' / inventory ' + eqT.defSlots
+            + bpExtraTargetSuffix;
         areas.appendChild(areaLine(equipNeedsPatch(c.equipment, eqT), 'Equipment', eqNow, eqTarget));
     }
     if (c.progression) {
@@ -299,6 +331,7 @@ function buildPatchRequest(c, force) {
         req.equipment = {
             ringSlots: eqT.ring, necklaceSlots: eqT.neck,
             backpackSlots: eqT.back, playerInventorySlots: eqT.defSlots,
+            backpackSlotsMultiplier: eqT.bpSlotsMult || 1.0,
         };
     if (progressionNeedsPatch(c.progression, progT))
         req.progression = { talentPoints: progT.talent, statPoints: progT.stat };
@@ -353,6 +386,7 @@ function applyPatchResultToChar(c, res) {
         if (eq.newNeck != null) { c.equipment.necklaceSlots = eq.newNeck; c.equipment.blueprintNeck = eq.newNeck; }
         if (eq.newBack != null) { c.equipment.backpackSlots = eq.newBack; c.equipment.blueprintBack = eq.newBack; }
         if (eq.newDefault != null && eq.newDefault > 0) { c.equipment.blueprintDefault = eq.newDefault; }
+        if (eq.newBackpackExtraSlots != null) c.equipment.backpackExtraSlots = eq.newBackpackExtraSlots;
     }
     const pr = res.progression;
     if (pr && pr.applied && c.progression) {

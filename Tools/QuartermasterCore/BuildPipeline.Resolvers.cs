@@ -1124,6 +1124,14 @@ namespace Windrose.Quartermaster.Core
             return false;
         }
 
+        static bool HasBackpackSlotsConfiguration(Profile profile)
+        {
+            var s = profile.Globals != null ? profile.Globals.StorageSlots : null;
+            if (s == null) return false;
+            return s.BackpackSlotsMultiplier.HasValue
+                && Math.Abs(s.BackpackSlotsMultiplier.Value - 1.0) > 1e-9;
+        }
+
         static bool HasShipSlotsConfiguration(Profile profile)
         {
             var s = profile.Globals != null ? profile.Globals.ShipSlots : null;

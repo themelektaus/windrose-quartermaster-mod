@@ -196,6 +196,7 @@ namespace Windrose.Quartermaster.Core
     {
         public double? PlayerInventoryMultiplier;
         public double? ChestSlotsMultiplier;
+        public double? BackpackSlotsMultiplier;
     }
 
     // Ship cargo + Combat Orders slots (the "Expanded Naval Tactics" mod).

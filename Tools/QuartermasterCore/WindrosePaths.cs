@@ -22,6 +22,7 @@ namespace Windrose.Quartermaster.Core
         public string VanillaCrops;
         public string VanillaAiSpawners;
         public string VanillaCannonParams;
+        public string VanillaBackpackParams;
         public string VanillaQuestRewards;
         public string VanillaHeroLevels;
         public string Builds;
@@ -162,6 +163,8 @@ namespace Windrose.Quartermaster.Core
                 "Gameplay", "Actor", "SpawnPoints", "A2_Spawners");
             var vanillaCannonParams = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "Water", "Character", "Guns", "Cannons");
+            var vanillaBackpackParams = Path.Combine(vanilla, "R5", "Content",
+                "Gameplay", "ItemsLogic", "Backpack");
             var vanillaQuestRewards = Path.Combine(vanilla, "R5", "Content",
                 "Gameplay", "Scenario", "Player");
             var vanillaHeroLevels = Path.Combine(vanilla, "R5", "Plugins",
@@ -183,6 +186,7 @@ namespace Windrose.Quartermaster.Core
                 VanillaCrops = vanillaCrops,
                 VanillaAiSpawners = vanillaAiSpawners,
                 VanillaCannonParams = vanillaCannonParams,
+                VanillaBackpackParams = vanillaBackpackParams,
                 VanillaQuestRewards = vanillaQuestRewards,
                 VanillaHeroLevels = vanillaHeroLevels,
                 Builds = Path.Combine(modRoot, "Builds"),

@@ -93,7 +93,8 @@ public static partial class ProfilesEndpoint
             hasGlobalStorageSlots = p.Globals != null
                                     && p.Globals.StorageSlots != null
                                     && (IsActive(p.Globals.StorageSlots.PlayerInventoryMultiplier)
-                                        || IsActive(p.Globals.StorageSlots.ChestSlotsMultiplier)),
+                                        || IsActive(p.Globals.StorageSlots.ChestSlotsMultiplier)
+                                        || IsActive(p.Globals.StorageSlots.BackpackSlotsMultiplier)),
         };
     }
 

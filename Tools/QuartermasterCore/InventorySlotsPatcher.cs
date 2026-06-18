@@ -27,6 +27,19 @@ namespace Windrose.Quartermaster.Core
         public const int MinSlots = 1;
         public const int MaxSlots = 10;
         public const int MaxPlayerInventorySlots = 256;
+        public const double MinBackpackSlotsMultiplier = 0.25;
+        public const double MaxBackpackSlotsMultiplier = 10.0;
+
+        // Vanilla extra slots per backpack tier (DA_Backpack_SlotCountModifierParams).
+        public static readonly (string Tier, string FileName, int CountSlots)[] BackpackTiers = new[]
+        {
+            ("L00", "Backpack_Simple_L00_T01/DA_Backpack_SlotCountModifierParams_L00_T01.json", 4),
+            ("L01", "Backpack_Simple_L01_T01/DA_Backpack_SlotCountModifierParams__L01_T01.json", 8),
+            ("L02", "Backpack_Simple_L02_T01/DA_Backpack_SlotCountModifierParams__L02_T01.json", 12),
+            ("L03", "Backpack_Simple_L03_T01/DA_Backpack_SlotCountModifierParams__L03_T01.json", 16),
+            ("L04", "Backpack_Simple_L04_T01/DA_Backpack_SlotCountModifierParams__L04_T01.json", 20),
+            ("L10", "Backpack_Simple_L10_T01/DA_Backpack_SlotCountModifierParams__L10_T01.json", 1000),
+        };
 
         const string JewelryTag = "Inventory.Module.Jewelry";
         const string DefaultTag = "Inventory.Module.Default";
@@ -238,6 +251,65 @@ namespace Windrose.Quartermaster.Core
             }
         }
 
+        // Patches the 6 per-tier backpack SlotCountModifierParams JSONs to scale
+        // the slots each backpack tier adds to the Default inventory module.
+        public InventorySlotsPatchResult PatchBackpackSlotsParams(
+            string vanillaBackpackDir, string outDir, double multiplier)
+        {
+            if (string.IsNullOrEmpty(vanillaBackpackDir))
+                throw new ArgumentNullException("vanillaBackpackDir");
+            if (string.IsNullOrEmpty(outDir))
+                throw new ArgumentNullException("outDir");
+
+            var result = new InventorySlotsPatchResult();
+            result.BackpackSlotsMultiplier = multiplier;
+            if (Math.Abs(multiplier - 1.0) < 1e-9)
+            {
+                result.Skipped = true;
+                return result;
+            }
+
+            int patchedCount = 0;
+            foreach (var (tier, fileName, vanillaSlots) in BackpackTiers)
+            {
+                var vanillaPath = Path.Combine(vanillaBackpackDir, fileName);
+                if (!File.Exists(vanillaPath))
+                {
+                    LogLine("  backpack " + tier + ": vanilla JSON not found, skipping");
+                    continue;
+                }
+                var raw = File.ReadAllText(vanillaPath, Encoding.UTF8);
+                var root = JsonNode.Parse(raw) as JsonObject;
+                if (root == null) continue;
+
+                var invData = root["InventorySlotsData"] as JsonObject;
+                if (invData == null) continue;
+                int oldVal = invData["CountSlots"]?.GetValue<int>() ?? 0;
+                int newVal = Math.Max(1, (int)Math.Ceiling(vanillaSlots * multiplier));
+                if (oldVal == newVal) continue;
+
+                invData["CountSlots"] = newVal;
+                var bytes = R5Json.SerializeWithTabsAndCrlf(root);
+                var outFile = Path.Combine(outDir, "R5", "Content",
+                    "Gameplay", "ItemsLogic", "Backpack", fileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(outFile));
+                File.WriteAllBytes(outFile, bytes);
+                patchedCount++;
+                LogLine("  backpack " + tier + ": " + vanillaSlots + " -> " + newVal
+                    + " slots (" + multiplier.ToString("0.0#") + "x)");
+            }
+            if (patchedCount > 0)
+            {
+                result.BackpackSlotsPatched = true;
+                result.Written = true;
+            }
+            else
+            {
+                result.Skipped = true;
+            }
+            return result;
+        }
+
         // Necklace MUST be tested before Ring: "DA_BL_Slot_Equipment_Necklace" does
         // not contain the Ring marker, but keep the order defensive and explicit.
         static int? ClassifyJewelrySlot(string slotParams, int ringSlots, int necklaceSlots, int backpackSlots)
@@ -285,10 +357,12 @@ namespace Windrose.Quartermaster.Core
         public bool BackpackPatched;
         public bool DefaultPatched;
         public bool ChestPatched;
+        public bool BackpackSlotsPatched;
         public int RingSlots;
         public int NecklaceSlots;
         public int BackpackSlots;
         public int PlayerInventorySlots;
         public double ChestSlotsMultiplier;
+        public double BackpackSlotsMultiplier;
     }
 }

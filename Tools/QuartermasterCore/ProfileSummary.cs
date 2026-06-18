@@ -67,6 +67,8 @@ namespace Windrose.Quartermaster.Core
                         lines.Add("Player inventory " + X(g.StorageSlots.PlayerInventoryMultiplier.Value));
                     if (Active(g.StorageSlots.ChestSlotsMultiplier))
                         lines.Add("Chest storage " + X(g.StorageSlots.ChestSlotsMultiplier.Value));
+                    if (Active(g.StorageSlots.BackpackSlotsMultiplier))
+                        lines.Add("Backpack slots " + X(g.StorageSlots.BackpackSlotsMultiplier.Value));
                 }
 
                 if (g.ShipSlots != null)

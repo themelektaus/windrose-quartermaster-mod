@@ -363,27 +363,33 @@ function setEquipmentSlotsFromUI() {
 function syncStorageSlotsReadout() {
     const inv = parseFloat(document.getElementById('player-inv-mult').value);
     const chest = parseFloat(document.getElementById('chest-slots-mult').value);
+    const bp = parseFloat(document.getElementById('backpack-slots-mult').value);
     document.getElementById('player-inv-mult-value').textContent =
         'x' + (isFinite(inv) ? inv : 1);
     document.getElementById('chest-slots-mult-value').textContent =
         'x' + (isFinite(chest) ? chest : 1);
+    document.getElementById('backpack-slots-mult-value').textContent =
+        'x' + (isFinite(bp) ? bp : 1);
 }
 
 function setStorageSlotsFromUI() {
     if (!state.current) return;
     const inv = parseFloat(document.getElementById('player-inv-mult').value);
     const chest = parseFloat(document.getElementById('chest-slots-mult').value);
-    if (!isFinite(inv) || !isFinite(chest)) return;
+    const bp = parseFloat(document.getElementById('backpack-slots-mult').value);
+    if (!isFinite(inv) || !isFinite(chest) || !isFinite(bp)) return;
     syncStorageSlotsReadout();
     state.current.globals = state.current.globals || {};
     const invOn = Math.abs(inv - 1.0) > 1e-9;
     const chestOn = Math.abs(chest - 1.0) > 1e-9;
-    if (!invOn && !chestOn) {
+    const bpOn = Math.abs(bp - 1.0) > 1e-9;
+    if (!invOn && !chestOn && !bpOn) {
         delete state.current.globals.storageSlots;
     } else {
         state.current.globals.storageSlots = {
             playerInventoryMultiplier: inv,
             chestSlotsMultiplier: chest,
+            backpackSlotsMultiplier: bp,
         };
     }
     markDirty();
@@ -994,6 +1000,7 @@ function bindMiscHandlers() {
     document.getElementById('backpack-slots').addEventListener('input', setEquipmentSlotsFromUI);
     document.getElementById('player-inv-mult').addEventListener('input', setStorageSlotsFromUI);
     document.getElementById('chest-slots-mult').addEventListener('input', setStorageSlotsFromUI);
+    document.getElementById('backpack-slots-mult').addEventListener('input', setStorageSlotsFromUI);
     document.getElementById('ship-cargo-mult').addEventListener('input', setShipSlotsFromUI);
     document.getElementById('ship-combat-slots').addEventListener('input', setShipSlotsFromUI);
     document.getElementById('building-stability-enabled').addEventListener('change',

@@ -85,6 +85,7 @@ public static partial class ProfilesEndpoint
                 {
                     PlayerInventoryMultiplier = g.StorageSlots.PlayerInventoryMultiplier,
                     ChestSlotsMultiplier = g.StorageSlots.ChestSlotsMultiplier,
+                    BackpackSlotsMultiplier = g.StorageSlots.BackpackSlotsMultiplier,
                 },
             BuildingStability = g.BuildingStability == null
                 ? null

@@ -325,11 +325,14 @@ namespace Windrose.Quartermaster.Core
                 BlueprintNeck = I32(value, info.BpNeckPos),
                 BlueprintBack = info.BpBackPos >= 0 ? I32(value, info.BpBackPos) : 1,
             };
+            ch.HasBackpackEquipped = info.LiveSlots.Any(s => s.Kind == "back" && s.HasItem);
             var defInfo = LocateDefault(value);
             if (defInfo != null)
             {
                 ch.DefaultSlots = defInfo.LiveSlots.Count;
                 ch.BlueprintDefault = I32(value, defInfo.BpDefaultPos);
+                ch.BackpackExtraSlots = ch.HasBackpackEquipped
+                    ? Math.Max(0, ch.DefaultSlots - ch.BlueprintDefault) : 0;
             }
             return ch;
         }
@@ -341,6 +344,7 @@ namespace Windrose.Quartermaster.Core
         public SaveSlotsPatchResult PatchCharacter(
             string dbFolder, int newRing, int newNeck,
             int? newBack = null, int? newDefault = null,
+            double backpackSlotsMultiplier = 1.0,
             bool forceDeleteEquipped = false)
         {
             if (!IsCharacterDbDir(dbFolder))
@@ -384,10 +388,26 @@ namespace Windrose.Quartermaster.Core
                 DefaultInfo defInfo = null;
                 if (effDefault > 0) defInfo = LocateDefault(value);
                 result.OldDefault = defInfo != null ? defInfo.LiveSlots.Count : 0;
+                bool bpSlotsActive = Math.Abs(backpackSlotsMultiplier - 1.0) > 1e-9;
+
+                // Compute target backpack extra once (blocking, match check, patching).
+                bool hasBackpackEquipped = info.LiveSlots.Any(s => s.Kind == "back" && s.HasItem);
+                int currentExtra0 = 0, targetExtra = 0;
+                if (effDefault > 0 && defInfo != null)
+                {
+                    currentExtra0 = Math.Max(0, defInfo.LiveSlots.Count - defInfo.BpDefaultValue);
+                    if (!hasBackpackEquipped)
+                        targetExtra = 0; // no backpack → remove orphaned extra slots
+                    else if (bpSlotsActive && currentExtra0 > 0)
+                        targetExtra = Math.Max(1, (int)Math.Ceiling(
+                            SnapToVanillaBackpackTier(currentExtra0) * backpackSlotsMultiplier));
+                    else
+                        targetExtra = currentExtra0; // backpack equipped, mult 1 → keep
+                }
 
                 var blocking = FindBlockingItems(value, info, newRing, newNeck, effBack);
                 if (effDefault > 0 && defInfo != null)
-                    blocking.AddRange(FindDefaultBlockingItems(value, defInfo, effDefault));
+                    blocking.AddRange(FindDefaultBlockingItems(value, defInfo, effDefault, targetExtra));
                 if (blocking.Count > 0 && !forceDeleteEquipped)
                 {
                     result.BlockingItems = blocking;
@@ -400,10 +420,12 @@ namespace Windrose.Quartermaster.Core
                     && info.BpRingValue == newRing && info.BpNeckValue == newNeck
                     && info.BpBackValue == effBack;
                 bool defaultMatch = effDefault <= 0
-                    || (defInfo != null && defInfo.BpDefaultValue == effDefault);
+                    || (defInfo != null && defInfo.BpDefaultValue == effDefault
+                        && currentExtra0 == targetExtra);
                 if (jewelryMatch && defaultMatch)
                 {
                     result.AlreadyMatches = true;
+                    result.NewBackpackExtraSlots = currentExtra0;
                     result.NewBytes = value.Length;
                     return result;
                 }
@@ -424,17 +446,23 @@ namespace Windrose.Quartermaster.Core
                     LogLine("  jewelry module patched");
                 }
 
-                // Patch Default module (player inventory).
+                // Patch Default module (player inventory + backpack slots).
                 if (!defaultMatch && defInfo != null)
                 {
                     // Re-locate after Jewelry splice may have shifted offsets.
                     defInfo = LocateDefault(value);
                     if (defInfo != null)
                     {
-                        int bpBonus = Math.Max(0, defInfo.LiveSlots.Count - defInfo.BpDefaultValue);
-                        value = PatchDefaultModule(value, defInfo, effDefault);
+                        int currentExtra = Math.Max(0, defInfo.LiveSlots.Count - defInfo.BpDefaultValue);
+                        value = PatchDefaultModule(value, defInfo, effDefault, targetExtra);
+                        result.NewBackpackExtraSlots = targetExtra;
+                        var extraMsg = currentExtra > 0
+                            ? (bpSlotsActive
+                                ? ", backpack +" + currentExtra + " -> +" + targetExtra
+                                : ", +" + currentExtra + " from backpack preserved")
+                            : "";
                         LogLine("  default module patched (" + effDefault + " base slots"
-                            + (bpBonus > 0 ? ", +" + bpBonus + " from backpack preserved" : "") + ")");
+                            + extraMsg + ")");
                     }
                 }
 
@@ -678,11 +706,13 @@ namespace Windrose.Quartermaster.Core
             return blocking;
         }
 
-        static List<string> FindDefaultBlockingItems(byte[] buf, DefaultInfo info, int newDefault)
+        static List<string> FindDefaultBlockingItems(byte[] buf, DefaultInfo info, int newDefault, int newBackpackExtra = -1)
         {
             var blocking = new List<string>();
-            int backpackBonus = Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
-            int effectiveLive = newDefault + backpackBonus;
+            int backpackExtra = newBackpackExtra >= 0
+                ? newBackpackExtra
+                : Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
+            int effectiveLive = newDefault + backpackExtra;
             if (effectiveLive < info.LiveSlots.Count)
                 foreach (var s in info.LiveSlots.Skip(effectiveLive))
                     if (s.HasItem) blocking.Add("Inventory slot " + Encoding.ASCII.GetString(s.IndexName) + " holds an item");
@@ -887,12 +917,14 @@ namespace Windrose.Quartermaster.Core
             return info;
         }
 
-        static byte[] PatchDefaultModule(byte[] value, DefaultInfo info, int newDefault)
+        static byte[] PatchDefaultModule(byte[] value, DefaultInfo info, int newDefault, int newBackpackExtra = -1)
         {
             // Backpack modifiers add extra slots to the live array at runtime.
             // Preserve those extra slots so equipped backpacks keep working.
-            int backpackBonus = Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
-            int newLiveCount = newDefault + backpackBonus;
+            int backpackExtra = newBackpackExtra >= 0
+                ? newBackpackExtra
+                : Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
+            int newLiveCount = newDefault + backpackExtra;
             var newArray = BuildDefaultLiveArray(value, info, newLiveCount);
             var outp = (byte[])value.Clone();
             LE(newDefault).CopyTo(outp, info.BpDefaultPos);
@@ -908,6 +940,21 @@ namespace Windrose.Quartermaster.Core
                 throw new InvalidDataException(
                     $"Internal error: root size {U32(outp,0)} != buffer length {outp.Length} after default-module splice.");
             return outp;
+        }
+
+        // Snaps a backpack slot count to the nearest vanilla tier value. Used to
+        // recover the vanilla count from a potentially already-multiplied save.
+        static int SnapToVanillaBackpackTier(int slots)
+        {
+            if (slots <= 0) return 0;
+            int best = 4;
+            int bestDiff = Math.Abs(slots - best);
+            foreach (var (_, _, vanillaSlots) in InventorySlotsPatcher.BackpackTiers)
+            {
+                int d = Math.Abs(slots - vanillaSlots);
+                if (d < bestDiff) { best = vanillaSlots; bestDiff = d; }
+            }
+            return best;
         }
 
         static string GetPlayerName(byte[] v)
@@ -945,6 +992,11 @@ namespace Windrose.Quartermaster.Core
         public int BlueprintNeck;
         public int BlueprintBack;
         public int BlueprintDefault;
+        // Whether a backpack item is actually equipped in the jewelry module.
+        public bool HasBackpackEquipped;
+        // Extra Default-module slots added by the equipped backpack (live - blueprint).
+        // Zero when no backpack is equipped (orphaned slots are ignored).
+        public int BackpackExtraSlots;
     }
 
     public sealed class SaveSlotsPatchResult
@@ -954,6 +1006,7 @@ namespace Windrose.Quartermaster.Core
         public string PlayerName;
         public int OldRing, OldNeck, OldBack, OldDefault;
         public int NewRing, NewNeck, NewBack, NewDefault;
+        public int NewBackpackExtraSlots;
         public int OldBytes, NewBytes;
         public string BackupPath;
         public bool CheckpointZipRebuilt;

@@ -235,6 +235,21 @@ namespace Windrose.Quartermaster.Core
                     }
                 }
 
+                // Backpack slots: per-tier SlotCountModifierParams JSONs (on-demand extraction)
+                InventorySlotsPatchResult backpackSlotsResult = null;
+                if (HasBackpackSlotsConfiguration(profile))
+                {
+                    var cfgExtractor = new VanillaConfigExtractor(_paths) { Log = Log };
+                    cfgExtractor.EnsureDirectory(_paths.VanillaBackpackParams, WindroseGameSecrets.BackpackParamsPath);
+                    LogLine("Patching backpack slots");
+                    _invSlotsPatcher.Log = Log;
+                    backpackSlotsResult = _invSlotsPatcher.PatchBackpackSlotsParams(
+                        _paths.VanillaBackpackParams, tmpDir,
+                        profile.Globals.StorageSlots.BackpackSlotsMultiplier.Value);
+                    if (backpackSlotsResult.Skipped)
+                        LogLine("  skipped (backpack slots match vanilla)");
+                }
+
                 ShipSlotsPatchResult shipSlotsResult = null;
                 if (HasShipSlotsConfiguration(profile))
                 {
@@ -411,6 +426,7 @@ namespace Windrose.Quartermaster.Core
                     + (levelingResult != null && levelingResult.Written ? 1 : 0)
                     + (bellResult != null && bellResult.Written ? 1 : 0)
                     + (invSlotsResult != null && invSlotsResult.Written ? 1 : 0)
+                    + (backpackSlotsResult != null && backpackSlotsResult.Written ? 1 : 0)
                     + (shipSlotsResult != null && shipSlotsResult.Written ? shipSlotsResult.FilesWritten : 0)
                     + (buyerResult != null
                         ? buyerResult.RecipesEdited + buyerResult.RecipesAdded + buyerResult.ListsWritten
