@@ -1108,6 +1108,19 @@ namespace Windrose.Quartermaster.Core
                 return true;
             if (e.NecklaceSlots.HasValue && e.NecklaceSlots.Value != InventorySlotsPatcher.VanillaNecklaceSlots)
                 return true;
+            if (e.BackpackSlots.HasValue && e.BackpackSlots.Value != InventorySlotsPatcher.VanillaBackpackSlots)
+                return true;
+            return false;
+        }
+
+        static bool HasStorageSlotsConfiguration(Profile profile)
+        {
+            var s = profile.Globals != null ? profile.Globals.StorageSlots : null;
+            if (s == null) return false;
+            if (s.PlayerInventoryMultiplier.HasValue && Math.Abs(s.PlayerInventoryMultiplier.Value - 1.0) > 1e-9)
+                return true;
+            if (s.ChestSlotsMultiplier.HasValue && Math.Abs(s.ChestSlotsMultiplier.Value - 1.0) > 1e-9)
+                return true;
             return false;
         }
 

@@ -875,7 +875,15 @@ function applyProfileToUI() {
         eqs && eqs.ringSlots != null ? eqs.ringSlots : 1;
     document.getElementById('necklace-slots').value =
         eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1;
+    document.getElementById('backpack-slots').value =
+        eqs && eqs.backpackSlots != null ? eqs.backpackSlots : 1;
     syncEquipmentSlotsReadout();
+    const sto = (p.globals && p.globals.storageSlots) || null;
+    document.getElementById('player-inv-mult').value =
+        sto && sto.playerInventoryMultiplier != null ? sto.playerInventoryMultiplier : 1.0;
+    document.getElementById('chest-slots-mult').value =
+        sto && sto.chestSlotsMultiplier != null ? sto.chestSlotsMultiplier : 1.0;
+    syncStorageSlotsReadout();
     const sh = (p.globals && p.globals.shipSlots) || null;
     document.getElementById('ship-cargo-mult').value =
         sh && sh.cargoMultiplier != null ? sh.cargoMultiplier : 1;
@@ -1248,7 +1256,7 @@ function miscTabHasMods() {
     if (!g) return false;
     const presenceKeys = [
         'stackSize', 'pickupRadius', 'shipPickup', 'depositVisual', 'cropOverlap', 'playerStats', 'equipmentSlots',
-        'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
+        'storageSlots', 'shipSlots', 'buildingStability', 'buildingRotation', 'noFog', 'persistentLoot', 'keepStatus', 'landFastTravel',
         'minimapRange', 'bonfireRadius', 'pickaxeRange', 'noSmoke', 'lighting',
         'shipSpeed', 'xpReward', 'killXp', 'levelingRework', 'shanty', 'itemSpawner', 'jewelry',
     ];

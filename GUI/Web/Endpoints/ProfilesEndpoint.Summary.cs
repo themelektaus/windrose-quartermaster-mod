@@ -90,6 +90,10 @@ public static partial class ProfilesEndpoint
                                  && p.Globals.ShipMusic != null
                                  && p.Globals.ShipMusic.Songs != null
                                  && p.Globals.ShipMusic.Songs.Count > 0,
+            hasGlobalStorageSlots = p.Globals != null
+                                    && p.Globals.StorageSlots != null
+                                    && (IsActive(p.Globals.StorageSlots.PlayerInventoryMultiplier)
+                                        || IsActive(p.Globals.StorageSlots.ChestSlotsMultiplier)),
         };
     }
 

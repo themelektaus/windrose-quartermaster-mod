@@ -263,10 +263,11 @@ namespace Windrose.Quartermaster.Core
             };
         }
 
-        // Like PatchRowsBySuffix but accepts per-row overrides. For each matching
-        // row, if rowOverrides contains the row name the override multiplier is used;
-        // otherwise defaultMultiplier applies. Used by the Jewelry Stats feature
-        // where each stat can carry its own multiplier.
+        // Like PatchRowsBySuffix but handles variable-key SimpleCurve rows (e.g.
+        // CT_JewelryGEValues where rows carry 2-4 keys for ItemLevel interpolation).
+        // For each matching row, ALL key Values are scaled by the same multiplier.
+        // If rowOverrides contains the row name the override multiplier is used;
+        // otherwise defaultMultiplier applies.
         public CooldownPatchResult PatchRowsWithMap(
             string inputAssetPath, string outputAssetPath,
             string usmapPath, string suffix, double defaultMultiplier,
@@ -294,7 +295,6 @@ namespace Windrose.Quartermaster.Core
             string sampleRow = null;
             float sampleVanilla = 0f, sampleEffective = 0f;
 
-            const int RowSize = RowValueOffset + 4 + 4 + 2;
             int pos = 0;
             int numRows = ReadI32(extras, inputAssetPath, ref pos);
             if (numRows < 0 || numRows > 1000000)
@@ -302,20 +302,51 @@ namespace Windrose.Quartermaster.Core
                     "CurveTable in " + inputAssetPath + " reports an implausible row count ("
                     + numRows + ") - the table format changed; refusing to patch.");
             NeedBytes(extras, pos, 1, inputAssetPath);
+            byte curveMode = extras[pos];
+            if (curveMode != 0x01)
+                throw new InvalidOperationException(
+                    "CurveTable in " + inputAssetPath + " has CurveTableMode="
+                    + curveMode + " (expected 1=SimpleCurves); refusing to patch.");
             pos += 1;
+
+            // Variable-key SimpleCurve row layout:
+            //   +0..+7:   FName (int32 NameIdx, int32 NameNumber)
+            //   +8:       byte InterpMode (0=Linear)
+            //   +9:       byte flag (0x0B)
+            //   +10:      byte flag2 (0x01)
+            //   +11..+14: int32 NumKeys (variable: 1, 2, 3, 4, ...)
+            //   +15..:    NumKeys * (float Time, float Value) = NumKeys * 8 bytes
+            //   then:     float DefaultValue (4 bytes)
+            //   then:     byte PreInfinityExtrap, byte PostInfinityExtrap (2 bytes)
+            // Total per row = 15 + NumKeys*8 + 6 = 21 + NumKeys*8
+
+            const int RowHeaderSize = 15; // FName(8) + InterpMode(1) + flag(1) + flag2(1) + NumKeys(4)
+            const int RowTrailerSize = 6; // DefaultValue(4) + 2 extrap bytes
 
             for (int r = 0; r < numRows; r++)
             {
                 int rowStart = pos;
-                NeedBytes(extras, rowStart, RowSize, inputAssetPath);
+                NeedBytes(extras, rowStart, RowHeaderSize, inputAssetPath);
 
-                if (!(extras[rowStart + 8] == 0x00 && extras[rowStart + 9] == 0x0B
-                      && extras[rowStart + 10] == 0x01 && extras[rowStart + 11] == 0x01
-                      && extras[rowStart + 12] == 0x00 && extras[rowStart + 13] == 0x00
-                      && extras[rowStart + 14] == 0x00))
+                // Structural guard on the 3 constant header bytes after FName
+                if (extras[rowStart + 8] != 0x00 || extras[rowStart + 9] != 0x0B
+                    || extras[rowStart + 10] != 0x01)
                     throw new InvalidOperationException(
-                        "Row #" + r + " in " + inputAssetPath + " does not carry the expected "
-                        + "single-key curve header - the table format changed; refusing to patch.");
+                        "Row #" + r + " in " + inputAssetPath
+                        + " has unexpected curve header bytes ["
+                        + extras[rowStart + 8].ToString("X2") + " "
+                        + extras[rowStart + 9].ToString("X2") + " "
+                        + extras[rowStart + 10].ToString("X2")
+                        + "] - the table format changed; refusing to patch.");
+
+                int numKeys = BitConverter.ToInt32(extras, rowStart + 11);
+                if (numKeys < 1 || numKeys > 100)
+                    throw new InvalidOperationException(
+                        "Row #" + r + " in " + inputAssetPath + " has NumKeys="
+                        + numKeys + " which is outside [1,100]; refusing to patch.");
+
+                int rowSize = RowHeaderSize + numKeys * 8 + RowTrailerSize;
+                NeedBytes(extras, rowStart, rowSize, inputAssetPath);
 
                 int nameIdx = BitConverter.ToInt32(extras, rowStart);
                 int nameNum = BitConverter.ToInt32(extras, rowStart + 4);
@@ -323,7 +354,7 @@ namespace Windrose.Quartermaster.Core
                 string rowName = baseName == null ? null
                     : (nameNum > 0 ? baseName + "_" + (nameNum - 1) : baseName);
 
-                pos += RowSize;
+                pos += rowSize;
 
                 if (rowName == null || !rowName.EndsWith(suffix, StringComparison.Ordinal)) continue;
 
@@ -332,31 +363,40 @@ namespace Windrose.Quartermaster.Core
                     mul = overrideMul;
                 if (Math.Abs(mul - 1.0) < 1e-9) continue;
 
-                int valueOffset = rowStart + RowValueOffset;
-                float time = BitConverter.ToSingle(extras, rowStart + RowTimeOffset);
-                if (!IsFinite(time) || time < 0f || time > 100000f)
-                    throw new InvalidOperationException(
-                        "Row '" + rowName + "' Time=" + time.ToString(CultureInfo.InvariantCulture)
-                        + " is not the expected single-key curve layout in " + inputAssetPath
-                        + " - the curve format changed; refusing to patch.");
-
-                float vanillaValue = BitConverter.ToSingle(extras, valueOffset);
-                if (!IsFinite(vanillaValue) || vanillaValue <= 0f || vanillaValue > 1000000f)
-                    throw new InvalidOperationException(
-                        "Row '" + rowName + "' value "
-                        + vanillaValue.ToString(CultureInfo.InvariantCulture)
-                        + " is not a plausible magnitude in " + inputAssetPath
-                        + " - refusing to patch.");
-
-                float newValue = (float)(vanillaValue * mul);
-                BitConverter.GetBytes(newValue).CopyTo(extras, valueOffset);
-                rowsPatched++;
-                if (sampleRow == null)
+                // Scale every key's Value in this row
+                for (int k = 0; k < numKeys; k++)
                 {
-                    sampleRow = rowName;
-                    sampleVanilla = vanillaValue;
-                    sampleEffective = newValue;
+                    int keyStart = rowStart + RowHeaderSize + k * 8;
+                    int valueOffset = keyStart + 4; // skip Time(4), land on Value(4)
+
+                    float time = BitConverter.ToSingle(extras, keyStart);
+                    if (!IsFinite(time) || time < 0f || time > 100000f)
+                        throw new InvalidOperationException(
+                            "Row '" + rowName + "' Key[" + k + "] Time="
+                            + time.ToString(CultureInfo.InvariantCulture)
+                            + " is not a plausible curve key in " + inputAssetPath
+                            + " - the curve format changed; refusing to patch.");
+
+                    float vanillaValue = BitConverter.ToSingle(extras, valueOffset);
+                    if (!IsFinite(vanillaValue))
+                        throw new InvalidOperationException(
+                            "Row '" + rowName + "' Key[" + k + "] value is NaN/Inf in "
+                            + inputAssetPath + " - refusing to patch.");
+
+                    // Skip zero-value keys (e.g. threshold floors)
+                    if (vanillaValue == 0f) continue;
+
+                    float newValue = (float)(vanillaValue * mul);
+                    BitConverter.GetBytes(newValue).CopyTo(extras, valueOffset);
+
+                    if (sampleRow == null)
+                    {
+                        sampleRow = rowName;
+                        sampleVanilla = vanillaValue;
+                        sampleEffective = newValue;
+                    }
                 }
+                rowsPatched++;
             }
 
             if (pos != extras.Length)

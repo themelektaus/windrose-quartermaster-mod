@@ -1,5 +1,5 @@
 Arczikov:
-[ ] Is it possible to add a mod that improves rings and necklaces?
+[x] Is it possible to add a mod that improves rings and necklaces?
 
 RoyaleGaming:
 [ ] Can you please add a mod for FOV when sailing. While sailing the frigate I hate how close the camera is to the wheel. I tried the in game camera option and it did nothing. If this is at all possible I'd greatly appreciate it.
@@ -11,10 +11,10 @@ bignoob77:
 [x] can you add reduce respawn times for resources like copper ore, iron ore, stone, sulfur, clay, salt, soil, trees and if this is already in the tool I just dont see it.
 
 lFUSEl:
-[ ] Bag Size Edits I see ship size edit but it would be nice to also do bags ( another mod gone)
-[ ] Storage Size Edits (Boom another mod gone)
+[ ] Bag Size Edits I see ship size edit but it would be nice to also do bags
+[x] Storage Size Edits
 [x] Adding a mass Quick depost function (BOOM BOOM BANG another mod gone) => PLAN-CampWideDeposit-WIP.md
-[ ] Caracter inventory Slots (yep you guessed it ... SIKE dont use this but still in the same scope as the others)
+[x] Character inventory Slots
 
 lFUSEl (optional features, out of scope):
 [ ] World edits (like amount of islands, Options like how big, How close and total world size.)

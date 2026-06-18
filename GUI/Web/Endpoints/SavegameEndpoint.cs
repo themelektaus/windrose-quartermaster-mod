@@ -24,7 +24,7 @@ public static class SavegameEndpoint
 {
     // Per-area patch targets. Any of Equipment / Progression / Ships may be null
     // (or empty) - only the supplied areas are patched.
-    public sealed record EquipmentTarget(int RingSlots, int NecklaceSlots);
+    public sealed record EquipmentTarget(int RingSlots, int NecklaceSlots, int BackpackSlots = 1, int PlayerInventorySlots = 0);
     public sealed record ProgressionTarget(int TalentPoints, int StatPoints);
     public sealed record ShipTarget(string ShipKey, double CargoMultiplier, int CombatOrderSlots);
     public sealed record CharacterPatchRequest(
@@ -91,8 +91,12 @@ public static class SavegameEndpoint
                         {
                             ringSlots = a.Equipment.RingSlots,
                             necklaceSlots = a.Equipment.NecklaceSlots,
+                            backpackSlots = a.Equipment.BackpackSlots,
+                            defaultSlots = a.Equipment.DefaultSlots,
                             blueprintRing = a.Equipment.BlueprintRing,
                             blueprintNeck = a.Equipment.BlueprintNeck,
+                            blueprintBack = a.Equipment.BlueprintBack,
+                            blueprintDefault = a.Equipment.BlueprintDefault,
                         },
                         progression = a.Progression == null ? null : (object)new
                         {
@@ -170,8 +174,13 @@ public static class SavegameEndpoint
                 // writing); on a non-destructive change it writes immediately.
                 if (req.Equipment != null)
                 {
+                    int? defSlots = req.Equipment.PlayerInventorySlots > 0
+                        ? req.Equipment.PlayerInventorySlots : (int?)null;
                     var r = new InventorySaveSlotsPatcher()
-                        .PatchCharacter(req.DbFolder, req.Equipment.RingSlots, req.Equipment.NecklaceSlots, req.Force);
+                        .PatchCharacter(req.DbFolder,
+                            req.Equipment.RingSlots, req.Equipment.NecklaceSlots,
+                            req.Equipment.BackpackSlots, defSlots,
+                            req.Force);
                     playerName ??= r.PlayerName;
                     if (r.BlockingItems != null && r.BlockingItems.Count > 0)
                     {
@@ -188,8 +197,12 @@ public static class SavegameEndpoint
                             alreadyMatches = r.AlreadyMatches,
                             oldRing = r.OldRing,
                             oldNeck = r.OldNeck,
+                            oldBack = r.OldBack,
+                            oldDefault = r.OldDefault,
                             newRing = r.NewRing,
                             newNeck = r.NewNeck,
+                            newBack = r.NewBack,
+                            newDefault = r.NewDefault,
                         };
                     }
                 }

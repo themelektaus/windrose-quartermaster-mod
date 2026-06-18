@@ -21,9 +21,13 @@
 
 function charEquipTarget() {
     const eqs = state.current && state.current.globals && state.current.globals.equipmentSlots;
+    const sto = state.current && state.current.globals && state.current.globals.storageSlots;
+    const invMult = sto && sto.playerInventoryMultiplier != null ? sto.playerInventoryMultiplier : 1;
     return {
         ring: eqs && eqs.ringSlots != null ? eqs.ringSlots : 1,
         neck: eqs && eqs.necklaceSlots != null ? eqs.necklaceSlots : 1,
+        back: eqs && eqs.backpackSlots != null ? eqs.backpackSlots : 1,
+        defSlots: Math.max(16, Math.round(16 * invMult)),
     };
 }
 
@@ -96,7 +100,10 @@ function progressionTargetFor(prog) {
 function equipNeedsPatch(eq, t) {
     if (!eq) return false;
     return eq.ringSlots !== t.ring || eq.necklaceSlots !== t.neck
-        || eq.blueprintRing !== t.ring || eq.blueprintNeck !== t.neck;
+        || eq.backpackSlots !== t.back
+        || eq.blueprintRing !== t.ring || eq.blueprintNeck !== t.neck
+        || eq.blueprintBack !== t.back
+        || (eq.blueprintDefault != null && eq.blueprintDefault !== t.defSlots);
 }
 
 function shipNeedsPatch(s, t) {
@@ -202,9 +209,15 @@ function buildCharacterCard(c) {
     areas.className = 'char-areas';
 
     if (c.equipment) {
-        areas.appendChild(areaLine(equipNeedsPatch(c.equipment, eqT), 'Equipment',
-            'rings ' + c.equipment.ringSlots + ' / necklaces ' + c.equipment.necklaceSlots,
-            'rings ' + eqT.ring + ' / necklaces ' + eqT.neck));
+        const eqNow = 'rings ' + c.equipment.ringSlots
+            + ' / necklaces ' + c.equipment.necklaceSlots
+            + ' / backpacks ' + c.equipment.backpackSlots
+            + ' / inventory ' + (c.equipment.blueprintDefault || 16);
+        const eqTarget = 'rings ' + eqT.ring
+            + ' / necklaces ' + eqT.neck
+            + ' / backpacks ' + eqT.back
+            + ' / inventory ' + eqT.defSlots;
+        areas.appendChild(areaLine(equipNeedsPatch(c.equipment, eqT), 'Equipment', eqNow, eqTarget));
     }
     if (c.progression) {
         const tt = progT ? progT.talent : c.progression.freeTalent;
@@ -283,7 +296,10 @@ function buildPatchRequest(c, force) {
 
     const req = { dbFolder: c.dbFolder, force: !!force };
     if (equipNeedsPatch(c.equipment, eqT))
-        req.equipment = { ringSlots: eqT.ring, necklaceSlots: eqT.neck };
+        req.equipment = {
+            ringSlots: eqT.ring, necklaceSlots: eqT.neck,
+            backpackSlots: eqT.back, playerInventorySlots: eqT.defSlots,
+        };
     if (progressionNeedsPatch(c.progression, progT))
         req.progression = { talentPoints: progT.talent, statPoints: progT.stat };
     const ships = (c.ships || []).filter(s => shipNeedsPatch(s, shipT))
@@ -335,6 +351,8 @@ function applyPatchResultToChar(c, res) {
     if (eq && eq.applied && c.equipment) {
         if (eq.newRing != null) { c.equipment.ringSlots = eq.newRing; c.equipment.blueprintRing = eq.newRing; }
         if (eq.newNeck != null) { c.equipment.necklaceSlots = eq.newNeck; c.equipment.blueprintNeck = eq.newNeck; }
+        if (eq.newBack != null) { c.equipment.backpackSlots = eq.newBack; c.equipment.blueprintBack = eq.newBack; }
+        if (eq.newDefault != null && eq.newDefault > 0) { c.equipment.blueprintDefault = eq.newDefault; }
     }
     const pr = res.progression;
     if (pr && pr.applied && c.progression) {

@@ -7,13 +7,13 @@ using RocksDbSharp;
 
 namespace Windrose.Quartermaster.Core
 {
-    // Retro-fits Ring / Necklace equipment slots onto an EXISTING Windrose
+    // Retro-fits equipment and inventory slots onto an EXISTING Windrose
     // character so it works with the slot-count pak (which alone only affects
     // newly-created characters). Ported from DeveloperBlue's Python patcher.
     //
     // The save is a RocksDB database; each character lives under the R5BLPlayer
-    // column family as a BSON document. The Jewelry module has two parallel views
-    // the game cross-checks on load:
+    // column family as a BSON document. Each inventory module has two parallel
+    // views the game cross-checks on load:
     //   ModuleParams.Slots  - blueprint, one entry per slot TYPE with CountSlots
     //   Slots               - live array, one entry per physical slot (SlotId,
     //                         SlotParams, ItemsStack)
@@ -23,15 +23,23 @@ namespace Windrose.Quartermaster.Core
     // every enclosing sub-document's int32 size prefix. The game also restores the
     // live DB from a checkpoint ZIP on every load, so we rebuild that afterwards
     // (CheckpointZipBuilder). Steam Cloud Sync must be off or it overwrites both.
+    //
+    // Modules patched:
+    //   Jewelry (Ring / Necklace / Backpack equipment slots)
+    //   Default (base player inventory grid, vanilla 16)
     public sealed class InventorySaveSlotsPatcher
     {
         public const int MinSlots = 1;
         public const int MaxSlots = 10;
+        public const int MinDefaultSlots = 16;
+        public const int MaxDefaultSlots = 256;
         const string PlayerCf = "R5BLPlayer";
         const string JewelryTag = "Inventory.Module.Jewelry";
+        const string DefaultTag = "Inventory.Module.Default";
         const string RingPath = "/R5BusinessRules/Inventory/SlotsParams/DA_BL_Slot_Equipment_Ring.DA_BL_Slot_Equipment_Ring";
         const string NeckPath = "/R5BusinessRules/Inventory/SlotsParams/DA_BL_Slot_Equipment_Necklace.DA_BL_Slot_Equipment_Necklace";
         const string BackPath = "/R5BusinessRules/Inventory/SlotsParams/DA_BL_Slot_Equipment_Backpack.DA_BL_Slot_Equipment_Backpack";
+        const string DefaultSlotPath = "/R5BusinessRules/Inventory/SlotsParams/DA_BL_Slot_Default.DA_BL_Slot_Default";
 
         public Action<string> Log;
         void LogLine(string m) { if (Log != null) Log(m); }
@@ -305,16 +313,25 @@ namespace Windrose.Quartermaster.Core
             if (value == null) return null;
 
             var info = Locate(value);
-            return new SaveCharacter
+            var ch = new SaveCharacter
             {
                 DbFolder = dbFolder,
                 CharacterId = Path.GetFileName(dbFolder),
                 PlayerName = GetPlayerName(value) ?? Path.GetFileName(dbFolder),
                 RingSlots = info.LiveSlots.Count(s => s.Kind == "ring"),
                 NecklaceSlots = info.LiveSlots.Count(s => s.Kind == "neck"),
+                BackpackSlots = info.LiveSlots.Count(s => s.Kind == "back"),
                 BlueprintRing = I32(value, info.BpRingPos),
                 BlueprintNeck = I32(value, info.BpNeckPos),
+                BlueprintBack = info.BpBackPos >= 0 ? I32(value, info.BpBackPos) : 1,
             };
+            var defInfo = LocateDefault(value);
+            if (defInfo != null)
+            {
+                ch.DefaultSlots = defInfo.LiveSlots.Count;
+                ch.BlueprintDefault = I32(value, defInfo.BpDefaultPos);
+            }
+            return ch;
         }
 
         // ------------------------------------------------------------------
@@ -322,12 +339,16 @@ namespace Windrose.Quartermaster.Core
         // ------------------------------------------------------------------
 
         public SaveSlotsPatchResult PatchCharacter(
-            string dbFolder, int newRing, int newNeck, bool forceDeleteEquipped = false)
+            string dbFolder, int newRing, int newNeck,
+            int? newBack = null, int? newDefault = null,
+            bool forceDeleteEquipped = false)
         {
             if (!IsCharacterDbDir(dbFolder))
                 throw new DirectoryNotFoundException(
                     "Not a Windrose character save folder (no CURRENT): " + dbFolder);
-            ValidateSlots(newRing, newNeck);
+            int effBack = newBack ?? 1;
+            int effDefault = newDefault ?? 0; // 0 = no-op for Default module
+            ValidateSlots(newRing, newNeck, effBack);
 
             // Validate the folder lives under the real save profiles root - never
             // let a caller point this write at an arbitrary directory.
@@ -337,7 +358,11 @@ namespace Windrose.Quartermaster.Core
                 throw new InvalidOperationException(
                     "Refusing to patch a folder outside the Windrose save profiles root.");
 
-            var result = new SaveSlotsPatchResult { NewRing = newRing, NewNeck = newNeck };
+            var result = new SaveSlotsPatchResult
+            {
+                NewRing = newRing, NewNeck = newNeck,
+                NewBack = effBack, NewDefault = effDefault
+            };
 
             var (dbOpts, cfs) = OpenOptions(dbFolder);
             byte[] key, value;
@@ -352,17 +377,31 @@ namespace Windrose.Quartermaster.Core
                 result.PlayerName = GetPlayerName(value) ?? Path.GetFileName(dbFolder);
                 result.OldRing = info.LiveSlots.Count(s => s.Kind == "ring");
                 result.OldNeck = info.LiveSlots.Count(s => s.Kind == "neck");
+                result.OldBack = info.LiveSlots.Count(s => s.Kind == "back");
                 result.OldBytes = value.Length;
 
-                var blocking = FindBlockingItems(value, info, newRing, newNeck);
+                // Default module: read current state (may be null if not found).
+                DefaultInfo defInfo = null;
+                if (effDefault > 0) defInfo = LocateDefault(value);
+                result.OldDefault = defInfo != null ? defInfo.LiveSlots.Count : 0;
+
+                var blocking = FindBlockingItems(value, info, newRing, newNeck, effBack);
+                if (effDefault > 0 && defInfo != null)
+                    blocking.AddRange(FindDefaultBlockingItems(value, defInfo, effDefault));
                 if (blocking.Count > 0 && !forceDeleteEquipped)
                 {
                     result.BlockingItems = blocking;
-                    return result; // caller must confirm destructive shrink
+                    return result;
                 }
 
-                if (result.OldRing == newRing && result.OldNeck == newNeck
-                    && info.BpRingValue == newRing && info.BpNeckValue == newNeck)
+                // Check if already matching.
+                bool jewelryMatch = result.OldRing == newRing && result.OldNeck == newNeck
+                    && result.OldBack == effBack
+                    && info.BpRingValue == newRing && info.BpNeckValue == newNeck
+                    && info.BpBackValue == effBack;
+                bool defaultMatch = effDefault <= 0
+                    || (defInfo != null && defInfo.BpDefaultValue == effDefault);
+                if (jewelryMatch && defaultMatch)
                 {
                     result.AlreadyMatches = true;
                     result.NewBytes = value.Length;
@@ -378,17 +417,36 @@ namespace Windrose.Quartermaster.Core
                     LogLine("  pre-patch backup: " + bak);
                 }
 
-                var newValue = PatchPlayerValue(value, info, newRing, newNeck);
-                result.NewBytes = newValue.Length;
-                LogLine("  patched value " + value.Length + " -> " + newValue.Length
-                        + " bytes (delta " + (newValue.Length - value.Length).ToString("+0;-0;0") + ")");
+                // Patch Jewelry module (ring/neck/back).
+                if (!jewelryMatch)
+                {
+                    value = PatchPlayerValue(value, info, newRing, newNeck, effBack);
+                    LogLine("  jewelry module patched");
+                }
 
-                db.Put(key, newValue, cf);
+                // Patch Default module (player inventory).
+                if (!defaultMatch && defInfo != null)
+                {
+                    // Re-locate after Jewelry splice may have shifted offsets.
+                    defInfo = LocateDefault(value);
+                    if (defInfo != null)
+                    {
+                        int bpBonus = Math.Max(0, defInfo.LiveSlots.Count - defInfo.BpDefaultValue);
+                        value = PatchDefaultModule(value, defInfo, effDefault);
+                        LogLine("  default module patched (" + effDefault + " base slots"
+                            + (bpBonus > 0 ? ", +" + bpBonus + " from backpack preserved" : "") + ")");
+                    }
+                }
+
+                result.NewBytes = value.Length;
+                LogLine("  patched value " + result.OldBytes + " -> " + value.Length
+                        + " bytes (delta " + (value.Length - result.OldBytes).ToString("+0;-0;0") + ")");
+
+                db.Put(key, value, cf);
                 try { db.CompactRange((byte[])null, (byte[])null, cf); } catch { }
             }
 
             // Rebuild the checkpoint ZIP the game restores from on load.
-            // dbFolder = .../RocksDB_v2/<version>/Players/<id>; saveRoot = .../<version>.
             var saveRoot = Directory.GetParent(dbFolder)?.Parent?.FullName;
             if (saveRoot != null)
             {
@@ -434,7 +492,7 @@ namespace Windrose.Quartermaster.Core
             return (null, null);
         }
 
-        static void ValidateSlots(int ring, int neck)
+        static void ValidateSlots(int ring, int neck, int back)
         {
             if (ring < MinSlots || ring > MaxSlots)
                 throw new ArgumentOutOfRangeException(nameof(ring), ring,
@@ -442,6 +500,9 @@ namespace Windrose.Quartermaster.Core
             if (neck < MinSlots || neck > MaxSlots)
                 throw new ArgumentOutOfRangeException(nameof(neck), neck,
                     "Necklace slots must be between " + MinSlots + " and " + MaxSlots);
+            if (back < MinSlots || back > MaxSlots)
+                throw new ArgumentOutOfRangeException(nameof(back), back,
+                    "Backpack slots must be between " + MinSlots + " and " + MaxSlots);
         }
 
         // ================= BSON surgery (verified in the spike) =================
@@ -499,9 +560,17 @@ namespace Windrose.Quartermaster.Core
         sealed class JewelryInfo
         {
             public List<int> AncestorChain = new();
-            public int JewelryDocStart, ModuleParamsStart, BpRingPos, BpNeckPos, LiveArrayStart, LiveArrayEnd;
+            public int JewelryDocStart, ModuleParamsStart, BpRingPos, BpNeckPos, BpBackPos, LiveArrayStart, LiveArrayEnd;
             public List<Slot> LiveSlots = new();
-            public int BpRingValue, BpNeckValue;
+            public int BpRingValue, BpNeckValue, BpBackValue;
+        }
+
+        sealed class DefaultInfo
+        {
+            public List<int> AncestorChain = new();
+            public int DefaultDocStart, ModuleParamsStart, BpDefaultPos, LiveArrayStart, LiveArrayEnd;
+            public List<Slot> LiveSlots = new();
+            public int BpDefaultValue;
         }
 
         static bool SlotHasItem(byte[] b, int slotDoc)
@@ -558,7 +627,7 @@ namespace Windrose.Quartermaster.Core
             var bp = Field(buf, info.ModuleParamsStart, "Slots")
                 ?? throw new InvalidDataException("Blueprint Slots array missing.");
             if (bp.t != BT_ARRAY) throw new InvalidDataException("Blueprint Slots not an array.");
-            info.BpRingPos = info.BpNeckPos = -1;
+            info.BpRingPos = info.BpNeckPos = info.BpBackPos = -1;
             foreach (var (t, _, vpos, _) in Elements(buf, bp.vpos))
             {
                 if (t != BT_SUBDOC) continue;
@@ -568,11 +637,13 @@ namespace Windrose.Quartermaster.Core
                 var p = ReadStr(buf, sp.Value.vpos);
                 if (p == RingPath) info.BpRingPos = cs.Value.vpos;
                 else if (p == NeckPath) info.BpNeckPos = cs.Value.vpos;
+                else if (p == BackPath) info.BpBackPos = cs.Value.vpos;
             }
             if (info.BpRingPos < 0 || info.BpNeckPos < 0)
                 throw new InvalidDataException("Blueprint Ring/Necklace entries not found.");
             info.BpRingValue = I32(buf, info.BpRingPos);
             info.BpNeckValue = I32(buf, info.BpNeckPos);
+            info.BpBackValue = info.BpBackPos >= 0 ? I32(buf, info.BpBackPos) : 1;
 
             var live = Field(buf, info.JewelryDocStart, "Slots")
                 ?? throw new InvalidDataException("Live Slots array missing.");
@@ -589,17 +660,32 @@ namespace Windrose.Quartermaster.Core
             return info;
         }
 
-        static List<string> FindBlockingItems(byte[] buf, JewelryInfo info, int newRing, int newNeck)
+        static List<string> FindBlockingItems(byte[] buf, JewelryInfo info, int newRing, int newNeck, int newBack)
         {
             var blocking = new List<string>();
             var rings = info.LiveSlots.Where(s => s.Kind == "ring").ToList();
             var necks = info.LiveSlots.Where(s => s.Kind == "neck").ToList();
+            var backs = info.LiveSlots.Where(s => s.Kind == "back").ToList();
             if (newRing < rings.Count)
                 foreach (var s in rings.Skip(newRing))
                     if (s.HasItem) blocking.Add("Ring slot " + Encoding.ASCII.GetString(s.IndexName) + " holds an equipped item");
             if (newNeck < necks.Count)
                 foreach (var s in necks.Skip(newNeck))
                     if (s.HasItem) blocking.Add("Necklace slot " + Encoding.ASCII.GetString(s.IndexName) + " holds an equipped item");
+            if (newBack < backs.Count)
+                foreach (var s in backs.Skip(newBack))
+                    if (s.HasItem) blocking.Add("Backpack slot " + Encoding.ASCII.GetString(s.IndexName) + " holds an equipped item");
+            return blocking;
+        }
+
+        static List<string> FindDefaultBlockingItems(byte[] buf, DefaultInfo info, int newDefault)
+        {
+            var blocking = new List<string>();
+            int backpackBonus = Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
+            int effectiveLive = newDefault + backpackBonus;
+            if (effectiveLive < info.LiveSlots.Count)
+                foreach (var s in info.LiveSlots.Skip(effectiveLive))
+                    if (s.HasItem) blocking.Add("Inventory slot " + Encoding.ASCII.GetString(s.IndexName) + " holds an item");
             return blocking;
         }
 
@@ -672,7 +758,7 @@ namespace Windrose.Quartermaster.Core
             return EmptiedSlot(buf, kind[0]);
         }
 
-        static byte[] BuildLiveArray(byte[] buf, JewelryInfo info, int newRing, int newNeck)
+        static byte[] BuildLiveArray(byte[] buf, JewelryInfo info, int newRing, int newNeck, int newBack)
         {
             var slots = info.LiveSlots;
             var rings = slots.Where(s => s.Kind == "ring").ToList();
@@ -684,12 +770,15 @@ namespace Windrose.Quartermaster.Core
 
             var ringT = EmptyTemplate(buf, rings);
             var neckT = EmptyTemplate(buf, necks);
+            var backT = backs.Count > 0 ? EmptyTemplate(buf, backs) : null;
             var sources = new List<byte[]>();
             sources.AddRange(rings.Take(newRing).Select(s => buf[s.ElemStart..s.ElemEnd]));
             for (int i = 0; i < Math.Max(0, newRing - rings.Count); i++) sources.Add(ringT);
             sources.AddRange(necks.Take(newNeck).Select(s => buf[s.ElemStart..s.ElemEnd]));
             for (int i = 0; i < Math.Max(0, newNeck - necks.Count); i++) sources.Add(neckT);
-            sources.AddRange(backs.Select(s => buf[s.ElemStart..s.ElemEnd]));
+            sources.AddRange(backs.Take(newBack).Select(s => buf[s.ElemStart..s.ElemEnd]));
+            if (backT != null)
+                for (int i = 0; i < Math.Max(0, newBack - backs.Count); i++) sources.Add(backT);
             sources.AddRange(others.Select(s => buf[s.ElemStart..s.ElemEnd]));
 
             var body = new List<byte>();
@@ -699,12 +788,29 @@ namespace Windrose.Quartermaster.Core
             var res = new List<byte>(LE(arrSize)); res.AddRange(body); return res.ToArray();
         }
 
-        static byte[] PatchPlayerValue(byte[] value, JewelryInfo info, int newRing, int newNeck)
+        static byte[] BuildDefaultLiveArray(byte[] buf, DefaultInfo info, int newCount)
         {
-            var newArray = BuildLiveArray(value, info, newRing, newNeck);
+            if (info.LiveSlots.Count == 0)
+                throw new InvalidDataException("Character has no Default inventory slots to use as a template.");
+            var tmpl = EmptyTemplate(buf, info.LiveSlots);
+            var sources = new List<byte[]>();
+            sources.AddRange(info.LiveSlots.Take(newCount).Select(s => buf[s.ElemStart..s.ElemEnd]));
+            for (int i = 0; i < Math.Max(0, newCount - info.LiveSlots.Count); i++) sources.Add(tmpl);
+
+            var body = new List<byte>();
+            for (int i = 0; i < sources.Count; i++) body.AddRange(Retag(sources[i], i.ToString(), i));
+            body.Add(0);
+            int arrSize = 4 + body.Count;
+            var res = new List<byte>(LE(arrSize)); res.AddRange(body); return res.ToArray();
+        }
+
+        static byte[] PatchPlayerValue(byte[] value, JewelryInfo info, int newRing, int newNeck, int newBack)
+        {
+            var newArray = BuildLiveArray(value, info, newRing, newNeck, newBack);
             var outp = (byte[])value.Clone();
             LE(newRing).CopyTo(outp, info.BpRingPos);
             LE(newNeck).CopyTo(outp, info.BpNeckPos);
+            if (info.BpBackPos >= 0) LE(newBack).CopyTo(outp, info.BpBackPos);
             int delta = newArray.Length - (info.LiveArrayEnd - info.LiveArrayStart);
             var spliced = new List<byte>(outp[..info.LiveArrayStart]);
             spliced.AddRange(newArray);
@@ -716,6 +822,91 @@ namespace Windrose.Quartermaster.Core
             if ((int)U32(outp, 0) != outp.Length)
                 throw new InvalidDataException(
                     $"Internal error: root size {U32(outp,0)} != buffer length {outp.Length} after splice.");
+            return outp;
+        }
+
+        // Locate the Default inventory module (base player inventory grid).
+        // Returns null if the module is not present in this save.
+        static DefaultInfo LocateDefault(byte[] buf)
+        {
+            var info = new DefaultInfo();
+            bool found = false;
+            void Descend(int docStart, List<int> chain)
+            {
+                if (found) return;
+                foreach (var (t, name, vpos, vend) in Elements(buf, docStart))
+                {
+                    if (t != BT_SUBDOC && t != BT_ARRAY) continue;
+                    if (t == BT_SUBDOC)
+                    {
+                        var mp = Field(buf, vpos, "ModuleParams");
+                        if (mp is { t: BT_SUBDOC })
+                        {
+                            var mt = Field(buf, mp.Value.vpos, "ModuleTag");
+                            if (mt is { t: BT_SUBDOC })
+                            {
+                                var tn = Field(buf, mt.Value.vpos, "TagName");
+                                if (tn is { t: BT_STRING } && ReadStr(buf, tn.Value.vpos) == DefaultTag)
+                                {
+                                    info.DefaultDocStart = vpos;
+                                    info.ModuleParamsStart = mp.Value.vpos;
+                                    info.AncestorChain = new List<int>(chain) { docStart, vpos };
+                                    found = true; return;
+                                }
+                            }
+                        }
+                    }
+                    Descend(vpos, new List<int>(chain) { docStart });
+                    if (found) return;
+                }
+            }
+            Descend(0, new List<int>());
+            if (!found) return null;
+
+            var bp = Field(buf, info.ModuleParamsStart, "Slots");
+            if (bp is not { t: BT_ARRAY }) return null;
+            info.BpDefaultPos = -1;
+            foreach (var (t, _, vpos, _) in Elements(buf, bp.Value.vpos))
+            {
+                if (t != BT_SUBDOC) continue;
+                var cs = Field(buf, vpos, "CountSlots");
+                if (cs is { t: BT_INT32 }) { info.BpDefaultPos = cs.Value.vpos; break; }
+            }
+            if (info.BpDefaultPos < 0) return null;
+            info.BpDefaultValue = I32(buf, info.BpDefaultPos);
+
+            var live = Field(buf, info.DefaultDocStart, "Slots");
+            if (live is not { t: BT_ARRAY }) return null;
+            info.LiveArrayStart = live.Value.vpos; info.LiveArrayEnd = live.Value.vend;
+            foreach (var (t, name, vpos, vend) in Elements(buf, live.Value.vpos))
+            {
+                if (t != BT_SUBDOC) continue;
+                int elemStart = vpos - name.Length - 2;
+                info.LiveSlots.Add(new Slot { Kind = "default", HasItem = SlotHasItem(buf, vpos), ElemStart = elemStart, ElemEnd = vend, IndexName = name });
+            }
+            return info;
+        }
+
+        static byte[] PatchDefaultModule(byte[] value, DefaultInfo info, int newDefault)
+        {
+            // Backpack modifiers add extra slots to the live array at runtime.
+            // Preserve those extra slots so equipped backpacks keep working.
+            int backpackBonus = Math.Max(0, info.LiveSlots.Count - info.BpDefaultValue);
+            int newLiveCount = newDefault + backpackBonus;
+            var newArray = BuildDefaultLiveArray(value, info, newLiveCount);
+            var outp = (byte[])value.Clone();
+            LE(newDefault).CopyTo(outp, info.BpDefaultPos);
+            int delta = newArray.Length - (info.LiveArrayEnd - info.LiveArrayStart);
+            var spliced = new List<byte>(outp[..info.LiveArrayStart]);
+            spliced.AddRange(newArray);
+            spliced.AddRange(outp[info.LiveArrayEnd..]);
+            outp = spliced.ToArray();
+            if (delta != 0)
+                foreach (var ds in info.AncestorChain)
+                { int sz = (int)U32(outp, ds); LE(sz + delta).CopyTo(outp, ds); }
+            if ((int)U32(outp, 0) != outp.Length)
+                throw new InvalidDataException(
+                    $"Internal error: root size {U32(outp,0)} != buffer length {outp.Length} after default-module splice.");
             return outp;
         }
 
@@ -748,8 +939,12 @@ namespace Windrose.Quartermaster.Core
         public string PlayerName;
         public int RingSlots;
         public int NecklaceSlots;
+        public int BackpackSlots;
+        public int DefaultSlots;
         public int BlueprintRing;
         public int BlueprintNeck;
+        public int BlueprintBack;
+        public int BlueprintDefault;
     }
 
     public sealed class SaveSlotsPatchResult
@@ -757,7 +952,8 @@ namespace Windrose.Quartermaster.Core
         public bool Patched;
         public bool AlreadyMatches;
         public string PlayerName;
-        public int OldRing, OldNeck, NewRing, NewNeck;
+        public int OldRing, OldNeck, OldBack, OldDefault;
+        public int NewRing, NewNeck, NewBack, NewDefault;
         public int OldBytes, NewBytes;
         public string BackupPath;
         public bool CheckpointZipRebuilt;

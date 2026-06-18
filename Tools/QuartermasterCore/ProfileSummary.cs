@@ -52,12 +52,21 @@ namespace Windrose.Quartermaster.Core
                     lines.Add("Fast travel caps: " + string.Join(", ", parts));
                 }
 
-                if (g.EquipmentSlots != null && (g.EquipmentSlots.RingSlots.HasValue || g.EquipmentSlots.NecklaceSlots.HasValue))
+                if (g.EquipmentSlots != null && (g.EquipmentSlots.RingSlots.HasValue || g.EquipmentSlots.NecklaceSlots.HasValue || g.EquipmentSlots.BackpackSlots.HasValue))
                 {
                     var parts = new List<string>();
                     if (g.EquipmentSlots.RingSlots.HasValue)     parts.Add(g.EquipmentSlots.RingSlots.Value + " ring");
                     if (g.EquipmentSlots.NecklaceSlots.HasValue) parts.Add(g.EquipmentSlots.NecklaceSlots.Value + " necklace");
+                    if (g.EquipmentSlots.BackpackSlots.HasValue) parts.Add(g.EquipmentSlots.BackpackSlots.Value + " backpack");
                     lines.Add("Equipment slots: " + string.Join(", ", parts));
+                }
+
+                if (g.StorageSlots != null)
+                {
+                    if (Active(g.StorageSlots.PlayerInventoryMultiplier))
+                        lines.Add("Player inventory " + X(g.StorageSlots.PlayerInventoryMultiplier.Value));
+                    if (Active(g.StorageSlots.ChestSlotsMultiplier))
+                        lines.Add("Chest storage " + X(g.StorageSlots.ChestSlotsMultiplier.Value));
                 }
 
                 if (g.ShipSlots != null)

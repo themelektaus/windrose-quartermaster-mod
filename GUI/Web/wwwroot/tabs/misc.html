@@ -555,7 +555,7 @@
       </div>
       <div class="card-content">
         <h2>Equipment Slots</h2>
-        <p class="hint">Extra ring and necklace equipment slots (vanilla 1 each).</p>
+        <p class="hint">Extra ring, necklace and backpack equipment slots (vanilla 1 each).</p>
         <div class="pickup-row">
           <div class="pickup-slider">
             <input type="range" id="ring-slots" min="1" max="10" step="1" value="1">
@@ -570,6 +570,13 @@
             <span class="mult-readout">necklace slots</span>
           </div>
         </div>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <input type="range" id="backpack-slots" min="1" max="10" step="1" value="1">
+            <span class="mult-pill" id="backpack-slots-value">1</span>
+            <span class="mult-readout">backpack slots</span>
+          </div>
+        </div>
         <p class="hint">
           Affects new characters only - existing characters keep the slot count
           baked into their save. <b>Use the Characters tab to patch an existing
@@ -580,7 +587,36 @@
 
     <section class="card">
       <div class="card-icon">
-        <div data-icon style="background-image: url(rings.png); "></div>
+        <div data-icon style="background-image: url(grid-plus.png); "></div>
+      </div>
+      <div class="card-content">
+        <h2>Inventory &amp; Storage Size</h2>
+        <p class="hint">Scale the base player inventory grid and chest/storage capacity.</p>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <span>Player</span>
+            <input type="range" id="player-inv-mult" min="1.0" max="10.0" step="0.5" value="1.0">
+            <span class="mult-pill" id="player-inv-mult-value">x1</span>
+          </div>
+        </div>
+        <div class="pickup-row">
+          <div class="pickup-slider">
+            <span>Chest</span>
+            <input type="range" id="chest-slots-mult" min="1.0" max="10.0" step="0.5" value="1.0">
+            <span class="mult-pill" id="chest-slots-mult-value">x1</span>
+          </div>
+        </div>
+        <p class="hint">
+          Player inventory affects new characters only - use the Characters
+          tab for existing characters. Chest storage is applied to all chest
+          variants (28, 16, 40, 120 vanilla slots).
+        </p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-icon">
+        <div data-icon style="background-image: url(necklace-levelup.png); "></div>
       </div>
       <div class="card-content">
         <h2>Jewelry Stats</h2>

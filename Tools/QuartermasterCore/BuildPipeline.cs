@@ -203,25 +203,35 @@ namespace Windrose.Quartermaster.Core
                 }
 
                 InventorySlotsPatchResult invSlotsResult = null;
-                if (HasEquipmentSlotsConfiguration(profile))
+                if (HasEquipmentSlotsConfiguration(profile) || HasStorageSlotsConfiguration(profile))
                 {
-                    LogLine("Patching player inventory slots (ring / necklace)");
-                    var eq = profile.Globals.EquipmentSlots;
+                    LogLine("Patching inventory slots (equipment / storage)");
+                    var eq = profile.Globals?.EquipmentSlots;
+                    var st = profile.Globals?.StorageSlots;
+                    int? playerInvSlots = null;
+                    if (st?.PlayerInventoryMultiplier != null
+                        && Math.Abs(st.PlayerInventoryMultiplier.Value - 1.0) > 1e-9)
+                        playerInvSlots = Math.Max(16, (int)Math.Round(
+                            InventorySlotsPatcher.VanillaPlayerInventorySlots
+                            * st.PlayerInventoryMultiplier.Value));
                     invSlotsResult = _invSlotsPatcher.PatchToDirectory(
                         _paths.VanillaPlayerInventory, tmpDir,
-                        eq.RingSlots, eq.NecklaceSlots);
+                        eq?.RingSlots, eq?.NecklaceSlots, eq?.BackpackSlots,
+                        playerInvSlots, st?.ChestSlotsMultiplier);
                     if (invSlotsResult.Skipped)
                     {
-                        LogLine("  skipped (resolved counts match vanilla 1/1 - nothing to do)");
+                        LogLine("  skipped (all values match vanilla - nothing to do)");
                     }
                     else if (invSlotsResult.Written)
                     {
-                        LogLine("  ring " + invSlotsResult.RingSlots + " (vanilla 1), necklace "
-                                + invSlotsResult.NecklaceSlots + " (vanilla 1) - "
-                                + (invSlotsResult.RingPatched ? "ring " : "")
-                                + (invSlotsResult.NecklacePatched ? "necklace " : "")
-                                + "patched. NOTE: only affects NEW characters; existing "
-                                + "characters need the save patcher.");
+                        var parts = new List<string>();
+                        if (invSlotsResult.RingPatched) parts.Add("ring " + invSlotsResult.RingSlots);
+                        if (invSlotsResult.NecklacePatched) parts.Add("necklace " + invSlotsResult.NecklaceSlots);
+                        if (invSlotsResult.BackpackPatched) parts.Add("backpack " + invSlotsResult.BackpackSlots);
+                        if (invSlotsResult.DefaultPatched) parts.Add("inventory " + invSlotsResult.PlayerInventorySlots);
+                        if (invSlotsResult.ChestPatched) parts.Add("chests x" + invSlotsResult.ChestSlotsMultiplier.ToString("0.0"));
+                        LogLine("  patched: " + string.Join(", ", parts)
+                            + ". NOTE: equipment/inventory only affects NEW characters.");
                     }
                 }
 

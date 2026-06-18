@@ -71,6 +71,21 @@ public static partial class ProfilesEndpoint
                     BellCap = g.FastTravelBells.BellCap,
                     SignalFireCap = g.FastTravelBells.SignalFireCap,
                 },
+            EquipmentSlots = g.EquipmentSlots == null
+                ? null
+                : new EquipmentSlotsGlobal
+                {
+                    RingSlots = g.EquipmentSlots.RingSlots,
+                    NecklaceSlots = g.EquipmentSlots.NecklaceSlots,
+                    BackpackSlots = g.EquipmentSlots.BackpackSlots,
+                },
+            StorageSlots = g.StorageSlots == null
+                ? null
+                : new StorageSlotsGlobal
+                {
+                    PlayerInventoryMultiplier = g.StorageSlots.PlayerInventoryMultiplier,
+                    ChestSlotsMultiplier = g.StorageSlots.ChestSlotsMultiplier,
+                },
             BuildingStability = g.BuildingStability == null
                 ? null
                 : new BuildingStabilityGlobal

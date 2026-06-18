@@ -334,23 +334,56 @@ function setBellLimitsFromUI() {
 function syncEquipmentSlotsReadout() {
     const ring = parseInt(document.getElementById('ring-slots').value, 10);
     const neck = parseInt(document.getElementById('necklace-slots').value, 10);
+    const back = parseInt(document.getElementById('backpack-slots').value, 10);
     document.getElementById('ring-slots-value').textContent = isFinite(ring) ? ring : 1;
     document.getElementById('necklace-slots-value').textContent = isFinite(neck) ? neck : 1;
+    document.getElementById('backpack-slots-value').textContent = isFinite(back) ? back : 1;
 }
 
 function setEquipmentSlotsFromUI() {
     if (!state.current) return;
     const ring = parseInt(document.getElementById('ring-slots').value, 10);
     const neck = parseInt(document.getElementById('necklace-slots').value, 10);
-    if (!isFinite(ring) || !isFinite(neck)) return;
+    const back = parseInt(document.getElementById('backpack-slots').value, 10);
+    if (!isFinite(ring) || !isFinite(neck) || !isFinite(back)) return;
     syncEquipmentSlotsReadout();
     state.current.globals = state.current.globals || {};
-    if (ring === 1 && neck === 1) {
+    if (ring === 1 && neck === 1 && back === 1) {
         delete state.current.globals.equipmentSlots;
     } else {
         state.current.globals.equipmentSlots = {
             ringSlots: ring,
             necklaceSlots: neck,
+            backpackSlots: back,
+        };
+    }
+    markDirty();
+}
+
+function syncStorageSlotsReadout() {
+    const inv = parseFloat(document.getElementById('player-inv-mult').value);
+    const chest = parseFloat(document.getElementById('chest-slots-mult').value);
+    document.getElementById('player-inv-mult-value').textContent =
+        'x' + (isFinite(inv) ? inv : 1);
+    document.getElementById('chest-slots-mult-value').textContent =
+        'x' + (isFinite(chest) ? chest : 1);
+}
+
+function setStorageSlotsFromUI() {
+    if (!state.current) return;
+    const inv = parseFloat(document.getElementById('player-inv-mult').value);
+    const chest = parseFloat(document.getElementById('chest-slots-mult').value);
+    if (!isFinite(inv) || !isFinite(chest)) return;
+    syncStorageSlotsReadout();
+    state.current.globals = state.current.globals || {};
+    const invOn = Math.abs(inv - 1.0) > 1e-9;
+    const chestOn = Math.abs(chest - 1.0) > 1e-9;
+    if (!invOn && !chestOn) {
+        delete state.current.globals.storageSlots;
+    } else {
+        state.current.globals.storageSlots = {
+            playerInventoryMultiplier: inv,
+            chestSlotsMultiplier: chest,
         };
     }
     markDirty();
@@ -958,6 +991,9 @@ function bindMiscHandlers() {
     document.getElementById('signal-fire-cap').addEventListener('input', setBellLimitsFromUI);
     document.getElementById('ring-slots').addEventListener('input', setEquipmentSlotsFromUI);
     document.getElementById('necklace-slots').addEventListener('input', setEquipmentSlotsFromUI);
+    document.getElementById('backpack-slots').addEventListener('input', setEquipmentSlotsFromUI);
+    document.getElementById('player-inv-mult').addEventListener('input', setStorageSlotsFromUI);
+    document.getElementById('chest-slots-mult').addEventListener('input', setStorageSlotsFromUI);
     document.getElementById('ship-cargo-mult').addEventListener('input', setShipSlotsFromUI);
     document.getElementById('ship-combat-slots').addEventListener('input', setShipSlotsFromUI);
     document.getElementById('building-stability-enabled').addEventListener('change',
