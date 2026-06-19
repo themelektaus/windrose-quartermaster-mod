@@ -105,7 +105,7 @@ Generelle Tools direkt im Workspace-Root:
 
 - `retoc.exe` - IoStore-Container bauen (`.ucas`+`.utoc`)
 - `repak.exe` - Legacy-Pak-Wrapper (`.pak`)
-- `ffmpeg.exe` - Audio-Konvertierung für Ship-Music
+- `ffmpeg.exe` - Audio-Konvertierung für Ship-Music + Bonfire-Music
 
 Build-Skripte und Sources liegen pro Mod im jeweiligen `Sources/`-Subfolder.
 

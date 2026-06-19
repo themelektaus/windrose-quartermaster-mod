@@ -42,13 +42,19 @@ A profile bundles tweaks across multiple domains:
   plus an optional 1.0-4.0x **ship pickup** multiplier (same card) that
   widens the collection range for floating sea-loot and the Brig /
   Frigate / Ketch interaction zones
-- **Fast-travel bells & signal fires** - raise the placement caps
+- **Fast-travel bells & signal fires** - raise the placement caps, with
+  an optional toggle for inland placement (vanilla restricts bells to
+  the coast)
 - **Building stability** - structures hold longer cantilevers / taller towers
 - **Building rotation** - add finer 1 / 5 / 10 degree rotation steps to
   buildables via three independent checkboxes (vanilla only snaps to 15
   degrees and up); default starting step stays vanilla 30 degrees
-- **Minimap range** - foot + ship reveal range, 1.0-5.0x slider
-- **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider
+- **Map** - foot + ship minimap reveal range (1.0-5.0x slider), plus a
+  toggle to disable the fog-of-war overlay on the full map
+- **Bonfire radius** - building-center influence sphere, 1.0-5.0x slider;
+  optionally upload a custom looping music track
+  (WAV/MP3/OGG/FLAC/M4A/AAC/OPUS, auto-transcoded to BinkAudio) with a
+  volume slider that plays while inside the bonfire radius
 - **Pickaxe range** - 1.0-3.0x slider that scales the trace radius on
   every pickaxe tier
 - **Light radius** - per-light AttenuationRadius multipliers for candles,
@@ -87,9 +93,20 @@ A profile bundles tweaks across multiple domains:
 - **Deposit visuals** - re-skin the iron and / or sulfur deposit base
   (albedo) texture from a dropdown of in-game textures so nodes stand out
   (iron visible at night, sulfur told apart from stone); no extra download
-- **Equipment slots** - extra ring / necklace equipment slots (vanilla 1
-  each, up to 10); new characters get them automatically, existing saves
-  via the Characters tab
+- **Equipment slots** - extra ring / necklace / backpack equipment slots
+  (vanilla 1 each, up to 10); new characters get them automatically,
+  existing saves via the Characters tab
+- **Inventory & storage size** - three independent multipliers: player
+  inventory capacity (1-10x on the default 16-slot module), chest storage
+  capacity (1-10x on all four chest variants), and backpack bonus slots
+  (0.25-10x on the extra slots each backpack tier adds). The save patcher
+  in the Characters tab adjusts existing characters' live inventories
+  while preserving the bonus from any equipped backpack
+- **Jewelry stats** - scale the gameplay-effect values on all jewelry
+  (rings, necklaces, backpacks) with a single overall multiplier
+  (0.1-10x); per-stat overrides on a dedicated Jewelry tab
+- **Reward Spawner** - a DLL-backed in-game mod tab that lets you grant
+  items and XP to your character at runtime (no console commands)
 - **Ship slots** - bigger cargo holds + more Combat Orders slots for the
   Brig / Frigate / Ketch and their variants; new ships automatic,
   existing ships via the Characters tab
@@ -102,10 +119,11 @@ A profile bundles tweaks across multiple domains:
   50-110%, written straight into your local UE config and locked
   read-only so the game keeps it
 - **Save patcher (Characters tab)** - retro-fit equipment-slot counts,
-  ship cargo / combat-order slots AND level-rewards point totals onto
-  characters / ships already baked into your save - one card and one
-  patch button per character that writes only the areas that actually
-  differ, with an automatic per-target backup before each write
+  inventory / backpack slot sizes, ship cargo / combat-order slots AND
+  level-rewards point totals onto characters / ships already baked into
+  your save - one card and one patch button per character that writes
+  only the areas that actually differ, with an automatic per-target
+  backup before each write
 - **Sea Shanties** - replace any of the 10 vanilla shanty slots with your
   own audio (WAV/MP3/FLAC/OGG, auto-transcoded to BinkAudio), add extra
   tracks alongside the vanilla 10, tune per-track volume, exclude single
@@ -126,11 +144,11 @@ Vanilla values are extracted directly from the game's main pak file
 (`pakchunk0-Windows.pak` for a client install, or
 `pakchunk0-WindowsServer.pak` for a dedicated server). The resulting
 pak is pure data, so no UE4SS / SML dependency - works in singleplayer /
-dedicated server / co-op alike. The three exceptions are the Weather
-Control use-effect, XP for Kills and Keep Shanties Playing, which
-Quartermaster backs with a small companion DLL it deploys next to the
-pak automatically - still nothing for you to install and no separate mod
-loader. (Keep Shanties Playing is singleplayer only.)
+dedicated server / co-op alike. The exceptions are the Weather Control
+use-effect, XP for Kills, Keep Shanties Playing and the Reward Spawner,
+which Quartermaster backs with a small companion DLL it deploys next to
+the pak automatically - still nothing for you to install and no separate
+mod loader. (Keep Shanties Playing is singleplayer only.)
 
 ---
 
@@ -277,12 +295,15 @@ icon to clone an existing one. For each profile you can:
   forgiveness (1.0-5.0x), hull-angle tolerance (1.0-2.0x) and max closing
   speed (1.0-3.0x).
 - **Basic tab** - cards for pickup radius (+ ship pickup), fast-travel
-  bell caps, building stability, minimap range, bonfire radius, pickaxe
+  bell caps (+ inland placement), building stability, map (minimap range
+  + fog-of-war toggle), bonfire radius (+ custom music upload), pickaxe
   range, building rotation (finer 1 / 5 / 10 degree steps), NPC spawns,
   on-death loot / status retention, player stats (Health / Stamina),
   crop overlap, deposit visuals, overall light radius,
-  overall ship speed, no-smoke FX, keep shanties playing, equipment slots
-  (ring / necklace) and ship slots (cargo / combat orders). Each card has its own toggle /
+  overall ship speed, no-smoke FX, keep shanties playing, reward spawner,
+  equipment slots (ring / necklace / backpack), inventory & storage size
+  (player inventory / chest / backpack slots multipliers), jewelry stats,
+  and ship slots (cargo / combat orders). Each card has its own toggle /
   slider; nothing is bundled into the pak unless the corresponding card
   is enabled. A **UI Scale** card additionally writes the global
   interface scale straight into your local `Engine.ini`
@@ -317,15 +338,19 @@ icon to clone an existing one. For each profile you can:
   sidebar), 0-100 with 0 = off / vanilla. Granted XP is real and
   persistent (the companion DLL routes it through the game's own level-up
   logic), so it survives save + reload like any quest reward.
+- **Jewelry tab** - per-stat value overrides for rings, necklaces and
+  backpacks (overrides the overall multiplier from the Basic Jewelry
+  Stats card on a per-stat basis).
 - **Characters tab** - a save patcher that retro-fits the profile's
-  equipment-slot counts, ship cargo / combat-order slots and level-
-  rewards point totals onto characters / ships already in your save (the
-  pak / sliders themselves only affect newly created ones). One card per
-  character lists every area (equipment, level rewards, each ship) with
-  its current vs. target value; a single **Backup + patch** button
-  appears whenever anything differs and writes only the areas that
-  actually changed, after an automatic per-target backup. Close the game
-  and disable Steam Cloud Sync for Windrose before patching, or the cloud
+  equipment-slot counts, inventory / backpack slot sizes, ship cargo /
+  combat-order slots and level-rewards point totals onto characters /
+  ships already in your save (the pak / sliders themselves only affect
+  newly created ones). One card per character lists every area
+  (equipment, inventory, backpack, level rewards, each ship) with its
+  current vs. target value; a single **Backup + patch** button appears
+  whenever anything differs and writes only the areas that actually
+  changed, after an automatic per-target backup. Close the game and
+  disable Steam Cloud Sync for Windrose before patching, or the cloud
   overwrites the patched save on next launch.
 - **Sea Shanties tab** - upload your own audio to replace any of the 10
   vanilla shanty slots, add extra tracks alongside the vanilla 10, tune
