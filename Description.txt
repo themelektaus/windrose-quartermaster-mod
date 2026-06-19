@@ -1,6 +1,6 @@
 [size=3][b]Description[/b][/size]
 
-Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, trade, cooldowns, building, lighting, navigation, ship handling, FX and audio, then bakes them into a single "_P.pak" you drop into the "~mods" folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
+Quartermaster is a profile-driven configurator and build pipeline for Windrose. A small desktop GUI lets you mix and match gameplay tweaks across items, loot, trade, cooldowns, building, lighting, navigation, ship handling, inventory, equipment, jewelry, FX and audio, then bakes them into a single "_P.pak" you drop into the "~mods" folder. Every value is calculated against a live vanilla snapshot extracted directly from the game's pak, so multipliers really do what they say.
 
 
 
@@ -16,7 +16,7 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 [size=4][b]Bonfire radius[/b][/size]
-[color=#b6b6b6]1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m).[/color]
+[color=#b6b6b6]1.0x to 5.0x slider for the building-center influence sphere (vanilla 50 m / 30 m). Optionally upload a custom audio file (WAV/MP3/FLAC/OGG) to replace the bonfire ambience with adjustable volume.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Bonfire-radius.png[/img]
 
@@ -52,7 +52,7 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 [size=4][b]Fast-travel bells & signal fires[/b][/size]
-[color=#b6b6b6]Raise the placement caps (vanilla 10 / 3).[/color]
+[color=#b6b6b6]Raise the placement caps (vanilla 10 / 3). An optional toggle allows inland fast-travel placement, so bells can be placed anywhere - not just near the coast.[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Fast-travel-bells-%26-signal-fires.png[/img]
 
@@ -168,8 +168,8 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 
-[size=4][b]Minimap range[/b][/size]
-[color=#b6b6b6]1.0x to 5.0x slider for the foot/ship reveal range (vanilla 2.5 m / 7.5 m).[/color]
+[size=4][b]Map[/b][/size]
+[color=#b6b6b6]Disable fog of war on the minimap and world map, and/or scale the minimap reveal range with a 1.0x to 5.0x slider (vanilla 2.5 m foot / 7.5 m ship).[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Minimap-range.png[/img]
 
@@ -205,9 +205,36 @@ Quartermaster is a profile-driven configurator and build pipeline for Windrose. 
 
 
 [size=4][b]Equipment slots[/b][/size]
-[color=#b6b6b6]Add extra ring and necklace equipment slots (vanilla 1 each, up to 10). New characters get the slots automatically; the Characters tab retro-fits the counts onto a character already in your save (with an automatic backup first).[/color]
+[color=#b6b6b6]Add extra ring, necklace and backpack equipment slots (vanilla 1 each, up to 10). New characters get the slots automatically; the Characters tab retro-fits the counts onto a character already in your save (with an automatic backup first).[/color]
 
 [img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/Equipment-Slots.png[/img]
+
+
+
+
+
+[size=4][b]Inventory & Storage Size[/b][/size]
+[color=#b6b6b6]Three independent multipliers on inventory capacity. Player Inventory scales the base 16-slot grid (1x to 10x). Chest Storage scales the capacity of every chest type (small, medium, large, ship cargo). Backpack Slots scales the extra slots each backpack tier adds to your inventory (0.25x to 10x, e.g. a Tier 3 backpack gives +16 vanilla - at 3x that becomes +48). New characters and chests use the scaled values automatically; the Characters tab retro-fits the player inventory onto an existing save (with an automatic backup first).[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/_Inventory-and-Storage-Size.png[/img]
+
+
+
+
+
+[size=4][b]Jewelry Stats[/b][/size]
+[color=#b6b6b6]Scale all ring and necklace stat bonuses (crit chance, melee damage, strength, agility, etc.) with an overall multiplier (0.1x to 10x). A dedicated Jewelry tab lists every individual stat so you can pin a per-stat override on top of the global value.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/_Jewelry-Stats.png[/img]
+
+
+
+
+
+[size=4][b]Reward Spawner[/b][/size]
+[color=#b6b6b6]Adds a section to the Quartermaster tab in the game's Settings menu: pick a category, pick an item (vanilla or your custom creations from the Item Creator) and grant it straight into your inventory - plus an experience field to add XP on the spot. Singleplayer only.[/color]
+
+[img width=800]https://raw.githubusercontent.com/themelektaus/windrose-quartermaster-mod/refs/heads/main/Media/nexusmods.com/_Reward-Spawner.png[/img]
 
 
 
